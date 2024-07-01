@@ -1,6 +1,6 @@
 from django.db import models
 
-from calibration.models import BaseModel
+from calibration.models.base_model import BaseModel
 
 
 class Metric(BaseModel):

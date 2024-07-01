@@ -1,6 +1,6 @@
 from django.db import models
 
-from calibration.models import BaseModel
+from calibration.models.base_model import BaseModel
 from calibration.models.domain import Domain
 
 
@@ -18,7 +18,7 @@ class Gage(BaseModel):
     huc = models.TextField()
     drainage_area = models.FloatField()
     contrib_drainage_area = models.FloatField()
-    domain_pk = models.ForeignKey(Domain, on_delete=models.SET_NULL)
+    domain_pk = models.ForeignKey(Domain, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'gage'

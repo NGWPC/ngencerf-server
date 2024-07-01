@@ -1,12 +1,12 @@
 from django.db import models
 
-from calibration.models import BaseModel
+from calibration.models.base_model import BaseModel
 from calibration.models.calibration_run import CalibrationRun
 
 
 class CalibrationStopCriteria(BaseModel):
     description = models.TextField()
-    calibration_run_pk = models.ForeignKey(CalibrationRun, on_delete=models.SET_NULL)
+    calibration_run_pk = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
     value = models.IntegerField()
     ordinal = models.IntegerField()
 
