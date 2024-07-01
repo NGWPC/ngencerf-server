@@ -1,0 +1,13 @@
+from django.db import models
+
+from calibration.models import BaseModel
+
+
+class Domain(BaseModel):
+    description = models.TextField()
+    is_active = models.BooleanField()
+    name = models.TextField()
+    forcing_url = models.TextField()
+
+    class Meta:
+        db_table = 'domain'

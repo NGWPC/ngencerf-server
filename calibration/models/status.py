@@ -1,0 +1,12 @@
+from django.db import models
+
+from calibration.models import BaseModel
+
+
+class Status(BaseModel):
+    description = models.TextField()
+    is_active = models.BooleanField()
+    name = models.TextField()
+
+    class Meta:
+        db_table = 'status'
