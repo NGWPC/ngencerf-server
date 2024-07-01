@@ -2,9 +2,9 @@ from django.db import models
 
 
 class BaseModel(models.Model):
-    updated_by = models.TextField()
+    updated_by = models.TextField(default=0)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.TextField()
+    created_by = models.TextField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

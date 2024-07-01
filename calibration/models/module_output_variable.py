@@ -7,9 +7,9 @@ from calibration.models.module import Module
 class ModuleOutputVariable(BaseModel):
     description = models.TextField()
     is_active = models.BooleanField()
-    name = models.TextField()
+    name = models.TextField(unique=True, null=False)
     data_type = models.TextField()
-    module_pk = models.ForeignKey(Module, null=True, on_delete=models.SET_NULL)
+    module = models.ForeignKey(Module, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'module_output_variable'

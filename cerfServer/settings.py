@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'calibration.apps.CalibrationConfig',
+    'calibration.apps.CalibrationConfig'
 ]
 
 MIDDLEWARE = [

@@ -7,7 +7,7 @@ from calibration.models.optimization import Optimization
 class OptimizationInput(BaseModel):
     description = models.TextField()
     is_active = models.BooleanField()
-    name = models.TextField()
+    name = models.TextField(unique=True, null=False)
     optimization_pk = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
 
     class Meta:

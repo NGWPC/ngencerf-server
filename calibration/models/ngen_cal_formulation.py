@@ -5,7 +5,7 @@ from calibration.models.base_model import BaseModel
 
 class NgenCalFormulation(BaseModel):
     description = models.TextField()
-    name = models.TextField()
+    name = models.TextField(unique=True, null=False)
     modules = models.TextField()
 
     class Meta:

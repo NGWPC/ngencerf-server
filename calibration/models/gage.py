@@ -15,10 +15,14 @@ class Gage(BaseModel):
     longitude = models.FloatField()
     lat_long_accuracy = models.TextField()
     lat_long_datum = models.TextField()
+    discharge_period = models.IntegerField
+    altitude = models.FloatField(null=True)
+    altitude_accuracy = models.TextField(null=True)
+    altitude_datum = models.TextField(null=True)
     huc = models.TextField()
-    drainage_area = models.FloatField()
-    contrib_drainage_area = models.FloatField()
-    domain_pk = models.ForeignKey(Domain, null=True, on_delete=models.SET_NULL)
+    drainage_area = models.FloatField(null=True)
+    contrib_drainage_area = models.FloatField(null=True)
+    domain = models.ForeignKey(Domain, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'gage'
