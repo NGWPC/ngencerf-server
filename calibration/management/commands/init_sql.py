@@ -22,6 +22,7 @@ class Command(BaseCommand):
     def define_modules_and_groups(self):
         Module.objects.all().delete()
         ModuleGroup.objects.all().delete()
+
         group_inject = ModuleGroup(name="Inject", is_active=True, description='Need description')
         group_inject.save()
         group_glacier = ModuleGroup(name="Glacier", is_active=True, description='Need description')
@@ -175,7 +176,7 @@ class Command(BaseCommand):
         self.save_module_output_variable(ModuleOutputVariable(name="TGS", is_active=True, description='Need description'),
                                          'Noah-OWP-Modular')
         self.save_module_output_variable(ModuleOutputVariable(name="RAIN_RATE", is_active=True, description='Need description'),
-                                         'CFE-X')
+                                         'CFE-S')
         self.save_module_output_variable(
             ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description'),
@@ -200,10 +201,11 @@ class Command(BaseCommand):
             ModuleOutputVariable(name="SOIL_STORAGE_CHANGE", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(
             ModuleOutputVariable(name="SURF_RUNOFF_SCHEME", is_active=True, description='Need description'), 'CFE-S')
+        self.save_module_output_variable(ModuleOutputVariable(name="RAIN_RATE", is_active=True, description='Need description'),
+                                         'CFE-X')
         self.save_module_output_variable(
             ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description'), 'CFE-X')
-        self.save_module_output_variable(ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description'),
-                                         'CFE-X')
+        self.save_module_output_variable(ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description'), 'CFE-X')
         self.save_module_output_variable(
             ModuleOutputVariable(name="NASH_LATERAL_RUNOFF", is_active=True, description='Need description'), 'CFE-X')
         self.save_module_output_variable(

@@ -1,12 +1,13 @@
 import json
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.forms import model_to_dict
 from django.http import HttpResponse, JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from .models import Module, ModuleGroup, Gage
+from .models import Module, ModuleGroup, Gage, CalibrationRun, StatusEnum, Status
 
 
 @api_view(['GET', 'POST'])
@@ -36,7 +37,7 @@ def get_gage(request, gage_id=None):
         gage = Gage.objects.filter(gage_id=gage_id).only('gage_id', 'agency', 'station_name').values(
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
-            return JsonResponse({"error": f'Gage {gage_id} does not exist'}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
         return JsonResponse(gage, safe=False)
     else:
@@ -45,8 +46,24 @@ def get_gage(request, gage_id=None):
 
 def get_gages(request):
     gages = Gage.objects.filter(is_active=True)
-    print(list(gages.values_list('gage_id', flat=True)))
     return JsonResponse(list(gages.values_list('gage_id', flat=True)), safe=False)
+
+
+@api_view(['POST'])
+@transaction.atomic
+def save_tab1(request):
+    body = json.loads(request.body)
+    gage_id = body.get('gage_id')
+    forcing_source = body.get('forcing_source')
+    forcing_path = body.get('forcing_path')
+
+    gage = Gage.objects.filter(gage_id=gage_id).first()
+    if not gage:
+        return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
+
+    run = CalibrationRun(gage=gage, forcing_source=forcing_source, forcing_path=forcing_path, is_active=True, status=Status.objects.get(name=StatusEnum.RUNNING.value))
+    run.save()
+    return JsonResponse({'message': f'Calibration run {run.id} created', 'calibration_run_key': run.id})
 
 
 @api_view(['GET'])

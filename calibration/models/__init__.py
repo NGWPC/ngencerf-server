@@ -27,4 +27,5 @@ from .optimization import Optimization
 from .optimization_input import OptimizationInput
 from .plot_definitions import PlotDefinitions
 from .status import Status
+from .status_enum import StatusEnum
 from .validation_run import ValidationRun

@@ -6,8 +6,8 @@ from calibration.models.optimization_input import OptimizationInput
 
 
 class CalibrationOptimizationInput(BaseModel):
-    calibration_run_pk = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
-    optimization_input_pk = models.ForeignKey(OptimizationInput, null=True, on_delete=models.SET_NULL)
+    calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
+    optimization_input = models.OneToOneField(OptimizationInput, null=True, on_delete=models.SET_NULL)
     value = models.FloatField()
 
     class Meta:

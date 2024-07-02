@@ -6,8 +6,8 @@ from calibration.models.metric import Metric
 
 
 class CalibrationMetric(BaseModel):
-    calibration_run_pk = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
-    metric_pk = models.ForeignKey(Metric, null=True, on_delete=models.SET_NULL)
+    calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
+    metric = models.OneToOneField(Metric, null=True, on_delete=models.SET_NULL)
     objective_function = models.BooleanField()
 
     class Meta:

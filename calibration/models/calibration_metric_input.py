@@ -1,13 +1,11 @@
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.calibration_metric import CalibrationMetric
-from calibration.models.metric import Metric
 
 
 class CalibrationMetricInput(BaseModel):
-    calibration_metric_pk = models.ForeignKey(CalibrationMetric, null=True, on_delete=models.SET_NULL)
-    metric_pk = models.ForeignKey(Metric, null=True, on_delete=models.SET_NULL)
+    calibration_metric = models.ForeignKey('CalibrationMetric', null=True, on_delete=models.SET_NULL)
+    metric_input = models.OneToOneField("MetricInput", null=True, on_delete=models.SET_NULL)
     data_type = models.TextField()
     value = models.FloatField()
 

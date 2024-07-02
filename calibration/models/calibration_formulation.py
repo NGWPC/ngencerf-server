@@ -7,8 +7,8 @@ from calibration.models.module import Module
 
 class CalibrationFormulation(BaseModel):
     description = models.TextField()
-    module_pk = models.ForeignKey(Module, null=True, on_delete=models.SET_NULL)
-    calibration_run_pk = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
+    module = models.ForeignKey(Module, null=True, on_delete=models.SET_NULL)
+    calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
     module_commit_hash = models.BinaryField()
 
     class Meta:
