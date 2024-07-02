@@ -1,7 +1,10 @@
+import json
+from pprint import pprint
+
 from django.core.management.base import BaseCommand
 
 from calibration.models import Module, ModuleGroup, Domain, ObservationalSource, ModuleInputVariable, ModuleOutputVariable, \
-    Optimization, Metric, Status
+    Optimization, Metric, Status, NgenCalFormulation
 
 
 class Command(BaseCommand):
@@ -18,6 +21,7 @@ class Command(BaseCommand):
         self.define_optimization()
         self.define_metric()
         self.define_status()
+        self.define_ngen_formulations()
 
     def define_modules_and_groups(self):
         Module.objects.all().delete()
@@ -276,8 +280,19 @@ class Command(BaseCommand):
 
     def define_status(self):
         Status.objects.all().delete()
+
         Status(name="Saved", is_active=True, description='Need description').save()
         Status(name="Ready", is_active=True, description='Need description').save()
         Status(name="Running", is_active=True, description='Need description').save()
         Status(name="Done", is_active=True, description='Need description').save()
         Status(name="Cancelled", is_active=True, description='Need description').save()
+
+    def define_ngen_formulations(self):
+        NgenCalFormulation.objects.all().delete()
+
+        NgenCalFormulation(name="cfe_noah", modules=json.dumps(["CFE-S", "Noah-OWP-Modular"]), description='Need description').save()
+        NgenCalFormulation(name="cfe_noah_sft", modules=json.dumps(["CFE-S", "Noah-OWP-Modular", "SFT", "SMP"]), description='Need description').save()
+        NgenCalFormulation(name="cfe_xaj_noah", modules=json.dumps(["CFE-X", "Noah-OWP-Modular"]), description='Need description').save()
+        NgenCalFormulation(name="cfe_xaj_noah_sft", modules=json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP"]), description='Need description').save()
+        NgenCalFormulation(name="lasam_noah_sft", modules=json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP"]), description='Need description').save()
+        NgenCalFormulation(name="topmodel_noah", modules=json.dumps(["TopModel", "Noah-OWP-Modular"]), description='Need description').save()
