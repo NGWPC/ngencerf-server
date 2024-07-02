@@ -112,15 +112,26 @@ class Command(BaseCommand):
                                         'Noah-OWP-Modular')
         self.save_module_input_variable(
             ModuleInputVariable(name="atmosphere_water__liquid_equivalent_precipitation_rate", is_active=True,
-                                description='Need description'), 'CFE')
+                                description='Need description'), 'CFE-S')
         self.save_module_input_variable(
-            ModuleInputVariable(name="water_potential_evaporation_flux", is_active=True, description='Need description'), 'CFE')
+            ModuleInputVariable(name="water_potential_evaporation_flux", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_input_variable(
-            ModuleInputVariable(name="ice_fraction_schaake", is_active=True, description='Need description'), 'CFE')
+            ModuleInputVariable(name="ice_fraction_schaake", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_input_variable(
-            ModuleInputVariable(name="ice_fraction_xinanjiang", is_active=True, description='Need description'), 'CFE')
+            ModuleInputVariable(name="ice_fraction_xinanjiang", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_input_variable(
-            ModuleInputVariable(name="soil_moisture_profile", is_active=True, description='Need description'), 'CFE')
+            ModuleInputVariable(name="soil_moisture_profile", is_active=True, description='Need description'), 'CFE-S')
+        self.save_module_input_variable(
+            ModuleInputVariable(name="atmosphere_water__liquid_equivalent_precipitation_rate", is_active=True,
+                                description='Need description'), 'CFE-X')
+        self.save_module_input_variable(
+            ModuleInputVariable(name="water_potential_evaporation_flux", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_input_variable(
+            ModuleInputVariable(name="ice_fraction_schaake", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_input_variable(
+            ModuleInputVariable(name="ice_fraction_xinanjiang", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_input_variable(
+            ModuleInputVariable(name="soil_moisture_profile", is_active=True, description='Need description'), 'CFE-X')
         self.save_module_input_variable(ModuleInputVariable(name="land_surface_water_source__volume_flow_rate", is_active=True,
                                                             description='Need description'), 'T-Route')
         self.save_module_input_variable(ModuleInputVariable(name="upstream_id", is_active=True, description='Need description'),
@@ -164,31 +175,55 @@ class Command(BaseCommand):
         self.save_module_output_variable(ModuleOutputVariable(name="TGS", is_active=True, description='Need description'),
                                          'Noah-OWP-Modular')
         self.save_module_output_variable(ModuleOutputVariable(name="RAIN_RATE", is_active=True, description='Need description'),
-                                         'CFE')
+                                         'CFE-X')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description'),
-                                         'CFE')
+                                         'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="NASH_LATERAL_RUNOFF", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="NASH_LATERAL_RUNOFF", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="DEEP_GW_TO_CHANNEL_FLUX", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="DEEP_GW_TO_CHANNEL_FLUX", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="SOIL_TO_GW_FLUX", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="SOIL_TO_GW_FLUX", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(ModuleOutputVariable(name="Q_OUT", is_active=True, description='Need description'),
-                                         'CFE')
+                                         'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="POTENTIAL_ET", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="POTENTIAL_ET", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(ModuleOutputVariable(name="ACTUAL_ET", is_active=True, description='Need description'),
-                                         'CFE')
+                                         'CFE-S')
         self.save_module_output_variable(ModuleOutputVariable(name="GW_STORAGE", is_active=True, description='Need description'),
-                                         'CFE')
+                                         'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="SOIL_STORAGE", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="SOIL_STORAGE", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="SOIL_STORAGE_CHANGE", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="SOIL_STORAGE_CHANGE", is_active=True, description='Need description'), 'CFE-S')
         self.save_module_output_variable(
-            ModuleOutputVariable(name="SURF_RUNOFF_SCHEME", is_active=True, description='Need description'), 'CFE')
+            ModuleOutputVariable(name="SURF_RUNOFF_SCHEME", is_active=True, description='Need description'), 'CFE-S')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description'),
+                                         'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="NASH_LATERAL_RUNOFF", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="DEEP_GW_TO_CHANNEL_FLUX", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="SOIL_TO_GW_FLUX", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(ModuleOutputVariable(name="Q_OUT", is_active=True, description='Need description'),
+                                         'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="POTENTIAL_ET", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(ModuleOutputVariable(name="ACTUAL_ET", is_active=True, description='Need description'),
+                                         'CFE-X')
+        self.save_module_output_variable(ModuleOutputVariable(name="GW_STORAGE", is_active=True, description='Need description'),
+                                         'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="SOIL_STORAGE", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="SOIL_STORAGE_CHANGE", is_active=True, description='Need description'), 'CFE-X')
+        self.save_module_output_variable(
+            ModuleOutputVariable(name="SURF_RUNOFF_SCHEME", is_active=True, description='Need description'), 'CFE-X')
         self.save_module_output_variable(
             ModuleOutputVariable(name="channel_exit_water_x-section__volume_flow_rate", is_active=True,
                                  description='Need description'), 'T-Route')
