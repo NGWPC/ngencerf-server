@@ -1,5 +1,6 @@
 import json
 
+from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Prefetch
 from django.forms import model_to_dict
@@ -11,6 +12,7 @@ from .models import Module, ModuleGroup, Gage, CalibrationRun, StatusEnum, Statu
 
 
 @api_view(['GET', 'POST'])
+@login_required()
 def get_modules(request):
     modules = Module.objects.filter(is_active=True).prefetch_related(
         Prefetch('groups', queryset=ModuleGroup.objects.only('name').filter(is_active=True)))
@@ -27,6 +29,7 @@ def get_modules(request):
 
 
 @api_view(['GET', 'POST'])
+@login_required()
 def get_gage(request, gage_id=None):
     if request.method == 'POST':
         json_body = json.loads(request.body)
@@ -44,12 +47,15 @@ def get_gage(request, gage_id=None):
         return JsonResponse({"error": 'Missing required gage_id'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET', 'POST'])
+@login_required()
 def get_gages(request):
     gages = Gage.objects.filter(is_active=True)
     return JsonResponse(list(gages.values_list('gage_id', flat=True)), safe=False)
 
 
 @api_view(['POST'])
+@login_required
 @transaction.atomic
 def save_tab1(request):
     body = json.loads(request.body)
@@ -61,7 +67,8 @@ def save_tab1(request):
     if not gage:
         return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
-    run = CalibrationRun(gage=gage, forcing_source=forcing_source, forcing_path=forcing_path, is_active=True, status=Status.objects.get(name=StatusEnum.RUNNING.value))
+    run = CalibrationRun(gage=gage, forcing_source=forcing_source, forcing_path=forcing_path, is_active=True,
+                         status=Status.objects.get(name=StatusEnum.RUNNING.value))
     run.save()
     return JsonResponse({'message': f'Calibration run {run.id} created', 'calibration_run_key': run.id})
 
