@@ -8,7 +8,7 @@ class OptimizationInput(BaseModel):
     description = models.TextField()
     is_active = models.BooleanField()
     name = models.TextField(unique=True, null=False)
-    optimization = models.OneToOneField(Optimization, null=True, on_delete=models.SET_NULL)
+    optimization = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'optimization_input'

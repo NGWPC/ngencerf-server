@@ -39,7 +39,7 @@ class Command(BaseCommand):
                 if len(row) > 10 and row[9]:
                     gage.altitude_accuracy = row[9]
                 if len(row) > 11 and row[10]:
-                   gage.altitude_accuracy = row[10]
+                    gage.altitude_accuracy = row[10]
                 if len(row) > 12:
                     gage.huc = row[11]
                 if len(row) >= 13 and row[12]:

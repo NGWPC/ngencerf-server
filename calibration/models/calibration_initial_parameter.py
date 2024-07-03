@@ -7,7 +7,7 @@ from calibration.models.module import Module
 
 class CalibrationInitialParameter(BaseModel):
     calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
-    module = models.OneToOneField(Module, null=True, on_delete=models.SET_NULL)
+    module = models.ForeignKey(Module, null=True, on_delete=models.SET_NULL)
     name = models.TextField(unique=True, null=False)
     default_value = models.FloatField()
 

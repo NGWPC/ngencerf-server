@@ -1,7 +1,3 @@
-import json
-from pprint import pprint
-
-from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.models import Module, ModuleGroup, Domain, ObservationalSource, ModuleInputVariable, ModuleOutputVariable, \
