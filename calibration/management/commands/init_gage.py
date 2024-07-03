@@ -1,5 +1,7 @@
 import csv
+from pprint import pprint
 
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.models import Gage
@@ -11,6 +13,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
 
         Gage.objects.all().delete()
+
+        # need to get a user that is guaranteed to be there, such as admin
+        user = get_user_model().objects.get(username='peter')
+        pprint(user)
 
         with open('calibration/management/commands/USGS_streamflow_gage_list_2024-06-16.txt', 'r') as file:
             reader = csv.reader(file, delimiter='\t')
@@ -40,4 +46,7 @@ class Command(BaseCommand):
                     gage.drainage_area = row[12]
                 if len(row) >= 14 and row[13]:
                     gage.contrib_drainage_area = row[13]
+
+                gage.updated_by = user
+                gage.created_by = user
                 gage.save()

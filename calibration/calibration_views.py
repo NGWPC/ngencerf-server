@@ -1,9 +1,9 @@
 import json
 
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Prefetch
-from django.forms import model_to_dict
 from django.http import HttpResponse, JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -55,9 +55,10 @@ def get_gages(request):
 
 
 @api_view(['POST'])
-@login_required
+# @login_required
 @transaction.atomic
 def save_tab1(request):
+    print('user', request.user)
     body = json.loads(request.body)
     gage_id = body.get('gage_id')
     forcing_source = body.get('forcing_source')
@@ -67,10 +68,25 @@ def save_tab1(request):
     if not gage:
         return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
-    run = CalibrationRun(gage=gage, forcing_source=forcing_source, forcing_path=forcing_path, is_active=True,
-                         status=Status.objects.get(name=StatusEnum.RUNNING.value))
-    run.save()
+    run = CalibrationRun.objects.create(gage=gage, forcing_source=forcing_source, forcing_path=forcing_path, is_active=True,
+                                        status=Status.objects.get(name=StatusEnum.RUNNING.value))
     return JsonResponse({'message': f'Calibration run {run.id} created', 'calibration_run_key': run.id})
+
+
+@api_view(['GET'])
+def test_create_tab1(request):
+    gage = Gage.objects.filter(gage_id="01010000").first()
+    CalibrationRun.objects.create(gage=gage, forcing_source="my_source", forcing_path="my_path", is_active=True,
+                                  status=Status.objects.get(name=StatusEnum.RUNNING.value))
+    return HttpResponse('ok')
+
+
+@api_view(['GET'])
+def test_update_tab1(request):
+    run = CalibrationRun.objects.get(id=13)
+    run.forcing_path = 'updated_path'
+    run.save()
+    return HttpResponse('ok')
 
 
 @api_view(['GET'])
