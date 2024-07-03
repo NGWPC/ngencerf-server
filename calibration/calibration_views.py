@@ -1,14 +1,19 @@
 import json
 
-from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Prefetch
 from django.http import HttpResponse, JsonResponse
+from django.middleware.csrf import get_token
 from rest_framework import status
 from rest_framework.decorators import api_view
 
 from .models import Module, ModuleGroup, Gage, CalibrationRun, StatusEnum, Status
+
+
+@api_view(['GET'])
+def csrf(request):
+    return JsonResponse({'csrf': get_token(request)})
 
 
 @api_view(['GET', 'POST'])
