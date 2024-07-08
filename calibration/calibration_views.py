@@ -6,8 +6,10 @@ from django.db.models import Prefetch
 from django.http import HttpResponse, JsonResponse
 from django.middleware.csrf import get_token
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 
+from .calibration_serializers import SaveTab1Serializer
 from .models import Module, ModuleGroup, Gage, CalibrationRun, StatusEnum, Status
 
 
@@ -65,6 +67,9 @@ def get_gages(request):
 def save_tab1(request):
     print('user', request.user)
     body = json.loads(request.body)
+    ser = SaveTab1Serializer(data=body)
+    if not ser.is_valid():
+        return JsonResponse({"errors": ser.errors})
     gage_id = body.get('gage_id')
     forcing_source = body.get('forcing_source')
     forcing_path = body.get('forcing_path')
