@@ -11,6 +11,7 @@ urlpatterns = [
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
     path('calibration/csrf/', calibration_gage_views.csrf, name="csrf"),
 
-    path('calibration/get_modules/', calibration_formulation_views.get_modules, name="getModules"),
+    path('calibration/get_modules/<str:calibration_run_id>/', calibration_formulation_views.get_modules, name="getModules"),
+    path('calibration/get_modules/', calibration_formulation_views.get_modules, name="getModules_post"),
     path('calibration/save_formulation_tab/', calibration_formulation_views.save_formulation_tab, name="saveFormulationTab"),
 ]

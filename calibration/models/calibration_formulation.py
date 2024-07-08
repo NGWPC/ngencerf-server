@@ -4,10 +4,11 @@ from calibration.models.base_model import BaseModel
 
 
 class CalibrationFormulation(BaseModel):
-    description = models.TextField()
+    description = models.TextField(null=False)
     name = models.TextField(null=False)
     groups = models.TextField(null=False)
-    used_by_calibration_run = models.BooleanField()
+    used_by_calibration_run = models.BooleanField(default=False)
+    calibration_run = models.ForeignKey('CalibrationRun', null=True, on_delete=models.SET_NULL)
 
     class Meta:
         db_table = 'calibration_formulation'

@@ -4,28 +4,136 @@ from django.db import transaction
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
-from .calibration_validators import SaveFormulationValidator
-from .models import NgenCalFormulation, CalibrationRun
+from .calibration_validators import SaveFormulationValidator, CalibrationRunValidator
+from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation
+
+# For testing
+module_data = [
+    {
+        "name": "GC2D",
+        "groups": [
+            "Glacier"
+        ]
+    },
+    {
+        "name": "Noah-OWP-Modular",
+        "groups": [
+            "Snowmelt",
+            "Evapotranspiration"
+        ]
+    },
+    {
+        "name": "Snow-17",
+        "groups": [
+            "Snowmelt"
+        ]
+    },
+    {
+        "name": "UEB",
+        "groups": [
+            "Snowmelt",
+            "Evapotranspiration"
+        ]
+    },
+    {
+        "name": "CFE-S",
+        "groups": [
+            "Rainfall Runoff"
+        ]
+    },
+    {
+        "name": "CFE-X",
+        "groups": [
+            "Rainfall Runoff"
+        ]
+    },
+    {
+        "name": "PET",
+        "groups": [
+            "Evapotranspiration"
+        ]
+    },
+    {
+        "name": "TopModel",
+        "groups": [
+            "Rainfall Runoff"
+        ]
+    },
+    {
+        "name": "Sac-SMA",
+        "groups": [
+            "Rainfall Runoff"
+        ]
+    },
+    {
+        "name": "LASAM",
+        "groups": [
+            "Rainfall Runoff"
+        ]
+    },
+    {
+        "name": "SMP",
+        "groups": [
+            "Soil Moisture"
+        ]
+    },
+    {
+        "name": "SFT",
+        "groups": [
+            "Snowmelt"
+        ]
+    },
+    {
+        "name": "T-Route",
+        "groups": [
+            "Routing"
+        ]
+    },
+    {
+        "name": "SCHISM",
+        "groups": [
+            "Coastal"
+        ]
+    },
+    {
+        "name": "SFINCS",
+        "groups": [
+            "Coastal"
+        ]
+    },
+    {
+        "name": "Sloth",
+        "groups": [
+            "Inject"
+        ]
+    }
+]
 
 
 @api_view(['GET', 'POST'])
 # @login_required()
-def get_modules(request):
+def get_modules(request, calibration_run_id=None):
+    print('user', request.user)
+    if request.method == "POST":
+        body = json.loads(request.body)
+        validate = CalibrationRunValidator(data=body or {})
+        if not validate.is_valid():
+            print('Validation errors', validate.errors)
+            return JsonResponse({"errors": validate.errors})
+        else:
+            calibration_run_id = body.get('calibration_run_id')
+
+    run = CalibrationRun.objects.filter(id=calibration_run_id).first()
+    if not run:
+        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
+
     # Get this from hydrofabric
 
-    # modules = Module.objects.filter(is_active=True).prefetch_related(
-    #     Prefetch('groups', queryset=ModuleGroup.objects.only('name').filter(is_active=True)))
-    #
-    # result = []
-    # for module in modules:
-    #     groups = [group.name for group in module.groups.all()]
-    #     result.append({
-    #         'name': module.name,
-    #         'groups': groups
-    #     })
-    #
-    # return JsonResponse(result, safe=False)
-    return JsonResponse({})
+    # Save the modules
+    for m in module_data:
+        CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')), calibration_run=run, description="need description")
+
+    return JsonResponse(module_data)
 
 
 @api_view(['POST'])
@@ -34,8 +142,7 @@ def get_modules(request):
 def save_formulation_tab(request):
     print('user', request.user)
     body = json.loads(request.body)
-    validate = SaveFormulationValidator(data=body)
-    print('validate', validate)
+    validate = SaveFormulationValidator(data=body or {})
     if not validate.is_valid():
         print('Validation errors', validate.errors)
         return JsonResponse({"errors": validate.errors})

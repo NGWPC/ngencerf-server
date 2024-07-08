@@ -1,6 +1,14 @@
 from rest_framework import serializers
 
 
+class CalibrationRunValidator(serializers.Serializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+
+
+class GageIdValidator(serializers.Serializer):
+    gage_id = serializers.CharField(required=True)
+
+
 class SaveGageValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=1, required=True)
