@@ -1,7 +1,7 @@
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.module import Module
+from calibration.models.calibration_formulation import CalibrationFormulation
 
 
 class ModuleInputVariable(BaseModel):
@@ -9,8 +9,4 @@ class ModuleInputVariable(BaseModel):
     is_active = models.BooleanField()
     name = models.TextField(null=False)
     data_type = models.TextField()
-    module = models.ForeignKey(Module, null=True, on_delete=models.SET_NULL)
-
-    class Meta:
-        db_table = 'module_input_variable'
-        unique_together = ('name', 'module')
+    calibration_formulation = models.ForeignKey(CalibrationFormulation, null=True, on_delete=models.SET_NULL)

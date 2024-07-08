@@ -1,29 +1,31 @@
 import json
 
 from django.db import transaction
-from django.db.models import Prefetch
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
 from .calibration_validators import SaveFormulationValidator
-from .models import Module, ModuleGroup, NgenCalFormulation, CalibrationRun
+from .models import NgenCalFormulation, CalibrationRun
 
 
 @api_view(['GET', 'POST'])
 # @login_required()
 def get_modules(request):
-    modules = Module.objects.filter(is_active=True).prefetch_related(
-        Prefetch('groups', queryset=ModuleGroup.objects.only('name').filter(is_active=True)))
+    # Get this from hydrofabric
 
-    result = []
-    for module in modules:
-        groups = [group.name for group in module.groups.all()]
-        result.append({
-            'name': module.name,
-            'groups': groups
-        })
-
-    return JsonResponse(result, safe=False)
+    # modules = Module.objects.filter(is_active=True).prefetch_related(
+    #     Prefetch('groups', queryset=ModuleGroup.objects.only('name').filter(is_active=True)))
+    #
+    # result = []
+    # for module in modules:
+    #     groups = [group.name for group in module.groups.all()]
+    #     result.append({
+    #         'name': module.name,
+    #         'groups': groups
+    #     })
+    #
+    # return JsonResponse(result, safe=False)
+    return JsonResponse({})
 
 
 @api_view(['POST'])

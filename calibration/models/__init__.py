@@ -17,8 +17,6 @@ from .iteration_result import IterationResult
 from .iteration_tune_parameter import IterationTuneParameter
 from .metric import Metric
 from .metric_input import MetricInput
-from .module import Module
-from .module_group import ModuleGroup
 from .module_input_variable import ModuleInputVariable
 from .module_output_variable import ModuleOutputVariable
 from .ngen_cal_formulation import NgenCalFormulation
