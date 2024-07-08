@@ -5,9 +5,8 @@ from django.db.models import Prefetch
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
-from .calibration_validators import SaveFormulationValidator, SaveGageValidator
-from .common import get_or_create_calibration_run
-from .models import Module, ModuleGroup, NgenCalFormulation
+from .calibration_validators import SaveFormulationValidator
+from .models import Module, ModuleGroup, NgenCalFormulation, CalibrationRun
 
 
 @api_view(['GET', 'POST'])
@@ -39,7 +38,7 @@ def save_formulation_tab(request):
         print('Validation errors', validate.errors)
         return JsonResponse({"errors": validate.errors})
     modules = set(body.get('modules'))
-    run_id = body.get('calibration_run_id')
+    calibration_run_id = body.get('calibration_run_id')
     formulation_name = body.get('formulation_name')
 
     # Make sure the formulation is valid
@@ -53,11 +52,10 @@ def save_formulation_tab(request):
     if not valid:
         return JsonResponse({"error": f"Invalid formulation - {modules}"})
 
-    run = get_or_create_calibration_run(run_id)
+    run = CalibrationRun.objects.filter(id=calibration_run_id).first()
     if not run:
-        return JsonResponse({'message': f'Calibration Run {run_id} does not exist'})
+        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
 
     run.formulation_name = formulation_name
     run.save()
-    return JsonResponse({'message': f'Calibration Run {run.id} created or updated', 'calibration_run_key': run.id})
-
+    return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id})

@@ -8,8 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from .calibration_validators import SaveGageValidator
-from .common import get_or_create_calibration_run
-from .models import Gage, CalibrationRun, StatusEnum, Status
+from .models import Gage, CalibrationRun
 
 
 @api_view(['GET'])
@@ -53,7 +52,7 @@ def save_gage_tab(request):
     if not validate.is_valid():
         print('Validation errors', validate.errors)
         return JsonResponse({"errors": validate.errors})
-    run_id = validate.data.calibration_run_id
+    calibration_run_id = validate.data.calibration_run_id
     gage_id = body.get('gage_id')
     forcing_source = body.get('forcing_source')
     forcing_path = body.get('forcing_path')
@@ -62,15 +61,15 @@ def save_gage_tab(request):
     if not gage:
         return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
-    run = get_or_create_calibration_run(run_id)
+    run = CalibrationRun.objects.filter(id=calibration_run_id).first()
     if not run:
-        return JsonResponse({'message': f'Calibration Run {run_id} does not exist'})
+        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
 
     run.gage = gage
     run.forcing_source = forcing_source
     run.forcing_path = forcing_path
     run.save()
-    return JsonResponse({'message': f'Calibration Run {run.id} created or updated', 'calibration_run_key': run.id})
+    return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id})
 
 
 @api_view(['GET'])

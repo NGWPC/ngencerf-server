@@ -1,9 +1,10 @@
 from django.urls import path
 
-from calibration import calibration_gage_views, calibration_formulation_views
+from calibration import calibration_gage_views, calibration_formulation_views, calibration_landing_views
 
 urlpatterns = [
 
+    path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
     path('calibration/get_gage/<str:gage_id>/', calibration_gage_views.get_gage, name="getGage"),
     path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage_post"),
     path('calibration/get_gages/', calibration_gage_views.get_gages, name="getGages"),
