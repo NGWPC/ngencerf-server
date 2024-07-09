@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db import models
 
 from calibration.models.base_model import BaseModel
@@ -18,6 +19,8 @@ class CalibrationRun(BaseModel):
     calibration_end_period = models.DateTimeField(null=True)
     calibration_eval_start_period = models.DateTimeField(null=True)
     calibration_eval_end_period = models.DateTimeField(null=True)
+    # This should be a required field (null=FALSE), but we'll leave it as optional for now
+    owner = models.ForeignKey(get_user_model(), null=True, on_delete=models.SET_NULL)
     hydrofabric_gpkg_path = models.TextField(null=True)
     forcing_path = models.TextField()
     forcing_user_filename = models.TextField(null=True)
