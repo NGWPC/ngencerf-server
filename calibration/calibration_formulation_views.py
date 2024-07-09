@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
 from .calibration_validators import SaveFormulationValidator, CalibrationRunValidator
-from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam
+from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, StatusEnum
 
 # For testing
 module_data = [
@@ -124,9 +124,12 @@ def get_modules(request, calibration_run_id=None):
         else:
             calibration_run_id = body.get('calibration_run_id')
 
-    run = CalibrationRun.objects.filter(id=calibration_run_id).first()
+    # Do we want only SAVED?  Want to make sure it hasn't been run yet
+    run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED.value).first()
     if not run:
-        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
+        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
+
+    # Need to check that this Calibration hasn't been run
 
     # Get this from hydrofabric
 
@@ -166,9 +169,10 @@ def save_formulation_tab(request):
     if not valid:
         return JsonResponse({"error": f"Invalid formulation - {modules}"})
 
-    run = CalibrationRun.objects.filter(id=calibration_run_id).first()
+    # Do we want only SAVED?  Want to make sure it hasn't been run yet
+    run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED.value).first()
     if not run:
-        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
+        return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 
     run.formulation_name = formulation_name
     run.save()
