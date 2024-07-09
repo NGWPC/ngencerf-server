@@ -12,3 +12,6 @@ class CalibrationFormulation(BaseModel):
 
     class Meta:
         db_table = 'calibration_formulation'
+        constraints = [
+            models.UniqueConstraint(fields=['name', 'calibration_run'], name='calibration_formulation_name_run_unique')
+        ]

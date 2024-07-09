@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
 from .calibration_validators import SaveFormulationValidator, CalibrationRunValidator
-from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation
+from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam
 
 # For testing
 module_data = [
@@ -111,6 +111,7 @@ module_data = [
 
 
 @api_view(['GET', 'POST'])
+@transaction.atomic
 # @login_required()
 def get_modules(request, calibration_run_id=None):
     print('user', request.user)
@@ -129,11 +130,14 @@ def get_modules(request, calibration_run_id=None):
 
     # Get this from hydrofabric
 
+    # Delete modules for this run, if they've already been specified
+    CalibrationFormulation.objects.filter(calibration_run=run).delete()
     # Save the modules
     for m in module_data:
-        CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')), calibration_run=run, description="need description")
+        CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')), calibration_run=run,
+                                              description="need description")
 
-    return JsonResponse(module_data)
+    return JsonResponse(module_data, safe=False)
 
 
 @api_view(['POST'])
@@ -149,6 +153,7 @@ def save_formulation_tab(request):
     modules = set(body.get('modules'))
     calibration_run_id = body.get('calibration_run_id')
     formulation_name = body.get('formulation_name')
+    sloth_parameters = body.get('sloth_parameters')
 
     # Make sure the formulation is valid
     valid_formulations = NgenCalFormulation.objects.all().values_list('modules', flat=True)
@@ -167,4 +172,20 @@ def save_formulation_tab(request):
 
     run.formulation_name = formulation_name
     run.save()
+
+    # Delete params for this run if they've already been specified
+    CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+    for s in sloth_parameters:
+        # Need to also set the module
+        module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
+        if not module:
+            error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
+            print(error)
+            return JsonResponse({"error": error})
+        CalibrationSlothParam.objects.create(calibration_run=run, param_name=s.get('name'), param_count=s.get('count'),
+                                             param_type=s.get('type'),
+                                             param_units=s.get('units'), param_location=s.get('location'),
+                                             param_value=s.get('value'), maps_to_module=module,
+                                             maps_to_variable_name=s.get('module_param'))
+
     return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id})
