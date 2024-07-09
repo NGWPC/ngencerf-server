@@ -12,7 +12,8 @@ from .models import StatusEnum, Status, CalibrationRun
 def create_calibration_run(request):
     print('user', request.user)
 
-    run = CalibrationRun.objects.create(is_active=True, status=StatusEnum.SAVED.value)
+    # Need to add request.user to the Run object
+    run = CalibrationRun.objects.create(is_active=True, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
     return JsonResponse({'message': f'Calibration Run {run.id} created', 'calibration_run_key': run.id}, status=status.HTTP_201_CREATED)
 
