@@ -8,7 +8,7 @@ class ModuleOutputVariable(BaseModel):
     description = models.TextField()
     name = models.TextField(null=False)
     data_type = models.TextField()
-    calibration_formulation = models.ForeignKey(CalibrationFormulation, null=True, on_delete=models.SET_NULL)
+    calibration_formulation = models.ForeignKey(CalibrationFormulation, null=False, on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'module_output_variable'

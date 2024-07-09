@@ -15,14 +15,14 @@ from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, 
 module_data = [
     {
         "name": "GC2D",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Glacier"
         ]
     },
     {
         "name": "Noah-OWP-Modular",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -30,31 +30,31 @@ module_data = [
         "output_variables": [
             {
                 "name": "QINSUR",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "ETRAN",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "QSEVA",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
         ]
     },
     {
         "name": "Snow-17",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Snowmelt"
         ]
     },
     {
         "name": "UEB",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -62,135 +62,135 @@ module_data = [
     },
     {
         "name": "CFE-S",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Rainfall Runoff"
         ],
         "output_variables": [
             {
                 "name": "RAIN_RATE",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "DIRECT_RUNOFF",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "GIUH_RUNOFF",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             }
         ]
     },
     {
         "name": "CFE-X",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Rainfall Runoff"
         ],
         "output_variables": [
             {
                 "name": "RAIN_RATE",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "DIRECT_RUNOFF",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "GIUH_RUNOFF",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             }
         ]
     },
     {
         "name": "PET",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Evapotranspiration"
         ]
     },
     {
         "name": "TopModel",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Rainfall Runoff"
         ]
     },
     {
         "name": "Sac-SMA",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Rainfall Runoff"
         ]
     },
     {
         "name": "LASAM",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Rainfall Runoff"
         ]
     },
     {
         "name": "SMP",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Soil Moisture"
         ]
     },
     {
         "name": "SFT",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Snowmelt"
         ]
     },
     {
         "name": "T-Route",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Routing"
         ],
         "output_variables": [
             {
                 "name": "channel_water_flow__speed",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "channel_water__mean_dept",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             },
             {
                 "name": "lake_water~outgoing__volume_flow_rate",
-                "description of variable"
+                "description": "description of variable",
                 "type": "double"
             }
         ]
     },
     {
         "name": "SCHISM",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Coastal"
         ]
     },
     {
         "name": "SFINCS",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Coastal"
         ]
     },
     {
         "name": "Sloth",
-        "description of module"
+        "description": "description of module",
         "groups": [
             "Inject"
         ]
@@ -226,15 +226,18 @@ def get_modules(request, calibration_run_id=None):
             CalibrationFormulation.objects.filter(calibration_run=run).delete()
             # Save the modules
             for m in module_data:
-                print('module', m)
-                print('output_variables', m.get('output_variables'))
+
                 module = CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
                                                                calibration_run=run,
                                                                description=m.get('description'))
                 outputs = m.get('output_variables')
-                for o in outputs:
-                    ModuleOutputVariable.objects.create(name=o.get('name'), data_type=o.get('type'),
-                                                        calibration_formulation=module, description=o.get('description'))
+                # Delete output variables for this module instance
+                ModuleOutputVariable.objects.filter(calibration_formulation=module).delete()
+                if outputs:
+                    o: dict
+                    for o in outputs:
+                        ModuleOutputVariable.objects.create(name=o.get('name'), data_type=o.get('type'),
+                                                            calibration_formulation=module, description=o.get('description'))
 
             return JsonResponse(module_data, safe=False)
     except Exception as e:
