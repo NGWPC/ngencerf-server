@@ -7,31 +7,54 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from .calibration_validators import SaveFormulationValidator, CalibrationRunValidator
-from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, StatusEnum, Status
+from .enums import StatusEnum
+from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, Status, \
+    ModuleOutputVariable
 
 # For testing
 module_data = [
     {
         "name": "GC2D",
+        "description of module"
         "groups": [
             "Glacier"
         ]
     },
     {
         "name": "Noah-OWP-Modular",
+        "description of module"
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
+        ],
+        "output_variables": [
+            {
+                "name": "QINSUR",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "ETRAN",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "QSEVA",
+                "description of variable"
+                "type": "double"
+            },
         ]
     },
     {
         "name": "Snow-17",
+        "description of module"
         "groups": [
             "Snowmelt"
         ]
     },
     {
         "name": "UEB",
+        "description of module"
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -39,72 +62,135 @@ module_data = [
     },
     {
         "name": "CFE-S",
+        "description of module"
         "groups": [
             "Rainfall Runoff"
+        ],
+        "output_variables": [
+            {
+                "name": "RAIN_RATE",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "DIRECT_RUNOFF",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "GIUH_RUNOFF",
+                "description of variable"
+                "type": "double"
+            }
         ]
     },
     {
         "name": "CFE-X",
+        "description of module"
         "groups": [
             "Rainfall Runoff"
+        ],
+        "output_variables": [
+            {
+                "name": "RAIN_RATE",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "DIRECT_RUNOFF",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "GIUH_RUNOFF",
+                "description of variable"
+                "type": "double"
+            }
         ]
     },
     {
         "name": "PET",
+        "description of module"
         "groups": [
             "Evapotranspiration"
         ]
     },
     {
         "name": "TopModel",
+        "description of module"
         "groups": [
             "Rainfall Runoff"
         ]
     },
     {
         "name": "Sac-SMA",
+        "description of module"
         "groups": [
             "Rainfall Runoff"
         ]
     },
     {
         "name": "LASAM",
+        "description of module"
         "groups": [
             "Rainfall Runoff"
         ]
     },
     {
         "name": "SMP",
+        "description of module"
         "groups": [
             "Soil Moisture"
         ]
     },
     {
         "name": "SFT",
+        "description of module"
         "groups": [
             "Snowmelt"
         ]
     },
     {
         "name": "T-Route",
+        "description of module"
         "groups": [
             "Routing"
+        ],
+        "output_variables": [
+            {
+                "name": "channel_water_flow__speed",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "channel_water__mean_dept",
+                "description of variable"
+                "type": "double"
+            },
+            {
+                "name": "lake_water~outgoing__volume_flow_rate",
+                "description of variable"
+                "type": "double"
+            }
         ]
     },
     {
         "name": "SCHISM",
+        "description of module"
         "groups": [
             "Coastal"
         ]
     },
     {
         "name": "SFINCS",
+        "description of module"
         "groups": [
             "Coastal"
         ]
     },
     {
         "name": "Sloth",
+        "description of module"
         "groups": [
             "Inject"
         ]
@@ -129,7 +215,8 @@ def get_modules(request, calibration_run_id=None):
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status=Status.objects.get(name=StatusEnum.SAVED.value)).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id,
+                                                status=Status.objects.get(name=StatusEnum.SAVED.value)).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 
@@ -139,8 +226,15 @@ def get_modules(request, calibration_run_id=None):
             CalibrationFormulation.objects.filter(calibration_run=run).delete()
             # Save the modules
             for m in module_data:
-                CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')), calibration_run=run,
-                                                      description="need description")
+                print('module', m)
+                print('output_variables', m.get('output_variables'))
+                module = CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
+                                                               calibration_run=run,
+                                                               description=m.get('description'))
+                outputs = m.get('output_variables')
+                for o in outputs:
+                    ModuleOutputVariable.objects.create(name=o.get('name'), data_type=o.get('type'),
+                                                        calibration_formulation=module, description=o.get('description'))
 
             return JsonResponse(module_data, safe=False)
     except Exception as e:
@@ -177,7 +271,8 @@ def save_formulation_tab(request):
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status=Status.objects.get(name=StatusEnum.SAVED.value)).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id,
+                                                status=Status.objects.get(name=StatusEnum.SAVED.value)).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 

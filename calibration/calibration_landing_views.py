@@ -1,25 +1,12 @@
 import traceback
 
 from django.db import transaction
-from django.db.backends.signals import connection_created
-from django.dispatch import receiver
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from .models import StatusEnum, Status, CalibrationRun
-
-
-# Use this function to do any database clean, such
-# as identifying any CalibrationRun or ValidationRuns in Running status
-@receiver(connection_created)
-def start_up(connection, **kwargs):
-    with connection.cursor() as cursor:
-        # do something with database
-        print('hello world')
-
-    # Disconnect so we don't run again
-    connection_created.disconnect(start_up)
+from .enums import StatusEnum
+from .models import Status, CalibrationRun
 
 
 @api_view(['POST'])
