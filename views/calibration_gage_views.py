@@ -7,8 +7,8 @@ from django.middleware.csrf import get_token
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from .calibration_validators import SaveGageValidator, GageIdValidator
-from .models import Gage, CalibrationRun
+from calibration.calibration_validators import SaveGageValidator, GageIdValidator
+from calibration.models import Gage, CalibrationRun
 
 
 # Probably don't need this

@@ -5,8 +5,8 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from .enums import StatusEnum
-from .models import Status, CalibrationRun
+from calibration.enums import StatusEnum
+from calibration.models import Status, CalibrationRun
 
 
 @api_view(['POST'])

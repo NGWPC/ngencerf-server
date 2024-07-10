@@ -1,14 +1,16 @@
 import json
 import traceback
+import requests
+from django.conf import settings
 
 from django.db import transaction
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from .calibration_validators import SaveFormulationValidator, CalibrationRunValidator
-from .enums import StatusEnum
-from .models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, Status, \
+from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator
+from calibration.enums import StatusEnum
+from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, Status, \
     ModuleOutputVariable
 
 # For testing
@@ -240,6 +242,9 @@ def get_modules(request):
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 
             # Get this from hydrofabric
+            # modules_request = {}
+            # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+            # module_data = response.json()
 
             # Delete modules for this run, if they've already been specified
             CalibrationFormulation.objects.filter(calibration_run=run).delete()

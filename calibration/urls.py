@@ -1,6 +1,6 @@
 from django.urls import path
 
-from calibration import calibration_gage_views, calibration_formulation_views, calibration_landing_views
+from views import calibration_formulation_views, calibration_gage_views, calibration_landing_views
 
 urlpatterns = [
 
