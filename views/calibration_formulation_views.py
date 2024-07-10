@@ -1,7 +1,5 @@
 import json
 import traceback
-import requests
-from django.conf import settings
 
 from django.db import transaction
 from django.http import JsonResponse
