@@ -43,6 +43,22 @@ module_data = [
                 "description": "description of variable",
                 "type": "double"
             },
+        ],
+        "parameters": [
+            {
+                "name": "parameter1",
+                "initial_value": 0.0
+            },
+
+            {
+                "name": "parameter2",
+                "initial_value": 0.0
+            },
+            {
+                "name": "parameter2",
+                "initial_value": 0.0
+            }
+
         ]
     },
     {
@@ -202,7 +218,6 @@ module_data = [
 @transaction.atomic
 # @login_required()
 def get_modules(request, calibration_run_id=None):
-
     try:
         print('user', request.user)
         if request.method == 'POST':

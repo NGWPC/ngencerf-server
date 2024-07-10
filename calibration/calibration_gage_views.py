@@ -11,6 +11,7 @@ from .calibration_validators import SaveGageValidator, GageIdValidator
 from .models import Gage, CalibrationRun
 
 
+# Probably don't need this
 @api_view(['GET'])
 def csrf(request):
     return JsonResponse({'csrf': get_token(request)})
