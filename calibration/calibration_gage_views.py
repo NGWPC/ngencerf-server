@@ -21,13 +21,16 @@ def csrf(request):
 def get_gage(request, gage_id=None):
     try:
         if request.method == 'POST':
-            body = json.loads(request.body)
-            validate = GageIdValidator(data=body or {})
-            if not validate.is_valid():
-                print('Validation errors', validate.errors)
-                return JsonResponse({"errors": validate.errors})
-            else:
-                gage_id = body.get('gage_id')
+            data = json.loads(request.body)
+        else:
+            data = request.GET
+
+        validate = GageIdValidator(data=data or {})
+        if not validate.is_valid():
+            print('Validation errors', validate.errors)
+            return JsonResponse({"errors": validate.errors})
+        else:
+            gage_id = validate.data.get('gage_id')
 
         print('gage_id', gage_id)
 

@@ -202,16 +202,20 @@ module_data = [
 @transaction.atomic
 # @login_required()
 def get_modules(request, calibration_run_id=None):
+
     try:
         print('user', request.user)
-        if request.method == "POST":
-            body = json.loads(request.body)
-            validate = CalibrationRunValidator(data=body or {})
-            if not validate.is_valid():
-                print('Validation errors', validate.errors)
-                return JsonResponse({"errors": validate.errors})
-            else:
-                calibration_run_id = body.get('calibration_run_id')
+        if request.method == 'POST':
+            data = json.loads(request.body)
+        else:
+            data = request.GET
+
+        validate = CalibrationRunValidator(data=data or {})
+        if not validate.is_valid():
+            print('Validation errors', validate.errors)
+            return JsonResponse({"errors": validate.errors})
+        else:
+            calibration_run_id = validate.data.get('calibration_run_id')
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
