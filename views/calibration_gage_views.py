@@ -68,7 +68,7 @@ def save_gage_tab(request):
         if not validate.is_valid():
             print('Validation errors', validate.errors)
             return JsonResponse({"errors": validate.errors})
-        calibration_run_id = validate.data.calibration_run_id
+        calibration_run_id = validate.data.get('calibration_run_id')
         gage_id = body.get('gage_id')
         forcing_source = body.get('forcing_source')
         forcing_path = body.get('forcing_path')
