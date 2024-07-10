@@ -1,6 +1,8 @@
 import os
 
 from django.apps import AppConfig
+from django.dispatch import receiver
+from django.db.backends.signals import connection_created
 
 
 class CalibrationConfig(AppConfig):
@@ -13,4 +15,14 @@ class CalibrationConfig(AppConfig):
     def ready(self):
         # Put model imports here
         if os.environ.get('RUN_MAIN'):
-            print('start up')
+            print('start up from ready')
+
+
+@receiver(connection_created)
+def start_up(connection, **kwargs):
+    with connection.cursor() as cursor:
+        # do something to the database
+        print('from start-up from connection signal')
+    connection_created.disconnect(start_up)
+
+
