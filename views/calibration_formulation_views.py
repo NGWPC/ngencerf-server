@@ -6,13 +6,13 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator
+from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleCollectionValidator
 from calibration.enums import StatusEnum
 from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, Status, \
     ModuleOutputVariable
 
 # For testing
-module_data = [
+module_sample_data = {"modules_data": [
     {
         "name": "GC2D",
         "description": "description of module",
@@ -212,6 +212,7 @@ module_data = [
         ]
     }
 ]
+}
 
 
 @api_view(['GET', 'POST'])
@@ -244,11 +245,17 @@ def get_modules(request):
             # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
             # module_data = response.json()
 
+            validator = ModuleCollectionValidator(data=module_sample_data)
+            if not validator.is_valid():
+                print(validator.errors)
+                raise Exception('Module data from Hydrofabric is not in the expected format')
+
+            module_data = module_sample_data.get("modules_data")
+
             # Delete modules for this run, if they've already been specified
             CalibrationFormulation.objects.filter(calibration_run=run).delete()
             # Save the modules
             for m in module_data:
-
                 module = CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
                                                                calibration_run=run,
                                                                description=m.get('description'))

@@ -14,9 +14,9 @@ class GageIdValidator(serializers.Serializer):
 
 class SaveGageValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    gage_id = serializers.CharField(min_length=1, required=True)
-    forcing_source = serializers.CharField(min_length=1, required=True)
-    forcing_path = serializers.CharField(min_length=1, required=True)
+    gage_id = serializers.CharField(min_length=2, required=True)
+    forcing_source = serializers.CharField(min_length=2, required=True)
+    forcing_path = serializers.CharField(min_length=2, required=True)
 
 
 def dataTypeValidator(value):
@@ -35,7 +35,7 @@ def locationValidator(value):
 
 
 class SlothParameters(serializers.Serializer):
-    name = serializers.CharField(min_length=1, required=True)
+    name = serializers.CharField(min_length=2, required=True)
     count = serializers.IntegerField(required=True)
     type = serializers.CharField(required=True, validators=[dataTypeValidator])
     units = serializers.CharField(required=True, validators=[unitsValidator])
@@ -47,6 +47,30 @@ class SlothParameters(serializers.Serializer):
 
 class SaveFormulationValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(min_length=1, required=True)
+    formulation_name = serializers.CharField(min_length=2, required=True)
     modules = serializers.ListField(child=serializers.CharField(min_length=2, required=True), min_length=2)
-    sloth_parameters = SlothParameters(many=True)
+    sloth_parameters = SlothParameters(required=True, many=True, min_length=1)
+
+
+class ModuleOutputVariablesValidator(serializers.Serializer):
+    name = serializers.CharField(min_length=2, required=True)
+    description = serializers.CharField(min_length=2, required=True)
+    type = serializers.CharField(required=True, validators=[dataTypeValidator])
+
+
+class ParameterValidator(serializers.Serializer):
+    name = serializers.CharField(min_length=2, required=True)
+    initial_value = serializers.FloatField(required=True)
+
+
+class ModuleValidator(serializers.Serializer):
+    name = serializers.CharField(min_length=2, required=True)
+    description = serializers.CharField(min_length=2, required=True)
+    groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True))
+    # output_variables and parameters are required, but we'll make them optional for now
+    output_variables = ModuleOutputVariablesValidator(many=True, min_length=1, required=False)
+    parameters = ParameterValidator(many=True, min_length=1, required=False)
+
+
+class ModuleCollectionValidator(serializers.Serializer):
+    modules_data = ModuleValidator(many=True, min_length=1, required=True)
