@@ -217,7 +217,7 @@ module_data = [
 @api_view(['GET', 'POST'])
 @transaction.atomic
 # @login_required()
-def get_modules(request, calibration_run_id=None):
+def get_modules(request):
     try:
         print('user', request.user)
         if request.method == 'POST':

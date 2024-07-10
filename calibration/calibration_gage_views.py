@@ -19,7 +19,7 @@ def csrf(request):
 
 @api_view(['GET', 'POST'])
 # @login_required()
-def get_gage(request, gage_id=None):
+def get_gage(request):
     try:
         if request.method == 'POST':
             data = json.loads(request.body)
@@ -90,4 +90,3 @@ def save_gage_tab(request):
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
