@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Status
+from calibration.models import CalibrationRun, Status, ValidationRun
 
 
 # This should be run prior to starting the server to clean up any orphans
@@ -13,6 +13,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         with transaction.atomic():
-            CalibrationRun.objects.filter(statuse=StatusEnum.RUNNING.value).update(status=StatusEnum.SERVER_ERROR.value)
+            server_error = Status.objects.get(name=StatusEnum.SERVER_ERROR.value)
+            count = CalibrationRun.objects.filter(status__name=StatusEnum.RUNNING).update(status=server_error)
+            print(f'Updated {count} calibration run records')
 
-
+            count = ValidationRun.objects.filter(status__name=StatusEnum.RUNNING).update(status=server_error)
+            print(f'Updated {count} validation run records')

@@ -233,7 +233,8 @@ def get_modules(request):
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED).first()
+            # Or do we want anything that's not RUNNING?
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 
@@ -280,7 +281,7 @@ def save_formulation_tab(request):
         body = json.loads(request.body)
         validate = SaveFormulationValidator(data=body or {})
         validate.is_valid(raise_exception=True)
-        
+
         modules = set(body.get('modules'))
         calibration_run_id = body.get('calibration_run_id')
         formulation_name = body.get('formulation_name')
@@ -299,7 +300,8 @@ def save_formulation_tab(request):
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED).first()
+            # Or do we want anything that's not RUNNING?
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 

@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
+from calibration.models.status import Status
 from calibration.models.base_model import BaseModel
 from calibration.models.gage import Gage
 from calibration.models.module_output_variable import ModuleOutputVariable
@@ -25,7 +26,7 @@ class CalibrationRun(BaseModel):
     forcing_user_filename = models.TextField(null=True)
     forcing_source = models.TextField()
     observational_path = models.TextField(null=True)
-    status = models.TextField()
+    status = models.ForeignKey(Status, null=False, on_delete=models.CASCADE)
     seed = models.IntegerField(null=True)
     formulation_name = models.TextField(null=True)
     plot_frequency = models.IntegerField(null=True)
