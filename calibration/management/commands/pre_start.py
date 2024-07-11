@@ -13,7 +13,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         with transaction.atomic():
-            server_error = Status.objects.get(name=StatusEnum.SERVER_ERROR)
-            run = CalibrationRun.objects.filter(status__name=StatusEnum.RUNNING.value).update(status=server_error)
+            CalibrationRun.objects.filter(statuse=StatusEnum.RUNNING.value).update(status=StatusEnum.SERVER_ERROR.value)
 
 

@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.enums import StatusEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, Status, NgenCalFormulation
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation
 
 
 class Command(BaseCommand):
@@ -20,108 +20,9 @@ class Command(BaseCommand):
         # self.define_modules_and_groups()
         self.define_domains()
         self.define_observational_source()
-        # self.define_module_input_variable()
-        # self.define_module_output_variable()
         self.define_optimization()
         self.define_metric()
-        self.define_status()
         self.define_ngen_formulations()
-
-    # def define_modules_and_groups(self):
-    #     Module.objects.all().delete()
-    #     ModuleGroup.objects.all().delete()
-    #
-    #     group_inject = ModuleGroup(name="Inject", is_active=True, description='Need description', created_by=self.user,
-    #                                updated_by=self.user)
-    #     group_inject.save()
-    #     group_glacier = ModuleGroup(name="Glacier", is_active=True, description='Need description', created_by=self.user,
-    #                                 updated_by=self.user)
-    #     group_glacier.save()
-    #     group_snowmelt = ModuleGroup(name="Snowmelt", is_active=True, description='Need description', created_by=self.user,
-    #                                  updated_by=self.user)
-    #     group_snowmelt.save()
-    #     group_evapotranspiration = ModuleGroup(name="Evapotranspiration", is_active=True, description='Need description',
-    #                                            created_by=self.user, updated_by=self.user)
-    #     group_evapotranspiration.save()
-    #     group_rainfall = ModuleGroup(name="Rainfall Runoff", is_active=True, description='Need description', created_by=self.user,
-    #                                  updated_by=self.user)
-    #     group_rainfall.save()
-    #     group_soil = ModuleGroup(name="Soil Moisture", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user)
-    #     group_soil.save()
-    #     group_routing = ModuleGroup(name="Routing", is_active=True, description='Need description', created_by=self.user,
-    #                                 updated_by=self.user)
-    #     group_routing.save()
-    #     group_coastal = ModuleGroup(name="Coastal", is_active=True, description='Need description', created_by=self.user,
-    #                                 updated_by=self.user)
-    #     group_coastal.save()
-    #
-    #     self.define_module(
-    #         Module(name="GC2D", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_glacier])
-    #     self.define_module(Module(name="Noah-OWP-Modular", is_active=True, ngen_cal_active=True, description='Need description',
-    #                               created_by=self.user, updated_by=self.user),
-    #                        [group_snowmelt, group_evapotranspiration])
-    #     self.define_module(
-    #         Module(name="Snow-17", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_snowmelt])
-    #     self.define_module(
-    #         Module(name="UEB", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_snowmelt, group_evapotranspiration])
-    #     self.define_module(
-    #         Module(name="CFE-S", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_rainfall])
-    #     self.define_module(
-    #         Module(name="CFE-X", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_rainfall])
-    #     self.define_module(
-    #         Module(name="PET", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_evapotranspiration])
-    #     self.define_module(
-    #         Module(name="TopModel", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_rainfall])
-    #     self.define_module(
-    #         Module(name="Sac-SMA", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_rainfall])
-    #     self.define_module(
-    #         Module(name="LASAM", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_rainfall])
-    #     self.define_module(
-    #         Module(name="SMP", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user), [group_soil])
-    #     self.define_module(
-    #         Module(name="SFT", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_snowmelt])
-    #     self.define_module(
-    #         Module(name="T-Route", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_routing])
-    #     self.define_module(
-    #         Module(name="SCHISM", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_coastal])
-    #     self.define_module(
-    #         Module(name="SFINCS", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_coastal])
-    #     self.define_module(
-    #         Module(name="Sloth", is_active=True, ngen_cal_active=True, description='Need description', created_by=self.user,
-    #                updated_by=self.user),
-    #         [group_inject])
-    #
-    # def define_module(self, module, groups):
-    #     module.save()
-    #     module.groups.add(*groups)
 
     def define_domains(self):
         Domain.objects.all().delete()
@@ -190,13 +91,6 @@ class Command(BaseCommand):
         Metric(name="PKTE", is_active=True, description='Peak Flow Timing Error', created_by=self.user,
                updated_by=self.user).save()
         Metric(name="EVBIAS", is_active=True, description='Event Volume Bias', created_by=self.user, updated_by=self.user).save()
-
-    def define_status(self):
-        Status.objects.all().delete()
-
-        e: StatusEnum
-        for e in StatusEnum:
-            Status(name=e.value, created_by=self.user, updated_by=self.user).save()
 
     def define_ngen_formulations(self):
         NgenCalFormulation.objects.all().delete()

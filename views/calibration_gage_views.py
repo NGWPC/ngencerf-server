@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator
+from calibration.enums import StatusEnum
 from calibration.models import Gage, CalibrationRun
 
 
@@ -75,7 +76,8 @@ def save_gage_tab(request):
             if not gage:
                 return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
-            run = CalibrationRun.objects.filter(id=calibration_run_id).first()
+            # Do we want only SAVED?  Want to make sure it hasn't been run yet
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
 

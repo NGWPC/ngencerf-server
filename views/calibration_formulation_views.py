@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleCollectionValidator
 from calibration.enums import StatusEnum
-from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, Status, \
+from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
     ModuleOutputVariable
 
 # For testing
@@ -233,8 +233,7 @@ def get_modules(request):
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            run = CalibrationRun.objects.filter(id=calibration_run_id,
-                                                status=Status.objects.get(name=StatusEnum.SAVED.value)).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 
@@ -300,8 +299,7 @@ def save_formulation_tab(request):
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            run = CalibrationRun.objects.filter(id=calibration_run_id,
-                                                status=Status.objects.get(name=StatusEnum.SAVED.value)).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status=StatusEnum.SAVED).first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
 

@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.enums import StatusEnum
-from calibration.models import Status, CalibrationRun
+from calibration.models import CalibrationRun
 
 
 @api_view(['POST'])
@@ -18,7 +18,7 @@ def create_calibration_run(request):
 
         with transaction.atomic():
             # Need to add request.user to the Run object
-            run = CalibrationRun.objects.create(is_active=True, status=Status.objects.get(name=StatusEnum.SAVED.value))
+            run = CalibrationRun.objects.create(is_active=True, status=StatusEnum.SAVED)
 
             return JsonResponse({'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id},
                                 status=status.HTTP_201_CREATED)

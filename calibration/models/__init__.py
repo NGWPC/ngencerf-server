@@ -21,5 +21,4 @@ from .observational_source import ObservationalSource
 from .optimization import Optimization
 from .optimization_input import OptimizationInput
 from .plot_definitions import PlotDefinitions
-from .status import Status
 from .validation_run import ValidationRun
