@@ -4,3 +4,4 @@ VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
 
 HYDROFABRIC_URL = 'http://localhost:8888'
+NGEN_CAL_MAIN_DIR = '~/ngen_cal_output'

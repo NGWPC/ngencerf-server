@@ -8,8 +8,9 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleCollectionValidator
 from calibration.enums import StatusEnum
+from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
-    ModuleOutputVariable
+    ModuleOutputVariable, Status
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -301,12 +302,11 @@ def save_formulation_tab(request):
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
             # Or do we want anything that's not RUNNING?
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).select_related('status').first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
 
             run.formulation_name = formulation_name
-            run.save()
 
             # Indicate that the modules are now in use
             for name in modules:
@@ -330,8 +330,11 @@ def save_formulation_tab(request):
                                                      param_units=s.get('units'), param_location=s.get('location'),
                                                      param_value=s.get('value'), maps_to_module=module,
                                                      maps_to_variable_name=s.get('module_param'))
+            if ngen_cal_input.ready_to_run():
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+            run.save()
 
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id})
+            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

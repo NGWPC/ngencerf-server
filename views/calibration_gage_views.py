@@ -9,7 +9,8 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator
 from calibration.enums import StatusEnum
-from calibration.models import Gage, CalibrationRun
+from calibration.management.commands import ngen_cal_input
+from calibration.models import Gage, CalibrationRun, Status
 
 
 # Probably don't need this
@@ -78,15 +79,18 @@ def save_gage_tab(request):
 
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
             # Or do we want anything that's not RUNNING?
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).select_related('status').first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
 
             run.gage = gage
             run.forcing_source = forcing_source
             run.forcing_path = forcing_path
+            if ngen_cal_input.ready_to_run():
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
             run.save()
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id})
+
+            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
