@@ -27,11 +27,9 @@ def get_gage(request):
             data = request.GET
 
         validate = GageIdValidator(data=data or {})
-        if not validate.is_valid():
-            print('Validation errors', validate.errors)
-            return JsonResponse({"errors": validate.errors})
-        else:
-            gage_id = validate.data.get('gage_id')
+        validate.is_valid(raise_exception=True)
+
+        gage_id = validate.data.get('gage_id')
 
         print('gage_id', gage_id)
 
@@ -65,9 +63,8 @@ def save_gage_tab(request):
 
         body = json.loads(request.body)
         validate = SaveGageValidator(data=body or {})
-        if not validate.is_valid():
-            print('Validation errors', validate.errors)
-            return JsonResponse({"errors": validate.errors})
+        validate.is_valid(raise_exception=True)
+
         calibration_run_id = validate.data.get('calibration_run_id')
         gage_id = body.get('gage_id')
         forcing_source = body.get('forcing_source')

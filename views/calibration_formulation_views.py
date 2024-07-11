@@ -227,11 +227,9 @@ def get_modules(request):
             data = request.GET
 
         validate = CalibrationRunValidator(data=data or {})
-        if not validate.is_valid():
-            print('Validation errors', validate.errors)
-            return JsonResponse({"errors": validate.errors})
-        else:
-            calibration_run_id = validate.data.get('calibration_run_id')
+        validate.is_valid(raise_exception=True)
+
+        calibration_run_id = validate.data.get('calibration_run_id')
 
         with transaction.atomic():
             # Do we want only SAVED?  Want to make sure it hasn't been run yet
@@ -282,9 +280,8 @@ def save_formulation_tab(request):
         print('user', request.user)
         body = json.loads(request.body)
         validate = SaveFormulationValidator(data=body or {})
-        if not validate.is_valid():
-            print('Validation errors', validate.errors)
-            return JsonResponse({"errors": validate.errors})
+        validate.is_valid(raise_exception=True)
+        
         modules = set(body.get('modules'))
         calibration_run_id = body.get('calibration_run_id')
         formulation_name = body.get('formulation_name')
