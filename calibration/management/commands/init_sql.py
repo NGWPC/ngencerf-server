@@ -3,6 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
+from calibration.enums import StatusEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, Status, NgenCalFormulation
 
 
@@ -147,244 +148,6 @@ class Command(BaseCommand):
         ObservationalSource(name="RFC", is_active=True, description='Need description', created_by=self.user,
                             updated_by=self.user).save()
 
-    # def define_module_input_variable(self):
-    #     ModuleInputVariable.objects.all().delete()
-    #
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="SFCTMP", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="SOLDN", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="LWDN", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="UU", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="VV", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="Q2", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="PRCPNONC", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="atmosphere_water__liquid_equivalent_precipitation_rate", is_active=True,
-    #                             description='Need description', created_by=self.user, updated_by=self.user), 'CFE-S')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="water_potential_evaporation_flux", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'CFE-S')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="ice_fraction_schaake", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user), 'CFE-S')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="ice_fraction_xinanjiang", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'CFE-S')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="soil_moisture_profile", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'CFE-S')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="atmosphere_water__liquid_equivalent_precipitation_rate", is_active=True,
-    #                             description='Need description', created_by=self.user, updated_by=self.user), 'CFE-X')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="water_potential_evaporation_flux", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'CFE-X')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="ice_fraction_schaake", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user), 'CFE-X')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="ice_fraction_xinanjiang", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'CFE-X')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="soil_moisture_profile", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'CFE-X')
-    #     self.save_module_input_variable(ModuleInputVariable(name="land_surface_water_source__volume_flow_rate", is_active=True,
-    #                                                         description='Need description', created_by=self.user,
-    #                                                         updated_by=self.user), 'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="upstream_id", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="upstream_fvd", is_active=True, description='Need description', created_by=self.user,
-    #                             updated_by=self.user),
-    #         'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="coastal_boundary__depth", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user), 'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="usgs_gage_observation__volume_flow_rate", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user),
-    #         'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="reservoir_usgs_gage_observation__volume_flow_rate", is_active=True,
-    #                             description='Need description', created_by=self.user, updated_by=self.user), 'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="reservoir_usace_gage_observation__volume_flow_rate", is_active=True,
-    #                             description='Need description', created_by=self.user, updated_by=self.user), 'T-Route')
-    #     self.save_module_input_variable(
-    #         ModuleInputVariable(name="rfc_gage_observation__volume_flow_rate", is_active=True, description='Need description',
-    #                             created_by=self.user, updated_by=self.user),
-    #         'T-Route')
-    #
-    # def save_module_input_variable(self, module_input_variable, moduleName):
-    #     module_input_variable.module = Module.objects.get(name=moduleName)
-    #     module_input_variable.save()
-    #
-    # def define_module_output_variable(self):
-    #     ModuleOutputVariable.objects.all().delete()
-    #
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="QINSUR", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="ETRAN", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="QSEVA", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="EVAPOTRANS", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="TG", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SNEQV", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="TGS", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'Noah-OWP-Modular')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="RAIN_RATE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="NASH_LATERAL_RUNOFF", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="DEEP_GW_TO_CHANNEL_FLUX", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SOIL_TO_GW_FLUX", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="Q_OUT", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="POTENTIAL_ET", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="ACTUAL_ET", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="GW_STORAGE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SOIL_STORAGE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SOIL_STORAGE_CHANGE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SURF_RUNOFF_SCHEME", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-S')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="RAIN_RATE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="DIRECT_RUNOFF", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="GIUH_RUNOFF", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="NASH_LATERAL_RUNOFF", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="DEEP_GW_TO_CHANNEL_FLUX", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SOIL_TO_GW_FLUX", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="Q_OUT", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="POTENTIAL_ET", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="ACTUAL_ET", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="GW_STORAGE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user),
-    #         'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SOIL_STORAGE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SOIL_STORAGE_CHANGE", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="SURF_RUNOFF_SCHEME", is_active=True, description='Need description', created_by=self.user,
-    #                              updated_by=self.user), 'CFE-X')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="channel_exit_water_x-section__volume_flow_rate", is_active=True,
-    #                              description='Need description', created_by=self.user, updated_by=self.user), 'T-Route')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="channel_water_flow__speed", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user), 'T-Route')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="channel_water__mean_dept", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user), 'T-Route')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="lake_water~incoming__volume_flow_rate", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user),
-    #         'T-Route')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="lake_water~outgoing__volume_flow_rate", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user),
-    #         'T-Route')
-    #     self.save_module_output_variable(
-    #         ModuleOutputVariable(name="lake_surface__elevation", is_active=True, description='Need description',
-    #                              created_by=self.user, updated_by=self.user), 'T-Route')
-    #
-    # def save_module_output_variable(self, module_output_variable, moduleName):
-    #     module_output_variable.module = Module.objects.get(name=moduleName)
-    #     module_output_variable.save()
-
     def define_optimization(self):
         Optimization.objects.all().delete()
 
@@ -400,30 +163,40 @@ class Command(BaseCommand):
 
         Metric(name="Cor", is_active=True, description='Pearson Correlation', created_by=self.user, updated_by=self.user).save()
         Metric(name="MAE", is_active=True, description='Mean Absolute Error', created_by=self.user, updated_by=self.user).save()
-        Metric(name="RMSE", is_active=True, description='Root Mean Square Error', created_by=self.user, updated_by=self.user).save()
-        Metric(name="RSR", is_active=True, description='Ratio of RMSE to standard deviation of observation', created_by=self.user, updated_by=self.user).save()
+        Metric(name="RMSE", is_active=True, description='Root Mean Square Error', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="RSR", is_active=True, description='Ratio of RMSE to standard deviation of observation', created_by=self.user,
+               updated_by=self.user).save()
         Metric(name="PBIAS", is_active=True, description='Percent Bias', created_by=self.user, updated_by=self.user).save()
-        Metric(name="KGE", is_active=True, description='Kling-Gupta Efficiency', created_by=self.user, updated_by=self.user).save()
-        Metric(name="NSE", is_active=True, description='Nash-Sutcliffe-Efficiency', created_by=self.user, updated_by=self.user).save()
-        Metric(name="LogNSE", is_active=True, description='NSE of Logarithmic values', created_by=self.user, updated_by=self.user).save()
-        Metric(name="PoD", is_active=True, description='Probability of Detection', created_by=self.user, updated_by=self.user).save()
-        Metric(name="CSI", is_active=True, description='Critical Success Index', created_by=self.user, updated_by=self.user).save()
+        Metric(name="KGE", is_active=True, description='Kling-Gupta Efficiency', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="NSE", is_active=True, description='Nash-Sutcliffe-Efficiency', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="LogNSE", is_active=True, description='NSE of Logarithmic values', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="PoD", is_active=True, description='Probability of Detection', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="CSI", is_active=True, description='Critical Success Index', created_by=self.user,
+               updated_by=self.user).save()
         Metric(name="FAR", is_active=True, description='False Alarm Ratio', created_by=self.user, updated_by=self.user).save()
-        Metric(name="HFDC", is_active=True, description='Percent bias of high flow segment of flow duration curve', created_by=self.user, updated_by=self.user).save()
-        Metric(name="LFDC", is_active=True, description='Percent bias of low flow segment of flow duration curve', created_by=self.user, updated_by=self.user).save()
-        Metric(name="PKBIAS", is_active=True, description='Absolute Peak Flow Bias', created_by=self.user, updated_by=self.user).save()
-        Metric(name="pPKBIAS", is_active=True, description='Percent Peak Flow Bias', created_by=self.user, updated_by=self.user).save()
-        Metric(name="PKTE", is_active=True, description='Peak Flow Timing Error', created_by=self.user, updated_by=self.user).save()
+        Metric(name="HFDC", is_active=True, description='Percent bias of high flow segment of flow duration curve',
+               created_by=self.user, updated_by=self.user).save()
+        Metric(name="LFDC", is_active=True, description='Percent bias of low flow segment of flow duration curve',
+               created_by=self.user, updated_by=self.user).save()
+        Metric(name="PKBIAS", is_active=True, description='Absolute Peak Flow Bias', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="pPKBIAS", is_active=True, description='Percent Peak Flow Bias', created_by=self.user,
+               updated_by=self.user).save()
+        Metric(name="PKTE", is_active=True, description='Peak Flow Timing Error', created_by=self.user,
+               updated_by=self.user).save()
         Metric(name="EVBIAS", is_active=True, description='Event Volume Bias', created_by=self.user, updated_by=self.user).save()
 
     def define_status(self):
         Status.objects.all().delete()
 
-        Status(name="Saved", is_active=True, description='Need description', created_by=self.user, updated_by=self.user).save()
-        Status(name="Ready", is_active=True, description='Need description', created_by=self.user, updated_by=self.user).save()
-        Status(name="Running", is_active=True, description='Need description', created_by=self.user, updated_by=self.user).save()
-        Status(name="Done", is_active=True, description='Need description', created_by=self.user, updated_by=self.user).save()
-        Status(name="Cancelled", is_active=True, description='Need description', created_by=self.user, updated_by=self.user).save()
+        e: StatusEnum
+        for e in StatusEnum:
+            Status(name=e.value, created_by=self.user, updated_by=self.user).save()
 
     def define_ngen_formulations(self):
         NgenCalFormulation.objects.all().delete()
