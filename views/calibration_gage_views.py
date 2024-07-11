@@ -80,7 +80,7 @@ def save_gage_tab(request):
             # Or do we want anything that's not RUNNING?
             run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
 
             run.gage = gage
             run.forcing_source = forcing_source

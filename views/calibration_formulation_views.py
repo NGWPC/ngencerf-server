@@ -236,7 +236,7 @@ def get_modules(request):
             # Or do we want anything that's not RUNNING?
             run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
 
             # Get this from hydrofabric
             # modules_request = {}
@@ -303,10 +303,18 @@ def save_formulation_tab(request):
             # Or do we want anything that's not RUNNING?
             run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or has already run'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
 
             run.formulation_name = formulation_name
             run.save()
+
+            # Indicate that the modules are now in use
+            for name in modules:
+                # Find the modules for this run
+                count = CalibrationFormulation.objects.filter(name=name, calibration_run_id=run.id).update(used_by_calibration_run=True)
+                if count == 0:
+                    # This means that get_modules was not called to add the modules for this run
+                    raise Exception(f"Cannot find module '{name}' associated with Calibration Run {calibration_run_id}")
 
             # Delete params for this run if they've already been specified
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
