@@ -2,6 +2,7 @@ import json
 import traceback
 
 from django.db import transaction
+from django.db.models import Q
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from rest_framework import status
@@ -77,11 +78,10 @@ def save_gage_tab(request):
             if not gage:
                 return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
-            # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            # Or do we want anything that's not RUNNING?
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).select_related('status').first()
+            run = CalibrationRun.objects.filter(Q(id=calibration_run_id) & (Q(status__name=StatusEnum.SAVED) | Q(status__name=StatusEnum.READY))).select_related('status').first()
+
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or has already run or is not owned by {request.user}'})
 
             run.gage = gage
             run.forcing_source = forcing_source
