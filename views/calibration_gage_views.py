@@ -78,6 +78,8 @@ def save_gage_tab(request):
             if not gage:
                 return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
 
+            # TODO Do we want to create a Calibration_Run if the key is not given?
+            # TODO Need to filter jobs by user
             run = CalibrationRun.objects.filter(Q(id=calibration_run_id) & (Q(status__name=StatusEnum.SAVED) | Q(status__name=StatusEnum.READY))).select_related('status').first()
 
             if not run:

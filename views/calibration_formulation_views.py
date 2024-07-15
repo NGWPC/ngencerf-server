@@ -11,7 +11,7 @@ from calibration.calibration_validators import SaveFormulationValidator, Calibra
 from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
-    ModuleOutputVariable, Status
+    Status
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -217,6 +217,8 @@ def save_formulation_tab(request):
             return JsonResponse({"error": f"Invalid formulation - {modules}"})
 
         with transaction.atomic():
+            # TODO Do we want to create a Calibration_Run if the key is not given?
+            # TODO Need to filter jobs by user
             run = CalibrationRun.objects.filter(Q(id=calibration_run_id) & (Q(status__name=StatusEnum.SAVED) | Q(status__name=StatusEnum.READY))).select_related('status').first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or has already run or is not owned by {request.user}'})

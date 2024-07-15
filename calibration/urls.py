@@ -9,7 +9,8 @@ urlpatterns = [
     # Landing page
     ##################################
     path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
-    path('calibration/get_footer/', calibration_landing_views.get_footer, name="get_footer"),
+    path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
+    path('calibration/get_jobs/', calibration_landing_views.get_jobs, name="getJobs"),
 
     ##################################
     # Gage tab
