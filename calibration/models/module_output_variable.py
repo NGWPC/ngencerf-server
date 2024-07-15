@@ -5,9 +5,9 @@ from calibration.models.calibration_formulation import CalibrationFormulation
 
 
 class ModuleOutputVariable(BaseModel):
-    description = models.TextField()
+    description = models.TextField(null=False, blank=False)
     name = models.TextField(null=False)
-    data_type = models.TextField()
+    data_type = models.TextField(null=False)
     calibration_formulation = models.ForeignKey(CalibrationFormulation, null=False, on_delete=models.CASCADE)
 
     class Meta:

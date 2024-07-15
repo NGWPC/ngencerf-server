@@ -6,10 +6,14 @@ from calibration.models.calibration_run import CalibrationRun
 
 
 class CalibrationInitialParameter(BaseModel):
-    calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
-    calibration_formulation = models.ForeignKey(CalibrationFormulation, null=True, on_delete=models.SET_NULL)
-    name = models.TextField(unique=True, null=False)
-    default_value = models.FloatField()
+    calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
+    calibration_formulation = models.ForeignKey(CalibrationFormulation, null=False, on_delete=models.CASCADE)
+    name = models.TextField(null=False)
+    data_type = models.TextField(null=False)
+    default_value = models.FloatField(null=False)
 
     class Meta:
         db_table = 'calibration_initial_parameter'
+        constraints = [
+            models.UniqueConstraint(fields=['name', 'calibration_formulation', 'calibration_run'], name='calibration_initial_parameter__name__calibration_formulation__unique')
+        ]

@@ -1,7 +1,7 @@
 from django.urls import path
 
 from views import calibration_formulation_views, calibration_gage_views, calibration_landing_views, \
-    calibration_optimization_views, calibration_metrics_views
+    calibration_optimization_views, calibration_metrics_views, calibration_tuning_views
 
 urlpatterns = [
 
@@ -24,6 +24,11 @@ urlpatterns = [
     ##################################
     path('calibration/get_modules/', calibration_formulation_views.get_modules, name="getModules_post"),
     path('calibration/save_formulation_tab/', calibration_formulation_views.save_formulation_tab, name="saveFormulationTab"),
+
+    ##################################
+    # Tuning tab
+    ##################################
+    path('calibration/get_module_data/', calibration_tuning_views.get_module_data, name="getModuleData"),
 
     ##################################
     # Optimizations tab
