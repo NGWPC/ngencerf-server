@@ -15,7 +15,7 @@ class Command(BaseCommand):
         Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin
-        user = get_user_model().objects.get(username='peter')
+        user = get_user_model().objects.get(username='admin')
         pprint(user)
 
         with open('calibration/management/commands/USGS_streamflow_gage_list_2024-06-16.txt', 'r') as file:

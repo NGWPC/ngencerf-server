@@ -17,7 +17,7 @@ class Command(BaseCommand):
     DELETE_FLAG = False
 
     # need to get a user that is guaranteed to be there, such as admin
-    user = get_user_model().objects.get(username='peter')
+    user = get_user_model().objects.get(username='admin')
     print('user:', user)
 
     def handle(self, *args, **options):
