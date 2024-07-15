@@ -74,3 +74,8 @@ class ModuleValidator(serializers.Serializer):
 
 class ModuleCollectionValidator(serializers.Serializer):
     modules_data = ModuleValidator(many=True, min_length=1, required=True)
+
+
+class ReportIterationValidator(serializers.Serializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    iteration = serializers.IntegerField(required=True, min_value=1)

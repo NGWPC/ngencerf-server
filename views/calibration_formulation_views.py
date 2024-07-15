@@ -154,7 +154,8 @@ def get_modules(request):
             # Or do we want anything that's not RUNNING?
             run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
+                return JsonResponse(
+                    {'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
 
             # Get this from hydrofabric
             # modules_request = {}
@@ -219,9 +220,11 @@ def save_formulation_tab(request):
         with transaction.atomic():
             # TODO Do we want to create a Calibration_Run if the key is not given?
             # TODO Need to filter jobs by user
-            run = CalibrationRun.objects.filter(Q(id=calibration_run_id) & (Q(status__name=StatusEnum.SAVED) | Q(status__name=StatusEnum.READY))).select_related('status').first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist, is already running or has already run or is not owned by {request.user}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'})
+            if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'})
 
             run.formulation_name = formulation_name
 
@@ -247,6 +250,7 @@ def save_formulation_tab(request):
                                                      param_units=s.get('units'), param_location=s.get('location'),
                                                      param_value=s.get('value'), maps_to_module=module,
                                                      maps_to_variable_name=s.get('module_param'))
+                
             if ngen_cal_input.ready_to_run():
                 run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
             run.save()

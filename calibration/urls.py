@@ -1,9 +1,13 @@
 from django.urls import path
 
 from views import calibration_formulation_views, calibration_gage_views, calibration_landing_views, \
-    calibration_optimization_views, calibration_metrics_views, calibration_tuning_views
+    calibration_optimization_views, calibration_metrics_views, calibration_tuning_views, calibration_api_views
 
 urlpatterns = [
+    ##################################
+    # Api page
+    ##################################
+    path('calibration/report_iteration/', calibration_api_views.report_iteration, name="reportIteration"),
 
     ##################################
     # Landing page

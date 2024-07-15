@@ -13,6 +13,7 @@ class CalibrationRun(BaseModel):
     gage = models.ForeignKey(Gage, null=True, on_delete=models.SET_NULL)
     optimization = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
     module_output_variable = models.ForeignKey(ModuleOutputVariable, null=True, on_delete=models.SET_NULL)
+    run_date = models.DateTimeField(null=True)
     time_range_start = models.DateTimeField(null=True)
     time_range_end = models.DateTimeField(null=True)
     calibration_start_period = models.DateTimeField(null=True)
