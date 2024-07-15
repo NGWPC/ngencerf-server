@@ -6,10 +6,10 @@ from calibration.models.iteration import Iteration
 
 
 class IterationTuneParameter(BaseModel):
-    iteration = models.ForeignKey(Iteration, null=True, on_delete=models.SET_NULL)
-    calibration_initial_parameter = models.ForeignKey(CalibrationInitialParameter, null=True, on_delete=models.SET_NULL)
-    data_type = models.TextField()
-    tuned_value = models.FloatField()
+    iteration = models.ForeignKey(Iteration, null=False, on_delete=models.CASCADE)
+    calibration_initial_parameter = models.ForeignKey(CalibrationInitialParameter, null=False, on_delete=models.CASCADE)
+    data_type = models.TextField(null=False, blank=False)
+    tuned_value = models.FloatField(null=False)
 
     class Meta:
         db_table = 'iteration_tune_parameter'

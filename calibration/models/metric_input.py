@@ -6,11 +6,10 @@ from calibration.models.metric import Metric
 
 class MetricInput(BaseModel):
     description = models.TextField()
-    is_active = models.BooleanField()
     name = models.TextField(unique=True, null=False)
-    metric = models.ForeignKey(Metric, null=True, on_delete=models.SET_NULL)
-    data_type = models.TextField()
-    default_value = models.TextField()
+    metric = models.ForeignKey(Metric, null=False, on_delete=models.CASCADE)
+    data_type = models.TextField(null=False, blank=False)
+    default_value = models.TextField(null=False)
 
     class Meta:
         db_table = 'metric_input'

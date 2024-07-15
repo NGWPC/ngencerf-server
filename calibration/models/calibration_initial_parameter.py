@@ -9,7 +9,7 @@ class CalibrationInitialParameter(BaseModel):
     calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
     calibration_formulation = models.ForeignKey(CalibrationFormulation, null=False, on_delete=models.CASCADE)
     name = models.TextField(null=False)
-    data_type = models.TextField(null=False)
+    data_type = models.TextField(null=False, blank=False)
     default_value = models.FloatField(null=False)
 
     class Meta:

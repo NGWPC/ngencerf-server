@@ -6,9 +6,9 @@ from calibration.models.optimization_input import OptimizationInput
 
 
 class CalibrationOptimizationInput(BaseModel):
-    calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
-    optimization_input = models.ForeignKey(OptimizationInput, null=True, on_delete=models.SET_NULL)
-    value = models.FloatField()
+    calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
+    optimization_input = models.ForeignKey(OptimizationInput, null=False, on_delete=models.CASCADE)
+    value = models.FloatField(null=False)
 
     class Meta:
         db_table = 'calibration_optimization_input'

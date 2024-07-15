@@ -6,11 +6,11 @@ from calibration.models.calibration_run import CalibrationRun
 
 
 class CalibrationTuneParameter(BaseModel):
-    calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
-    calibration_initial_parameter = models.ForeignKey(CalibrationInitialParameter, null=True, on_delete=models.SET_NULL)
-    minimum = models.FloatField()
-    maximum = models.FloatField()
-    initial = models.FloatField()
+    calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
+    calibration_initial_parameter = models.ForeignKey(CalibrationInitialParameter, null=False, on_delete=models.CASCADE)
+    minimum = models.FloatField(null=False)
+    maximum = models.FloatField(null=False)
+    initial = models.FloatField(null=False)
 
     class Meta:
         db_table = 'calibration_tune_parameter'

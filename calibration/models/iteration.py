@@ -9,7 +9,7 @@ class Iteration(BaseModel):
     calibration_run = models.ForeignKey(CalibrationRun, null=True, on_delete=models.SET_NULL)
     realization_filename = models.TextField()
     calibration_output_variable_value = models.FloatField()
-    best = models.BooleanField()
+    best = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'iteration'
