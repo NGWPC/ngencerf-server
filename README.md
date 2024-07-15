@@ -1,16 +1,24 @@
 # Initial Set-up of database
 
-Run manage.py and create a superuser called `Admin` that is used for initializing 
-the static tables. 
-Assuming $certServer is the root directory of the project
+Start up `manage.py`.  
+Assuming `$cerfServer` is the root directory of the project
 ```
 $ source $cerfServer/.venv/bin/activate
 $ $cerfServer/manage.py
-manage.py@cerfServer> createsuperuser
 ```
-Run `migrate` to create all the tables and then run `init_sql` and `init_gages`
+Run `migrate` to create all the tables
 ```
 manage.py@cerfServer> migrate
+```
+
+Create a superuser called `admin` that is used for initializing 
+the static tables. 
+
+```
+manage.py@cerfServer> createsuperuser
+```
+Run `init_sql` and `init_gages` to initialize the static tables
+```
 manage.py@cerfServer> init_sql
 manage.py@cerfServer> init_gages
 ```
