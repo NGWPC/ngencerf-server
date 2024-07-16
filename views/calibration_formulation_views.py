@@ -154,7 +154,7 @@ def get_modules(request):
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                     status=status.HTTP_400_BAD_REQUEST)
-            if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
+            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                     status=status.HTTP_400_BAD_REQUEST)
 
@@ -225,7 +225,7 @@ def save_formulation_tab(request):
             run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'}, status=status.HTTP_400_BAD_REQUEST)
-            if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
+            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'}, status=status.HTTP_400_BAD_REQUEST)
 
             run.formulation_name = formulation_name

@@ -29,7 +29,7 @@ def report_iteration(request):
             run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'}, status=status.HTTP_400_BAD_REQUEST)
-            if run.status != StatusEnum.RUNNING:
+            if run.status.name != StatusEnum.RUNNING:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'}, status=status.HTTP_400_BAD_REQUEST)
 
             # TODO Do we always create a new create, or check to see if this iteration number exists?

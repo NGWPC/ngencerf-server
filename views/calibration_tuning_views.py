@@ -7,8 +7,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, ModuleCollectionValidator, SaveTuningValidator
-from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, CalibrationInitialParameter
+from calibration.enums import StatusEnum, CalibrationRunType
+from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, CalibrationInitialParameter, ValidationRun, Status, \
+    CalibrationTuneParameter
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -79,8 +80,8 @@ def get_module_data(request):
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                     status=status.HTTP_400_BAD_REQUEST)
-            if run.status != StatusEnum.RUNNING:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'},
+            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                     status=status.HTTP_400_BAD_REQUEST)
 
             # Get the list of modules for this Run
@@ -151,13 +152,13 @@ def save_tuning_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
         automatic_validation = validate.data.get('automatic_validation')
-        calibration_time = validate.data.get('calibration_times')
+        calibration_times = validate.data.get('calibration_times')
         validation_times = validate.data.get('validation_times')
         parameters = validate.data.get('parameters')
 
         print('calibration_run_id', calibration_run_id)
         print('automatic_validation', automatic_validation)
-        print('calibration_times', calibration_time)
+        print('calibration_times', calibration_times)
         print('validation_times', validation_times)
         print('parameters', parameters)
 
@@ -167,14 +168,48 @@ def save_tuning_tab(request):
             if not run:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                     status=status.HTTP_400_BAD_REQUEST)
-            if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
+            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                     status=status.HTTP_400_BAD_REQUEST)
 
+            run.calibration_start_period = calibration_times.get('calibration_start_time') if calibration_times else None
+            run.calibration_end_period = calibration_times.get('calibration_end_time') if calibration_times else None
+            run.calibration_eval_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
+            run.calibration_eval_end_period = calibration_times.get('simulation_end_time') if calibration_times else None
+
+            if automatic_validation:
+                # TODO Need to set the owner
+                ValidationRun.objects.create(validation_start_period=validation_times.get('validation_start_time'),
+                                             validation_end_period=validation_times.get('validation_end_time'),
+                                             validation_eval_start_period=validation_times.get('simulation_start_time'),
+                                             validation_eval_end_period=validation_times.get('simulation_end_time'),
+                                             is_active=True,
+                                             calibration_run=run,
+                                             calibration_run_pk_tune_parameters=run,
+                                             status=Status.objects.get(name=StatusEnum.SAVED.value))
+
+            # Set the type
+            run.run_type = CalibrationRunType.VALID_CONTROL if automatic_validation else CalibrationRunType.CALIB
+            run.save()
+
             # Save parameters to Calibration_Tune_Parameter -- what about Initial_parameter?
+            # Delete all CalibrationTuneParameters where CalibrationInitialParameter poinnts to the run
+            for p in parameters:
+                # TODO Need the module
+                module_name = p.get('module')
+                # CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).delete()
+
+                print('to delete', CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).all())
+                param = CalibrationInitialParameter.objects.filter(name=p.get('name'), calibration_run=run, calibration_formulation__name=module_name).first()
+                print('tuning params', param.calibrationtuneparameter_set.all())
+                param.calibationtuneparameter_set.add(CalibrationTuneParameter.objects.create(minimum=p.get('min'), maximum=p.get('max'), initial=p.get('initial')))
+
             # Save times to Calibration_Run and Validation_Run
             # Set fk in validation_run
             # Set type of run
+
+            # TODO Do we need to return validation key?
+            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
 
 
     except Exception as e:

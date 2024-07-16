@@ -2,7 +2,6 @@ from django.db import models
 
 from calibration.models.base_model import BaseModel
 from calibration.models.calibration_initial_parameter import CalibrationInitialParameter
-from calibration.models.calibration_run import CalibrationRun
 
 
 class CalibrationTuneParameter(BaseModel):

@@ -38,3 +38,9 @@ class UnitsEnum(StrEnum):
     @classmethod
     def values(cls):
         return [e.value for e in cls]
+
+
+class CalibrationRunType(StrEnum):
+    CALIB = 'calib'
+    VALID_CONTROL = 'valid_control'
+    VALID_BEST = 'valid_best'
