@@ -16,6 +16,7 @@ class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
     BOOLEAN = 'boolean'
+    STRING = 'string'
 
     @classmethod
     def values(cls):

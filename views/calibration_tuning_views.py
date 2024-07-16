@@ -72,12 +72,13 @@ def get_module_data(request):
         calibration_run_id = validate.data.get('calibration_run_id')
 
         with transaction.atomic():
-            # Do we want only SAVED?  Want to make sure it hasn't been run yet
-            # Or do we want anything that's not RUNNING?
-            run = CalibrationRun.objects.filter(id=calibration_run_id, status__name=StatusEnum.SAVED).first()
+            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
             if not run:
-                return JsonResponse(
-                    {'message': f'Calibration Run {calibration_run_id} does not exist, is already running or is not owned by {request.user}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+            if run.status != StatusEnum.RUNNING:
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
             # Get the list of modules for this Run
             modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
@@ -152,9 +153,11 @@ def save_tuning_tab(request):
             # TODO Need to filter jobs by user
             run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                    status=status.HTTP_400_BAD_REQUEST)
             if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                    status=status.HTTP_400_BAD_REQUEST)
 
 
     except Exception as e:

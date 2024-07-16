@@ -44,4 +44,5 @@ urlpatterns = [
     # Metrics tab
     ##################################
     path('calibration/get_metrics/', calibration_metrics_views.get_metrics, name="getMetrics"),
+    path('calibration/get_metric_inputs/', calibration_metrics_views.get_metric_inputs, name="getMetricInputs"),
 ]

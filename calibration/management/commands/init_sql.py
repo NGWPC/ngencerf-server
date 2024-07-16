@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, MetricInput
 from calibration.models.status import Status
 
@@ -84,54 +84,54 @@ class Command(BaseCommand):
         values = [{"name": "Cor", "description": "Pearson Correlation", "inputs": []},
                   {"name": "MAE", "description": "Mean Absolute Error", "inputs": []},
                   {"name": "RMSE", "description": "Root Mean Square Error", "inputs": [
-                      {"name": "root", "description": "True to compute RMSE, False to compute MSE", "data_type": "boolean", "default": "True"}]},
+                      {"name": "root", "description": "True to compute RMSE, False to compute MSE", "data_type": DataTypeEnum.BOOLEAN, "default": "True"}]},
                   {"name": "RSR", "description": "Ratio of RMSE to standard deviation of observation", "inputs": []},
                   {"name": "PBIAS", "description": "Percent Bias", "inputs": []},
                   {"name": "KGE", "description": "Kling-Gupta Efficiency",
-                   "inputs": [{"name": "r", "description": "Correlation scaling factor", "data_type": "double", "default": "1.0"},
-                              {"name": "a", "description": "Relative variability scaling factor", "data_type": "double", "default": "1.0"},
-                              {"name": "b", "description": "Relative mean scaling factor", "data_type": "double", "default": "1.0"}]},
+                   "inputs": [{"name": "r", "description": "Correlation scaling factor", "data_type": DataTypeEnum.DOUBLE, "default": "1.0"},
+                              {"name": "a", "description": "Relative variability scaling factor", "data_type": DataTypeEnum.DOUBLE, "default": "1.0"},
+                              {"name": "b", "description": "Relative mean scaling factor", "data_type": DataTypeEnum.DOUBLE, "default": "1.0"}]},
                   {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency", "inputs": [
-                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": "string",
+                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": DataTypeEnum.STRING,
                        "default": "None"},
                       {"name": "epsilon",
                        "description": "Value added to both modeled and observed time series if fun is logarithm or other functions",
-                       "data_type": "string", "default": "Pushpalatha2012"},
+                       "data_type": DataTypeEnum.STRING, "default": "Pushpalatha2012"},
                       {"name": "normalized",
                        "description": "If True, return NNSE instead",
-                       "data_type": "boolean", "default": "False"},
+                       "data_type": DataTypeEnum.BOOLEAN, "default": "False"},
                   ]},
                   {"name": "LogNSE", "description": "NSE of Logarithmic values", "inputs": [
-                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": "string",
+                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": DataTypeEnum.STRING,
                        "default": "None"},
                       {"name": "epsilon",
                        "description": "Value added to both modeled and observed time series if fun is logarithm or other functions",
-                       "data_type": "string", "default": "Pushpalatha2012"},
+                       "data_type": DataTypeEnum.STRING, "default": "Pushpalatha2012"},
                       {"name": "normalized",
                        "description": "If True, return NNSE instead",
-                       "data_type": "boolean", "default": "False"},
+                       "data_type": DataTypeEnum.BOOLEAN, "default": "False"},
                   ]},
                   {"name": "NNSE", "description": "Normalized NSE", "inputs": [
-                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": "string",
+                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": DataTypeEnum.STRING,
                        "default": "None"},
                       {"name": "epsilon",
                        "description": "Value added to both modeled and observed time series if fun is logarithm or other functions",
-                       "data_type": "string", "default": "Pushpalatha2012"},
+                       "data_type": DataTypeEnum.STRING, "default": "Pushpalatha2012"},
                       {"name": "normalized",
                        "description": "If True, return NNSE instead",
-                       "data_type": "boolean", "default": "False"},
+                       "data_type": DataTypeEnum.BOOLEAN, "default": "False"},
                   ]},
                   {"name": "PoD", "description": "Probability of Detection",
-                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": "double", "default": "0"}]},
+                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": DataTypeEnum.DOUBLE, "default": "0"}]},
                   {"name": "CSI", "description": "Critical Success Index",
-                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": "double", "default": "0"}]},
+                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": DataTypeEnum.DOUBLE, "default": "0"}]},
                   {"name": "FAR", "description": "False Alarm Ratio",
-                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": "double", "default": "0"}]},
+                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": DataTypeEnum.DOUBLE, "default": "0"}]},
                   {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve", "inputs": [
-                      {"name": "peak_flow_exceedance_probability", "description": "Peek flow exceedance probability", "data_type": "double",
+                      {"name": "peak_flow_exceedance_probability", "description": "Peek flow exceedance probability", "data_type": DataTypeEnum.DOUBLE,
                        "default": "0.1"}]},
                   {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve", "inputs": [
-                      {"name": "base_flow_exceedance_probability", "description": "Base flow exceedance probability", "data_type": "double",
+                      {"name": "base_flow_exceedance_probability", "description": "Base flow exceedance probability", "data_type": DataTypeEnum.DOUBLE,
                        "default": "0.9"}]},
                   {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "inputs": []},
                   {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "inputs": []},

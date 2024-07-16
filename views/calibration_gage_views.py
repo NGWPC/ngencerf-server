@@ -83,9 +83,9 @@ def save_gage_tab(request):
             run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
 
             if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'}, status=status.HTTP_400_BAD_REQUEST)
             if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'})
+                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'}, status=status.HTTP_400_BAD_REQUEST)
 
             run.gage = gage
             run.forcing_source = forcing_source

@@ -153,3 +153,20 @@ LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "/accounts/login"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # See http://localhost:8000/accounts/reset/MQ/c9jwqx-4d82a80dd0eea4aa39631edbb908d79d/ for additional SMTP settings
+
+if os.getenv('DJANGO_SQL_LOGGING').upper() == 'TRUE':
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'loggers': {
+            'django.db.backends': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+            },
+        },
+    }

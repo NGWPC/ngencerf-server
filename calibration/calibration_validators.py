@@ -83,3 +83,7 @@ class ReportIterationValidator(serializers.Serializer):
 
 class SaveTuningValidator(serializers.Serializer):
     pass
+
+
+class MetricNameValidator(serializers.Serializer):
+    metric = serializers.CharField(min_length=3)
