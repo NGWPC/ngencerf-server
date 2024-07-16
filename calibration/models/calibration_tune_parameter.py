@@ -6,7 +6,6 @@ from calibration.models.calibration_run import CalibrationRun
 
 
 class CalibrationTuneParameter(BaseModel):
-    calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
     calibration_initial_parameter = models.ForeignKey(CalibrationInitialParameter, null=False, on_delete=models.CASCADE)
     minimum = models.FloatField(null=False)
     maximum = models.FloatField(null=False)

@@ -35,18 +35,21 @@ module_sample_data = {"modules_data": [
             {
                 "name": "parameter1",
                 "type": "double",
-                "initial_value": 0.0
+                "initial_value": 0.0,
+                "calibratable": True
             },
 
             {
                 "name": "parameter2",
                 "type": "double",
-                "initial_value": 0.0
+                "initial_value": 0.0,
+                "calibratable": False
             },
             {
                 "name": "parameter3",
                 "type": "double",
-                "initial_value": 0.0
+                "initial_value": 0.0,
+                "calibratable": True
             }
 
         ]
@@ -92,6 +95,7 @@ def get_module_data(request):
             # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
             # module_data = response.json()
 
+            # TODO Need to update this validator.  Not the same one as get_modules
             validator = ModuleCollectionValidator(data=module_sample_data)
             if not validator.is_valid():
                 print(validator.errors)
@@ -125,6 +129,7 @@ def get_module_data(request):
                     print('p', p)
                     CalibrationInitialParameter.objects.create(name=p.get('name'), data_type=p.get('type'), default_value=p.get('initial_value'),
                                                                calibration_run=run,
+                                                               calibratable=p.get('calibratable'),
                                                                calibration_formulation=module)  # Do we need description?
 
             return JsonResponse(module_data, safe=False)
@@ -133,23 +138,30 @@ def get_module_data(request):
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# TODO Not done yet
 @api_view(['POST'])
 # @login_required
 @transaction.atomic
 def save_tuning_tab(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body)
-        validate = SaveTuningValidator(data=body or {})
+        body = json.loads(request.body or '{}')
+        validate = SaveTuningValidator(data=body)
         validate.is_valid(raise_exception=True)
 
-        modules = set(body.get('modules'))
-        calibration_run_id = body.get('calibration_run_id')
-        formulation_name = body.get('formulation_name')
-        sloth_parameters = body.get('sloth_parameters')
+        calibration_run_id = validate.data.get('calibration_run_id')
+        automatic_validation = validate.data.get('automatic_validation')
+        calibration_time = validate.data.get('calibration_times')
+        validation_times = validate.data.get('validation_times')
+        parameters = validate.data.get('parameters')
+
+        print('calibration_run_id', calibration_run_id)
+        print('automatic_validation', automatic_validation)
+        print('calibration_times', calibration_time)
+        print('validation_times', validation_times)
+        print('parameters', parameters)
 
         with transaction.atomic():
-            # TODO Do we want to create a Calibration_Run if the key is not given?
             # TODO Need to filter jobs by user
             run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
             if not run:
@@ -158,6 +170,11 @@ def save_tuning_tab(request):
             if run.status != StatusEnum.READY and run.status != StatusEnum.SAVED:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                     status=status.HTTP_400_BAD_REQUEST)
+
+            # Save parameters to Calibration_Tune_Parameter -- what about Initial_parameter?
+            # Save times to Calibration_Run and Validation_Run
+            # Set fk in validation_run
+            # Set type of run
 
 
     except Exception as e:

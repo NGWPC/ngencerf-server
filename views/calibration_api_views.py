@@ -17,12 +17,12 @@ from calibration.models import CalibrationRun, Iteration
 def report_iteration(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body)
-        validate = ReportIterationValidator(data=body or {})
+        body = json.loads(request.body or '{}')
+        validate = ReportIterationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
-        calibration_run_id = body.get('calibration_run_id')
-        iteration_number = body.get('iteration')
+        calibration_run_id = validate.data.get('calibration_run_id')
+        iteration_number = validate.data.get('iteration')
 
         with transaction.atomic():
             # Need to add request.user to the Run object - Will we know the user?  Can Ngen_Cal pass it?

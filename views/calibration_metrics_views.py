@@ -29,11 +29,11 @@ def get_metrics(request):
 def get_metric_inputs(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body)
-        validate = MetricNameValidator(data=body or {})
+        body = json.loads(request.body or '{}')
+        validate = MetricNameValidator(data=body)
         validate.is_valid(raise_exception=True)
 
-        metric_name = body.get('metric')
+        metric_name = validate.data.get('metric')
 
         if not Metric.objects.filter(name=metric_name).exists():
             return JsonResponse({'message': f'Metric {metric_name} does not exist'})

@@ -163,6 +163,7 @@ def get_modules(request):
             # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
             # module_data = response.json()
 
+            # TODO Need to update this validator.  Not the same one as get_module_data
             validator = ModuleCollectionValidator(data=module_sample_data)
             if not validator.is_valid():
                 print(validator.errors)
@@ -198,14 +199,14 @@ def get_modules(request):
 def save_formulation_tab(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body)
-        validate = SaveFormulationValidator(data=body or {})
+        body = json.loads(request.body or '{}')
+        validate = SaveFormulationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
-        modules = set(body.get('modules'))
-        calibration_run_id = body.get('calibration_run_id')
-        formulation_name = body.get('formulation_name')
-        sloth_parameters = body.get('sloth_parameters')
+        modules = set(validate.data.get('modules'))
+        calibration_run_id = validate.data.get('calibration_run_id')
+        formulation_name = validate.data.get('formulation_name')
+        sloth_parameters = validate.data.get('sloth_parameters')
 
         # Make sure the formulation is valid
         valid_formulations = NgenCalFormulation.objects.all().values_list('modules', flat=True)

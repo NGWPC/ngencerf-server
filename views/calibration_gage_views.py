@@ -64,14 +64,14 @@ def save_gage_tab(request):
     try:
         print('user', request.user)
 
-        body = json.loads(request.body)
-        validate = SaveGageValidator(data=body or {})
+        body = json.loads(request.body or '{}')
+        validate = SaveGageValidator(data=body)
         validate.is_valid(raise_exception=True)
 
         calibration_run_id = validate.data.get('calibration_run_id')
-        gage_id = body.get('gage_id')
-        forcing_source = body.get('forcing_source')
-        forcing_path = body.get('forcing_path')
+        gage_id = validate.data.get('gage_id')
+        forcing_source = validate.data.get('forcing_source')
+        forcing_path = validate.data.get('forcing_path')
 
         with transaction.atomic():
             gage = Gage.objects.filter(gage_id=gage_id).first()

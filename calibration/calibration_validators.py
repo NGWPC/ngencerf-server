@@ -61,6 +61,7 @@ class ModuleOutputVariablesValidator(serializers.Serializer):
 class ParameterValidator(serializers.Serializer):
     name = serializers.CharField(min_length=2, required=True)
     initial_value = serializers.FloatField(required=True)
+    calibratable = serializers.BooleanField(required=True)
 
 
 class ModuleValidator(serializers.Serializer):
@@ -81,8 +82,33 @@ class ReportIterationValidator(serializers.Serializer):
     iteration = serializers.IntegerField(required=True, min_value=1)
 
 
+class TuningParametersValidator(serializers.Serializer):
+    name = serializers.CharField(required=True)
+    min = serializers.FloatField(required=True)
+    max = serializers.FloatField(required=True)
+    initial = serializers.FloatField(required=True)
+
+
+class CalibrationTimeControls(serializers.Serializer):
+    calibration_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    calibration_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    simulation_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    simulation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+
+
+class ValidationTimeControls(serializers.Serializer):
+    validation_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    validation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    simulation_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    simulation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+
+
 class SaveTuningValidator(serializers.Serializer):
-    pass
+    calibration_run_id = serializers.IntegerField(required=True)
+    parameters = TuningParametersValidator(many=True, required=False)
+    calibration_times = CalibrationTimeControls(required=False)
+    validation_times = ValidationTimeControls(required=False)
+    automatic_validation = serializers.BooleanField(required=True)
 
 
 class MetricNameValidator(serializers.Serializer):

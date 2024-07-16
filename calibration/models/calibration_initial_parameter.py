@@ -11,6 +11,7 @@ class CalibrationInitialParameter(BaseModel):
     name = models.TextField(null=False)
     data_type = models.TextField(null=False, blank=False)
     default_value = models.FloatField(null=False)
+    calibratable = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'calibration_initial_parameter'
