@@ -1,9 +1,7 @@
 import json
 import traceback
 
-from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -11,7 +9,6 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import ReportIterationValidator
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Iteration
-from calibration.models.status import Status
 
 
 # Called by ngen_cal

@@ -79,3 +79,7 @@ class ModuleCollectionValidator(serializers.Serializer):
 class ReportIterationValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     iteration = serializers.IntegerField(required=True, min_value=1)
+
+
+class SaveTuningValidator(serializers.Serializer):
+    pass

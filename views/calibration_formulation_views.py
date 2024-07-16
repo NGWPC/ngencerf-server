@@ -2,7 +2,6 @@ import json
 import traceback
 
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view

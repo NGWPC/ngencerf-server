@@ -2,7 +2,6 @@ import traceback
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -30,6 +29,7 @@ def create_calibration_run(request):
 
 
 # TODO Need to test this with start/end period
+# noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
 # @login_required
 def get_jobs(request):
@@ -44,6 +44,7 @@ def get_jobs(request):
     return JsonResponse(runs, safe=False)
 
 
+# noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
 # @login_required
 def get_footer(request):

@@ -7,6 +7,7 @@ from rest_framework.decorators import api_view
 from calibration.models import Optimization
 
 
+# noinspection PyUnusedLocal
 @api_view(['GET', 'POST'])
 # @login_required()
 def get_optimizations(request):

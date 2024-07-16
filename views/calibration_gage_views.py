@@ -2,7 +2,6 @@ import json
 import traceback
 
 from django.db import transaction
-from django.db.models import Q
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from rest_framework import status
@@ -47,6 +46,7 @@ def get_gage(request):
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# noinspection PyUnusedLocal
 @api_view(['GET', 'POST'])
 # @login_required()
 def get_gages(request):

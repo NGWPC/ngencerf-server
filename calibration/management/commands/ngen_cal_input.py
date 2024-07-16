@@ -72,7 +72,7 @@ class Command(BaseCommand):
         ready_to_run()
 
 
-class Ngen_config_general_validator(serializers.Serializer):
+class NgenConfigGeneralValidator(serializers.Serializer):
     basin = serializers.CharField(required=True)
     model = serializers.CharField(min_length=2, required=True)
     # enum
@@ -80,7 +80,7 @@ class Ngen_config_general_validator(serializers.Serializer):
     main_dir = serializers.CharField(min_length=2, required=True)
 
 
-class Ngen_config_calibration_validator(serializers.Serializer):
+class NgenConfigCalibrationValidator(serializers.Serializer):
     optimization_algorithm = serializers.CharField(required=True)
     swarm_size = serializers.CharField(min_length=2, required=True)
     c1 = serializers.IntegerField(required=False)
@@ -108,7 +108,7 @@ class Ngen_config_calibration_validator(serializers.Serializer):
     user_email = serializers.CharField(required=True, allow_blank=True)
 
 
-class Ngen_config_datafile_validator(serializers.Serializer):
+class NgenConfigDatafileValidator(serializers.Serializer):
     forcing_dir = serializers.CharField(required=True)
     obs_dir = serializers.CharField(required=True)
     hydrofab_dir = serializers.CharField(required=True)
@@ -129,10 +129,10 @@ class Ngen_config_datafile_validator(serializers.Serializer):
     lasam_lib = serializers.CharField(required=True, allow_blank=True)
 
 
-class Ngen_config_validator(serializers.Serializer):
-    General = Ngen_config_general_validator(required=True)
-    Calibration = Ngen_config_calibration_validator(required=True)
-    DataFile = Ngen_config_datafile_validator(required=True)
+class NgenConfigValidator(serializers.Serializer):
+    General = NgenConfigGeneralValidator(required=True)
+    Calibration = NgenConfigCalibrationValidator(required=True)
+    DataFile = NgenConfigDatafileValidator(required=True)
 
 
 def ready_to_run():
@@ -147,7 +147,7 @@ def ready_to_run():
     general['main_dir'] = settings.NGEN_CAL_MAIN_DIR
 
     print('config', config)
-    validator = Ngen_config_validator(data=config)
+    validator = NgenConfigValidator(data=config)
     if not validator.is_valid():
         print(f"Not ready {validator.errors}")
         return False
