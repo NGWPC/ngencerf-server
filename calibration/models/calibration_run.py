@@ -9,7 +9,7 @@ from calibration.models.optimization import Optimization
 
 
 class CalibrationRun(BaseModel):
-    is_active = models.BooleanField()
+    is_active = models.BooleanField(null=False, default=True)
     gage = models.ForeignKey(Gage, null=True, on_delete=models.SET_NULL)
     optimization = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
     module_output_variable = models.ForeignKey(ModuleOutputVariable, null=True, on_delete=models.SET_NULL)

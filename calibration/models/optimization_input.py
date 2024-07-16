@@ -5,8 +5,8 @@ from calibration.models.optimization import Optimization
 
 
 class OptimizationInput(BaseModel):
-    description = models.TextField()
-    is_active = models.BooleanField()
+    description = models.TextField(null=False, blank=False)
+    is_active = models.BooleanField(null=False, default=True)
     name = models.TextField(unique=True, null=False)
     optimization = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
 
