@@ -4,11 +4,15 @@ import tempfile
 
 
 def callback(future):
-    print(future.temp_file_name)
+    # print('filename:', future.temp_file_name)
     try:
+        if future.exception() is not None:
+            print('exception:', future.exception())
+        else:
+            print('result:', future.result())
         with open(future.temp_file_name, 'r') as f:
             print(f"Output from {future.temp_file_name}:")
-            print(f.read())
+            print('data:', f.read())
     except Exception as e:
         print(f"Error in callback: {e}")
 
@@ -23,7 +27,7 @@ def execute(args):
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         temp_file_name = temp_file.name
 
-        print('temp_file_name', temp_file_name)
+        # print('temp_file_name', temp_file_name)
 
         pool = Pool()
         with open(temp_file_name, 'w') as output_file:
@@ -31,6 +35,7 @@ def execute(args):
             future = pool.submit(process.wait)
             future.temp_file_name = temp_file_name
             future.add_done_callback(callback)
+            # pool.shutdown(wait=False)
 
             print("Running task")
 
