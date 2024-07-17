@@ -20,7 +20,6 @@ urlpatterns = [
     # Gage tab
     ##################################
     path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage_post"),
-    path('calibration/get_gages/', calibration_gage_views.get_gages, name="getGages"),
     path('calibration/load_gage_tab/', calibration_gage_views.load_gage_tab, name="loadGageTab"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
     path('calibration/csrf/', calibration_gage_views.csrf, name="csrf"),
@@ -29,7 +28,6 @@ urlpatterns = [
     # Formulation tab
     ##################################
     path('calibration/load_formulation_tab/', calibration_formulation_views.load_formulation_tab, name="loadFormulationTab"),
-    path('calibration/get_modules/', calibration_formulation_views.get_modules, name="getModules_post"),
     path('calibration/save_formulation_tab/', calibration_formulation_views.save_formulation_tab, name="saveFormulationTab"),
 
     ##################################

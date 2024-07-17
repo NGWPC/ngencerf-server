@@ -146,7 +146,7 @@ def ready_to_run():
     general['run_type'] = "calib"
     general['main_dir'] = settings.NGEN_CAL_MAIN_DIR
 
-    print('config', config)
+    # print('config', config)
     validator = NgenConfigValidator(data=config)
     if not validator.is_valid():
         print(f"Not ready {validator.errors}")

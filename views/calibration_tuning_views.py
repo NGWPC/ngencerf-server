@@ -60,7 +60,6 @@ module_sample_data = {"modules_data": [
 
 
 @api_view(['GET', 'POST'])
-@transaction.atomic
 # @login_required()
 def get_module_data(request):
     try:
@@ -141,7 +140,6 @@ def get_module_data(request):
 # TODO Not done yet
 @api_view(['POST'])
 # @login_required
-@transaction.atomic
 def save_tuning_tab(request):
     try:
         print('user', request.user)

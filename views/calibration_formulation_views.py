@@ -133,7 +133,6 @@ module_sample_data = {"modules_data": [
 
 
 @api_view(['GET', 'POST'])
-@transaction.atomic
 # @login_required()
 def load_formulation_tab(request):
     try:
@@ -172,7 +171,8 @@ def load_formulation_tab(request):
 
             if not modules:
                 # Get modules from Hydrofabric
-                pass
+                modules = get_modules_from_hydrofabric(run)
+                sloth_parameters = []
             else:
                 # see if we have Sloth parameters
 
@@ -190,64 +190,43 @@ def load_formulation_tab(request):
             if ngen_cal_input.ready_to_run():
                 run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
-            return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules), "sloth_parameters": list(sloth_parameters)}, safe=False)
+            return JsonResponse(
+                {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules),
+                 "sloth_parameters": list(sloth_parameters)}, safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['GET', 'POST'])
-@transaction.atomic
-# @login_required()
-def get_modules(request):
-    try:
-        print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+def get_modules_from_hydrofabric(run):
+    with transaction.atomic():
+        # Get this from hydrofabric
+        # modules_request = {}
+        # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+        # module_data = response.json()
 
-        validate = CalibrationRunValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        validator = ModuleCollectionValidator(data=module_sample_data)
+        if not validator.is_valid():
+            print(validator.errors)
+            raise Exception('Module data from Hydrofabric is not in the expected format')
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        module_data = module_sample_data.get("modules_data")
 
-        with transaction.atomic():
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'}, status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'}, status=status.HTTP_400_BAD_REQUEST)
+        #### Not sure when we would do this
+        # Delete modules for this run, if they've already been specified
+        # CalibrationFormulation.objects.filter(calibration_run=run).delete()
 
-            # Get this from hydrofabric
-            # modules_request = {}
-            # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-            # module_data = response.json()
+        # Save the modules
+        for m in module_data:
+            module = CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
+                                                           calibration_run=run,
+                                                           description=m.get('description'))
 
-            validator = ModuleCollectionValidator(data=module_sample_data)
-            if not validator.is_valid():
-                print(validator.errors)
-                raise Exception('Module data from Hydrofabric is not in the expected format')
-
-            module_data = module_sample_data.get("modules_data")
-
-            # Delete modules for this run, if they've already been specified
-            CalibrationFormulation.objects.filter(calibration_run=run).delete()
-            # Save the modules
-            for m in module_data:
-                module = CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
-                                                               calibration_run=run,
-                                                               description=m.get('description'))
-
-            return JsonResponse(module_data, safe=False)
-    except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return module_data
 
 
 @api_view(['POST'])
 # @login_required
-@transaction.atomic
 def save_formulation_tab(request):
     try:
         print('user', request.user)
