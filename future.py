@@ -1,6 +1,7 @@
 import os
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 
 def callback(future):
@@ -29,7 +30,7 @@ def execute(args):
 
         # print('temp_file_name', temp_file_name)
 
-        pool = Pool()
+        pool = ThreadPoolExecutor()
         with open(temp_file_name, 'w') as output_file:
             process = subprocess.Popen(args, stdout=output_file, stderr=output_file)
             future = pool.submit(process.wait)
