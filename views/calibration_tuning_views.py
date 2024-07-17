@@ -2,14 +2,13 @@ import json
 import traceback
 
 from django.db import transaction
-from django.forms import model_to_dict
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataCollectionValidator
 from calibration.enums import StatusEnum, CalibrationRunType
-from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, CalibrationInitialParameter, ValidationRun, Status, \
+from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, ValidationRun, Status, \
     CalibrationTuneParameter
 
 # For testing
@@ -125,13 +124,13 @@ def get_module_data(request):
                 parameters = m.get('parameters')
                 print('parameters', parameters)
                 # Delete parameters for this module instance
-                CalibrationInitialParameter.objects.filter(calibration_formulation=module, calibration_run=run).delete()
+                CalibrationTuneParameter.objects.filter(calibration_formulation=module, calibration_run=run).delete()
                 for p in parameters:
                     print('p', p)
-                    CalibrationInitialParameter.objects.create(name=p.get('name'), data_type=p.get('type'), default_value=p.get('initial_value'),
-                                                               calibration_run=run,
-                                                               calibratable=p.get('calibratable'),
-                                                               calibration_formulation=module)  # Do we need description?
+                    CalibrationTuneParameter.objects.create(name=p.get('name'), data_type=p.get('type'), default_value=p.get('initial_value'),
+                                                            calibration_run=run,
+                                                            calibratable=p.get('calibratable'),
+                                                            calibration_formulation=module)  # Do we need description?
 
             return JsonResponse(module_data, safe=False)
     except Exception as e:
@@ -195,8 +194,8 @@ def save_tuning_tab(request):
             for p in parameters:
                 # Delete any previous TuneParameters for this run
                 CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).delete()
-                param = CalibrationInitialParameter.objects.filter(name=p.get('name'), calibration_run=run,
-                                                                   calibration_formulation__name=p.get('module')).first()
+                param = CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_run=run,
+                                                                calibration_formulation__name=p.get('module')).first()
                 CalibrationTuneParameter.objects.create(minimum=p.get('min'), maximum=p.get('max'), initial=p.get('initial'),
                                                         calibration_initial_parameter=param)
 

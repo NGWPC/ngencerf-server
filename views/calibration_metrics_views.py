@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import MetricNameValidator
-from calibration.models import Metric, MetricInput
+from calibration.models import Metric
 
 
 # noinspection PyUnusedLocal
@@ -37,10 +37,10 @@ def get_metric_inputs(request):
 
         if not Metric.objects.filter(name=metric_name).exists():
             return JsonResponse({'message': f'Metric {metric_name} does not exist'})
-        inputs = MetricInput.objects.filter(metric__name=metric_name).all().values("name", "description", "default_value", "data_type")
-        print('inputs', list(inputs))
+        # inputs = MetricInput.objects.filter(metric__name=metric_name).all().values("name", "description", "default_value", "data_type")
+        # print('inputs', list(inputs))
 
-        return JsonResponse(list(inputs), safe=False)
+        return JsonResponse('Need to fix this', safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -22,6 +22,7 @@ class CalibrationRun(BaseModel):
     calibration_eval_end_period = models.DateTimeField(null=True)
     # This should be a required field (null=FALSE), but we'll leave it as optional for now
     owner = models.ForeignKey(get_user_model(), null=True, on_delete=models.SET_NULL)
+    streamflow_threshold = models.FloatField(null=True)
     hydrofabric_gpkg_path = models.TextField(null=True)
     forcing_path = models.TextField()
     forcing_user_filename = models.TextField(null=True)

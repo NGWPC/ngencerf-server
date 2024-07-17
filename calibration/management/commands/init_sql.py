@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.enums import StatusEnum, DataTypeEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, MetricInput, OptimizationInput
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput
 from calibration.models.status import Status
 
 
@@ -14,7 +14,7 @@ class Command(BaseCommand):
     # Don't turn this flag on unless you know what you're doing.  These values are foreign keys in other tables.
     # If they are deleted, you'll lose the relationship.
     # You can re-run this script with DELETE_FLAG=False, and any new values will be added, without touching the existing values.
-    DELETE_FLAG = False
+    DELETE_FLAG = True
 
     # need to get a user that is guaranteed to be there, such as admin
     user = get_user_model().objects.get(username='admin')
@@ -89,76 +89,31 @@ class Command(BaseCommand):
     def define_metric(self):
         if self.DELETE_FLAG:
             Metric.objects.all().delete()
-            MetricInput.objects.all().delete()
 
-        values = [{"name": "Cor", "description": "Pearson Correlation", "inputs": []},
-                  {"name": "MAE", "description": "Mean Absolute Error", "inputs": []},
-                  {"name": "RMSE", "description": "Root Mean Square Error", "inputs": [
-                      {"name": "root", "description": "True to compute RMSE, False to compute MSE", "data_type": DataTypeEnum.BOOLEAN,
-                       "default": "True"}]},
-                  {"name": "RSR", "description": "Ratio of RMSE to standard deviation of observation", "inputs": []},
-                  {"name": "PBIAS", "description": "Percent Bias", "inputs": []},
-                  {"name": "KGE", "description": "Kling-Gupta Efficiency",
-                   "inputs": [{"name": "r", "description": "Correlation scaling factor", "data_type": DataTypeEnum.DOUBLE, "default": "1.0"},
-                              {"name": "a", "description": "Relative variability scaling factor", "data_type": DataTypeEnum.DOUBLE, "default": "1.0"},
-                              {"name": "b", "description": "Relative mean scaling factor", "data_type": DataTypeEnum.DOUBLE, "default": "1.0"}]},
-                  {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency", "inputs": [
-                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": DataTypeEnum.STRING,
-                       "default": "None"},
-                      {"name": "epsilon",
-                       "description": "Value added to both modeled and observed time series if fun is logarithm or other functions",
-                       "data_type": DataTypeEnum.STRING, "default": "Pushpalatha2012"},
-                      {"name": "normalized",
-                       "description": "If True, return NNSE instead",
-                       "data_type": DataTypeEnum.BOOLEAN, "default": "False"},
-                  ]},
-                  {"name": "LogNSE", "description": "NSE of Logarithmic values", "inputs": [
-                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": DataTypeEnum.STRING,
-                       "default": "None"},
-                      {"name": "epsilon",
-                       "description": "Value added to both modeled and observed time series if fun is logarithm or other functions",
-                       "data_type": DataTypeEnum.STRING, "default": "Pushpalatha2012"},
-                      {"name": "normalized",
-                       "description": "If True, return NNSE instead",
-                       "data_type": DataTypeEnum.BOOLEAN, "default": "False"},
-                  ]},
-                  {"name": "NNSE", "description": "Normalized NSE", "inputs": [
-                      {"name": "fun", "description": "Transformation function applied to y_true and y_pred", "data_type": DataTypeEnum.STRING,
-                       "default": "None"},
-                      {"name": "epsilon",
-                       "description": "Value added to both modeled and observed time series if fun is logarithm or other functions",
-                       "data_type": DataTypeEnum.STRING, "default": "Pushpalatha2012"},
-                      {"name": "normalized",
-                       "description": "If True, return NNSE instead",
-                       "data_type": DataTypeEnum.BOOLEAN, "default": "False"},
-                  ]},
-                  {"name": "PoD", "description": "Probability of Detection",
-                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": DataTypeEnum.DOUBLE, "default": "0"}]},
-                  {"name": "CSI", "description": "Critical Success Index",
-                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": DataTypeEnum.DOUBLE, "default": "0"}]},
-                  {"name": "FAR", "description": "False Alarm Ratio",
-                   "inputs": [{"name": "flow_threshold", "description": "Flow threshold in m3/s", "data_type": DataTypeEnum.DOUBLE, "default": "0"}]},
-                  {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve", "inputs": [
-                      {"name": "peak_flow_exceedance_probability", "description": "Peek flow exceedance probability",
-                       "data_type": DataTypeEnum.DOUBLE,
-                       "default": "0.1"}]},
-                  {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve", "inputs": [
-                      {"name": "base_flow_exceedance_probability", "description": "Base flow exceedance probability",
-                       "data_type": DataTypeEnum.DOUBLE,
-                       "default": "0.9"}]},
-                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "inputs": []},
-                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "inputs": []},
-                  {"name": "PKTE", "description": "Peak Flow Timing Error", "inputs": []},
-                  {"name": "EVBIAS", "description": "Event Volume Bias", "inputs": []},
+        values = [{"name": "Cor", "description": "Pearson Correlation"},
+                  {"name": "MAE", "description": "Mean Absolute Error"},
+                  {"name": "RMSE", "description": "Root Mean Square Error"},
+                  {"name": "RSR", "description": "Ratio of RMSE to standard deviation of observation"},
+                  {"name": "PBIAS", "description": "Percent Bias"},
+                  {"name": "KGE", "description": "Kling-Gupta Efficiency"},
+                  {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency"},
+                  {"name": "LogNSE", "description": "NSE of Logarithmic values"},
+                  {"name": "NNSE", "description": "Normalized NSE"},
+                  {"name": "PoD", "description": "Probability of Detection", "categorical": True},
+                  {"name": "CSI", "description": "Critical Success Index", "categorical": True},
+                  {"name": "FAR", "description": "False Alarm Ratio", "categorical": True},
+                  {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve"},
+                  {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve"},
+                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "is_active": False},
+                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "is_active": False},
+                  {"name": "PKTE", "description": "Peak Flow Timing Error", "is_active": False},
+                  {"name": "EVBIAS", "description": "Event Volume Bias", "is_active": False},
                   ]
 
         for v in values:
-            metric, created = Metric.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                                           created_by=self.user)
-
-            for i in v.get('inputs'):
-                MetricInput.objects.get_or_create(name=i.get('name'), is_active=True, description=i.get('description'), data_type=i.get('data_type'),
-                                                  default_value=i.get('default'), metric=metric, created_by=self.user)
+            Metric.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active', True), description=v.get('description'),
+                                         categorical_metric=v.get('categorical', False),
+                                         created_by=self.user)
 
     def define_status(self):
         if self.DELETE_FLAG:
