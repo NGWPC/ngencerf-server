@@ -22,8 +22,6 @@ def callback(future):
 # Also see https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future
 
 def execute(args):
-    from concurrent.futures import ProcessPoolExecutor as Pool
-
     args[0] = os.path.expanduser(args[0])
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         temp_file_name = temp_file.name

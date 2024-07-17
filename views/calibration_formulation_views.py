@@ -218,9 +218,9 @@ def get_modules_from_hydrofabric(run):
 
         # Save the modules
         for m in module_data:
-            module = CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
-                                                           calibration_run=run,
-                                                           description=m.get('description'))
+            CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
+                                                  calibration_run=run,
+                                                  description=m.get('description'))
 
         return module_data
 

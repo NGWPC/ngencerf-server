@@ -112,7 +112,7 @@ class Command(BaseCommand):
 
         for v in values:
             Metric.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active', True), description=v.get('description'),
-                                         categorical_metric=v.get('categorical', False),
+                                         categorical=v.get('categorical', False),
                                          created_by=self.user)
 
     def define_status(self):

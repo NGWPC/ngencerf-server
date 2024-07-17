@@ -32,7 +32,7 @@ def report_iteration(request):
             if run.status.name != StatusEnum.RUNNING:
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # TODO Do we always create a new create, or check to see if this iteration number exists?
+            # TODO Do we always create a new one, or check to see if this iteration number exists?
             # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
             iteration = Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
             return JsonResponse({'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
