@@ -2,11 +2,12 @@ import json
 import traceback
 
 from django.db import transaction
+from django.forms import model_to_dict
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import CalibrationRunValidator, ModuleCollectionValidator, SaveTuningValidator
+from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataCollectionValidator
 from calibration.enums import StatusEnum, CalibrationRunType
 from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, CalibrationInitialParameter, ValidationRun, Status, \
     CalibrationTuneParameter
@@ -96,8 +97,7 @@ def get_module_data(request):
             # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
             # module_data = response.json()
 
-            # TODO Need to update this validator.  Not the same one as get_modules
-            validator = ModuleCollectionValidator(data=module_sample_data)
+            validator = ModuleDataCollectionValidator(data=module_sample_data)
             if not validator.is_valid():
                 print(validator.errors)
                 raise Exception('Module data from Hydrofabric is not in the expected format')
@@ -172,17 +172,17 @@ def save_tuning_tab(request):
                 return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                     status=status.HTTP_400_BAD_REQUEST)
 
-            run.calibration_start_period = calibration_times.get('calibration_start_time') if calibration_times else None
-            run.calibration_end_period = calibration_times.get('calibration_end_time') if calibration_times else None
-            run.calibration_eval_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
-            run.calibration_eval_end_period = calibration_times.get('simulation_end_time') if calibration_times else None
+            run.calibration_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
+            run.calibration_end_period = calibration_times.get('simulation_end_time') if calibration_times else None
+            run.calibration_eval_start_period = calibration_times.get('calibration_start_time') if calibration_times else None
+            run.calibration_eval_end_period = calibration_times.get('calibration_end_time') if calibration_times else None
 
             if automatic_validation:
                 # TODO Need to set the owner
-                ValidationRun.objects.create(validation_start_period=validation_times.get('validation_start_time'),
-                                             validation_end_period=validation_times.get('validation_end_time'),
-                                             validation_eval_start_period=validation_times.get('simulation_start_time'),
-                                             validation_eval_end_period=validation_times.get('simulation_end_time'),
+                ValidationRun.objects.create(validation_start_period=validation_times.get('simulation_start_time'),
+                                             validation_end_period=validation_times.get('simulation_end_time'),
+                                             validation_eval_start_period=validation_times.get('validation_start_time'),
+                                             validation_eval_end_period=validation_times.get('validation_end_time'),
                                              is_active=True,
                                              calibration_run=run,
                                              calibration_run_pk_tune_parameters=run,
@@ -192,25 +192,16 @@ def save_tuning_tab(request):
             run.run_type = CalibrationRunType.VALID_CONTROL if automatic_validation else CalibrationRunType.CALIB
             run.save()
 
-            # Save parameters to Calibration_Tune_Parameter -- what about Initial_parameter?
-            # Delete all CalibrationTuneParameters where CalibrationInitialParameter poinnts to the run
             for p in parameters:
-                # TODO Need the module
-                module_name = p.get('module')
-                # CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).delete()
-
-                print('to delete', CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).all())
-                param = CalibrationInitialParameter.objects.filter(name=p.get('name'), calibration_run=run, calibration_formulation__name=module_name).first()
-                print('tuning params', param.calibrationtuneparameter_set.all())
-                param.calibationtuneparameter_set.add(CalibrationTuneParameter.objects.create(minimum=p.get('min'), maximum=p.get('max'), initial=p.get('initial')))
-
-            # Save times to Calibration_Run and Validation_Run
-            # Set fk in validation_run
-            # Set type of run
+                # Delete any previous TuneParameters for this run
+                CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).delete()
+                param = CalibrationInitialParameter.objects.filter(name=p.get('name'), calibration_run=run,
+                                                                   calibration_formulation__name=p.get('module')).first()
+                CalibrationTuneParameter.objects.create(minimum=p.get('min'), maximum=p.get('max'), initial=p.get('initial'),
+                                                        calibration_initial_parameter=param)
 
             # TODO Do we need to return validation key?
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
-
 
     except Exception as e:
         print(traceback.format_exc())

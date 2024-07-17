@@ -163,7 +163,6 @@ def get_modules(request):
             # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
             # module_data = response.json()
 
-            # TODO Need to update this validator.  Not the same one as get_module_data
             validator = ModuleCollectionValidator(data=module_sample_data)
             if not validator.is_valid():
                 print(validator.errors)

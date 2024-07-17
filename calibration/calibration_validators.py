@@ -68,13 +68,20 @@ class ModuleValidator(serializers.Serializer):
     name = serializers.CharField(min_length=2, required=True)
     description = serializers.CharField(min_length=2, required=True)
     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True))
-    # output_variables and parameters are required, but we'll make them optional for now
-    output_variables = ModuleOutputVariablesValidator(many=True, min_length=1, required=False)
-    parameters = ParameterValidator(many=True, min_length=1, required=False)
 
 
 class ModuleCollectionValidator(serializers.Serializer):
     modules_data = ModuleValidator(many=True, min_length=1, required=True)
+
+
+class ModuleDataValidator(serializers.Serializer):
+    name = serializers.CharField(min_length=2, required=True)
+    output_variables = ModuleOutputVariablesValidator(many=True, min_length=1, required=True)
+    parameters = ParameterValidator(many=True, min_length=1, required=True)
+
+
+class ModuleDataCollectionValidator(serializers.Serializer):
+    modules_data = ModuleDataValidator(many=True, min_length=1, required=True)
 
 
 class ReportIterationValidator(serializers.Serializer):
@@ -84,6 +91,7 @@ class ReportIterationValidator(serializers.Serializer):
 
 class TuningParametersValidator(serializers.Serializer):
     name = serializers.CharField(required=True)
+    module = serializers.CharField(required=True)
     min = serializers.FloatField(required=True)
     max = serializers.FloatField(required=True)
     initial = serializers.FloatField(required=True)
