@@ -67,11 +67,11 @@ def get_module_data(request):
     try:
         print('user', request.user)
         if request.method == 'POST':
-            data = json.loads(request.body)
+            data = json.loads(request.body or '{}')
         else:
             data = request.GET
 
-        validate = CalibrationRunValidator(data=data or {})
+        validate = CalibrationRunValidator(data=data)
         validate.is_valid(raise_exception=True)
 
         calibration_run_id = validate.data.get('calibration_run_id')
@@ -189,7 +189,7 @@ def save_tuning_tab(request):
                                              status=Status.objects.get(name=StatusEnum.SAVED.value))
 
             # Set the type
-            run.run_type = CalibrationRunType.VALID_CONTROL if automatic_validation else CalibrationRunType.CALIB
+            run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
             run.save()
 
             for p in parameters:

@@ -28,7 +28,6 @@ class CalibrationRun(BaseModel):
     forcing_source = models.TextField()
     observational_path = models.TextField(null=True)
     status = models.ForeignKey(Status, null=False, on_delete=models.CASCADE)
-    seed = models.IntegerField(null=True)
     formulation_name = models.TextField(null=True)
     plot_frequency = models.IntegerField(null=True)
     run_type = models.TextField(null=True)
