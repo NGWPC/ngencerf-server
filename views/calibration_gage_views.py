@@ -24,7 +24,6 @@ def csrf(request):
 def load_gage_tab(request):
     try:
         print('user', request.user)
-        print('user', request.user)
         if request.method == 'POST':
             data = json.loads(request.body or '{}')
         else:

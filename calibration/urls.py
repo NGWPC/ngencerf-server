@@ -32,6 +32,7 @@ urlpatterns = [
     ##################################
     # Tuning tab
     ##################################
+    path('calibration/load_tuning_tab/', calibration_tuning_views.load_tuning_tab, name="loadTuningTab"),
     path('calibration/get_module_data/', calibration_tuning_views.get_module_data, name="getModuleData"),
     path('calibration/save_tuning_tab/', calibration_tuning_views.save_tuning_tab, name="saveTuningTab"),
 
@@ -43,7 +44,4 @@ urlpatterns = [
     path('calibration/get_metrics/', calibration_optimization_views.get_metrics, name="getMetrics"),
     path('calibration/save_optimization_tab/', calibration_optimization_views.save_optimization_tab, name="saveOptimizationTab"),
 
-
-
 ]
-

@@ -99,7 +99,7 @@ class Command(BaseCommand):
                   {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency"},
                   {"name": "LogNSE", "description": "NSE of Logarithmic values"},
                   {"name": "NNSE", "description": "Normalized NSE"},
-                  {"name": "PoD", "description": "Probability of Detection", "categorical": True},
+                  {"name": "POD", "description": "Probability of Detection", "categorical": True},
                   {"name": "CSI", "description": "Critical Success Index", "categorical": True},
                   {"name": "FAR", "description": "False Alarm Ratio", "categorical": True},
                   {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve"},

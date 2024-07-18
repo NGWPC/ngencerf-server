@@ -61,6 +61,64 @@ module_sample_data = {"modules_data": [
 
 
 @api_view(['GET', 'POST'])
+# @login_required
+def load_tuning_tab(request):
+    try:
+        print('user', request.user)
+        if request.method == 'POST':
+            data = json.loads(request.body or '{}')
+        else:
+            data = request.GET
+
+        validate = CalibrationRunValidator(data=data)
+        validate.is_valid(raise_exception=True)
+
+        calibration_run_id = validate.data.get('calibration_run_id')
+
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
+        if not run:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
+        print('automatic_validation', automatic_validation)
+        validation_times = {}
+        calibration_times = {}
+
+        # These are all or nothing.  So if this first one exists, we'll assume they all do
+        if run.calibration_start_period:
+            calibration_times['simulation_start_time']: run.calibration_start_period
+            calibration_times['simulation_end_time']: run.calibration_end_period
+            calibration_times['calibration_start_time']: run.calibration_eval_start_period
+            calibration_times['calibration_end_time']: run.calibration_eval_end_period
+        if automatic_validation:
+            validation_times['simulation_start_time']: run.validation_start_period
+            validation_times['simulation_end_time']: run.validation_end_period
+            validation_times['validation_start_time']: run.validation_eval_start_period
+            validation_times['validation_end_time']: run.validation_eval_end_period
+
+        parameters = (CalibrationTuneParameter.objects.filter(calibration_run=run)
+                      .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable')
+                      .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable', 'calibration_formulation__name'))
+        print('parameters', parameters)
+
+        if ngen_cal_input.ready_to_run():
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+
+        return JsonResponse(
+            {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': list(parameters), 'calibration_times': calibration_times,
+             'validation_times': validation_times, 'automatic_validation': automatic_validation}, safe=False)
+    except Exception as e:
+        print(traceback.format_exc())
+        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# TODO probably won't need this endpoint.  Will be called from load_tuning_tab
+@api_view(['GET', 'POST'])
 # @login_required()
 def get_module_data(request):
     try:
@@ -127,7 +185,8 @@ def get_module_data(request):
                 CalibrationTuneParameter.objects.filter(calibration_formulation=module, calibration_run=run).delete()
                 for p in parameters:
                     print('p', p)
-                    CalibrationTuneParameter.objects.create(name=p.get('name'), data_type=p.get('type'), default_value=p.get('initial_value'),
+                    CalibrationTuneParameter.objects.create(name=p.get('name'), data_type=p.get('type'),
+                                                            default_value=p.get('initial_value'),
                                                             calibration_run=run,
                                                             calibratable=p.get('calibratable'),
                                                             calibration_formulation=module)  # Do we need description?
@@ -183,16 +242,23 @@ def save_tuning_tab(request):
         # Set the type
         run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
 
+        if parameters:
+            if not CalibrationTuneParameter.objects.filter(calibration_run=run).exists():
+                return JsonResponse({'error': 'CalibrationTuneParameters have not been loaded from Hydrofabric'},
+                                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Make sure the parameters we are trying to save exist
+            for p in parameters:
+                if not CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_run=run,
+                                                               calibration_formulation__name=p.get('module')).exists():
+                    return JsonResponse({'error': f"Invalid parameter {p.get('name')} specified for module {p.get('module')}"})
+
         with transaction.atomic():
             run.save()
-
             for p in parameters:
-                # Delete any previous TuneParameters for this run
-                CalibrationTuneParameter.objects.filter(calibration_initial_parameter__calibration_run=run).delete()
-                param = CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_run=run,
-                                                                calibration_formulation__name=p.get('module')).first()
-                CalibrationTuneParameter.objects.create(minimum=p.get('min'), maximum=p.get('max'), initial=p.get('initial'),
-                                                        calibration_initial_parameter=param)
+                (CalibrationTuneParameter.objects
+                 .filter(name=p.get('name'), calibration_run=run, calibration_formulation__name=p.get('module'))
+                 .first()
+                 .update(minimum=p.get('min'), maximum=p.get('max'), initial_value=p.get('initial_value')))
 
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)

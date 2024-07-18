@@ -69,8 +69,12 @@ def load_optimization_tab(request):
 # @login_required()
 def get_optimizations(request):
     try:
-        optimizations = Optimization.objects.filter(is_active=True)
-        return JsonResponse(list(optimizations.values('name', 'description')), safe=False)
+        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description')
+        optimization_list = []
+        for o in optimizations:
+            inputs = list(o.inputs.all().values('name', 'description', 'data_type'))
+            optimization_list.append({'name': o.name, 'description': o.description, 'inputs': inputs})
+        return JsonResponse(optimization_list, safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -113,7 +117,8 @@ def save_optimization_tab(request):
                                 status=status.HTTP_400_BAD_REQUEST)
 
         if optimization_inputs and not optimization_name:
-            return JsonResponse({'message': 'Optimization inputs cannot be specified without an optimization name'}, status=status.HTTP_400_BAD_REQUEST)
+            return JsonResponse({'message': 'Optimization inputs cannot be specified without an optimization name'},
+                                status=status.HTTP_400_BAD_REQUEST)
 
         if optimization_name:
             optimization = Optimization.objects.filter(name=optimization_name).first()

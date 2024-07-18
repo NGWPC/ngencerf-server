@@ -9,7 +9,7 @@ class OptimizationInput(BaseModel):
     is_active = models.BooleanField(null=False, default=True)
     name = models.TextField(null=False)
     data_type = models.TextField(null=False, blank=False)
-    optimization = models.ForeignKey(Optimization, null=False, on_delete=models.CASCADE)
+    optimization = models.ForeignKey(Optimization, null=False, on_delete=models.CASCADE, related_name='inputs')
 
     class Meta:
         db_table = 'optimization_input'
