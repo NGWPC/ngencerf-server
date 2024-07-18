@@ -38,8 +38,10 @@ urlpatterns = [
     ##################################
     # Optimizations/Metrics tab
     ##################################
+    path('calibration/load_optimization_tab/', calibration_optimization_views.load_optimization_tab, name="loadOptimizationTab"),
     path('calibration/get_optimizations/', calibration_optimization_views.get_optimizations, name="getOptimizations"),
     path('calibration/get_metrics/', calibration_optimization_views.get_metrics, name="getMetrics"),
+    path('calibration/save_optimization_tab/', calibration_optimization_views.save_optimization_tab, name="saveOptimizationTab"),
 
 
 

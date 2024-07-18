@@ -121,3 +121,18 @@ class SaveTuningValidator(serializers.Serializer):
 
 class MetricNameValidator(serializers.Serializer):
     metric = serializers.CharField(min_length=3)
+
+
+class AlgorithmInputsValidator(serializers.Serializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    value = serializers.FloatField(required=True)
+
+
+class SaveOptimizationValidator(serializers.Serializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    optimization_inputs = AlgorithmInputsValidator(many=True, required=False)
+    optimization = serializers.CharField(allow_blank=False, required=False)
+    objective_function = serializers.CharField(allow_blank=False, required=False)
+    streamflow_threshold = serializers.FloatField(required=False)
+    run_categorical_metrics = serializers.BooleanField(default=False)
+

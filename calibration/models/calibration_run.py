@@ -14,6 +14,7 @@ class CalibrationRun(BaseModel):
     optimization = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
     module_output_variable = models.ForeignKey(ModuleOutputVariable, null=True, on_delete=models.SET_NULL)
     run_date = models.DateTimeField(null=True)
+    objective_function = models.ForeignKey('Metric', null=True, on_delete=models.SET_NULL)
     time_range_start = models.DateTimeField(null=True)
     time_range_end = models.DateTimeField(null=True)
     calibration_start_period = models.DateTimeField(null=True)

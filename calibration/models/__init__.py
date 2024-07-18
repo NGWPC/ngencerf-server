@@ -1,5 +1,4 @@
 from .calibration_formulation import CalibrationFormulation
-from .calibration_metric import CalibrationMetric
 from .calibration_optimization_input import CalibrationOptimizationInput
 from .calibration_run import CalibrationRun
 from .calibration_sloth_param import CalibrationSlothParam
