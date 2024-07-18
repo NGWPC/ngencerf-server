@@ -147,52 +147,49 @@ def load_formulation_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        with transaction.atomic():
-            # TODO Need to filter jobs by user
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
+        if not run:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-            # See if we already have modules defined for this run
-            modules = (
-                CalibrationFormulation.objects.filter(calibration_run=run)
-                .only('name', 'groups', 'used_by_calibration_run')
-                .values('name', 'groups', 'used_by_calibration_run')
+        # See if we already have modules defined for this run
+        modules = (
+            CalibrationFormulation.objects.filter(calibration_run=run)
+            .only('name', 'groups', 'used_by_calibration_run')
+            .values('name', 'groups', 'used_by_calibration_run')
+        )
+        # Unwrap the groups
+        for m in modules:
+            m['groups'] = json.loads(m['groups'])
+
+        formulation_name = run.formulation_name
+
+        if not modules:
+            # Get modules from Hydrofabric
+            modules = get_modules_from_hydrofabric(run)
+            sloth_parameters = []
+        else:
+            # Get sloth parameters
+            sloth_parameters = (
+                CalibrationSlothParam.objects.filter(calibration_run=run)
+                .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+                      'maps_to_variable_name')
+                .values(
+                    'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
+                    'maps_to_variable_name')
             )
-            # Unwrap the groups
-            for m in modules:
-                m['groups'] = json.loads(m['groups'])
+            print('sloth', sloth_parameters)
 
-            formulation_name = run.formulation_name
+        if ngen_cal_input.ready_to_run():
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
-            if not modules:
-                # Get modules from Hydrofabric
-                modules = get_modules_from_hydrofabric(run)
-                sloth_parameters = []
-            else:
-                # see if we have Sloth parameters
-
-                # Get sloth parameters
-                sloth_parameters = (
-                    CalibrationSlothParam.objects.filter(calibration_run=run)
-                    .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                          'maps_to_variable_name')
-                    .values(
-                        'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
-                        'maps_to_variable_name')
-                )
-                print('sloth', sloth_parameters)
-
-            if ngen_cal_input.ready_to_run():
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
-
-            return JsonResponse(
-                {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules),
-                 "sloth_parameters": list(sloth_parameters)}, safe=False)
+        return JsonResponse(
+            {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules),
+             "sloth_parameters": list(sloth_parameters)}, safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -250,40 +247,45 @@ def save_formulation_tab(request):
         if not valid:
             return JsonResponse({"error": f"Invalid formulation - {modules}"})
 
-        with transaction.atomic():
-            # TODO Need to filter jobs by user
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
+        if not run:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-            run.formulation_name = formulation_name
+        run.formulation_name = formulation_name
 
-            # Clear the in use flag for all modules
-            count = CalibrationFormulation.objects.filter(calibration_run_id=run.id).update(used_by_calibration_run=False)
+        # Clear the in use flag for all modules
+        count = CalibrationFormulation.objects.filter(calibration_run_id=run.id).update(used_by_calibration_run=False)
+        if count == 0:
+            # This means that get_modules was not called to add the modules for this run
+            raise Exception(f"Cannot find modules associated with Calibration Run {calibration_run_id}")
+
+        # Indicate that the modules are now in use
+        for name in modules:
+            count = CalibrationFormulation.objects.filter(name=name, calibration_run_id=run.id).update(used_by_calibration_run=True)
             if count == 0:
                 # This means that get_modules was not called to add the modules for this run
-                raise Exception(f"Cannot find modules associated with Calibration Run {calibration_run_id}")
+                raise Exception(f"Cannot find module '{name}' associated with Calibration Run {calibration_run_id}")
 
-            # Indicate that the modules are now in use
-            for name in modules:
-                count = CalibrationFormulation.objects.filter(name=name, calibration_run_id=run.id).update(used_by_calibration_run=True)
-                if count == 0:
-                    # This means that get_modules was not called to add the modules for this run
-                    raise Exception(f"Cannot find module '{name}' associated with Calibration Run {calibration_run_id}")
+        # Delete params for this run if they've already been specified
+        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+        for s in sloth_parameters:
+            # Check that the module is value
+            module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
+            if not module:
+                error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
+                print(error)
+                return JsonResponse({"error": error})
 
-            # Delete params for this run if they've already been specified
-            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+        with transaction.atomic():
+            run.save()
             for s in sloth_parameters:
-                # Need to also set the module
+                # Get the modules so we can set it
                 module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
-                if not module:
-                    error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
-                    print(error)
-                    return JsonResponse({"error": error})
                 CalibrationSlothParam.objects.create(calibration_run=run, param_name=s.get('name'), param_count=s.get('count'),
                                                      param_type=s.get('type'),
                                                      param_units=s.get('units'), param_location=s.get('location'),
@@ -292,7 +294,6 @@ def save_formulation_tab(request):
 
             if ngen_cal_input.ready_to_run():
                 run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
-            run.save()
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:

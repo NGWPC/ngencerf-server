@@ -21,6 +21,10 @@ class CalibrationRun(BaseModel):
     calibration_end_period = models.DateTimeField(null=True)
     calibration_eval_start_period = models.DateTimeField(null=True)
     calibration_eval_end_period = models.DateTimeField(null=True)
+    validation_start_period = models.DateTimeField(null=True)
+    validation_end_period = models.DateTimeField(null=True)
+    validation_eval_start_period = models.DateTimeField(null=True)
+    validation_eval_end_period = models.DateTimeField(null=True)
     # This should be a required field (null=FALSE), but we'll leave it as optional for now
     owner = models.ForeignKey(get_user_model(), null=True, on_delete=models.SET_NULL)
     streamflow_threshold = models.FloatField(null=True)

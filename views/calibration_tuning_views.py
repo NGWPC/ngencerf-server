@@ -8,7 +8,8 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataCollectionValidator
 from calibration.enums import StatusEnum, CalibrationRunType
-from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, ValidationRun, Status, \
+from calibration.management.commands import ngen_cal_input
+from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, Status, \
     CalibrationTuneParameter
 
 # For testing
@@ -159,34 +160,30 @@ def save_tuning_tab(request):
         print('validation_times', validation_times)
         print('parameters', parameters)
 
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
+        if not run:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        run.calibration_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
+        run.calibration_end_period = calibration_times.get('simulation_end_time') if calibration_times else None
+        run.calibration_eval_start_period = calibration_times.get('calibration_start_time') if calibration_times else None
+        run.calibration_eval_end_period = calibration_times.get('calibration_end_time') if calibration_times else None
+
+        if automatic_validation:
+            run.validation_start_period = validation_times.get('simulation_start_time') if validation_times else None
+            run.validation_end_period = validation_times.get('simulation_end_time') if validation_times else None
+            run.validation_eval_start_period = validation_times.get('validation_start_time') if validation_times else None
+            run.validation_eval_end_period = validation_times.get('validation_end_time') if validation_times else None
+
+        # Set the type
+        run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
+
         with transaction.atomic():
-            # TODO Need to filter jobs by user
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-
-            run.calibration_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
-            run.calibration_end_period = calibration_times.get('simulation_end_time') if calibration_times else None
-            run.calibration_eval_start_period = calibration_times.get('calibration_start_time') if calibration_times else None
-            run.calibration_eval_end_period = calibration_times.get('calibration_end_time') if calibration_times else None
-
-            if automatic_validation:
-                # TODO Need to set the owner
-                ValidationRun.objects.create(validation_start_period=validation_times.get('simulation_start_time'),
-                                             validation_end_period=validation_times.get('simulation_end_time'),
-                                             validation_eval_start_period=validation_times.get('validation_start_time'),
-                                             validation_eval_end_period=validation_times.get('validation_end_time'),
-                                             is_active=True,
-                                             calibration_run=run,
-                                             calibration_run_pk_tune_parameters=run,
-                                             status=Status.objects.get(name=StatusEnum.SAVED.value))
-
-            # Set the type
-            run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
             run.save()
 
             for p in parameters:
@@ -197,8 +194,10 @@ def save_tuning_tab(request):
                 CalibrationTuneParameter.objects.create(minimum=p.get('min'), maximum=p.get('max'), initial=p.get('initial'),
                                                         calibration_initial_parameter=param)
 
-            # TODO Do we need to return validation key?
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+        if ngen_cal_input.ready_to_run():
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+
+        return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
 
     except Exception as e:
         print(traceback.format_exc())

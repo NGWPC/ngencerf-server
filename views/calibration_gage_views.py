@@ -35,29 +35,28 @@ def load_gage_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        with transaction.atomic():
-            # TODO Need to filter jobs by user
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
+        if not run:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
 
-            gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
-                    'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
-            forcing_source = run.forcing_source
-            forcing_path = run.forcing_path
+        gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
+                'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
+        forcing_source = run.forcing_source
+        forcing_path = run.forcing_path
 
-            # Get all the gages so the user can select another
-            gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
+        # Get all the gages so the user can select another
+        gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
 
-            if ngen_cal_input.ready_to_run():
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+        if ngen_cal_input.ready_to_run():
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
-            return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
-                                 'forcing_path': forcing_path, 'gages': list(gages)}, safe=False)
+        return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
+                             'forcing_path': forcing_path, 'gages': list(gages)}, safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -103,29 +102,30 @@ def save_gage_tab(request):
         forcing_source = validate.data.get('forcing_source')
         forcing_path = validate.data.get('forcing_path')
 
+        gage = Gage.objects.filter(gage_id=gage_id).first()
+        if not gage:
+            return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
+
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
+        if not run:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        run.gage = gage
+        run.forcing_source = forcing_source
+        run.forcing_path = forcing_path
+
         with transaction.atomic():
-            gage = Gage.objects.filter(gage_id=gage_id).first()
-            if not gage:
-                return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
-
-            # TODO Need to filter jobs by user
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-
-            run.gage = gage
-            run.forcing_source = forcing_source
-            run.forcing_path = forcing_path
-
-            if ngen_cal_input.ready_to_run():
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
             run.save()
 
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+        if ngen_cal_input.ready_to_run():
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+
+        return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

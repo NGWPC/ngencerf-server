@@ -49,9 +49,6 @@ def load_optimization_tab(request):
 
         metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'categorical').values('name', 'description', 'categorical')
 
-        # return the list of algorithm parameters for the current algo
-        # Return the list of metrics
-
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
@@ -154,6 +151,9 @@ def save_optimization_tab(request):
                         CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
 
                 run.save()
+
+                if ngen_cal_input.ready_to_run():
+                    run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
