@@ -261,15 +261,14 @@ def save_formulation_tab(request):
         # Clear the in use flag for all modules
         count = CalibrationFormulation.objects.filter(calibration_run_id=run.id).update(used_by_calibration_run=False)
         if count == 0:
-            # This means that get_modules was not called to add the modules for this run
-            raise Exception(f"Cannot find modules associated with Calibration Run {calibration_run_id}")
+            # This means that Hydrofabric was not called to add the modules for this run
+            return JsonResponse({'error': f"Cannot find modules associated with Calibration Run {calibration_run_id}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Indicate that the modules are now in use
         for name in modules:
             count = CalibrationFormulation.objects.filter(name=name, calibration_run_id=run.id).update(used_by_calibration_run=True)
             if count == 0:
-                # This means that get_modules was not called to add the modules for this run
-                raise Exception(f"Cannot find module '{name}' associated with Calibration Run {calibration_run_id}")
+                return JsonResponse({'error': f"Cannot find module '{name}' associated with Calibration Run {calibration_run_id}"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Delete params for this run if they've already been specified
         CalibrationSlothParam.objects.filter(calibration_run=run).delete()
@@ -279,7 +278,7 @@ def save_formulation_tab(request):
             if not module:
                 error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
                 print(error)
-                return JsonResponse({"error": error})
+                return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             run.save()

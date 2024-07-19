@@ -49,16 +49,17 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ObservationalSource.objects.all().delete()
 
-        values = [{"name": "USGS", "description": "Needs description"},
-                  {"name": "USACE", "description": "Needs description"},
-                  {"name": "BOR", "description": "Needs description"},
-                  {"name": "ENV", "description": "Needs description"},
-                  {"name": "State Agency", "description": "Needs description"},
-                  {"name": "RFC", "description": "Needs description"}
+        values = [{"name": "USGS", "description": "US Geological Society", "is_active": True},
+                  {"name": "USACE", "description": "US Army Corp of Engineers", "is_active": True},
+                  {"name": "BOR", "description": "Bureau of Reclamation", "is_active": False},
+                  {"name": "ENV", "description": "Environmental Canada", "is_active": True},
+                  {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": True},
+                  {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
+                  {"name": "RFC", "description": "River Forecast Center", "is_active": False}
                   ]
 
         for v in values:
-            ObservationalSource.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
+            ObservationalSource.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active'), description=v.get('description'),
                                                       created_by=self.user)
 
     def define_optimization(self):

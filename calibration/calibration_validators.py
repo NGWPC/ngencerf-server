@@ -92,8 +92,8 @@ class ReportIterationValidator(serializers.Serializer):
 class TuningParametersValidator(serializers.Serializer):
     name = serializers.CharField(required=True)
     module = serializers.CharField(required=True)
-    min = serializers.FloatField(required=True)
-    max = serializers.FloatField(required=True)
+    minimum = serializers.FloatField(required=True)
+    maximum = serializers.FloatField(required=True)
     initial_value = serializers.FloatField(required=True)
 
 
@@ -111,12 +111,18 @@ class ValidationTimeControls(serializers.Serializer):
     simulation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
 
 
+class OutputVariableValidator(serializers.Serializer):
+    module = serializers.CharField(required=True, allow_blank=False)
+    name = serializers.CharField(required=True, allow_blank=False)
+
+
 class SaveTuningValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     parameters = TuningParametersValidator(many=True, required=False)
     calibration_times = CalibrationTimeControls(required=False)
     validation_times = ValidationTimeControls(required=False)
     automatic_validation = serializers.BooleanField(required=True)
+    output_variable_to_calibrate = OutputVariableValidator(required=False)
 
 
 class MetricNameValidator(serializers.Serializer):
@@ -135,4 +141,3 @@ class SaveOptimizationValidator(serializers.Serializer):
     objective_function = serializers.CharField(allow_blank=False, required=False)
     streamflow_threshold = serializers.FloatField(required=False)
     run_categorical_metrics = serializers.BooleanField(default=False)
-

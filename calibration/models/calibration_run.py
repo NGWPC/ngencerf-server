@@ -38,6 +38,7 @@ class CalibrationRun(BaseModel):
     plot_frequency = models.IntegerField(null=True)
     run_type = models.TextField(null=True)
     ngen_commit_hash = models.BinaryField(null=True)
+    got_module_data_from_hydrofabric = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'calibration_run'

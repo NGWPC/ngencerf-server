@@ -2,6 +2,7 @@ import json
 import traceback
 
 from django.db import transaction
+from django.db.models import F
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -101,68 +102,70 @@ def load_tuning_tab(request):
             validation_times['validation_start_time']: run.validation_eval_start_period
             validation_times['validation_end_time']: run.validation_eval_end_period
 
-        parameters = (CalibrationTuneParameter.objects.filter(calibration_run=run)
-                      .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable')
-                      .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable', 'calibration_formulation__name'))
-        print('parameters', parameters)
+        output_variable_to_calibrate = {
+            'module': run.module_output_variable.calibration_formulation.name,
+            'name': run.module_output_variable.name
+        } if run.module_output_variable else {}
 
-        if ngen_cal_input.ready_to_run():
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+        # Get the list of modules for this Run
+        modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+
+        parameter_list = []
+        output_variable_list = []
+        if modules:
+            # Only do this if modules have been saved in the formulation tab
+
+            print('modules', modules)
+            if not run.got_module_data_from_hydrofabric:
+                print('calling hydrofabric')
+                get_module_data_from_hydrofabric(run, modules)
+
+            # For each module, get the Parameters and Output Variables
+            for m in modules:
+                parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
+                                  .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable')
+                                  # .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable'))
+                                  .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable',
+                                          module=F('calibration_formulation__name')))
+
+                parameter_list.extend(parameters)
+
+                output_variable_entry = {'name': m.name,
+                                         'output_variables': list(m.moduleoutputvariable_set.all().values('name', 'description', 'data_type'))}
+                output_variable_list.append(output_variable_entry)
+
+            if ngen_cal_input.ready_to_run():
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse(
-            {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': list(parameters), 'calibration_times': calibration_times,
-             'validation_times': validation_times, 'automatic_validation': automatic_validation}, safe=False)
+            {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list, 'module_output_variables': output_variable_list,
+             'calibration_times': calibration_times,
+             'validation_times': validation_times, 'automatic_validation': automatic_validation,
+             'output_variable_to_calibrate': output_variable_to_calibrate}, safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# TODO probably won't need this endpoint.  Will be called from load_tuning_tab
-@api_view(['GET', 'POST'])
 # @login_required()
-def get_module_data(request):
+def get_module_data_from_hydrofabric(run, modules):
     try:
-        print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
 
-        validate = CalibrationRunValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        # Get this from hydrofabric
+        # modules_request = {"modules":modules}
+        # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+        # module_data = response.json()
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        validator = ModuleDataCollectionValidator(data=module_sample_data)
+        if not validator.is_valid():
+            print(validator.errors)
+            raise Exception('Module metadata from Hydrofabric is not in the expected format')
 
+        module_data = module_sample_data.get("modules_data")
+
+        # Save the output variables for each module
+        # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
         with transaction.atomic():
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-                return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                    status=status.HTTP_400_BAD_REQUEST)
-
-            # Get the list of modules for this Run
-            modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
-            if not modules:
-                # This means that save_formulation_tab was not called to add the modules for this run
-                raise Exception(f"There are no modules yet associated with with Calibration Run {calibration_run_id}")
-            print('modules', modules)
-
-            # Get this from hydrofabric
-            # modules_request = {"modules":modules}
-            # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-            # module_data = response.json()
-
-            validator = ModuleDataCollectionValidator(data=module_sample_data)
-            if not validator.is_valid():
-                print(validator.errors)
-                raise Exception('Module data from Hydrofabric is not in the expected format')
-
-            module_data = module_sample_data.get("modules_data")
-
-            # Save the output variables for each module
-            # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
             for m in module_data:
                 print('m', m)
                 # Get the modules object from our list
@@ -172,7 +175,7 @@ def get_module_data(request):
                 # Save output variables
                 outputs = m.get('output_variables')
                 # Delete output variables for this module instance
-                ModuleOutputVariable.objects.filter(calibration_formulation=module).delete()
+                # ModuleOutputVariable.objects.filter(calibration_formulation=module).delete()
                 o: dict
                 for o in outputs:
                     print('o', o)
@@ -180,18 +183,21 @@ def get_module_data(request):
                                                         calibration_formulation=module, description=o.get('description'))
                 # Save parameters
                 parameters = m.get('parameters')
-                print('parameters', parameters)
+                print('parameters from Hydro', parameters)
                 # Delete parameters for this module instance
-                CalibrationTuneParameter.objects.filter(calibration_formulation=module, calibration_run=run).delete()
+                # CalibrationTuneParameter.objects.filter(calibration_formulation=module, calibration_run=run).delete()
                 for p in parameters:
                     print('p', p)
+                    print('module', module)
                     CalibrationTuneParameter.objects.create(name=p.get('name'), data_type=p.get('type'),
                                                             default_value=p.get('initial_value'),
-                                                            calibration_run=run,
-                                                            calibratable=p.get('calibratable'),
-                                                            calibration_formulation=module)  # Do we need description?
+                                                            calibration_formulation=module,
+                                                            calibratable=p.get('calibratable'))  # Do we need description?
 
-            return JsonResponse(module_data, safe=False)
+            run.got_module_data_from_hydrofabric = True
+            run.save()
+
+        return
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -213,11 +219,14 @@ def save_tuning_tab(request):
         validation_times = validate.data.get('validation_times')
         parameters = validate.data.get('parameters')
 
-        print('calibration_run_id', calibration_run_id)
-        print('automatic_validation', automatic_validation)
-        print('calibration_times', calibration_times)
-        print('validation_times', validation_times)
-        print('parameters', parameters)
+        # print('validate', validate)
+        output_variable_to_calibrate = validate.data.get('output_variable_to_calibrate')
+
+        # print('calibration_run_id', calibration_run_id)
+        # print('automatic_validation', automatic_validation)
+        # print('calibration_times', calibration_times)
+        # print('validation_times', validation_times)
+        # print('parameters', parameters)
 
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
@@ -243,22 +252,37 @@ def save_tuning_tab(request):
         run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
 
         if parameters:
-            if not CalibrationTuneParameter.objects.filter(calibration_run=run).exists():
+            if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
                 return JsonResponse({'error': 'CalibrationTuneParameters have not been loaded from Hydrofabric'},
                                     status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             # Make sure the parameters we are trying to save exist
             for p in parameters:
-                if not CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_run=run,
-                                                               calibration_formulation__name=p.get('module')).exists():
+                if not CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_formulation__name=p.get('module')).exists():
                     return JsonResponse({'error': f"Invalid parameter {p.get('name')} specified for module {p.get('module')}"})
+
+        # Validate the output_variable_to_calibrate
+        print('output_variable_to_calibrate', output_variable_to_calibrate)
+        if output_variable_to_calibrate:
+            module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate.get('module'),
+                                                                                calibration_run=run).first()
+            print('module_with_output_variable', module_with_output_variable.name, module_with_output_variable.id)
+            print('output variables', module_with_output_variable.moduleoutputvariable_set.all().filter(name='goo'))
+            module_output_variable = module_with_output_variable.moduleoutputvariable_set.all().filter(
+                name=output_variable_to_calibrate.get('name')).first()
+            if not module_output_variable:
+                return JsonResponse({
+                    'error': f"Module output variable '{output_variable_to_calibrate.get('name')}' not found in module '{output_variable_to_calibrate.get('module')}' for this run"},
+                    status=status.HTTP_400_BAD_REQUEST)
+            print('module_output_variable', module_output_variable)
+            run.module_output_variable = module_output_variable
 
         with transaction.atomic():
             run.save()
             for p in parameters:
                 (CalibrationTuneParameter.objects
-                 .filter(name=p.get('name'), calibration_run=run, calibration_formulation__name=p.get('module'))
-                 .first()
+                 .filter(name=p.get('name'), calibration_formulation__name=p.get('module'), calibration_formulation__calibration_run=run)
                  .update(minimum=p.get('min'), maximum=p.get('max'), initial_value=p.get('initial_value')))
+            print('after save', run.id, run.module_output_variable)
 
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
