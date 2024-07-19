@@ -5,6 +5,7 @@ from .calibration_sloth_param import CalibrationSlothParam
 from .calibration_stop_criteria import CalibrationStopCriteria
 from .calibration_tune_parameter import CalibrationTuneParameter
 from .domain import Domain
+from .forcing_source import ForcingSource
 from .gage import Gage
 from .iteration import Iteration
 from .iteration_metric import IterationMetric

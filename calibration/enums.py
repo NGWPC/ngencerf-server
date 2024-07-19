@@ -12,6 +12,13 @@ class StatusEnum(StrEnum):
     SERVER_ERROR = 'Server error'
 
 
+class CalibrationRunType(StrEnum):
+    CALIB = 'calib'
+    VALID_CONTROL = 'valid_control'
+    VALID_BEST = 'valid_best'
+
+
+####  These enums are used in validators
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
@@ -40,7 +47,10 @@ class UnitsEnum(StrEnum):
         return [e.value for e in cls]
 
 
-class CalibrationRunType(StrEnum):
-    CALIB = 'calib'
-    VALID_CONTROL = 'valid_control'
-    VALID_BEST = 'valid_best'
+class ForcingSourceEnum(StrEnum):
+    AORC = 'AORC'
+    UPLOAD = 'upload'
+
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]

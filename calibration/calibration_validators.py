@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
-from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum
+from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum
 
 
 class CalibrationRunValidator(serializers.Serializer):
@@ -12,11 +12,16 @@ class GageIdValidator(serializers.Serializer):
     gage_id = serializers.CharField(required=True)
 
 
+def forcingSourceValidator(value):
+    if value not in ForcingSourceEnum.values():
+        raise ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
+
+
 class SaveGageValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=2, required=True)
-    forcing_source = serializers.CharField(min_length=2, required=True)
-    forcing_path = serializers.CharField(min_length=2, required=True)
+    forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
+    forcing_path = serializers.CharField(min_length=2, required=False)
 
 
 def dataTypeValidator(value):

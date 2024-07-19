@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 
 from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput
+from calibration.models.forcing_source import ForcingSource
 from calibration.models.status import Status
 
 
@@ -25,6 +26,7 @@ class Command(BaseCommand):
 
         # self.define_modules_and_groups()
         self.define_domains()
+        self.define_forcing_source()
         self.define_observational_source()
         self.define_optimization()
         self.define_metric()
@@ -44,6 +46,18 @@ class Command(BaseCommand):
         for v in values:
             Domain.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
                                          created_by=self.user)
+
+    def define_forcing_source(self):
+        if self.DELETE_FLAG:
+            ForcingSource.objects.all().delete()
+
+        values = [{"name": "AORC", "description": "Analysis of Record For Calibration"},
+                  {"name": "Hawaii", "description": "Uploaded by the user from a local file"},
+                  ]
+
+        for v in values:
+            ForcingSource.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
+                                                created_by=self.user)
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
