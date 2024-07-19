@@ -101,9 +101,12 @@ def save_gage_tab(request):
         forcing_source = validate.data.get('forcing_source')
         forcing_path = validate.data.get('forcing_path')
 
-        gage = Gage.objects.filter(gage_id=gage_id).first()
-        if not gage:
-            return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
+        if gage_id:
+            gage = Gage.objects.filter(gage_id=gage_id).first()
+            if not gage:
+                return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
+            else:
+                run.gage = gage
 
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
@@ -114,7 +117,6 @@ def save_gage_tab(request):
             return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        run.gage = gage
         run.forcing_source = forcing_source
         run.forcing_path = forcing_path
 

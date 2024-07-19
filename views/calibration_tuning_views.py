@@ -278,11 +278,11 @@ def save_tuning_tab(request):
 
         with transaction.atomic():
             run.save()
-            for p in parameters:
-                (CalibrationTuneParameter.objects
-                 .filter(name=p.get('name'), calibration_formulation__name=p.get('module'), calibration_formulation__calibration_run=run)
-                 .update(minimum=p.get('min'), maximum=p.get('max'), initial_value=p.get('initial_value')))
-            print('after save', run.id, run.module_output_variable)
+            if parameters:
+                for p in parameters:
+                    (CalibrationTuneParameter.objects
+                     .filter(name=p.get('name'), calibration_formulation__name=p.get('module'), calibration_formulation__calibration_run=run)
+                     .update(minimum=p.get('min'), maximum=p.get('max'), initial_value=p.get('initial_value')))
 
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)

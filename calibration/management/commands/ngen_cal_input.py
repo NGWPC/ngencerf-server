@@ -4,6 +4,8 @@ from rest_framework import serializers
 
 from django.conf import settings
 
+# TODO This is defined as a management command for dev purposes only.  Will be moved to the regular code
+
 
 config_template = {
 
@@ -149,7 +151,7 @@ def ready_to_run():
     # print('config', config)
     validator = NgenConfigValidator(data=config)
     if not validator.is_valid():
-        print(f"Not ready {validator.errors}")
+        print(f"Not ready")
         return False
     else:
         return True

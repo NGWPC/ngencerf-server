@@ -120,20 +120,19 @@ def save_optimization_tab(request):
             return JsonResponse({'message': 'Optimization inputs cannot be specified without an optimization name'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        if optimization_name:
-            optimization = Optimization.objects.filter(name=optimization_name).first()
-            if not optimization:
-                return JsonResponse({'error': f"Invalid optimization - '{optimization_name}'"})
-            run.optimization = optimization
+        optimization = Optimization.objects.filter(name=optimization_name).first() if optimization_name else None
+        if not optimization:
+            return JsonResponse({'error': f"Invalid optimization - '{optimization_name}'"})
+        run.optimization = optimization
 
-            if optimization_inputs:
-                # Check if  parameter is valid for this optimization
-                valid_optimization_inputs = OptimizationInput.objects.filter(optimization=optimization).only('name').values_list('name', flat=True)
-                for o in optimization_inputs:
-                    if o not in valid_optimization_inputs:
-                        name = o.get('name')
-                        return JsonResponse({'error': f"'{name}' is not a valid parameter input for '{optimization_name}'"})
-                    CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
+        if optimization_inputs:
+            # Check if  parameter is valid for this optimization
+            valid_optimization_inputs = OptimizationInput.objects.filter(optimization=optimization).only('name').values_list('name', flat=True)
+            for o in optimization_inputs:
+                if o not in valid_optimization_inputs:
+                    name = o.get('name')
+                    return JsonResponse({'error': f"'{name}' is not a valid parameter input for '{optimization_name}'"})
+                CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
 
         if objective_function_name:
             objective_function = Metric.objects.filter(name=objective_function_name).first()
@@ -147,18 +146,18 @@ def save_optimization_tab(request):
                     return JsonResponse({'error': f"Streamflow threshold must be specified for a categorical function'"})
                 run.streamflow_threshold = streamflow_threshold
 
-            with transaction.atomic():
-                # Delete existing optimization inputs
-                CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
-                if optimization_inputs:
-                    print('optimization', optimization)
-                    for o in optimization_inputs:
-                        CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
+        with transaction.atomic():
+            # Delete existing optimization inputs
+            CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
+            if optimization_inputs:
+                print('optimization', optimization)
+                for o in optimization_inputs:
+                    CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
 
-                run.save()
+            run.save()
 
-                if ngen_cal_input.ready_to_run():
-                    run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+            if ngen_cal_input.ready_to_run():
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
