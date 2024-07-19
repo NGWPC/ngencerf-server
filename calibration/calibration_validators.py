@@ -95,7 +95,7 @@ class ReportIterationValidator(serializers.Serializer):
 
 
 class TuningParametersValidator(serializers.Serializer):
-    name = serializers.CharField(required=True,allow_blank=False)
+    name = serializers.CharField(required=True, allow_blank=False)
     module = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=True)
     maximum = serializers.FloatField(required=True)

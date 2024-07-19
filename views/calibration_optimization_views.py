@@ -41,13 +41,19 @@ def load_optimization_tab(request):
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
         if run.optimization:
             optimization = run.optimization.name
-            optimization_inputs = OptimizationInput.objects.query(optimization__name=run.optimization.name)
+            optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name).values()
             print('optimization_inputs', optimization_inputs)
         else:
             optimization = None
             optimization_inputs = []
 
         metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'categorical').values('name', 'description', 'categorical')
+
+        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description')
+        optimization_list = []
+        for o in optimizations:
+            inputs = list(o.inputs.all().values('name', 'description', 'data_type'))
+            optimization_list.append({'name': o.name, 'description': o.description, 'inputs': inputs})
 
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
@@ -57,7 +63,8 @@ def load_optimization_tab(request):
              'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
              'optimization': optimization,
              'optimization_inputs': list(optimization_inputs),
-             'objective_function': objective_function},
+             'objective_function': objective_function,
+             'optimizations': optimization_list},
             safe=False)
     except Exception as e:
         print(traceback.format_exc())
@@ -65,31 +72,6 @@ def load_optimization_tab(request):
 
 
 # noinspection PyUnusedLocal
-@api_view(['GET', 'POST'])
-# @login_required()
-def get_optimizations(request):
-    try:
-        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description')
-        optimization_list = []
-        for o in optimizations:
-            inputs = list(o.inputs.all().values('name', 'description', 'data_type'))
-            optimization_list.append({'name': o.name, 'description': o.description, 'inputs': inputs})
-        return JsonResponse(optimization_list, safe=False)
-    except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# noinspection PyUnusedLocal
-@api_view(['GET', 'POST'])
-# @login_required()
-def get_metrics(request):
-    try:
-        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'categorical').values('name', 'description', 'categorical')
-        return JsonResponse(list(metrics), safe=False)
-    except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
