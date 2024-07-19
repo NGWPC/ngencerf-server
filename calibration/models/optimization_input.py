@@ -5,10 +5,14 @@ from calibration.models.optimization import Optimization
 
 
 class OptimizationInput(BaseModel):
-    description = models.TextField()
-    is_active = models.BooleanField()
-    name = models.TextField(unique=True, null=False)
-    optimization = models.ForeignKey(Optimization, null=True, on_delete=models.SET_NULL)
+    description = models.TextField(null=False, blank=False)
+    is_active = models.BooleanField(null=False, default=True)
+    name = models.TextField(null=False)
+    data_type = models.TextField(null=False, blank=False)
+    optimization = models.ForeignKey(Optimization, null=False, on_delete=models.CASCADE, related_name='inputs')
 
     class Meta:
         db_table = 'optimization_input'
+        constraints = [
+            models.UniqueConstraint(fields=['name', 'optimization'], name='optimization_input__name__optimization__unique')
+        ]

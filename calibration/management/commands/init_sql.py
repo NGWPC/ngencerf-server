@@ -3,8 +3,9 @@ import json
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from calibration.enums import StatusEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation
+from calibration.enums import StatusEnum, DataTypeEnum
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput
+from calibration.models.forcing_source import ForcingSource
 from calibration.models.status import Status
 
 
@@ -14,7 +15,7 @@ class Command(BaseCommand):
     # Don't turn this flag on unless you know what you're doing.  These values are foreign keys in other tables.
     # If they are deleted, you'll lose the relationship.
     # You can re-run this script with DELETE_FLAG=False, and any new values will be added, without touching the existing values.
-    DELETE_FLAG = False
+    DELETE_FLAG = True
 
     # need to get a user that is guaranteed to be there, such as admin
     user = get_user_model().objects.get(username='admin')
@@ -25,6 +26,7 @@ class Command(BaseCommand):
 
         # self.define_modules_and_groups()
         self.define_domains()
+        self.define_forcing_source()
         self.define_observational_source()
         self.define_optimization()
         self.define_metric()
@@ -43,39 +45,61 @@ class Command(BaseCommand):
 
         for v in values:
             Domain.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                         created_by=self.user,
-                                         updated_by=self.user)
+                                         created_by=self.user)
+
+    def define_forcing_source(self):
+        if self.DELETE_FLAG:
+            ForcingSource.objects.all().delete()
+
+        values = [{"name": "AORC", "description": "Analysis of Record For Calibration"},
+                  {"name": "Hawaii", "description": "Uploaded by the user from a local file"},
+                  ]
+
+        for v in values:
+            ForcingSource.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
+                                                created_by=self.user)
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
             ObservationalSource.objects.all().delete()
 
-        values = [{"name": "USGS", "description": "Needs description"},
-                  {"name": "USACE", "description": "Needs description"},
-                  {"name": "BOR", "description": "Needs description"},
-                  {"name": "ENV", "description": "Needs description"},
-                  {"name": "State Agency", "description": "Needs description"},
-                  {"name": "RFC", "description": "Needs description"}
+        values = [{"name": "USGS", "description": "US Geological Society", "is_active": True},
+                  {"name": "USACE", "description": "US Army Corp of Engineers", "is_active": True},
+                  {"name": "BOR", "description": "Bureau of Reclamation", "is_active": False},
+                  {"name": "ENV", "description": "Environmental Canada", "is_active": True},
+                  {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": True},
+                  {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
+                  {"name": "RFC", "description": "River Forecast Center", "is_active": False}
                   ]
 
         for v in values:
-            ObservationalSource.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                                      created_by=self.user,
-                                                      updated_by=self.user)
+            ObservationalSource.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active'), description=v.get('description'),
+                                                      created_by=self.user)
 
     def define_optimization(self):
         if self.DELETE_FLAG:
             Optimization.objects.all().delete()
+            OptimizationInput.objects.all().delete()
 
-        values = [{"name": "DDS", "description": "Dynamically Dimensioned Search"},
-                  {"name": "PSO", "description": "Particle Swarm Optimization"},
-                  {"name": "GWO", "description": "Grey Wolf Optimization"},
+        values = [{"name": "DDS", "description": "Dynamically Dimensioned Search",
+                   "inputs": [{"name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE}]},
+                  {"name": "PSO", "description": "Particle Swarm Optimization",
+                   "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER},
+                              {"name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE},
+                              {"name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE},
+                              {"name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE}]},
+                  {"name": "GWO", "description": "Grey Wolf Optimization",
+                   "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER}]},
                   ]
 
         for v in values:
-            Optimization.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                               created_by=self.user,
-                                               updated_by=self.user)
+            optimization, created = Optimization.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
+                                                                       created_by=self.user)
+
+            for i in v.get('inputs'):
+                OptimizationInput.objects.get_or_create(name=i.get('name'), is_active=True, description=i.get('description'),
+                                                        data_type=i.get('data_type'), optimization=optimization,
+                                                        created_by=self.user)
 
     def define_metric(self):
         if self.DELETE_FLAG:
@@ -89,21 +113,22 @@ class Command(BaseCommand):
                   {"name": "KGE", "description": "Kling-Gupta Efficiency"},
                   {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency"},
                   {"name": "LogNSE", "description": "NSE of Logarithmic values"},
-                  {"name": "PoD", "description": "Probability of Detection"},
-                  {"name": "CSI", "description": "Critical Success Index"},
-                  {"name": "FAR", "description": "False Alarm Ratio"},
+                  {"name": "NNSE", "description": "Normalized NSE"},
+                  {"name": "POD", "description": "Probability of Detection", "categorical": True},
+                  {"name": "CSI", "description": "Critical Success Index", "categorical": True},
+                  {"name": "FAR", "description": "False Alarm Ratio", "categorical": True},
                   {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve"},
                   {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve"},
-                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias"},
-                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias"},
-                  {"name": "PKTE", "description": "Peak Flow Timing Error"},
-                  {"name": "EVBIAS", "description": "Event Volume Bias"},
+                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "is_active": False},
+                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "is_active": False},
+                  {"name": "PKTE", "description": "Peak Flow Timing Error", "is_active": False},
+                  {"name": "EVBIAS", "description": "Event Volume Bias", "is_active": False},
                   ]
 
         for v in values:
-            Metric.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                         created_by=self.user,
-                                         updated_by=self.user)
+            Metric.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active', True), description=v.get('description'),
+                                         categorical=v.get('categorical', False),
+                                         created_by=self.user)
 
     def define_status(self):
         if self.DELETE_FLAG:
@@ -111,7 +136,7 @@ class Command(BaseCommand):
 
         e: StatusEnum
         for e in StatusEnum:
-            Status.objects.get_or_create(name=e.value, created_by=self.user, updated_by=self.user)
+            Status.objects.get_or_create(name=e.value, created_by=self.user)
 
     def define_ngen_formulations(self):
         if self.DELETE_FLAG:
@@ -129,10 +154,9 @@ class Command(BaseCommand):
              "description": "LASAM, Noah-OWP-Modular, SFT, SMP"},
             {"name": "topmodel_noah", "modules": json.dumps(["TopModel", "Noah-OWP-Modular"]),
              "description": "TopModel, Noah-OWP-Modular"},
-            ]
+        ]
 
         for v in values:
             NgenCalFormulation.objects.get_or_create(name=v.get('name'), modules=v.get('modules'),
                                                      description=v.get('description'),
-                                                     created_by=self.user,
-                                                     updated_by=self.user)
+                                                     created_by=self.user)

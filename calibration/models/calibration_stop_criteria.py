@@ -5,7 +5,7 @@ from calibration.models.calibration_run import CalibrationRun
 
 
 class CalibrationStopCriteria(BaseModel):
-    description = models.TextField()
+    description = models.TextField(null=False, blank=False)
     calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
     value = models.IntegerField()
     ordinal = models.IntegerField()

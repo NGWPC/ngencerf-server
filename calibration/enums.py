@@ -12,10 +12,18 @@ class StatusEnum(StrEnum):
     SERVER_ERROR = 'Server error'
 
 
+class CalibrationRunType(StrEnum):
+    CALIB = 'calib'
+    VALID_CONTROL = 'valid_control'
+    VALID_BEST = 'valid_best'
+
+
+####  These enums are used in validators
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
     BOOLEAN = 'boolean'
+    STRING = 'string'
 
     @classmethod
     def values(cls):
@@ -33,6 +41,15 @@ class LocationEnum(StrEnum):
 class UnitsEnum(StrEnum):
     M = 'm'
     NONE = 'none'
+
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]
+
+
+class ForcingSourceEnum(StrEnum):
+    AORC = 'AORC'
+    UPLOAD = 'upload'
 
     @classmethod
     def values(cls):

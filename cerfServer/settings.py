@@ -9,24 +9,33 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
-
+import os
 from pathlib import Path
+import re
+
+from dotenv import load_dotenv
+
+
 from .cerf_config import *
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+print(f'Loading values from {dotenv_path}')
+load_dotenv(dotenv_path)
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-gmuchz(a93zw!8+75r+2%nx)mxvz*m(z9%%+i(#t6$1cg!8cg8'
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', False)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = re.split(r',\s*', os.getenv('DJANGO_ALLOWED_HOSTS', ''))
 
 
 # Application definition
@@ -87,12 +96,12 @@ WSGI_APPLICATION = 'cerfServer.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres',
-        'PASSWORD': 'postgres',
-        'HOST': 'localhost',
-        'PORT': '5432'
+        'ENGINE': os.getenv('DJANGO_DATABASE_ENGINE', 'django.db.backends.postgresql'),
+        'NAME': os.getenv('DJANGO_DATABASE_NAME', 'postgres'),
+        'USER': os.getenv('DJANGO_DATABASE_USER', 'postgres'),
+        'PASSWORD': os.getenv('DJANGO_DATABASE_PASSWORD', 'postgres'),
+        'HOST': os.getenv('DJANGO_DATABASE_HOST', 'localhost'),
+        'PORT': os.getenv('DJANGO_DATABASE_PORT', 5432),
     }
 }
 
@@ -144,3 +153,20 @@ LOGOUT_REDIRECT_URL = "home"
 LOGIN_URL = "/accounts/login"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # See http://localhost:8000/accounts/reset/MQ/c9jwqx-4d82a80dd0eea4aa39631edbb908d79d/ for additional SMTP settings
+
+if os.getenv('DJANGO_SQL_LOGGING').upper() == 'TRUE':
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': False,
+        'handlers': {
+            'console': {
+                'class': 'logging.StreamHandler',
+            },
+        },
+        'loggers': {
+            'django.db.backends': {
+                'handlers': ['console'],
+                'level': 'DEBUG',
+            },
+        },
+    }
