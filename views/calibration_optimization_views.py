@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
 from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
-from calibration.models import Optimization, Metric, CalibrationRun, Status, OptimizationInput, CalibrationOptimizationInput
+from calibration.models import Optimization, Metric, CalibrationRun, Status, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 
 
 @api_view(['GET', 'POST'])
@@ -36,7 +36,6 @@ def load_optimization_tab(request):
             return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        # optimization = run.optimization.name if run.optimization else None
         objective_function = run.objective_function.name if run.objective_function else None
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
         if run.optimization:
@@ -55,6 +54,11 @@ def load_optimization_tab(request):
             inputs = list(o.inputs.all().values('name', 'description', 'data_type'))
             optimization_list.append({'name': o.name, 'description': o.description, 'inputs': inputs})
 
+        plot_generation_frequency = run.plot_frequency if run.plot_frequency else None
+
+        calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
+        stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
+
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
@@ -64,7 +68,10 @@ def load_optimization_tab(request):
              'optimization': optimization,
              'optimization_inputs': list(optimization_inputs),
              'objective_function': objective_function,
-             'optimizations': optimization_list},
+             'optimizations': optimization_list,
+             'plot_generation_frequency': plot_generation_frequency,
+             'stop_criteria': stop_criteria
+             },
             safe=False)
     except Exception as e:
         print(traceback.format_exc())
@@ -88,6 +95,8 @@ def save_optimization_tab(request):
         objective_function_name = validate.data.get('objective_function')
         streamflow_threshold = validate.data.get('streamflow_threshold')
         optimization_inputs = validate.data.get('optimization_inputs')
+        stop_criteria = validate.data.get('stop_criteria')
+        plot_generation_frequency = validate.data.get('plot_generation_frequency')
 
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
@@ -120,13 +129,20 @@ def save_optimization_tab(request):
             objective_function = Metric.objects.filter(name=objective_function_name).first()
             if not objective_function:
                 return JsonResponse({'error': f"Invalid metric specified for objective function - '{objective_function_name}'"})
+
             run.objective_function = objective_function
 
             if objective_function.categorical:
                 if not streamflow_threshold:
-                    # TODO Need to also issue this message if flag is set
                     return JsonResponse({'error': f"Streamflow threshold must be specified for a categorical function'"})
                 run.streamflow_threshold = streamflow_threshold
+
+        run.plot_frequency = plot_generation_frequency
+
+        calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run)
+        calibration_stop_criteria.value = stop_criteria
+        # TODO Not sure what this is
+        calibration_stop_criteria.ordinal = 0
 
         with transaction.atomic():
             # Delete existing optimization inputs
@@ -137,6 +153,7 @@ def save_optimization_tab(request):
                     CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
 
             run.save()
+            calibration_stop_criteria.save()
 
             if ngen_cal_input.ready_to_run():
                 run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)

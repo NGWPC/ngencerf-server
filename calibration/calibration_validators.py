@@ -145,4 +145,5 @@ class SaveOptimizationValidator(serializers.Serializer):
     optimization = serializers.CharField(allow_blank=False, required=False)
     objective_function = serializers.CharField(allow_blank=False, required=False)
     streamflow_threshold = serializers.FloatField(required=False)
-    run_categorical_metrics = serializers.BooleanField(default=False)
+    stop_criteria = serializers.IntegerField(required=False)
+    plot_generation_frequency = serializers.IntegerField(required=False)

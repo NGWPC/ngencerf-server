@@ -92,15 +92,15 @@ def load_tuning_tab(request):
 
         # These are all or nothing.  So if this first one exists, we'll assume they all do
         if run.calibration_start_period:
-            calibration_times['simulation_start_time']: run.calibration_start_period
-            calibration_times['simulation_end_time']: run.calibration_end_period
-            calibration_times['calibration_start_time']: run.calibration_eval_start_period
-            calibration_times['calibration_end_time']: run.calibration_eval_end_period
-        if automatic_validation:
-            validation_times['simulation_start_time']: run.validation_start_period
-            validation_times['simulation_end_time']: run.validation_end_period
-            validation_times['validation_start_time']: run.validation_eval_start_period
-            validation_times['validation_end_time']: run.validation_eval_end_period
+            calibration_times['simulation_start_time'] = run.calibration_start_period
+            calibration_times['simulation_end_time'] = run.calibration_end_period
+            calibration_times['calibration_start_time'] = run.calibration_eval_start_period
+            calibration_times['calibration_end_time'] = run.calibration_eval_end_period
+        if automatic_validation and run.validation_start_period:
+            validation_times['simulation_start_time'] = run.validation_start_period
+            validation_times['simulation_end_time'] = run.validation_end_period
+            validation_times['validation_start_time'] = run.validation_eval_start_period
+            validation_times['validation_end_time'] = run.validation_eval_end_period
 
         output_variable_to_calibrate = {
             'module': run.module_output_variable.calibration_formulation.name,
@@ -123,9 +123,8 @@ def load_tuning_tab(request):
             # For each module, get the Parameters and Output Variables
             for m in modules:
                 parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                  .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable')
-                                  # .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable'))
-                                  .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'calibratable',
+                                  .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type', 'calibratable')
+                                  .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type', 'calibratable',
                                           module=F('calibration_formulation__name')))
 
                 parameter_list.extend(parameters)
