@@ -16,8 +16,6 @@ import re
 from dotenv import load_dotenv
 
 
-from .cerf_config import *
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,12 +28,12 @@ load_dotenv(dotenv_path)
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DJANGO_DEBUG', False)
+DEBUG = os.getenv('CERF_SERVER_DEBUG', False)
 
-ALLOWED_HOSTS = re.split(r',\s*', os.getenv('DJANGO_ALLOWED_HOSTS', ''))
+ALLOWED_HOSTS = re.split(r',\s*', os.getenv('CERF_SERVER_ALLOWED_HOSTS', ''))
 
 
 # Application definition
@@ -96,12 +94,12 @@ WSGI_APPLICATION = 'cerfServer.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DJANGO_DATABASE_ENGINE', 'django.db.backends.postgresql'),
-        'NAME': os.getenv('DJANGO_DATABASE_NAME', 'postgres'),
-        'USER': os.getenv('DJANGO_DATABASE_USER', 'postgres'),
-        'PASSWORD': os.getenv('DJANGO_DATABASE_PASSWORD', 'postgres'),
-        'HOST': os.getenv('DJANGO_DATABASE_HOST', 'localhost'),
-        'PORT': os.getenv('DJANGO_DATABASE_PORT', 5432),
+        'ENGINE': os.getenv('CERF_SERVER_DATABASE_ENGINE', 'django.db.backends.postgresql'),
+        'NAME': os.getenv('CERF_SERVER_DATABASE_NAME', 'postgres'),
+        'USER': os.getenv('CERF_SERVER_DATABASE_USER', 'postgres'),
+        'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
+        'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
+        'PORT': os.getenv('CERF_SERVER_DATABASE_PORT', 5432),
     }
 }
 
@@ -154,7 +152,13 @@ LOGIN_URL = "/accounts/login"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # See http://localhost:8000/accounts/reset/MQ/c9jwqx-4d82a80dd0eea4aa39631edbb908d79d/ for additional SMTP settings
 
-if os.getenv('DJANGO_SQL_LOGGING').upper() == 'TRUE':
+VERSION = os.getenv('CERF_SERVER_VERSION')
+CONTACT_EMAIL = os.getenv('CERF_SERVER_CONTACT_EMAIL')
+HYDROFABRIC_URL = os.getenv('CERF_SERVER_HYDROFABRIC_URL')
+NGEN_CAL_MAIN_DIR = os.getenv('CERF_SERVER_NGEN_CALL_MAIN_DIR')
+
+
+if os.getenv('CERF_SERVER_SQL_LOGGING').upper() == 'TRUE':
     LOGGING = {
         'version': 1,
         'disable_existing_loggers': False,

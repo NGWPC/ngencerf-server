@@ -21,7 +21,7 @@ class SaveGageValidator(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=2, required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
-    forcing_path = serializers.CharField(min_length=2, required=False, allow_blank=False)
+    forcing_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
 
 
 def dataTypeValidator(value):
