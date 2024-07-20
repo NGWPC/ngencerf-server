@@ -12,9 +12,15 @@ from calibration.models.status import Status
 class Command(BaseCommand):
     help = "Initializes static tables"
 
-    # Don't turn this flag on unless you know what you're doing.  These values are foreign keys in other tables.
-    # If they are deleted, you'll lose the relationship.
-    # You can re-run this script with DELETE_FLAG=False, and any new values will be added, without touching the existing values.
+    # This script can be run multiple times without harm.  The name field will not be changed, but all other fields, such as
+    # 'description' and 'is_active' will be.
+    # Do not delete any of the data entries.  They will not be deleted.  Deleting any entries in the database cana cause problems
+    # because these fields are Foreign Keys in other tables.
+    # Instead, do a 'soft' delete by setting 'is_active' to false.
+    # You can add new records and this script will add them.
+
+    # Don't turn this flag on unless you know what you're doing.  
+    # For Development oly
     DELETE_FLAG = True
 
     # need to get a user that is guaranteed to be there, such as admin
@@ -44,8 +50,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Domain.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                         created_by=self.user)
+            Domain.objects.get_or_create(name=v.get('name'), defaults={"is_active": v.get('is_active', True),
+                                                                       "description": v.get('description'),
+                                                                       "created_by": self.user})
 
     def define_forcing_source(self):
         if self.DELETE_FLAG:
@@ -56,8 +63,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ForcingSource.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                                created_by=self.user)
+            ForcingSource.objects.get_or_create(name=v.get('name'), defaults={"is_active": v.get('is_active', True),
+                                                                              "description": v.get('description'),
+                                                                              "created_by": self.user})
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
@@ -73,8 +81,10 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ObservationalSource.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active'), description=v.get('description'),
-                                                      created_by=self.user)
+            ObservationalSource.objects.get_or_create(name=v.get('name'),
+                                                      defaults={"is_active": v.get('is_active', True),
+                                                                "description": v.get('description'),
+                                                                "created_by": self.user})
 
     def define_optimization(self):
         if self.DELETE_FLAG:
@@ -93,13 +103,17 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            optimization, created = Optimization.objects.get_or_create(name=v.get('name'), is_active=True, description=v.get('description'),
-                                                                       created_by=self.user)
+            optimization, created = Optimization.objects.get_or_create(name=v.get('name'),
+                                                                       defaults={"is_active": v.get('is_active', True),
+                                                                                 "description": v.get('description'),
+                                                                                 "created_by": self.user})
 
             for i in v.get('inputs'):
-                OptimizationInput.objects.get_or_create(name=i.get('name'), is_active=True, description=i.get('description'),
-                                                        data_type=i.get('data_type'), optimization=optimization,
-                                                        created_by=self.user)
+                OptimizationInput.objects.get_or_create(name=i.get('name'), defaults={"is_active": i.get('is_active', True),
+                                                                                      "description": i.get('description'),
+                                                                                      "data_type": i.get('data_type'),
+                                                                                      "optimization": optimization,
+                                                                                      "created_by": self.user})
 
     def define_metric(self):
         if self.DELETE_FLAG:
@@ -126,9 +140,10 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Metric.objects.get_or_create(name=v.get('name'), is_active=v.get('is_active', True), description=v.get('description'),
-                                         categorical=v.get('categorical', False),
-                                         created_by=self.user)
+            Metric.objects.get_or_create(name=v.get('name'), defaults={"is_active": v.get('is_active', True),
+                                                                       "description": v.get('description'),
+                                                                       "categorical": v.get('categorical', False),
+                                                                       "created_by": self.user})
 
     def define_status(self):
         if self.DELETE_FLAG:
@@ -136,7 +151,7 @@ class Command(BaseCommand):
 
         e: StatusEnum
         for e in StatusEnum:
-            Status.objects.get_or_create(name=e.value, created_by=self.user)
+            Status.objects.get_or_create(name=e.value, defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
         if self.DELETE_FLAG:
@@ -157,6 +172,6 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            NgenCalFormulation.objects.get_or_create(name=v.get('name'), modules=v.get('modules'),
-                                                     description=v.get('description'),
-                                                     created_by=self.user)
+            NgenCalFormulation.objects.get_or_create(name=v.get('name'), defaults={"modules": v.get('modules'),
+                                                                                   "description": v.get('description'),
+                                                                                   "created_by": self.user})
