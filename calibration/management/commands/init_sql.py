@@ -19,7 +19,7 @@ class Command(BaseCommand):
     # Instead, do a 'soft' delete by setting 'is_active' to false.
     # You can add new records and this script will add them.
 
-    # Don't turn this flag on unless you know what you're doing.  
+    # Don't turn this flag on unless you know what you're doing.
     # For Development oly
     DELETE_FLAG = True
 

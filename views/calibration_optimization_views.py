@@ -41,7 +41,6 @@ def load_optimization_tab(request):
         if run.optimization:
             optimization = run.optimization.name
             optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name).values()
-            print('optimization_inputs', optimization_inputs)
         else:
             optimization = None
             optimization_inputs = []
@@ -101,14 +100,14 @@ def save_optimization_tab(request):
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
         if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                 status=status.HTTP_400_BAD_REQUEST)
         if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         if optimization_inputs and not optimization_name:
-            return JsonResponse({'message': 'Optimization inputs cannot be specified without an optimization name'},
+            return JsonResponse({'error': 'Optimization inputs cannot be specified without an optimization name'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         optimization = Optimization.objects.filter(name=optimization_name).first() if optimization_name else None
@@ -139,21 +138,16 @@ def save_optimization_tab(request):
 
         run.plot_frequency = plot_generation_frequency
 
-        calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run)
-        calibration_stop_criteria.value = stop_criteria
-        # TODO Not sure what this is
-        calibration_stop_criteria.ordinal = 0
+        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria, "ordinal": 0})
 
         with transaction.atomic():
             # Delete existing optimization inputs
             CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
             if optimization_inputs:
-                print('optimization', optimization)
                 for o in optimization_inputs:
                     CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
 
             run.save()
-            calibration_stop_criteria.save()
 
             if ngen_cal_input.ready_to_run():
                 run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
