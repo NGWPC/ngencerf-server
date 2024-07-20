@@ -79,10 +79,10 @@ def load_tuning_tab(request):
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
         if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                 status=status.HTTP_400_BAD_REQUEST)
         if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
@@ -234,10 +234,10 @@ def save_tuning_tab(request):
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
         if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                 status=status.HTTP_400_BAD_REQUEST)
         if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         run.calibration_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
