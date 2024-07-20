@@ -130,7 +130,7 @@ def load_tuning_tab(request):
                 parameter_list.extend(parameters)
 
                 output_variable_entry = {'name': m.name,
-                                         'output_variables': list(m.moduleoutputvariable_set.all().values('name', 'description', 'data_type'))}
+                                         'output_variables': list(m.output_variables.all().values('name', 'description', 'data_type'))}
                 output_variable_list.append(output_variable_entry)
 
             if ngen_cal_input.ready_to_run():
@@ -218,6 +218,10 @@ def save_tuning_tab(request):
         validation_times = validate.data.get('validation_times')
         parameters = validate.data.get('parameters')
 
+        print('time', calibration_times)
+        print('time', calibration_times.get('calibration_start_time'))
+        print('time', type(calibration_times.get('calibration_start_time')))
+
         # print('validate', validate)
         output_variable_to_calibrate = validate.data.get('output_variable_to_calibrate')
 
@@ -264,9 +268,7 @@ def save_tuning_tab(request):
         if output_variable_to_calibrate:
             module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate.get('module'),
                                                                                 calibration_run=run).first()
-            print('module_with_output_variable', module_with_output_variable.name, module_with_output_variable.id)
-            print('output variables', module_with_output_variable.moduleoutputvariable_set.all().filter(name='goo'))
-            module_output_variable = module_with_output_variable.moduleoutputvariable_set.all().filter(
+            module_output_variable = module_with_output_variable.output_variables.all().filter(
                 name=output_variable_to_calibrate.get('name')).first()
             if not module_output_variable:
                 return JsonResponse({
