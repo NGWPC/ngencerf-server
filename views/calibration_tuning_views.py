@@ -218,18 +218,7 @@ def save_tuning_tab(request):
         validation_times = validate.data.get('validation_times')
         parameters = validate.data.get('parameters')
 
-        print('time', calibration_times)
-        print('time', calibration_times.get('calibration_start_time'))
-        print('time', type(calibration_times.get('calibration_start_time')))
-
-        # print('validate', validate)
         output_variable_to_calibrate = validate.data.get('output_variable_to_calibrate')
-
-        # print('calibration_run_id', calibration_run_id)
-        # print('automatic_validation', automatic_validation)
-        # print('calibration_times', calibration_times)
-        # print('validation_times', validation_times)
-        # print('parameters', parameters)
 
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
@@ -264,10 +253,12 @@ def save_tuning_tab(request):
                     return JsonResponse({'error': f"Invalid parameter {p.get('name')} specified for module {p.get('module')}"})
 
         # Validate the output_variable_to_calibrate
-        print('output_variable_to_calibrate', output_variable_to_calibrate)
         if output_variable_to_calibrate:
             module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate.get('module'),
                                                                                 calibration_run=run).first()
+            if not module_with_output_variable:
+                return JsonResponse({'error': f"Module \'{output_variable_to_calibrate.get('module')}\' is not part of calibration run {run.id}"},
+                                    status=status.HTTP_400_BAD_REQUEST)
             module_output_variable = module_with_output_variable.output_variables.all().filter(
                 name=output_variable_to_calibrate.get('name')).first()
             if not module_output_variable:

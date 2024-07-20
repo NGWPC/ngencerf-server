@@ -1,7 +1,13 @@
+from datetime import timezone
+
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum
+
+INPUT_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+OUTPUT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 
 
 class CalibrationRunValidator(serializers.Serializer):
@@ -103,17 +109,17 @@ class TuningParametersValidator(serializers.Serializer):
 
 
 class CalibrationTimeControls(serializers.Serializer):
-    calibration_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
-    calibration_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
-    simulation_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
-    simulation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    calibration_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT], default_timezone=timezone.utc)
+    calibration_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT], default_timezone=timezone.utc)
+    simulation_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT], default_timezone=timezone.utc)
+    simulation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT], default_timezone=timezone.utc)
 
 
 class ValidationTimeControls(serializers.Serializer):
-    validation_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
-    validation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
-    simulation_start_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
-    simulation_end_time = serializers.DateTimeField(required=True, format="%Y-%m-%d %H:%M:%S", input_formats=['%Y-%m-%d %H:%M:%S'])
+    validation_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
+    validation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
+    simulation_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
+    simulation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
 
 
 class OutputVariableValidator(serializers.Serializer):
