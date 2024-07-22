@@ -40,7 +40,7 @@ def load_optimization_tab(request):
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
         if run.optimization:
             optimization = run.optimization.name
-            optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name).values()
+            optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name, is_active=True).values('name', 'data_type', 'description')
         else:
             optimization = None
             optimization_inputs = []
@@ -110,22 +110,21 @@ def save_optimization_tab(request):
             return JsonResponse({'error': 'Optimization inputs cannot be specified without an optimization name'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        optimization = Optimization.objects.filter(name=optimization_name).first() if optimization_name else None
+        optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
         if not optimization:
             return JsonResponse({'error': f"Invalid optimization - '{optimization_name}'"})
         run.optimization = optimization
 
         if optimization_inputs:
-            # Check if  parameter is valid for this optimization
-            valid_optimization_inputs = OptimizationInput.objects.filter(optimization=optimization).only('name').values_list('name', flat=True)
             for o in optimization_inputs:
-                if o not in valid_optimization_inputs:
-                    name = o.get('name')
+                name = o.get('name')
+                # See if parameter is valid for this optimization
+                optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
+                if not optimization_input:
                     return JsonResponse({'error': f"'{name}' is not a valid parameter input for '{optimization_name}'"})
-                CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
 
         if objective_function_name:
-            objective_function = Metric.objects.filter(name=objective_function_name).first()
+            objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
             if not objective_function:
                 return JsonResponse({'error': f"Invalid metric specified for objective function - '{objective_function_name}'"})
 
@@ -138,16 +137,16 @@ def save_optimization_tab(request):
 
         run.plot_frequency = plot_generation_frequency
 
-        # ordinal means that this is the first run.  Not really using it now
-        # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
-        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria, "ordinal": 1})
-
         with transaction.atomic():
+            # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
+            CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
+
             # Delete existing optimization inputs
             CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
             if optimization_inputs:
                 for o in optimization_inputs:
-                    CalibrationOptimizationInput.objects.create(value=o.get('value'), optimization=optimization, calibration_run=run)
+                    optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=o.get('name'), is_active=True).first()
+                    CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o.get('value'))
 
             run.save()
 

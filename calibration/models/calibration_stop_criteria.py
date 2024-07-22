@@ -8,7 +8,6 @@ class CalibrationStopCriteria(BaseModel):
     description = models.TextField(null=False, blank=False)
     calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.CASCADE)
     value = models.IntegerField()
-    ordinal = models.IntegerField()
 
     class Meta:
         db_table = 'calibration_stop_criteria'

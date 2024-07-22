@@ -102,10 +102,13 @@ class Command(BaseCommand):
                    "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER}]},
                   ]
 
+        # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
         for v in values:
             optimization, created = Optimization.objects.get_or_create(name=v.get('name'),
                                                                        defaults={"is_active": v.get('is_active', True),
                                                                                  "description": v.get('description'),
+                                                                                 "stop_criteria_name": "iterations",
+                                                                                 "stop_criteria_data_type": DataTypeEnum.INTEGER,
                                                                                  "created_by": self.user})
 
             for i in v.get('inputs'):
