@@ -2,6 +2,7 @@ from datetime import timezone
 
 from django.core.exceptions import ValidationError
 from rest_framework import serializers
+from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum
@@ -13,7 +14,7 @@ OUTPUT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 
 class BaseSerializer(serializers.Serializer):
     def run_validation(self, data=None):
-        if data:
+        if data != empty:
             unknown = set(data) - set(self.fields)
             if unknown:
                 errors = ["Unknown field: {}".format(f) for f in unknown]
@@ -87,6 +88,7 @@ class ParameterValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     initial_value = serializers.FloatField(required=True)
     calibratable = serializers.BooleanField(required=True)
+    type = serializers.CharField(required=True, validators=[dataTypeValidator])
 
 
 class ModuleValidator(BaseSerializer):

@@ -115,10 +115,8 @@ def load_tuning_tab(request):
         if modules:
             # Only do this if modules have been saved in the formulation tab
 
-            print('modules', modules)
-            if not run.got_module_data_from_hydrofabric:
-                print('calling hydrofabric')
-                get_module_data_from_hydrofabric(run, modules)
+            print('calling hydrofabric with', modules)
+            get_module_data_from_hydrofabric(run, modules)
 
             # For each module, get the Parameters and Output Variables
             for m in modules:
@@ -148,58 +146,51 @@ def load_tuning_tab(request):
 
 # @login_required()
 def get_module_data_from_hydrofabric(run, modules):
-    try:
+    # Get this from hydrofabric
+    # modules_request = {"modules":modules}
+    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+    # module_data = response.json()
 
-        # Get this from hydrofabric
-        # modules_request = {"modules":modules}
-        # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-        # module_data = response.json()
+    validator = ModuleDataCollectionValidator(data=module_sample_data)
+    if not validator.is_valid():
+        print(validator.errors)
+        raise Exception('Module metadata from Hydrofabric is not in the expected format')
 
-        validator = ModuleDataCollectionValidator(data=module_sample_data)
-        if not validator.is_valid():
-            print(validator.errors)
-            raise Exception('Module metadata from Hydrofabric is not in the expected format')
+    module_data = module_sample_data.get("modules_data")
 
-        module_data = module_sample_data.get("modules_data")
+    # Save the output variables and parameters for each module
+    # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
+    with transaction.atomic():
+        for m in module_data:
+            print('m', m)
+            # Get the modules object from our list
+            module = modules.filter(name=m.get('name')).first()
+            print('module', module)
 
-        # Save the output variables for each module
-        # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
-        with transaction.atomic():
-            for m in module_data:
-                print('m', m)
-                # Get the modules object from our list
-                module = modules.filter(name=m.get('name')).first()
+            # Save output variables
+            outputs = m.get('output_variables')
+            o: dict
+            for o in outputs:
+                print('o', o)
+                ModuleOutputVariable.objects.get_or_create(name=o.get('name'), calibration_formulation=module,
+                                                           defaults={'data_type': o.get('type'),
+                                                                     'description': o.get('description')})
+            # Save parameters
+            print('getting parameters for', m)
+            parameters = m.get('parameters')
+            print('parameters from Hydro', parameters)
+            for p in parameters:
+                print('p', p)
                 print('module', module)
+                CalibrationTuneParameter.objects.get_or_create(name=p.get('name'), calibration_formulation=module,
+                                                               defaults={'data_type': p.get('type'),
+                                                                         'default_value': p.get('initial_value'),
+                                                                         'calibratable': p.get('calibratable')})  # Do we need description?
 
-                # Save output variables
-                outputs = m.get('output_variables')
-                # Delete output variables for this module instance
-                # ModuleOutputVariable.objects.filter(calibration_formulation=module).delete()
-                o: dict
-                for o in outputs:
-                    print('o', o)
-                    ModuleOutputVariable.objects.create(name=o.get('name'), data_type=o.get('type'),
-                                                        calibration_formulation=module, description=o.get('description'))
-                # Save parameters
-                parameters = m.get('parameters')
-                print('parameters from Hydro', parameters)
-                # Delete parameters for this module instance
-                # CalibrationTuneParameter.objects.filter(calibration_formulation=module, calibration_run=run).delete()
-                for p in parameters:
-                    print('p', p)
-                    print('module', module)
-                    CalibrationTuneParameter.objects.create(name=p.get('name'), data_type=p.get('type'),
-                                                            default_value=p.get('initial_value'),
-                                                            calibration_formulation=module,
-                                                            calibratable=p.get('calibratable'))  # Do we need description?
+        run.got_module_data_from_hydrofabric = True
+        run.save()
 
-            run.got_module_data_from_hydrofabric = True
-            run.save()
-
-        return
-    except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return
 
 
 # TODO Not done yet
