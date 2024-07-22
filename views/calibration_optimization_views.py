@@ -138,7 +138,9 @@ def save_optimization_tab(request):
 
         run.plot_frequency = plot_generation_frequency
 
-        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria, "ordinal": 0})
+        # ordinal means that this is the first run.  Not really using it now
+        # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
+        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria, "ordinal": 1})
 
         with transaction.atomic():
             # Delete existing optimization inputs
