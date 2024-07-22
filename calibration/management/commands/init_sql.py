@@ -158,17 +158,17 @@ class Command(BaseCommand):
             NgenCalFormulation.objects.all().delete()
 
         values = [
-            {"name": "cfe_noah", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular"]), "description": "CFE-S, Noah-OWP-Modular"},
-            {"name": "cfe_noah_sft", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "SFT", "SMP"]),
-             "description": "CFE-S, Noah-OWP-Modular, SFT, SMP"},
-            {"name": "cfe_xaj_noah", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular"]),
-             "description": "CFE-X, Noah-OWP-Modular"},
-            {"name": "cfe_xaj_noah-sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP"]),
-             "description": "CFE-X, Noah-OWP-Modular, SFT, SMP"},
-            {"name": "lasam_noah_sft", "modules": json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP"]),
-             "description": "LASAM, Noah-OWP-Modular, SFT, SMP"},
-            {"name": "topmodel_noah", "modules": json.dumps(["TopModel", "Noah-OWP-Modular"]),
-             "description": "TopModel, Noah-OWP-Modular"},
+            {"name": "cfe_noah", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "Sloth"]), "description": "CFE-S, Noah-OWP-Modular, Sloth"},
+            {"name": "cfe_noah_sft", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "SFT", "SMP", "Sloth"]),
+             "description": "CFE-S, Noah-OWP-Modular, SFT, SMP, Sloth"},
+            {"name": "cfe_xaj_noah", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "Sloth"]),
+             "description": "CFE-X, Noah-OWP-Modular, Sloth"},
+            {"name": "cfe_xaj_noah-sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP", "Sloth"]),
+             "description": "CFE-X, Noah-OWP-Modular, SFT, SMP, Sloth"},
+            {"name": "lasam_noah_sft", "modules": json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP", "Sloth"]),
+             "description": "LASAM, Noah-OWP-Modular, SFT, SMP, Sloth"},
+            {"name": "topmodel_noah", "modules": json.dumps(["TopModel", "Noah-OWP-Modular", "Sloth"]),
+             "description": "TopModel, Noah-OWP-Modular, Sloth"},
         ]
 
         for v in values:
