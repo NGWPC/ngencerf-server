@@ -241,7 +241,7 @@ def save_formulation_tab(request):
         validate = SaveFormulationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
-        new_modules_names = set(validate.data.get('modules'))
+        new_module_names = set(validate.data.get('modules'))
         calibration_run_id = validate.data.get('calibration_run_id')
         formulation_name = validate.data.get('formulation_name')
         sloth_parameters = validate.data.get('sloth_parameters')
@@ -251,11 +251,11 @@ def save_formulation_tab(request):
         valid = False
         for valid_formulation in valid_formulations:
             valid_module_set = set(json.loads(valid_formulation))
-            if valid_module_set == new_modules_names:
+            if valid_module_set == new_module_names:
                 valid = True
                 break
         if not valid:
-            return JsonResponse({"error": f"Invalid formulation - {new_modules_names}"})
+            return JsonResponse({"error": f"Invalid formulation - {new_module_names}"})
 
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
@@ -268,18 +268,17 @@ def save_formulation_tab(request):
 
         run.formulation_name = formulation_name
 
-        # Get current new_modules_names
+        # Get current new_module_names
         existing_module_names = set(
             CalibrationFormulation.objects.filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
 
         print('old existing_module_names', existing_module_names)
-        print('new existing_module_names', new_modules_names)
-        print(new_modules_names == existing_module_names)
+        print('new existing_module_names', new_module_names)
 
         with transaction.atomic():
             # Only if the module names have changed
-            if new_modules_names != existing_module_names:
-                to_be_unused = existing_module_names - new_modules_names
+            if new_module_names != existing_module_names:
+                to_be_unused = existing_module_names - new_module_names
                 print('to_be_unused', to_be_unused)
 
                 # Set them to be unused and delete any parameters and output variables
@@ -288,22 +287,22 @@ def save_formulation_tab(request):
                                                               calibration_formulation__name__in=to_be_unused).delete()
                 ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
 
-                # Indicate that the new_modules names are now in use
-                CalibrationFormulation.objects.filter(calibration_run=run, name__in=new_modules_names, used_by_calibration_run=False).update(
-                    used_by_calibration_run=True)
+                # Create any new formulations
+                for name in new_module_names:
+                    CalibrationFormulation.objects.get_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
-                # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
-                CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-                for s in sloth_parameters:
-                    # Check that the module is valid
-                    if not CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).exists():
-                        error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
-                        print(error)
-                        return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+            # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
+            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+            for s in sloth_parameters:
+                # Check that the module is valid
+                if not CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id, used_by_calibration_run=True).exists():
+                    error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
+                    print(error)
+                    return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
             run.save()
             for s in sloth_parameters:
-                # Get the new_modules_names, so we can set it
+                # Get the new_module_names, so we can set it
                 module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
                 CalibrationSlothParam.objects.create(calibration_run=run, param_name=s.get('name'), param_count=s.get('count'),
                                                      param_type=s.get('type'),
@@ -314,7 +313,7 @@ def save_formulation_tab(request):
             if ngen_cal_input.ready_to_run():
                 run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
-            return JsonResponse({'error': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

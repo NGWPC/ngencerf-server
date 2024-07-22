@@ -21,7 +21,7 @@ class Command(BaseCommand):
 
     # Don't turn this flag on unless you know what you're doing.
     # For Development oly
-    DELETE_FLAG = True
+    DELETE_FLAG = False
 
     # need to get a user that is guaranteed to be there, such as admin
     user = get_user_model().objects.get(username='admin')
@@ -30,7 +30,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         self.stdout.write('Initializing static tables')
 
-        # self.define_modules_and_groups()
         self.define_domains()
         self.define_forcing_source()
         self.define_observational_source()
@@ -150,10 +149,12 @@ class Command(BaseCommand):
 
     def define_status(self):
         if self.DELETE_FLAG:
+            print('deleting')
             Status.objects.all().delete()
 
         e: StatusEnum
         for e in StatusEnum:
+            print('creating', e)
             Status.objects.get_or_create(name=e.value, defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
