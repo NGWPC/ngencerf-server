@@ -58,8 +58,8 @@ def load_optimization_tab(request):
         calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
         stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
 
-        if ngen_cal_input.ready_to_run():
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+        if ngen_cal_input.ready_to_run(run.id):
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse(
             {'calibration_run_id': run.id, 'status': run.status.name,
@@ -150,8 +150,8 @@ def save_optimization_tab(request):
 
             run.save()
 
-            if ngen_cal_input.ready_to_run():
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+            if ngen_cal_input.ready_to_run(run.id):
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:

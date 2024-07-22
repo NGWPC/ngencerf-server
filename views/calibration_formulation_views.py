@@ -180,8 +180,8 @@ def load_formulation_tab(request):
         )
         print('sloth', sloth_parameters)
 
-        if ngen_cal_input.ready_to_run():
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+        if ngen_cal_input.ready_to_run(run.id):
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse(
             {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules),
@@ -310,8 +310,8 @@ def save_formulation_tab(request):
                                                      param_value=s.get('value'), maps_to_module=module,
                                                      maps_to_variable_name=s.get('module_param'))
 
-            if ngen_cal_input.ready_to_run():
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+            if ngen_cal_input.ready_to_run(run.id):
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:

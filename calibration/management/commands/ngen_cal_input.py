@@ -5,6 +5,7 @@ from rest_framework import serializers
 from django.conf import settings
 
 from calibration.enums import CalibrationRunType
+from calibration.models import CalibrationOptimizationInput, CalibrationRun
 
 # TODO This is defined as a management command for dev purposes only.  Will be moved to the regular code
 
@@ -40,7 +41,7 @@ config_template = {
         "full_eval_end_period": "2019-10-01 00:00:00",
         "save_output_iter": 0,
         "save_plot_iter": 0,
-        "save_plot_iter_freqself": 50,
+        "save_plot_iter_freq": 50,
         "streamflow_threshold": "",
         "station_name": "",
         "user_email": "",
@@ -73,7 +74,11 @@ class Command(BaseCommand):
     help = "Check if ready"
 
     def handle(self, *args, **options):
-        ready_to_run()
+        run_id = options['run_id']
+        ready_to_run(run_id)
+
+    def add_arguments(self, parser):
+        parser.add_argument('run_id', type=int)
 
 
 class NgenConfigGeneralValidator(serializers.Serializer):
@@ -139,34 +144,83 @@ class NgenConfigValidator(serializers.Serializer):
     DataFile = NgenConfigDatafileValidator(required=True)
 
 
-def ready_to_run(run):
+class CalibrationOptimizationInputs:
+    pass
+
+
+def ready_to_run(run_id):
     config = dict(config_template)
     general = config.get('General')
     calibration = config.get('Calibration')
     datafile = config.get('DataFile)')
 
-    message = []
+    messages = []
 
-    if not run.gage.gage_id:
-        message.append('gage_id must be specified')
-    general['basin'] = run.gage.gage_id
+    run = CalibrationRun.objects.filter(id=run_id).first()
+    if not run:
+        raise Exception(f'CalibrationRun {run_id} does not exist')
+
+    if not run.gage:
+        messages.append('gage_id must be specified')
+    else:
+        general['basin'] = run.gage.gage_id
 
     if not run.formulation_name:
-        message.append('formulation name must be specified')
-    # Not sure what we list for model
-    general['model'] = '?'
+        messages.append('formulation name must be specified')
+    else:
+        # Not sure what we list for model
+        general['model'] = '?'
 
     if not run.run_type:
-        message.append(f'run_type must be specified - {CalibrationRunType.CALIB} or {CalibrationRunType.VALID_BEST}')
-    general['run_type'] = run.run_type
+        messages.append(f'run_type must be specified - {CalibrationRunType.CALIB} or {CalibrationRunType.VALID_BEST}')
+    else:
+        general['run_type'] = run.run_type
 
     general['main_dir'] = settings.NGEN_CAL_MAIN_DIR
-    
-    if not run.calibration_start_time or not run.calibration_end_time or not run.calibration_eval_start_time or not run.calibration_eval_end_time:
-        message.append('calibration_start_time, calibration_end_time, calibration_eval_start_time and calibration_eval_end_time must be specified')
-        
-    if run.run_type == CalibrationRunType.VALID_BEST and (not run.validation_start_time or not run.validation_end_time or not run.validation_eval_start_time or not run.validation_eval_end_time):
-        message.append('validation_start_time, validation_end_time, validation_eval_start_time and validation_eval_end_time must be specified')
+
+    if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:
+        messages.append('calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
+    else:
+        calibration['calib_start_period'] = run.calibration_start_period
+        calibration['calib_end_period'] = run.calibration_end_period
+        calibration['calib_eval_start_period'] = run.calibration_eval_start_period
+        calibration['calib_eval_start_period'] = run.calibration_eval_start_period
+
+    if run.run_type == CalibrationRunType.VALID_BEST and (
+            not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period):
+        messages.append('validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+    else:
+        calibration['valid_start_period'] = run.validation_start_period
+        calibration['valid_end_period'] = run.validation_end_period
+        calibration['valid_eval_start_period'] = run.validation_eval_start_period
+        calibration['valid_eval_start_period'] = run.validation_eval_start_period
+
+    if not run.objective_function:
+        messages.append('objective function must be specified')
+    calibration['objective_function'] = run.objective_function
+
+    # Are any of te parameters required?
+    inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run)
+    print(inputs.filter(optimization_input__name='swarm_size'))
+    print(inputs.filter(optimization_input__name='swarm_size').first())
+    if swarm := inputs.filter(optimization_input__name='swarm_size').first():
+        calibration['swarm_size'] = swarm.value
+    if c1 := inputs.filter(optimization_input__name='c1').first():
+        calibration['c1'] = c1.value
+    if c2 := inputs.filter(optimization_input__name='c2').first():
+        calibration['c2'] = c2.value
+    if w := inputs.filter(optimization_input__name='w').first():
+        calibration['w'] = w.value
+
+    calibration['save_plot_iter_freq'] = run.plot_frequency
+    # What is save_plot_iter?
+
+    # Where does stop criteria go?
+    # calibration[CalibrationStopCriteria.objects.filter(calibration_run=run).first().value()
+
+    calibration['streamflow_threshold'] = run.streamflow_threshold
+
+    print('messages', messages)
 
     # print('config', config)
     validator = NgenConfigValidator(data=config)
