@@ -51,8 +51,8 @@ def load_gage_tab(request):
         # Get all the gages so the user can select another
         gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
 
-        if ngen_cal_input.ready_to_run(run.id):
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
+        if ngen_cal_input.ready_to_run(run=run):
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
                              'forcing_user_filename': forcing_user_filename, 'gages': list(gages)}, safe=False)
@@ -124,8 +124,8 @@ def save_gage_tab(request):
         with transaction.atomic():
             run.save()
 
-        if ngen_cal_input.ready_to_run(run.id):
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
+        if ngen_cal_input.ready_to_run(run=run):
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:

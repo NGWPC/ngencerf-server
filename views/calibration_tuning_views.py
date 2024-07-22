@@ -131,8 +131,8 @@ def load_tuning_tab(request):
                                          'output_variables': list(m.output_variables.all().values('name', 'description', 'data_type'))}
                 output_variable_list.append(output_variable_entry)
 
-            if ngen_cal_input.ready_to_run(run.id):
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
+            if ngen_cal_input.ready_to_run(run=run):
+                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse(
             {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list, 'module_output_variables': output_variable_list,
@@ -267,8 +267,8 @@ def save_tuning_tab(request):
                      .filter(name=p.get('name'), calibration_formulation__name=p.get('module'), calibration_formulation__calibration_run=run)
                      .update(minimum=p.get('min'), maximum=p.get('max'), initial_value=p.get('initial_value')))
 
-        if ngen_cal_input.ready_to_run(run.id):
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run.id) else Status.objects.get(StatusEnum.SAVED)
+        if ngen_cal_input.ready_to_run(run=run):
+            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
 

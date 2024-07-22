@@ -75,10 +75,12 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         run_id = options['run_id']
-        ready_to_run(run_id)
+        run = options['run']
+        ready_to_run(run_id, run)
 
     def add_arguments(self, parser):
         parser.add_argument('run_id', type=int)
+        parser.add_argument('run', type=CalibrationRun)
 
 
 class NgenConfigGeneralValidator(serializers.Serializer):
@@ -148,7 +150,7 @@ class CalibrationOptimizationInputs:
     pass
 
 
-def ready_to_run(run_id):
+def ready_to_run(run_id=None, run=None):
     config = dict(config_template)
     general = config.get('General')
     calibration = config.get('Calibration')
@@ -156,7 +158,8 @@ def ready_to_run(run_id):
 
     messages = []
 
-    run = CalibrationRun.objects.filter(id=run_id).first()
+    if run_id:
+        run = CalibrationRun.objects.filter(id=run_id).first()
     if not run:
         raise Exception(f'CalibrationRun {run_id} does not exist')
 
