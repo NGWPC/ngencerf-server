@@ -162,16 +162,16 @@ class Command(BaseCommand):
             NgenCalFormulation.objects.all().delete()
 
         values = [
-            {"name": "cfe_noah", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "Sloth"]), "description": "CFE-S, Noah-OWP-Modular, Sloth"},
-            {"name": "cfe_noah_sft", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "SFT", "SMP", "Sloth"]),
-             "description": "CFE-S, Noah-OWP-Modular, SFT, SMP, Sloth"},
-            {"name": "cfe_xaj_noah", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "Sloth"]),
-             "description": "CFE-X, Noah-OWP-Modular, Sloth"},
-            {"name": "cfe_xaj_noah-sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP", "Sloth"]),
-             "description": "CFE-X, Noah-OWP-Modular, SFT, SMP, Sloth"},
-            {"name": "lasam_noah_sft", "modules": json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP", "Sloth"]),
-             "description": "LASAM, Noah-OWP-Modular, SFT, SMP, Sloth"},
-            {"name": "topmodel_noah", "modules": json.dumps(["TopModel", "Noah-OWP-Modular", "Sloth"]),
+            {"name": "cfe_noah", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "Sloth", "T-Route"]), "description": "CFE-S, Noah-OWP-Modular, Sloth, T-Route"},
+            {"name": "cfe_noah_sft", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "SFT", "SMP", "Sloth", "T-Route"]),
+             "description": "CFE-S, Noah-OWP-Modular, SFT, SMP, Sloth, T-Route"},
+            {"name": "cfe_xaj_noah", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "Sloth", "T-Route"]),
+             "description": "CFE-X, Noah-OWP-Modular, Sloth, T-Route"},
+            {"name": "cfe_xaj_noah-sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP", "Sloth", "T-Route"]),
+             "description": "CFE-X, Noah-OWP-Modular, SFT, SMP, Sloth, T-Route"},
+            {"name": "lasam_noah_sft", "modules": json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP", "Sloth", "T-Route"]),
+             "description": "LASAM, Noah-OWP-Modular, SFT, SMP, Sloth, T-Route"},
+            {"name": "topmodel_noah", "modules": json.dumps(["TopModel", "Noah-OWP-Modular", "Sloth", "T-Route"]),
              "description": "TopModel, Noah-OWP-Modular, Sloth"},
         ]
 
