@@ -35,9 +35,10 @@ def create_calibration_run(request):
 def get_jobs(request):
     # Get all jobs for this user
     # TODO Need to filter jobs by user
-    runs = list(CalibrationRun.objects.only('formulation_name', 'gage', 'run_date', 'calibration_start_period', 'calibration_end_period', 'status').values(
-        'formulation_name', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period', 'status__name'))
-    print('run', runs)
+    runs = list(CalibrationRun.objects
+                .only('formulation_name', 'gage', 'run_date', 'calibration_start_period', 'calibration_end_period', 'status')
+                .values('formulation_name', 'run_date', 'calibration_start_period', 'calibration_end_period',
+                        'status__name', 'gage__gage_id','status__name'))
     for r in runs:
         r['gage_id'] = r.pop('gage__gage_id')
         r['status'] = r.pop('status__name')
