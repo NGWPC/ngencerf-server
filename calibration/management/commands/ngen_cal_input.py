@@ -4,6 +4,8 @@ from rest_framework import serializers
 
 from django.conf import settings
 
+from calibration.enums import CalibrationRunType
+
 # TODO This is defined as a management command for dev purposes only.  Will be moved to the regular code
 
 
@@ -137,16 +139,34 @@ class NgenConfigValidator(serializers.Serializer):
     DataFile = NgenConfigDatafileValidator(required=True)
 
 
-def ready_to_run():
+def ready_to_run(run):
     config = dict(config_template)
     general = config.get('General')
     calibration = config.get('Calibration')
     datafile = config.get('DataFile)')
 
-    general['basin'] = "gage_id"
-    general['model'] = "cfe"
-    general['run_type'] = "calib"
+    message = []
+
+    if not run.gage.gage_id:
+        message.append('gage_id must be specified')
+    general['basin'] = run.gage.gage_id
+
+    if not run.formulation_name:
+        message.append('formulation name must be specified')
+    # Not sure what we list for model
+    general['model'] = '?'
+
+    if not run.run_type:
+        message.append(f'run_type must be specified - {CalibrationRunType.CALIB} or {CalibrationRunType.VALID_BEST}')
+    general['run_type'] = run.run_type
+
     general['main_dir'] = settings.NGEN_CAL_MAIN_DIR
+    
+    if not run.calibration_start_time or not run.calibration_end_time or not run.calibration_eval_start_time or not run.calibration_eval_end_time:
+        message.append('calibration_start_time, calibration_end_time, calibration_eval_start_time and calibration_eval_end_time must be specified')
+        
+    if run.run_type == CalibrationRunType.VALID_BEST and (not run.validation_start_time or not run.validation_end_time or not run.validation_eval_start_time or not run.validation_eval_end_time):
+        message.append('validation_start_time, validation_end_time, validation_eval_start_time and validation_eval_end_time must be specified')
 
     # print('config', config)
     validator = NgenConfigValidator(data=config)
