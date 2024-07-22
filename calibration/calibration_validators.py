@@ -134,12 +134,34 @@ class CalibrationTimeControls(BaseSerializer):
     simulation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT],
                                                     default_timezone=timezone.utc)
 
+    def validate(self, data):
+        if data['calibration_start_time'] > data['calibration_end_time']:
+            raise serializers.ValidationError({'calibration_start_time': 'calibration_end_time must occur after calibration_start_time'})
+        if data['simulation_start_time'] > data['simulation_end_time']:
+            raise serializers.ValidationError({'simulation_start_time': 'simulation_end_time must occur after simulation_start_time'})
+        if data['simulation_start_time'] > data['calibration_start_time']:
+            raise serializers.ValidationError({'simulation_start_time': 'calibration_start_time must occur after simulation_start_time'})
+        if data['calibration_end_time'] > data['simulation_end_time']:
+            raise serializers.ValidationError({'simulation_start_time': 'simulation_end_time must occur after calibration_end_time'})
+        return data
+
 
 class ValidationTimeControls(BaseSerializer):
     validation_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
     validation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
     simulation_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
     simulation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
+    
+    def validate(self, data):
+        if data['validation_start_time'] > data['validation_end_time']:
+            raise serializers.ValidationError({'validation_start_time': 'validation_end_time must occur after validation_start_time'})
+        if data['simulation_start_time'] > data['simulation_end_time']:
+            raise serializers.ValidationError({'simulation_start_time': 'simulation_end_time must occur after simulation_start_time'})
+        if data['simulation_start_time'] > data['validation_start_time']:
+            raise serializers.ValidationError({'simulation_start_time': 'validation_start_time must occur after simulation_start_time'})
+        if data['validation_end_time'] > data['simulation_end_time']:
+            raise serializers.ValidationError({'simulation_start_time': 'simulation_end_time must occur after validation_end_time'})
+        return data
 
 
 class OutputVariableValidator(BaseSerializer):
