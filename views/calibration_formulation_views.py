@@ -10,7 +10,7 @@ from calibration.calibration_validators import SaveFormulationValidator, Calibra
 from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
-    Status
+    Status, CalibrationTuneParameter, ModuleOutputVariable
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -150,13 +150,16 @@ def load_formulation_tab(request):
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
         if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                 status=status.HTTP_400_BAD_REQUEST)
         if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
-        # See if we already have modules defined for this run
+        formulation_name = run.formulation_name
+
+        get_modules_from_hydrofabric(run)
+
         modules = (
             CalibrationFormulation.objects.filter(calibration_run=run)
             .only('name', 'groups', 'used_by_calibration_run')
@@ -166,23 +169,16 @@ def load_formulation_tab(request):
         for m in modules:
             m['groups'] = json.loads(m['groups'])
 
-        formulation_name = run.formulation_name
-
-        if not modules:
-            # Get modules from Hydrofabric
-            modules = get_modules_from_hydrofabric(run)
-            sloth_parameters = []
-        else:
-            # Get sloth parameters
-            sloth_parameters = (
-                CalibrationSlothParam.objects.filter(calibration_run=run)
-                .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                      'maps_to_variable_name')
-                .values(
-                    'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
-                    'maps_to_variable_name')
-            )
-            print('sloth', sloth_parameters)
+        # Get sloth parameters
+        sloth_parameters = (
+            CalibrationSlothParam.objects.filter(calibration_run=run)
+            .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+                  'maps_to_variable_name')
+            .values(
+                'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
+                'maps_to_variable_name')
+        )
+        print('sloth', sloth_parameters)
 
         if ngen_cal_input.ready_to_run():
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
@@ -196,30 +192,44 @@ def load_formulation_tab(request):
 
 
 def get_modules_from_hydrofabric(run):
+    print('calling hydrofabric')
+
+    # Get this from hydrofabric
+    # modules_request = {}
+    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+    # module_data = response.json()
+
+    current_module_names = set(
+        CalibrationFormulation.objects.filter(calibration_run=run)
+        .only('name')
+        .values_list('name', flat=True)
+    )
+
+    print('current_module_names', current_module_names)
+
+    validator = ModuleCollectionValidator(data=module_sample_data)
+    if not validator.is_valid():
+        print(validator.errors)
+        raise Exception('Module data from Hydrofabric is not in the expected format')
+
+    module_data = module_sample_data.get("modules_data")
+    new_modules_names = set(map(lambda mod: mod.get('name'), module_data))
+    print('new_modules_names', new_modules_names)
+
     with transaction.atomic():
-        # Get this from hydrofabric
-        # modules_request = {}
-        # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-        # module_data = response.json()
+        if current_module_names != new_modules_names:
+            # Only if the modules names have changed
+            to_be_deleted = current_module_names - new_modules_names
 
-        validator = ModuleCollectionValidator(data=module_sample_data)
-        if not validator.is_valid():
-            print(validator.errors)
-            raise Exception('Module data from Hydrofabric is not in the expected format')
+            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
 
-        module_data = module_sample_data.get("modules_data")
+            # Create the new ones, if they don't already exist
+            for m in module_data:
+                CalibrationFormulation.objects.get_or_create(name=m.get('name'), calibration_run=run,
+                                                             defaults={'groups': json.dumps(m.get('groups')),
+                                                                       'description': m.get('description')})
 
-        #### Not sure when we would do this
-        # Delete modules for this run, if they've already been specified
-        # CalibrationFormulation.objects.filter(calibration_run=run).delete()
-
-        # Save the modules
-        for m in module_data:
-            CalibrationFormulation.objects.create(name=m.get('name'), groups=json.dumps(m.get('groups')),
-                                                  calibration_run=run,
-                                                  description=m.get('description'))
-
-        return module_data
+        return
 
 
 @api_view(['POST'])
@@ -231,7 +241,7 @@ def save_formulation_tab(request):
         validate = SaveFormulationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
-        modules = set(validate.data.get('modules'))
+        new_module_names = set(validate.data.get('modules'))
         calibration_run_id = validate.data.get('calibration_run_id')
         formulation_name = validate.data.get('formulation_name')
         sloth_parameters = validate.data.get('sloth_parameters')
@@ -241,49 +251,58 @@ def save_formulation_tab(request):
         valid = False
         for valid_formulation in valid_formulations:
             valid_module_set = set(json.loads(valid_formulation))
-            if valid_module_set == modules:
+            if valid_module_set == new_module_names:
                 valid = True
                 break
         if not valid:
-            return JsonResponse({"error": f"Invalid formulation - {modules}"})
+            return JsonResponse({"error": f"Invalid formulation - {new_module_names}"})
 
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
         if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                 status=status.HTTP_400_BAD_REQUEST)
         if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         run.formulation_name = formulation_name
 
-        # Clear the in use flag for all modules
-        count = CalibrationFormulation.objects.filter(calibration_run_id=run.id).update(used_by_calibration_run=False)
-        if count == 0:
-            # This means that Hydrofabric was not called to add the modules for this run
-            return JsonResponse({'error': f"Cannot find modules associated with Calibration Run {calibration_run_id}"}, status=status.HTTP_400_BAD_REQUEST)
+        # Get current new_module_names
+        existing_module_names = set(
+            CalibrationFormulation.objects.filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
 
-        # Indicate that the modules are now in use
-        for name in modules:
-            count = CalibrationFormulation.objects.filter(name=name, calibration_run_id=run.id).update(used_by_calibration_run=True)
-            if count == 0:
-                return JsonResponse({'error': f"Cannot find module '{name}' associated with Calibration Run {calibration_run_id}"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Delete params for this run if they've already been specified
-        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-        for s in sloth_parameters:
-            # Check that the module is value
-            module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
-            if not module:
-                error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
-                print(error)
-                return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+        print('old existing_module_names', existing_module_names)
+        print('new existing_module_names', new_module_names)
 
         with transaction.atomic():
+            # Only if the module names have changed
+            if new_module_names != existing_module_names:
+                to_be_unused = existing_module_names - new_module_names
+                print('to_be_unused', to_be_unused)
+
+                # Set them to be unused and delete any parameters and output variables
+                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
+                CalibrationTuneParameter.objects.all().filter(calibration_formulation__calibration_run=run,
+                                                              calibration_formulation__name__in=to_be_unused).delete()
+                ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
+
+                # Create any new formulations
+                for name in new_module_names:
+                    CalibrationFormulation.objects.get_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+
+            # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
+            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+            for s in sloth_parameters:
+                # Check that the module is valid
+                if not CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id, used_by_calibration_run=True).exists():
+                    error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
+                    print(error)
+                    return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+
             run.save()
             for s in sloth_parameters:
-                # Get the modules so we can set it
+                # Get the new_module_names, so we can set it
                 module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
                 CalibrationSlothParam.objects.create(calibration_run=run, param_name=s.get('name'), param_count=s.get('count'),
                                                      param_type=s.get('type'),

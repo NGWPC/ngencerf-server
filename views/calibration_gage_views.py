@@ -37,16 +37,16 @@ def load_gage_tab(request):
         # TODO Need to filter jobs by user
         run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
         if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
                                 status=status.HTTP_400_BAD_REQUEST)
         if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
                                 status=status.HTTP_400_BAD_REQUEST)
 
         gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
         forcing_source = run.forcing_source
-        forcing_path = run.forcing_path
+        forcing_user_filename = run.forcing_user_filename
 
         # Get all the gages so the user can select another
         gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
@@ -55,7 +55,7 @@ def load_gage_tab(request):
             run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
 
         return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
-                             'forcing_path': forcing_path, 'gages': list(gages)}, safe=False)
+                             'forcing_user_filename': forcing_user_filename, 'gages': list(gages)}, safe=False)
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -99,7 +99,16 @@ def save_gage_tab(request):
         calibration_run_id = validate.data.get('calibration_run_id')
         gage_id = validate.data.get('gage_id')
         forcing_source = validate.data.get('forcing_source')
-        forcing_path = validate.data.get('forcing_path')
+        forcing_user_filename = validate.data.get('forcing_user_filename')
+
+        # TODO Need to filter jobs by user
+        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
+        if not run:
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
+            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
+                                status=status.HTTP_400_BAD_REQUEST)
 
         if gage_id:
             gage = Gage.objects.filter(gage_id=gage_id).first()
@@ -108,17 +117,9 @@ def save_gage_tab(request):
             else:
                 run.gage = gage
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'message': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-
         run.forcing_source = forcing_source
-        run.forcing_path = forcing_path
+        run.forcing_user_filename = forcing_user_filename
+        # TODO Need to fill in forcing_path with our location
 
         with transaction.atomic():
             run.save()

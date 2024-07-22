@@ -7,8 +7,8 @@ class Optimization(BaseModel):
     description = models.TextField(null=False, blank=False)
     is_active = models.BooleanField(null=False, default=True)
     name = models.TextField(unique=True, null=False)
-    stop_criteria_name = models.TextField()
-    stop_criteria_data_type = models.TextField()
+    stop_criteria_name = models.TextField(null=False, blank=False)
+    stop_criteria_data_type = models.TextField(null=False, blank=False)
 
     class Meta:
         db_table = 'optimization'
