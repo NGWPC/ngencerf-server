@@ -272,3 +272,10 @@ def save_tuning_tab(request):
     except Exception as e:
         print(traceback.format_exc())
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def date_range_intersection(start1, end1, start2, end2):
+    # The get latest start data and the earlier end date
+    new_start = max([start1, start2])
+    new_end = min([end2, end2])
+    return new_start, new_end if new_start < new_end else 0
