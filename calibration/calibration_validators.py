@@ -61,14 +61,14 @@ def locationValidator(value):
 
 
 class SlothParameters(BaseSerializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    count = serializers.IntegerField(required=True)
-    type = serializers.CharField(required=True, validators=[dataTypeValidator])
-    units = serializers.CharField(required=True, validators=[unitsValidator])
-    location = serializers.CharField(required=True, validators=[locationValidator])
-    value = serializers.FloatField(required=True)
-    module = serializers.CharField(required=True, allow_blank=False)
-    module_param = serializers.CharField(required=True, allow_blank=False)
+    param_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    param_count = serializers.IntegerField(required=True)
+    param_type = serializers.CharField(required=True, validators=[dataTypeValidator])
+    param_units = serializers.CharField(required=True, validators=[unitsValidator])
+    param_location = serializers.CharField(required=True, validators=[locationValidator])
+    param_value = serializers.FloatField(required=True)
+    maps_to_module = serializers.CharField(required=True, allow_blank=False)
+    maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
 
 class SaveFormulationValidator(BaseSerializer):
