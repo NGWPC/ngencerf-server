@@ -288,7 +288,7 @@ def save_formulation_tab(request):
 
                 # Create any new formulations
                 for name in new_module_names:
-                    CalibrationFormulation.objects.get_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+                    CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
             # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
