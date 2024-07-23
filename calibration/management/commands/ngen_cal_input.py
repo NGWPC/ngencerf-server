@@ -4,8 +4,8 @@ from rest_framework import serializers
 
 from django.conf import settings
 
-from calibration.enums import CalibrationRunType
-from calibration.models import CalibrationOptimizationInput, CalibrationRun
+from calibration.enums import CalibrationRunType, StatusEnum
+from calibration.models import CalibrationOptimizationInput, CalibrationRun, Status
 
 # TODO This is defined as a management command for dev purposes only.  Will be moved to the regular code
 
@@ -182,7 +182,8 @@ def ready_to_run(run_id=None, run=None):
     general['main_dir'] = settings.NGEN_CAL_MAIN_DIR
 
     if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:
-        messages.append('calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
+        messages.append(
+            'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
         calibration['calib_start_period'] = run.calibration_start_period
         calibration['calib_end_period'] = run.calibration_end_period
@@ -191,7 +192,8 @@ def ready_to_run(run_id=None, run=None):
 
     if run.run_type == CalibrationRunType.VALID_BEST and (
             not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period):
-        messages.append('validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+        messages.append(
+            'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
     else:
         calibration['valid_start_period'] = run.validation_start_period
         calibration['valid_end_period'] = run.validation_end_period
@@ -227,11 +229,18 @@ def ready_to_run(run_id=None, run=None):
 
     # print('config', config)
     validator = NgenConfigValidator(data=config)
-    if not validator.is_valid():
-        print(f"Not ready")
-        return False
-    else:
-        return True
+    # if not validator.is_valid():
+    #     print(f"Not ready")
+    #     run.status = Status.objects.filter(name=StatusEnum.SAVED).first()
+    #
+    #     return False
+    # else:
+    #     run.status = Status.objects.filter(name=StatusEnum.READY).first()
+    #     return True
+
+    run.status = Status.objects.filter(name=(StatusEnum.READY if validator.is_valid() else StatusEnum.SAVED)).first()
+    run.save()
+    return messages
 
 
 def build_config():

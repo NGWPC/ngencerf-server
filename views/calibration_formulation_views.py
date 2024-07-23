@@ -10,7 +10,7 @@ from calibration.calibration_validators import SaveFormulationValidator, Calibra
 from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
-    Status, CalibrationTuneParameter, ModuleOutputVariable
+    CalibrationTuneParameter, ModuleOutputVariable
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -180,8 +180,7 @@ def load_formulation_tab(request):
         )
         print('sloth', sloth_parameters)
 
-        if ngen_cal_input.ready_to_run(run=run):
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
+        ngen_cal_input.ready_to_run(run=run)
 
         return JsonResponse(
             {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules),
@@ -310,8 +309,7 @@ def save_formulation_tab(request):
                                                      param_value=s.get('value'), maps_to_module=module,
                                                      maps_to_variable_name=s.get('module_param'))
 
-            if ngen_cal_input.ready_to_run(run=run):
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
+            ngen_cal_input.ready_to_run(run=run)
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:

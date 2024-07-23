@@ -14,6 +14,7 @@ OUTPUT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S %z"
 
 class BaseSerializer(serializers.Serializer):
     def run_validation(self, data=None):
+        print('data', data)
         if data != empty:
             unknown = set(data) - set(self.fields)
             if unknown:

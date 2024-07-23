@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
 from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
-from calibration.models import Optimization, Metric, CalibrationRun, Status, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
+from calibration.models import Optimization, Metric, CalibrationRun, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 
 
 @api_view(['GET', 'POST'])
@@ -58,8 +58,7 @@ def load_optimization_tab(request):
         calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
         stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
 
-        if ngen_cal_input.ready_to_run(run=run):
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
+        ngen_cal_input.ready_to_run(run=run)
 
         return JsonResponse(
             {'calibration_run_id': run.id, 'status': run.status.name,
@@ -150,8 +149,7 @@ def save_optimization_tab(request):
 
             run.save()
 
-            if ngen_cal_input.ready_to_run(run=run):
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run(run=run) else Status.objects.get(StatusEnum.SAVED)
+            ngen_cal_input.ready_to_run(run=run)
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
