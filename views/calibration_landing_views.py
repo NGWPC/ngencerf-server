@@ -2,6 +2,7 @@ import traceback
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Func, Value, CharField
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -9,6 +10,13 @@ from rest_framework.decorators import api_view
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
+
+
+class DateToChar(Func):
+    arity = 1
+    function = 'to_char'
+    output_field = CharField()
+    template = "%(function)s(%(expressions)s, 'dd-MM-yyyy HH:MI:SS')"
 
 
 @api_view(['POST'])
@@ -28,7 +36,6 @@ def create_calibration_run(request):
         return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# TODO Need to test this with start/end period
 # noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
 # @login_required
@@ -38,13 +45,16 @@ def get_jobs(request):
     runs = list(CalibrationRun.objects
                 .only('id', 'formulation_name', 'gage', 'run_date',
                       'calibration_start_period', 'calibration_end_period', 'status')
+                .annotate(formatted_calibration_start_period=DateToChar('calibration_start_period'),
+                          formatted_calibration_end_period=DateToChar('calibration_end_period'))
                 .values('id', 'formulation_name', 'gage__gage_id', 'run_date',
-                        'calibration_start_period', 'calibration_end_period', 'calibration_eval_start_period',
-                        'calibration_eval_end_period', 'status__name'))
+                        'formatted_calibration_start_period', 'formatted_calibration_end_period', 'status__name'))
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
         r['status'] = r.pop('status__name')
+        r['calibration_start_period'] = r.pop('formatted_calibration_start_period')
+        r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
     return JsonResponse(runs, safe=False)
 
 
