@@ -164,7 +164,7 @@ def ready_to_run(run_id=None, run=None):
     else:
         general['basin'] = run.gage.gage_id
 
-    if not run.formulation_name:
+    if not run.ngen_formulation_name:
         messages.append('formulation name must be specified')
     else:
         # Not sure what we list for model
@@ -202,8 +202,6 @@ def ready_to_run(run_id=None, run=None):
 
     # Are any of te parameters required?
     inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run)
-    print(inputs.filter(optimization_input__name='swarm_size'))
-    print(inputs.filter(optimization_input__name='swarm_size').first())
     if swarm := inputs.filter(optimization_input__name='swarm_size').first():
         calibration['swarm_size'] = swarm.value
     if c1 := inputs.filter(optimization_input__name='c1').first():

@@ -75,6 +75,7 @@ class SaveFormulationValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     formulation_name = serializers.CharField(min_length=2, required=False, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(min_length=2, required=True), min_length=2)
+    use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
 
 

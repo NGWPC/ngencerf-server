@@ -2,7 +2,7 @@ import traceback
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Func, CharField
+from django.db.models import Func, CharField, F
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -43,12 +43,12 @@ def get_jobs(request):
     # Get all jobs for this user
     # TODO Need to filter jobs by user
     runs = list(CalibrationRun.objects
-                .only('id', 'formulation_name', 'gage', 'run_date',
+                .only('id', 'user_formulation_name', 'gage', 'run_date',
                       'calibration_start_period', 'calibration_end_period', 'status')
                 .annotate(formatted_calibration_start_period=DateToChar('calibration_start_period'),
                           formatted_calibration_end_period=DateToChar('calibration_end_period'))
-                .values('id', 'formulation_name', 'gage__gage_id', 'run_date',
-                        'formatted_calibration_start_period', 'formatted_calibration_end_period', 'status__name'))
+                .values('id', 'gage__gage_id', 'run_date', 'formatted_calibration_start_period', 'formatted_calibration_end_period',
+                        'status__name', formulation_name=F('user_formulation_name')))
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
