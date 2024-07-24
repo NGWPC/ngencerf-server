@@ -7,9 +7,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
-from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
-from calibration.models import Optimization, Metric, CalibrationRun, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
+from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
+from views.common import get_run
 
 
 @api_view(['GET', 'POST'])
@@ -27,14 +27,9 @@ def load_optimization_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         objective_function = run.objective_function.name if run.objective_function else None
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
@@ -96,14 +91,9 @@ def save_optimization_tab(request):
         stop_criteria = validate.data.get('stop_criteria')
         plot_generation_frequency = validate.data.get('plot_generation_frequency')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         if optimization_inputs and not optimization_name:
             return JsonResponse({'error': 'Optimization inputs cannot be specified without an optimization name'},

@@ -8,9 +8,10 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataCollectionValidator
-from calibration.enums import StatusEnum, CalibrationRunType
+from calibration.enums import CalibrationRunType
 from calibration.management.commands import ngen_cal_input
-from calibration.models import CalibrationRun, CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from views.common import get_run
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -75,14 +76,9 @@ def load_tuning_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
         print('automatic_validation', automatic_validation)
@@ -209,14 +205,9 @@ def save_tuning_tab(request):
 
         output_variable_to_calibrate = validate.data.get('output_variable_to_calibrate')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         run.calibration_start_period = calibration_times.get('simulation_start_time') if calibration_times else None
         run.calibration_end_period = calibration_times.get('simulation_end_time') if calibration_times else None
@@ -277,5 +268,5 @@ def save_tuning_tab(request):
 def date_range_intersection(start1, end1, start2, end2):
     # The get latest start data and the earlier end date
     new_start = max([start1, start2])
-    new_end = min([end2, end2])
+    new_end = min([end1, end2])
     return new_start, new_end if new_start < new_end else 0

@@ -8,9 +8,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator
-from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
-from calibration.models import Gage, CalibrationRun
+from calibration.models import Gage
+from views.common import get_run
 
 
 # Probably don't need this
@@ -34,14 +34,9 @@ def load_gage_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
@@ -100,14 +95,9 @@ def save_gage_tab(request):
         forcing_source = validate.data.get('forcing_source')
         forcing_user_filename = validate.data.get('forcing_user_filename')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         if gage_id:
             gage = Gage.objects.filter(gage_id=gage_id).first()

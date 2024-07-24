@@ -2,7 +2,7 @@ import traceback
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Func, Value, CharField
+from django.db.models import Func, CharField
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view

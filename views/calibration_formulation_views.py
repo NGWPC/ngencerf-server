@@ -2,16 +2,15 @@ import json
 import traceback
 
 from django.db import transaction
-from django.db.models import F
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleCollectionValidator
-from calibration.enums import StatusEnum
 from calibration.management.commands import ngen_cal_input
-from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
+from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
+from views.common import get_run
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -148,14 +147,9 @@ def load_formulation_tab(request):
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         formulation_name = run.formulation_name
 
@@ -256,14 +250,9 @@ def save_formulation_tab(request):
         if not valid:
             return JsonResponse({"error": f"Invalid formulation - {new_module_names}"})
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
         run.formulation_name = formulation_name
 
