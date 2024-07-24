@@ -39,20 +39,17 @@ module_sample_data = {"modules_data": [
                 "name": "parameter1",
                 "type": "double",
                 "initial_value": 0.0,
-                "calibratable": True
             },
 
             {
                 "name": "parameter2",
                 "type": "double",
                 "initial_value": 0.0,
-                "calibratable": False
             },
             {
                 "name": "parameter3",
                 "type": "double",
                 "initial_value": 0.0,
-                "calibratable": True
             }
 
         ]
@@ -116,8 +113,8 @@ def load_tuning_tab(request):
             # For each module, get the Parameters and Output Variables
             for m in modules:
                 parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                  .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type', 'calibratable')
-                                  .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type', 'calibratable',
+                                  .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type')
+                                  .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type',
                                           module=F('calibration_formulation__name')))
 
                 parameter_list.extend(parameters)
@@ -178,8 +175,7 @@ def get_module_data_from_hydrofabric(run, modules):
                 print('module', module)
                 CalibrationTuneParameter.objects.get_or_create(name=p.get('name'), calibration_formulation=module,
                                                                defaults={'data_type': p.get('type'),
-                                                                         'default_value': p.get('initial_value'),
-                                                                         'calibratable': p.get('calibratable')})  # Do we need description?
+                                                                         'default_value': p.get('initial_value')})  # Do we need description?
 
         run.got_module_data_from_hydrofabric = True
         run.save()

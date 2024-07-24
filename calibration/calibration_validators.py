@@ -87,7 +87,6 @@ class ModuleOutputVariablesValidator(BaseSerializer):
 class ParameterValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     initial_value = serializers.FloatField(required=True)
-    calibratable = serializers.BooleanField(required=True)
     type = serializers.CharField(required=True, validators=[dataTypeValidator])
 
 

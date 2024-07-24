@@ -11,7 +11,6 @@ class CalibrationTuneParameter(BaseModel):
     initial_value = models.FloatField(null=True)
     minimum = models.FloatField(null=True)
     maximum = models.FloatField(null=True)
-    calibratable = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'calibration_tune_parameter'
