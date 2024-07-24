@@ -146,10 +146,6 @@ class NgenConfigValidator(serializers.Serializer):
     DataFile = NgenConfigDatafileValidator(required=True)
 
 
-class CalibrationOptimizationInputs:
-    pass
-
-
 def ready_to_run(run_id=None, run=None):
     config = dict(config_template)
     general = config.get('General')
