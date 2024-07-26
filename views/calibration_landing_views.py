@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
+from views.common import JsonException
 
 
 class DateToChar(Func):
@@ -32,8 +33,7 @@ def create_calibration_run(request):
             return JsonResponse({'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id},
                                 status=status.HTTP_201_CREATED)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 # noinspection PyUnusedLocal
@@ -65,5 +65,4 @@ def get_footer(request):
     try:
         return JsonResponse({"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL})
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())

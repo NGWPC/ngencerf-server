@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator
 from calibration.management.commands import ngen_cal_input
 from calibration.models import Gage
-from views.common import get_run
+from views.common import get_run, JsonException, JsonError
 
 
 # Probably don't need this
@@ -51,8 +51,7 @@ def load_gage_tab(request):
         return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
                              'forcing_user_filename': forcing_user_filename, 'gages': list(gages)}, safe=False)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 @api_view(['GET', 'POST'])
@@ -72,12 +71,11 @@ def get_gage(request):
         gage = Gage.objects.filter(gage_id=gage_id).only('gage_id', 'agency', 'station_name').values(
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
-            return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
 
         return JsonResponse(gage, safe=False)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 @api_view(['POST'])
@@ -102,7 +100,7 @@ def save_gage_tab(request):
         if gage_id:
             gage = Gage.objects.filter(gage_id=gage_id).first()
             if not gage:
-                return JsonResponse({"error": f"Gage '{gage_id}' does not exist"}, status=status.HTTP_404_NOT_FOUND)
+                return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
             else:
                 run.gage = gage
 
@@ -117,5 +115,4 @@ def save_gage_tab(request):
 
         return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())

@@ -28,3 +28,13 @@ def get_running(calibration_run_id, user):
         return run, JsonResponse({'error': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'},
                                  status=status.HTTP_400_BAD_REQUEST)
     return run, None
+
+
+def JsonError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
+    print(error)
+    return JsonResponse({'error': error}, status=httpStatus, safe=False)
+
+
+def JsonException(e, stacktrace):
+    print(stacktrace)
+    return JsonResponse({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

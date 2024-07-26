@@ -3,14 +3,13 @@ import traceback
 
 from django.db import transaction
 from django.http import JsonResponse
-from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleCollectionValidator
+from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
 from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
-from views.common import get_run
+from views.common import get_run, JsonError, JsonException
 
 SLOTH = 'SLoTH'
 
@@ -19,6 +18,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "GC2D",
         "description": "description of module",
+        "version": {
+             "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+             "module_home_page": "https://www.acme-corp.com",
+             "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Glacier"
         ]
@@ -26,6 +30,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "Noah-OWP-Modular",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -34,6 +43,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "Snow-17",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt"
         ]
@@ -41,6 +55,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "UEB",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -49,6 +68,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "CFE-S",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ],
@@ -56,6 +80,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "CFE-X",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ],
@@ -63,6 +92,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "PET",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Evapotranspiration"
         ]
@@ -70,6 +104,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "TopModel",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -77,6 +116,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "Sac-SMA",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -84,6 +128,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "LASAM",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -91,6 +140,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SMP",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Soil Moisture"
         ]
@@ -98,6 +152,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SFT",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt"
         ]
@@ -105,6 +164,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "T-Route",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Routing"
         ],
@@ -112,6 +176,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SCHISM",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Coastal"
         ]
@@ -119,6 +188,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SFINCS",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Coastal"
         ]
@@ -182,8 +256,7 @@ def load_formulation_tab(request):
              'use_sloth': use_sloth,
              "sloth_parameters": list(sloth_parameters)}, safe=False)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 def get_modules_from_hydrofabric(run):
@@ -202,7 +275,7 @@ def get_modules_from_hydrofabric(run):
 
     print('current_module_names', current_module_names)
 
-    validator = ModuleCollectionValidator(data=module_sample_data)
+    validator = ModuleHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
         print(validator.errors)
         raise Exception('Module data from Hydrofabric is not in the expected format')
@@ -256,21 +329,22 @@ def save_formulation_tab(request):
                 run.ngen_formulation_name = valid_formulation.get('name')
                 break
         if not valid:
-            return JsonResponse({'error': f'Invalid formulation - {new_module_names}'})
+            return JsonError("Invalid formulation-  '{}'".format(new_module_names))
 
         run.user_formulation_name = user_formulation_name
 
         if use_sloth:
             new_module_names.add(SLOTH)
             if not sloth_parameters:
-                return JsonResponse({'error': 'Invalid formulation - You must enter Sloth parameters'})
+                return JsonError("Invalid formulation -  You must enter SLoTH parameters")
+
         else:
             if sloth_parameters:
-                return JsonResponse({'error': 'You must check the box to allow Sloth parameters to be specified'})
+                return JsonError('You must check the box to allow Sloth parameters to be specified')
 
         # Did we get the names from Hydrofabric
         if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
-            return JsonResponse({'error': 'Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab'})
+            return JsonError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
 
         run.use_sloth = use_sloth
 
@@ -303,9 +377,9 @@ def save_formulation_tab(request):
                 # Check that the module is valid
                 if not CalibrationFormulation.objects.filter(name=s.get('maps_to_module'), calibration_run_id=run.id,
                                                              used_by_calibration_run=True).exists():
-                    error = f"Sloth parameters contain an invalid module - \'{s.get('maps_to_modules')}\'.  This module has not been added to this run"
-                    print(error)
-                    return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+                    # error = f"Sloth parameters contain an invalid module - \'{s.get('maps_to_modules')}\'.  This module has not been added to this run"
+                    # print(error)
+                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s.get('apps_to_modules')))
 
             run.save()
             for s in sloth_parameters:
@@ -321,5 +395,4 @@ def save_formulation_tab(request):
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())

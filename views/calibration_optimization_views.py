@@ -3,13 +3,12 @@ import traceback
 
 from django.db import transaction
 from django.http import JsonResponse
-from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
 from calibration.management.commands import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
-from views.common import get_run
+from views.common import get_run, JsonException, JsonError
 
 
 @api_view(['GET', 'POST'])
@@ -67,8 +66,7 @@ def load_optimization_tab(request):
              },
             safe=False)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 # noinspection PyUnusedLocal
@@ -96,12 +94,11 @@ def save_optimization_tab(request):
             return errorReturn
 
         if optimization_inputs and not optimization_name:
-            return JsonResponse({'error': 'Optimization inputs cannot be specified without an optimization name'},
-                                status=status.HTTP_400_BAD_REQUEST)
+            return JsonError('Optimization inputs cannot be specified without an optimization name')
 
         optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
         if not optimization:
-            return JsonResponse({'error': f"Invalid optimization - '{optimization_name}'"})
+            return JsonError("Invalid optimization - '{}'".format(optimization_name))
         run.optimization = optimization
 
         if optimization_inputs:
@@ -110,18 +107,18 @@ def save_optimization_tab(request):
                 # See if parameter is valid for this optimization
                 optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
                 if not optimization_input:
-                    return JsonResponse({'error': f"'{name}' is not a valid parameter input for '{optimization_name}'"})
+                    return JsonError("'{}' is not a valid parameter input for '{}'".format(name, optimization_name))
 
         if objective_function_name:
             objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
             if not objective_function:
-                return JsonResponse({'error': f"Invalid metric specified for objective function - '{objective_function_name}'"})
+                return JsonError("Invalid metric specified for objective function - '{}'".format(objective_function_name))
 
             run.objective_function = objective_function
 
             if objective_function.categorical:
                 if not streamflow_threshold:
-                    return JsonResponse({'error': f"Streamflow threshold must be specified for a categorical function'"})
+                    return JsonError("Streamflow threshold must be specified for a categorical function'")
                 run.streamflow_threshold = streamflow_threshold
 
         run.plot_frequency = plot_generation_frequency
@@ -143,5 +140,4 @@ def save_optimization_tab(request):
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())

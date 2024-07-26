@@ -2,12 +2,11 @@ import json
 import traceback
 
 from django.http import JsonResponse
-from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator
 from calibration.management.commands import ngen_cal_input
-from views.common import get_run
+from views.common import get_run, JsonException
 
 
 @api_view(['GET', 'POST'])
@@ -36,5 +35,4 @@ def is_ready(request):
 
         return JsonResponse(response)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())

@@ -91,20 +91,39 @@ class ParameterValidator(BaseSerializer):
     type = serializers.CharField(required=True, validators=[dataTypeValidator])
 
 
-class ModuleValidator(BaseSerializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    description = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True, allow_blank=False))
+# class ModuleValidator(BaseSerializer):
+#     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+#     description = serializers.CharField(min_length=2, required=True, allow_blank=False)
+#     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True, allow_blank=False))
 
 
-class ModuleCollectionValidator(BaseSerializer):
-    modules_data = ModuleValidator(many=True, min_length=1, required=True)
-
+# class ModuleCollectionValidator(BaseSerializer):
+#     modules_data = ModuleValidator(many=True, min_length=1, required=True)
+#
+# ameters = ParameterValidator(many=True, min_length=1, required=True)
 
 class ModuleDataValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     output_variables = ModuleOutputVariablesValidator(many=True, min_length=1, required=True)
     parameters = ParameterValidator(many=True, min_length=1, required=True)
+
+
+class ModuleHydrofabricVersionValidator(BaseSerializer):
+    version = serializers.CharField(required=True, allow_blank=False)
+    # home page and data will always be there, but we don't care about it
+    module_home_page = serializers.CharField(required=False)
+    version_date = serializers.DateTimeField(required=False)
+
+
+class ModuleHydrofabricValidator(BaseSerializer):
+    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    description = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True, allow_blank=False))
+    version = ModuleHydrofabricVersionValidator(required=True)
+
+
+class ModuleHydrofabricListValidator(BaseSerializer):
+    modules_data = ModuleHydrofabricValidator(many=True, min_length=1, required=True)
 
 
 class ModuleDataCollectionValidator(BaseSerializer):
@@ -151,7 +170,7 @@ class ValidationTimeControls(BaseSerializer):
     validation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
     simulation_start_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
     simulation_end_time = serializers.DateTimeField(required=True, format=OUTPUT_DATE_FORMAT, input_formats=[INPUT_DATE_FORMAT])
-    
+
     def validate(self, data):
         if data['validation_start_time'] > data['validation_end_time']:
             raise serializers.ValidationError({'validation_start_time': 'validation_end_time must occur after validation_start_time'})

@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
-from views.common import get_running
+from views.common import get_running, JsonException
 
 
 # Called by ngen_cal
@@ -36,5 +36,4 @@ def report_iteration(request):
                                  'status': run.status.name},
                                 status=status.HTTP_201_CREATED)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())

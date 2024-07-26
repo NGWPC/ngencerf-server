@@ -4,14 +4,13 @@ import traceback
 from django.db import transaction
 from django.db.models import F
 from django.http import JsonResponse
-from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataCollectionValidator
 from calibration.enums import CalibrationRunType
 from calibration.management.commands import ngen_cal_input
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
-from views.common import get_run
+from views.common import get_run, JsonException, JsonError
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -131,8 +130,7 @@ def load_tuning_tab(request):
              'validation_times': validation_times, 'automatic_validation': automatic_validation,
              'output_variable_to_calibrate': output_variable_to_calibrate}, safe=False)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 # @login_required()
@@ -221,26 +219,24 @@ def save_tuning_tab(request):
 
         if parameters:
             if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-                return JsonResponse({'error': 'CalibrationTuneParameters have not been loaded from Hydrofabric'},
-                                    status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                return JsonError('CalibrationTuneParameters have not been loaded from Hydrofabric')
             # Make sure the parameters we are trying to save exist
             for p in parameters:
                 if not CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_formulation__name=p.get('module')).exists():
-                    return JsonResponse({'error': f"Invalid parameter {p.get('name')} specified for module {p.get('module')}"})
+                    return JsonError("Invalid parameter '{}' specified for module '{}'".format(p.get('name'), p.get('module')))
 
         # Validate the output_variable_to_calibrate
         if output_variable_to_calibrate:
             module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate.get('module'),
                                                                                 calibration_run=run).first()
             if not module_with_output_variable:
-                return JsonResponse({'error': f"Module \'{output_variable_to_calibrate.get('module')}\' is not part of calibration run {run.id}"},
-                                    status=status.HTTP_400_BAD_REQUEST)
+                return JsonError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate.get('module'), run.id))
             module_output_variable = module_with_output_variable.output_variables.all().filter(
                 name=output_variable_to_calibrate.get('name')).first()
             if not module_output_variable:
-                return JsonResponse({
-                    'error': f"Module output variable '{output_variable_to_calibrate.get('name')}' not found in module '{output_variable_to_calibrate.get('module')}' for this run"},
-                    status=status.HTTP_400_BAD_REQUEST)
+                return JsonError("Module output variable '{}' not found in module '{}' for this run".format(
+                    output_variable_to_calibrate.get('name'), output_variable_to_calibrate.get('module')))
+
             print('module_output_variable', module_output_variable)
             run.module_output_variable = module_output_variable
 
@@ -255,10 +251,8 @@ def save_tuning_tab(request):
         ngen_cal_input.ready_to_run(run=run)
 
         return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
-
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e, traceback.format_exc())
 
 
 def date_range_intersection(start1, end1, start2, end2):
