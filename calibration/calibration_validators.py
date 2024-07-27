@@ -79,42 +79,48 @@ class SaveFormulationValidator(BaseSerializer):
     sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
 
 
+# Output variables from Hydrofabric
 class ModuleOutputVariablesValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     description = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    type = serializers.CharField(required=True, validators=[dataTypeValidator])
+    # type = serializers.CharField(required=True, validators=[dataTypeValidator])
 
 
-class ParameterValidator(BaseSerializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    initial_value = serializers.FloatField(required=True)
-    type = serializers.CharField(required=True, validators=[dataTypeValidator])
-
-
-# class ModuleValidator(BaseSerializer):
+# class ParameterValidator(BaseSerializer):
 #     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-#     description = serializers.CharField(min_length=2, required=True, allow_blank=False)
-#     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True, allow_blank=False))
+#     initial_value = serializers.FloatField(required=True)
+#     type = serializers.CharField(required=True, validators=[dataTypeValidator])
 
 
-# class ModuleCollectionValidator(BaseSerializer):
-#     modules_data = ModuleValidator(many=True, min_length=1, required=True)
-#
-# ameters = ParameterValidator(many=True, min_length=1, required=True)
-
-class ModuleDataValidator(BaseSerializer):
+# Parameters from Hydrofabric
+class ModuleParametersValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    output_variables = ModuleOutputVariablesValidator(many=True, min_length=1, required=True)
-    parameters = ParameterValidator(many=True, min_length=1, required=True)
+    data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
+    units = serializers.CharField(required=True)
+    min = serializers.FloatField(required=True)
+    max = serializers.FloatField(required=True)
+    initial_value = serializers.FloatField(required=True)
+    # parameters = ParameterValidator(many=True, min_length=1, required=True)
 
 
-class ModuleHydrofabricVersionValidator(BaseSerializer):
+# Module object from Hydrofabric containing module parameters and output variables
+class ModuleMetadataHydrofabricValidator(BaseSerializer):
+    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    module_parameters = ModuleParametersValidator(many=True)
+    module_output_variables = ModuleOutputVariablesValidator(many=True)
+
+
+# List of module objects from Hydrofabric containing module parameters and output variables
+class ModuleDataHydrofabricListValidator(BaseSerializer):
+    modules_data = ModuleMetadataHydrofabricValidator(many=True, min_length=1, required=True)
+
+
+# This class extends the original serializers.Serializer, since we want to ignore extra fields
+class ModuleHydrofabricVersionValidator(serializers.Serializer):
     version = serializers.CharField(required=True, allow_blank=False)
-    # home page and data will always be there, but we don't care about it
-    module_home_page = serializers.CharField(required=False)
-    version_date = serializers.DateTimeField(required=False)
 
 
+# Module objects from Hydrofabric contain group names and version
 class ModuleHydrofabricValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     description = serializers.CharField(min_length=2, required=True, allow_blank=False)
@@ -122,12 +128,9 @@ class ModuleHydrofabricValidator(BaseSerializer):
     version = ModuleHydrofabricVersionValidator(required=True)
 
 
+# List of module objects from Hydrofabric containing group names and version
 class ModuleHydrofabricListValidator(BaseSerializer):
     modules_data = ModuleHydrofabricValidator(many=True, min_length=1, required=True)
-
-
-class ModuleDataCollectionValidator(BaseSerializer):
-    modules_data = ModuleDataValidator(many=True, min_length=1, required=True)
 
 
 class ReportIterationValidator(BaseSerializer):
@@ -140,7 +143,7 @@ class TuningParametersValidator(BaseSerializer):
     module = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=True)
     maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True)
+    # initial_value = serializers.FloatField(required=True)
 
 
 class CalibrationTimeControls(BaseSerializer):

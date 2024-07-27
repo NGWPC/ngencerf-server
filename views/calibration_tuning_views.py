@@ -6,7 +6,7 @@ from django.db.models import F
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataCollectionValidator
+from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
 from calibration.management.commands import ngen_cal_input
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
@@ -16,39 +16,45 @@ from views.common import get_run, JsonException, JsonError
 module_sample_data = {"modules_data": [
     {
         "name": "Noah-OWP-Modular",
-        "output_variables": [
+        "module_output_variables": [
             {
                 "name": "QINSUR",
                 "description": "description of variable",
-                "type": "double"
             },
             {
                 "name": "ETRAN",
                 "description": "description of variable",
-                "type": "double"
             },
             {
                 "name": "QSEVA",
                 "description": "description of variable",
-                "type": "double"
             },
         ],
-        "parameters": [
+        "module_parameters": [
             {
                 "name": "parameter1",
-                "type": "double",
+                "data_type": "double",
+                "units": "m/s",
                 "initial_value": 0.0,
+                "min": 0.0,
+                "max": 0.0
             },
 
             {
                 "name": "parameter2",
-                "type": "double",
+                "data_type": "double",
+                "units": "m/s",
                 "initial_value": 0.0,
+                "min": 0.0,
+                "max": 0.0
             },
             {
                 "name": "parameter3",
-                "type": "double",
+                "data_type": "double",
+                "units": "m/s",
                 "initial_value": 0.0,
+                "min": 0.0,
+                "max": 0.0
             }
 
         ]
@@ -106,7 +112,7 @@ def load_tuning_tab(request):
         if modules:
             # Only do this if modules have been saved in the formulation tab
 
-            print('calling hydrofabric with', modules)
+            # print('calling hydrofabric with', modules)
             get_module_data_from_hydrofabric(run, modules)
 
             # For each module, get the Parameters and Output Variables
@@ -119,7 +125,7 @@ def load_tuning_tab(request):
                 parameter_list.extend(parameters)
 
                 output_variable_entry = {'name': m.name,
-                                         'output_variables': list(m.output_variables.all().values('name', 'description', 'data_type'))}
+                                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
                 output_variable_list.append(output_variable_entry)
 
             ngen_cal_input.ready_to_run(run=run)
@@ -140,10 +146,11 @@ def get_module_data_from_hydrofabric(run, modules):
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
     # module_data = response.json()
 
-    validator = ModuleDataCollectionValidator(data=module_sample_data)
+    validator = ModuleDataHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
         print(validator.errors)
         raise Exception('Module metadata from Hydrofabric is not in the expected format')
+    print('here i am')
 
     module_data = module_sample_data.get("modules_data")
 
@@ -157,22 +164,22 @@ def get_module_data_from_hydrofabric(run, modules):
             print('module', module)
 
             # Save output variables
-            outputs = m.get('output_variables')
+            outputs = m.get('module_output_variables')
             o: dict
             for o in outputs:
                 print('o', o)
                 ModuleOutputVariable.objects.get_or_create(name=o.get('name'), calibration_formulation=module,
-                                                           defaults={'data_type': o.get('type'),
-                                                                     'description': o.get('description')})
+                                                           defaults={'description': o.get('description')})
             # Save parameters
             print('getting parameters for', m)
-            parameters = m.get('parameters')
+            parameters = m.get('module_parameters')
             print('parameters from Hydro', parameters)
             for p in parameters:
                 print('p', p)
                 print('module', module)
+                # TODO need to handle min/max
                 CalibrationTuneParameter.objects.get_or_create(name=p.get('name'), calibration_formulation=module,
-                                                               defaults={'data_type': p.get('type'),
+                                                               defaults={'data_type': p.get('data_type'),
                                                                          'default_value': p.get('initial_value')})  # Do we need description?
 
         run.got_module_data_from_hydrofabric = True

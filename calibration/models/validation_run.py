@@ -1,9 +1,8 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from calibration.models.status import Status
 from calibration.models.base_model import BaseModel
-from calibration.models.calibration_run import CalibrationRun
+from calibration.models.status import Status
 
 
 class ValidationRun(BaseModel):
