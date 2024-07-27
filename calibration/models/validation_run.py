@@ -9,8 +9,8 @@ from calibration.models.calibration_run import CalibrationRun
 class ValidationRun(BaseModel):
     description = models.TextField(null=False, blank=False)
     is_active = models.BooleanField(null=False, default=True)
-    calibration_run = models.ForeignKey(CalibrationRun, null=True, related_name="validations", on_delete=models.SET_NULL)
-    calibration_run_tune_parameters = models.ForeignKey(CalibrationRun, related_name="validations_tune_parameters", null=True, on_delete=models.SET_NULL)
+    calibration_run = models.ForeignKey('CalibrationRun', null=True, related_name="validations", on_delete=models.SET_NULL)
+    iteration = models.IntegerField(null=True)
     validation_start_period = models.DateTimeField()
     validation_end_period = models.DateTimeField()
     validation_eval_start_period = models.DateTimeField()
