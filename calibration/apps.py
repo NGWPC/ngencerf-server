@@ -10,10 +10,9 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-        for l in libs:
-            if not os.path.exists(l):
-                print(l, 'does not exist')
-        for d in dirs:
-            if not os.path.exists(d):
-                print(d, 'does not exist')
-
+        for lib in libs:
+            if not os.path.exists(lib):
+                print(lib, 'does not exist')
+        for dir in dirs:
+            if not os.path.exists(dir):
+                print(dir, 'does not exist')

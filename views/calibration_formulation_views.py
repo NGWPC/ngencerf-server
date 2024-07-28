@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -10,6 +10,9 @@ from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
 from views.common import get_run, JsonError, JsonException
+
+logger = logging.getLogger(__name__)
+
 
 SLOTH = 'SLoTH'
 
@@ -256,7 +259,7 @@ def load_formulation_tab(request):
              'use_sloth': use_sloth,
              "sloth_parameters": list(sloth_parameters)}, safe=False)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 def get_modules_from_hydrofabric(run):
@@ -395,4 +398,4 @@ def save_formulation_tab(request):
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)

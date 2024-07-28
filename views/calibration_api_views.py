@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -9,6 +9,8 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
 from views.common import get_running, JsonException
+
+logger = logging.getLogger(__name__)
 
 
 # Called by ngen_cal
@@ -36,4 +38,4 @@ def report_iteration(request):
                                  'status': run.status.name},
                                 status=status.HTTP_201_CREATED)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)

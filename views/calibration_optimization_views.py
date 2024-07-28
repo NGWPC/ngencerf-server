@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -9,6 +9,8 @@ from calibration.calibration_validators import CalibrationRunValidator, SaveOpti
 from calibration.management.commands import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from views.common import get_run, JsonException, JsonError
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['GET', 'POST'])
@@ -66,7 +68,7 @@ def load_optimization_tab(request):
              },
             safe=False)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 # noinspection PyUnusedLocal
@@ -140,4 +142,4 @@ def save_optimization_tab(request):
 
             return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)

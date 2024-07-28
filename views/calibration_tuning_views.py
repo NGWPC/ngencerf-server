@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 
 from django.db import transaction
 from django.db.models import F
@@ -11,6 +11,9 @@ from calibration.enums import CalibrationRunType
 from calibration.management.commands import ngen_cal_input
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from views.common import get_run, JsonException, JsonError
+
+logger = logging.getLogger(__name__)
+
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -136,7 +139,7 @@ def load_tuning_tab(request):
              'validation_times': validation_times, 'automatic_validation': automatic_validation,
              'output_variable_to_calibrate': output_variable_to_calibrate}, safe=False)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 # @login_required()
@@ -259,7 +262,7 @@ def save_tuning_tab(request):
 
         return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 def date_range_intersection(start1, end1, start2, end2):

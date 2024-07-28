@@ -1,4 +1,4 @@
-import traceback
+import logging
 
 from django.conf import settings
 from django.db import transaction
@@ -11,6 +11,8 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from views.common import JsonException
+
+logger = logging.getLogger(__name__)
 
 
 class DateToChar(Func):
@@ -33,7 +35,7 @@ def create_calibration_run(request):
             return JsonResponse({'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id},
                                 status=status.HTTP_201_CREATED)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 # noinspection PyUnusedLocal
@@ -65,4 +67,4 @@ def get_footer(request):
     try:
         return JsonResponse({"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL})
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)

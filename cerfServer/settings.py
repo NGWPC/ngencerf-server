@@ -60,8 +60,7 @@ ROOT_URLCONF = 'cerfServer.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates']
-        ,
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -126,17 +125,44 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO'
+    },
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
+            'level': 'DEBUG',
             'class': 'logging.StreamHandler',
+            'formatter': 'simple'
         },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
+            'formatter': 'verbose'
+        }
     },
     'loggers': {
         'django.db.backends': {
             'handlers': ['console'],
             'level': 'INFO',
         },
-    },
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,  # Allow logs to bubble up to parent loggers
+        }
+    }
 }
 
 REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')

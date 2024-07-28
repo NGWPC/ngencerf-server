@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 
 from django.db import transaction
 from django.http import JsonResponse
@@ -11,6 +11,8 @@ from calibration.calibration_validators import SaveGageValidator, GageIdValidato
 from calibration.management.commands import ngen_cal_input
 from calibration.models import Gage
 from views.common import get_run, JsonException, JsonError
+
+logger = logging.getLogger(__name__)
 
 
 # Probably don't need this
@@ -28,6 +30,8 @@ def load_gage_tab(request):
             data = json.loads(request.body or '{}')
         else:
             data = request.GET
+
+        logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
         validate = CalibrationRunValidator(data=data)
         validate.is_valid(raise_exception=True)
@@ -48,10 +52,13 @@ def load_gage_tab(request):
 
         ngen_cal_input.ready_to_run(run=run)
 
-        return JsonResponse({'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
-                             'forcing_user_filename': forcing_user_filename, 'gages': list(gages)}, safe=False)
+        response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage, 'forcing_source': forcing_source,
+                    'forcing_user_filename': forcing_user_filename, 'gages': list(gages)}
+        logger.debug(f'Returning to {request.user} from load_gage_tab() - {response}')
+
+        return JsonResponse(response, safe=False)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 @api_view(['GET', 'POST'])
@@ -63,6 +70,8 @@ def get_gage(request):
         else:
             data = request.GET
 
+        logger.debug(f'get_gage() request from {request.user} - {data}')
+
         validate = GageIdValidator(data=data)
         validate.is_valid(raise_exception=True)
 
@@ -72,10 +81,11 @@ def get_gage(request):
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
             return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+        logger.debug(f'Returning to {request.user} from get_gage() - {gage}')
 
         return JsonResponse(gage, safe=False)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)
 
 
 @api_view(['POST'])
@@ -85,6 +95,7 @@ def save_gage_tab(request):
         print('user', request.user)
 
         body = json.loads(request.body or '{}')
+        logger.debug(f'save_gage_tab() request from {request.user} - {body}')
         validate = SaveGageValidator(data=body)
         validate.is_valid(raise_exception=True)
 
@@ -113,6 +124,8 @@ def save_gage_tab(request):
 
         ngen_cal_input.ready_to_run(run=run)
 
-        return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+        logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
+        return JsonResponse(response)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)

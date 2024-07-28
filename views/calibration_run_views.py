@@ -1,5 +1,5 @@
 import json
-import traceback
+import logging
 
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
@@ -7,6 +7,8 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import CalibrationRunValidator
 from calibration.management.commands import ngen_cal_input
 from views.common import get_run, JsonException
+
+logger = logging.getLogger(__name__)
 
 
 @api_view(['GET', 'POST'])
@@ -35,4 +37,4 @@ def is_ready(request):
 
         return JsonResponse(response)
     except Exception as e:
-        return JsonException(e, traceback.format_exc())
+        return JsonException(e)

@@ -17,7 +17,9 @@ ALLOWED_HOSTS = ['.localhost', '127.0.0.1']
 DEBUG = True
 
 # SQL logging
-LOGGING.get('loggers').get('django.db.backends')['level'] = 'INFO'
+LOGGING['loggers']['django.db.backends']['level'] = 'INFO'
+# Regular logging
+LOGGING['root']['level'] = 'DEBUG'
 
 VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
