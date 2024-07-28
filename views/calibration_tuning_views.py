@@ -14,7 +14,6 @@ from views.common import get_run, JsonException, JsonError
 
 logger = logging.getLogger(__name__)
 
-
 # For testing
 module_sample_data = {"modules_data": [
     {
@@ -76,6 +75,8 @@ def load_tuning_tab(request):
         else:
             data = request.GET
 
+        logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
+
         validate = CalibrationRunValidator(data=data)
         validate.is_valid(raise_exception=True)
 
@@ -133,11 +134,14 @@ def load_tuning_tab(request):
 
             ngen_cal_input.ready_to_run(run=run)
 
-        return JsonResponse(
-            {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list, 'module_output_variables': output_variable_list,
-             'calibration_times': calibration_times,
-             'validation_times': validation_times, 'automatic_validation': automatic_validation,
-             'output_variable_to_calibrate': output_variable_to_calibrate}, safe=False)
+        response = {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list,
+                    'module_output_variables': output_variable_list,
+                    'calibration_times': calibration_times,
+                    'validation_times': validation_times, 'automatic_validation': automatic_validation,
+                    'output_variable_to_calibrate': output_variable_to_calibrate}
+        logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
+
+        return JsonResponse(response, safe=False)
     except Exception as e:
         return JsonException(e)
 
@@ -198,6 +202,8 @@ def save_tuning_tab(request):
     try:
         print('user', request.user)
         body = json.loads(request.body or '{}')
+        logger.debug(f'save_tuning_tab() request from {request.user} - {body}')
+
         validate = SaveTuningValidator(data=body)
         validate.is_valid(raise_exception=True)
 
@@ -260,7 +266,9 @@ def save_tuning_tab(request):
 
         ngen_cal_input.ready_to_run(run=run)
 
-        return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+        logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response}')
+        return JsonResponse(response)
     except Exception as e:
         return JsonException(e)
 

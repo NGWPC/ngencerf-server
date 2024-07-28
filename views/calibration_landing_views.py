@@ -27,13 +27,15 @@ class DateToChar(Func):
 def create_calibration_run(request):
     try:
         print('user', request.user)
+        logger.debug(f'create_calibration_run() request from {request.user}')
 
         with transaction.atomic():
             # Need to add request.user to the Run object
             run = CalibrationRun.objects.create(is_active=True, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
-            return JsonResponse({'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id},
-                                status=status.HTTP_201_CREATED)
+            response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
+            logger.debug(f'Returning to {request.user} from create_calibration_run() - {response}')
+            return JsonResponse(response, status=status.HTTP_201_CREATED)
     except Exception as e:
         return JsonException(e)
 
@@ -42,6 +44,8 @@ def create_calibration_run(request):
 @api_view(['POST', 'GET'])
 # @login_required
 def get_jobs(request):
+    logger.debug(f'get_jobs() request from {request.user}')
+
     # Get all jobs for this user
     # TODO Need to filter jobs by user
     runs = list(CalibrationRun.objects
@@ -57,6 +61,8 @@ def get_jobs(request):
         r['status'] = r.pop('status__name')
         r['calibration_start_period'] = r.pop('formatted_calibration_start_period')
         r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
+
+    logger.debug(f'Returning to {request.user} from get_jobs()() - {runs}')
     return JsonResponse(runs, safe=False)
 
 
@@ -65,6 +71,8 @@ def get_jobs(request):
 # @login_required
 def get_footer(request):
     try:
-        return JsonResponse({"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL})
+        response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
+        logger.debug(f'Returning to {request.user} from get_footer() - {response}')
+        return JsonResponse(response)
     except Exception as e:
         return JsonException(e)

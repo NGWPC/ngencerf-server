@@ -13,7 +13,6 @@ from views.common import get_run, JsonError, JsonException
 
 logger = logging.getLogger(__name__)
 
-
 SLOTH = 'SLoTH'
 
 # For testing
@@ -22,9 +21,9 @@ module_sample_data = {"modules_data": [
         "name": "GC2D",
         "description": "description of module",
         "version": {
-             "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-             "module_home_page": "https://www.acme-corp.com",
-             "version_date": "2024-08-29T09:12:33.001Z"
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
             "Glacier"
@@ -214,6 +213,8 @@ def load_formulation_tab(request):
         else:
             data = request.GET
 
+        logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+
         validate = CalibrationRunValidator(data=data)
         validate.is_valid(raise_exception=True)
 
@@ -254,10 +255,13 @@ def load_formulation_tab(request):
 
         ngen_cal_input.ready_to_run(run=run)
 
-        return JsonResponse(
-            {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name, "modules": module_list,
-             'use_sloth': use_sloth,
-             "sloth_parameters": list(sloth_parameters)}, safe=False)
+        response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
+                    "modules": module_list,
+                    'use_sloth': use_sloth,
+                    "sloth_parameters": list(sloth_parameters)}
+        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response}')
+
+        return JsonResponse(response, safe=False)
     except Exception as e:
         return JsonException(e)
 
@@ -309,6 +313,8 @@ def save_formulation_tab(request):
     try:
         print('user', request.user)
         body = json.loads(request.body or '{}')
+        logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
+
         validate = SaveFormulationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
@@ -382,7 +388,8 @@ def save_formulation_tab(request):
                                                              used_by_calibration_run=True).exists():
                     # error = f"Sloth parameters contain an invalid module - \'{s.get('maps_to_modules')}\'.  This module has not been added to this run"
                     # print(error)
-                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s.get('apps_to_modules')))
+                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(
+                        s.get('apps_to_modules')))
 
             run.save()
             for s in sloth_parameters:
@@ -396,6 +403,8 @@ def save_formulation_tab(request):
 
             ngen_cal_input.ready_to_run(run=run)
 
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response}')
+            return JsonResponse(response)
     except Exception as e:
         return JsonException(e)

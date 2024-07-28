@@ -23,6 +23,8 @@ def load_optimization_tab(request):
         else:
             data = request.GET
 
+        logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
+
         validate = CalibrationRunValidator(data=data)
         validate.is_valid(raise_exception=True)
 
@@ -36,7 +38,9 @@ def load_optimization_tab(request):
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
         if run.optimization:
             optimization = run.optimization.name
-            optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name, is_active=True).values('name', 'data_type', 'description')
+            optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name, is_active=True).values('name',
+                                                                                                                                    'data_type',
+                                                                                                                                    'description')
         else:
             optimization = None
             optimization_inputs = []
@@ -56,17 +60,18 @@ def load_optimization_tab(request):
 
         ngen_cal_input.ready_to_run(run=run)
 
-        return JsonResponse(
-            {'calibration_run_id': run.id, 'status': run.status.name,
-             'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
-             'optimization': optimization,
-             'optimization_inputs': list(optimization_inputs),
-             'objective_function': objective_function,
-             'optimizations': optimization_list,
-             'plot_generation_frequency': plot_generation_frequency,
-             'stop_criteria': stop_criteria
-             },
-            safe=False)
+        response = {'calibration_run_id': run.id, 'status': run.status.name,
+                    'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
+                    'optimization': optimization,
+                    'optimization_inputs': list(optimization_inputs),
+                    'objective_function': objective_function,
+                    'optimizations': optimization_list,
+                    'plot_generation_frequency': plot_generation_frequency,
+                    'stop_criteria': stop_criteria
+                    }
+        logger.debug(f'Returning to {request.user} from load_optimization_tab() - {response}')
+
+        return JsonResponse(response, safe=False)
     except Exception as e:
         return JsonException(e)
 
@@ -80,6 +85,8 @@ def save_optimization_tab(request):
     try:
         print('user', request.user)
         body = json.loads(request.body or '{}')
+        logger.debug(f'save_optimization_tab() request from {request.user} - {body}')
+
         validate = SaveOptimizationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
@@ -140,6 +147,8 @@ def save_optimization_tab(request):
 
             ngen_cal_input.ready_to_run(run=run)
 
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+            logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response}')
+            return JsonResponse(response)
     except Exception as e:
         return JsonException(e)

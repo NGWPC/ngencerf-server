@@ -18,6 +18,8 @@ def is_ready(request):
         print('user', request.user)
 
         body = json.loads(request.body or '{}')
+        logger.debug(f'is_ready() request from {request.user} - {body}')
+
         validate = CalibrationRunValidator(data=body)
         validate.is_valid(raise_exception=True)
 
@@ -35,6 +37,7 @@ def is_ready(request):
         if messages:
             response['errors'] = messages
 
+        logger.debug(f'Returning to {request.user} from is_ready() - {response}')
         return JsonResponse(response)
     except Exception as e:
         return JsonException(e)

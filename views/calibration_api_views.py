@@ -20,6 +20,8 @@ def report_iteration(request):
     try:
         print('user', request.user)
         body = json.loads(request.body or '{}')
+        logger.debug(f'report_iteration() request from {request.user} - {body}')
+
         validate = ReportIterationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
@@ -34,8 +36,10 @@ def report_iteration(request):
             # TODO Do we always create a new one, or check to see if this iteration number exists?
             # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
             Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
-            return JsonResponse({'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                                 'status': run.status.name},
-                                status=status.HTTP_201_CREATED)
+            response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                        'status': run.status.name}
+            logger.debug(f'Returning to {request.user} from report_iteration() - {response}')
+
+            return JsonResponse(response, status=status.HTTP_201_CREATED)
     except Exception as e:
         return JsonException(e)
