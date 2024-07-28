@@ -139,6 +139,14 @@ LOGGING = {
     },
 }
 
+REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
+NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
+NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+NGEN_CAL_WORK_DIR = os.path.join(Path.home(), 'ngen-cal-work')
+NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv')
+
+
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *

@@ -175,7 +175,7 @@ def ready_to_run(run_id=None, run=None):
     else:
         general['run_type'] = run.run_type
 
-    general['main_dir'] = settings.NGEN_CAL_MAIN_DIR
+    general['main_dir'] = settings.NGEN_CAL_RUN_DIR
 
     if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:
         messages.append(

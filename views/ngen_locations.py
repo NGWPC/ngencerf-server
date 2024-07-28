@@ -1,0 +1,24 @@
+import os
+
+from django.conf import settings
+
+forcing_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing')
+observation_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation')
+geopackage_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')
+calib_valid_dir = os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python/runCalibValid')
+
+dirs = [forcing_dir, observation_dir, geopackage_dir, calib_valid_dir]
+
+ngen_exe = os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen')
+cfe_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/cfe/cmake_build/libcfebmi.so')
+sloth_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/sloth/cmake_build/libslothmodel.so')
+topmd_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/topmodel/cmake_build/libtopmodelbmi.so')
+noaa_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/noah-owp-modular/cmake_build/libsurfacebmi.so')
+sft_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so')
+smp_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so')
+lasam_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/LASAM/cmake_build/liblasambmi.so')
+
+calibration_py = os.path.join(calib_valid_dir, 'calibration.py')
+validation_py = os.path.join(calib_valid_dir, 'validation.py')
+
+libs = [ngen_exe, cfe_lib, sloth_lib, topmd_lib, noaa_lib, sft_lib, smp_lib, lasam_lib, calibration_py, validation_py]

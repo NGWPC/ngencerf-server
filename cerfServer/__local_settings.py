@@ -7,6 +7,8 @@
 
 import os
 
+from cerfServer.settings import LOGGING
+
 print('Loading local settings from', __name__)
 
 ALLOWED_HOSTS = ['.localhost', '127.0.0.1']
@@ -14,11 +16,13 @@ ALLOWED_HOSTS = ['.localhost', '127.0.0.1']
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+# SQL logging
+LOGGING.get('loggers').get('django.db.backends')['level'] = 'INFO'
+
 VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
 
 HYDROFABRIC_URL = 'http://localhost:8888'
-GEN_CAL_MAIN_DIR = '~/ngen_cal_output'
 
 DATABASES = {
     'default': {
