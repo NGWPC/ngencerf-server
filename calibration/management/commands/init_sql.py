@@ -58,7 +58,7 @@ class Command(BaseCommand):
             ForcingSource.objects.all().delete()
 
         values = [{"name": "AORC", "description": "Analysis of Record For Calibration"},
-                  {"name": "Hawaii", "description": "Uploaded by the user from a local file"},
+                  {"name": "Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
         for v in values:
@@ -76,7 +76,9 @@ class Command(BaseCommand):
                   {"name": "ENV", "description": "Environmental Canada", "is_active": True},
                   {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": True},
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
-                  {"name": "RFC", "description": "River Forecast Center", "is_active": False}
+                  {"name": "RFC", "description": "River Forecast Center", "is_active": False},
+                  {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
+                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": False},
                   ]
 
         for v in values:

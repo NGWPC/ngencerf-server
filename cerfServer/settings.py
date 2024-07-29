@@ -165,11 +165,17 @@ LOGGING = {
     }
 }
 
+# Locations for running ngen-cal
 REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
+# Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
+# directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+
 NGEN_CAL_WORK_DIR = os.path.join(Path.home(), 'ngen-cal-work')
+# Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+# Directory containing the ngen-cal virtual environment
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv')
 
 

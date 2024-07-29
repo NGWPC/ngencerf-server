@@ -5,7 +5,7 @@ from rest_framework import serializers
 from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
-from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum
+from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum
 
 INPUT_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
 
@@ -38,11 +38,18 @@ def forcingSourceValidator(value):
         raise ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
 
 
+def observationSourceValidator(value):
+    if value not in ObservationalSourceEnum.values():
+        raise ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
+
+
 class SaveGageValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=2, required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
     forcing_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
+    observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
+    observational_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
 
 
 def dataTypeValidator(value):
