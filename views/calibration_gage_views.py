@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator
 from calibration.management.commands import ngen_cal_input
-from calibration.models import Gage, observational_source
+from calibration.models import Gage, observational_source, ForcingSource, ObservationalSource, Domain
 from views.common import get_run, JsonException, JsonError
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,10 @@ def load_gage_tab(request):
         gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
+        forcing_source_values = list(ForcingSource.objects.only('name', 'description').values_list('name', 'description'))
+        observational_source_values = list(ObservationalSource.objects.only('name', 'description').values_list('name', 'description'))
+        domain_values = list(Domain.objects.only('name', 'description').values_list('name', 'description'))
+
         # Get all the gages so the user can select another
         gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
 
@@ -53,6 +57,7 @@ def load_gage_tab(request):
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
                     'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_filename,
                     'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
+                    'domain_values': domain_values, 'forcing_source_values': forcing_source_values, 'observational_source_values': observational_source_values,
                     'gages': list(gages)}
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {response}')
 
