@@ -45,13 +45,13 @@ def load_optimization_tab(request):
             optimization = None
             optimization_inputs = []
 
-        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'categorical').values('name', 'description', 'categorical')
+        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical').values('name', 'description', 'is_active', 'categorical')
 
-        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description')
+        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
         optimization_list = []
         for o in optimizations:
-            inputs = list(o.inputs.all().values('name', 'description', 'data_type'))
-            optimization_list.append({'name': o.name, 'description': o.description, 'inputs': inputs})
+            inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
+            optimization_list.append({'name': o.name, 'description': o.description, 'is_active': o.is_active, 'inputs': inputs})
 
         plot_generation_frequency = run.plot_frequency if run.plot_frequency else None
 

@@ -1,0 +1,3 @@
+param            min        max        init       model
+parameter1       1.2345679  1.234e-07  1.5        Noah-OWP-Modular
+parameter2       123.23457  123.1234   1.5        Noah-OWP-Modular

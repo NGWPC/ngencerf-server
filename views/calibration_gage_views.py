@@ -45,9 +45,9 @@ def load_gage_tab(request):
         gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
-        forcing_source_values = list(ForcingSource.objects.only('name', 'description').values_list('name', 'description'))
-        observational_source_values = list(ObservationalSource.objects.only('name', 'description').values_list('name', 'description'))
-        domain_values = list(Domain.objects.only('name', 'description').values_list('name', 'description'))
+        forcing_source_values = list(ForcingSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
+        observational_source_values = list(ObservationalSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
+        domain_values = list(Domain.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
 
         # Get all the gages so the user can select another
         gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)

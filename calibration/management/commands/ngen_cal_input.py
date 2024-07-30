@@ -154,7 +154,7 @@ def ready_to_run(run_id=None, run=None):
     config = dict(config_template)
     general = config.get('General')
     calibration = config.get('Calibration')
-    datafile = config.get('DataFile)')
+    datafile = config.get('DataFile')
 
     messages = []
 
@@ -191,10 +191,10 @@ def ready_to_run(run_id=None, run=None):
         else:
             datafile['obs_dir'] = run.observational_path
 
-        if not run.hydrofab_dir:
+        if not run.hydrofabric_gpkg_path:
             messages.append('Error getting geopackage from Hydrofabric')
         else:
-            datafile['hydrofab_dir'] = run.hydrofab_path
+            datafile['hydrofab_dir'] = run.hydrofabric_gpkg_path
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
