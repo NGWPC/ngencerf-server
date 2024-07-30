@@ -11,9 +11,6 @@ from calibration.models import CalibrationOptimizationInput, CalibrationRun, Sta
 from cerfServer.settings import NGEN_CAL_RUN_DIR
 from views.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
 
-# TODO This is defined as a management command for dev purposes only.  Will be moved to the regular code
-
-
 config_template = {
 
     "General": {
@@ -33,6 +30,9 @@ config_template = {
         "start_iteration": 0,
         "number_iteration": 10,
         "restart": 0,
+        # Output variable to calibration is not supported yet by ngen-cal
+        "output_variable_to_calibration_module": "Noah-OWP-Modular",
+        "output_variable_to_calibration_name": "parameter1",
         "calib_start_period": "2019-10-01 00:00:00",
         "calib_end_period": "2019-10-01 00:00:00",
         "calib_eval_start_period": "2020-10-01 00:00:00",
@@ -60,16 +60,18 @@ config_template = {
         "noah_parameter_dir": "",
         "attributes_file": "",
         "calib_parameter_file": "",
+        # Sloth parameter file is not supported by ngen-cal yet
+        "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
-        "ngen_exe_file": "",
-        "cfe_lib": "",
-        "sloth_lib": "",
-        "topmd_lib": "",
-        "noah_lib": "",
-        "sft_lib": "",
-        "smp_lib": "",
-        "lasam_lib": ""
+        "ngen_exe_file": ngen_exe,
+        "cfe_lib": cfe_lib,
+        "sloth_lib": sloth_lib,
+        "topmd_lib": topmd_lib,
+        "noah_lib": noah_lib,
+        "sft_lib": sft_lib,
+        "smp_lib": smp_lib,
+        "lasam_lib": lasam_lib
     }
 }
 
@@ -140,7 +142,7 @@ class NgenConfigValidator(serializers.Serializer):
     DataFile = NgenConfigDatafileValidator(required=True)
 
 
-def ready_to_run(run):
+def ready_to_run(run, build=None):
     config = dict(config_template)
     general = config.get('General')
     calibration = config.get('Calibration')
@@ -285,16 +287,7 @@ def ready_to_run(run):
                 file.write('{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'
                            .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
 
-    # TODO Only do this when we're ready to run
-    general['main_dir'] = NGEN_CAL_RUN_DIR
-    datafile['ngen_exe_file'] = ngen_exe
-    datafile['cfe_lib'] = cfe_lib
-    datafile['sloth_lib'] = sloth_lib
-    datafile['topmd_lib'] = topmd_lib
-    datafile['noah_lib'] = noah_lib
-    datafile['sft_lib'] = sft_lib
-    datafile['smp_lib'] = smp_lib
-    datafile['lasam_lib'] = lasam_lib
+
     datafile['noah_parameter_dir'] = noah_parameter_dir
 
     print('messages', messages)
@@ -313,7 +306,10 @@ def ready_to_run(run):
     run.status = Status.objects.filter(name=(StatusEnum.READY if validator.is_valid() else StatusEnum.SAVED)).first()
     run.save()
 
-    build_config(config)
+    # TODO Only build if no messages
+    if build:
+        build_config(config)
+
     return messages
 
 
