@@ -115,7 +115,7 @@ def save_optimization_tab(request):
 
         if optimization_inputs:
             for o in optimization_inputs:
-                name = o.get('name')
+                name = o['name']
                 # See if parameter is valid for this optimization
                 optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
                 if not optimization_input:
@@ -143,8 +143,8 @@ def save_optimization_tab(request):
             CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
             if optimization_inputs:
                 for o in optimization_inputs:
-                    optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=o.get('name'), is_active=True).first()
-                    CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o.get('value'))
+                    optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=o['name'], is_active=True).first()
+                    CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o['value'])
 
             run.save()
 

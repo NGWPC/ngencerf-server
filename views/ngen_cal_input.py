@@ -138,9 +138,9 @@ class NgenConfigValidator(serializers.Serializer):
 
 def ready_to_run(run, build=None):
     config = dict(config_template)
-    general = config.get('General')
-    calibration = config.get('Calibration')
-    datafile = config.get('DataFile')
+    general = config['General']
+    calibration = config['Calibration']
+    datafile = config['DataFile']
 
     messages = []
 

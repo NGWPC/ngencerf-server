@@ -292,7 +292,7 @@ def get_modules_from_hydrofabric(run):
         raise Exception('Module data from Hydrofabric is not in the expected format')
 
     module_data = module_sample_data.get("modules_data")
-    new_modules_names = set(map(lambda mod: mod.get('name'), module_data))
+    new_modules_names = set(map(lambda mod: mod['name'], module_data))
     print('new_modules_names', new_modules_names)
 
     with transaction.atomic():
@@ -304,9 +304,9 @@ def get_modules_from_hydrofabric(run):
 
             # Create the new ones, if they don't already exist
             for m in module_data:
-                CalibrationFormulation.objects.get_or_create(name=m.get('name'), calibration_run=run,
-                                                             defaults={'groups': json.dumps(m.get('groups')),
-                                                                       'description': m.get('description')})
+                CalibrationFormulation.objects.get_or_create(name=m['name'], calibration_run=run,
+                                                             defaults={'groups': json.dumps(m['groups']),
+                                                                       'description': m['description']})
 
         return
 
@@ -336,10 +336,10 @@ def save_formulation_tab(request):
         valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
         valid = False
         for valid_formulation in valid_formulations:
-            valid_module_set = set(json.loads(valid_formulation.get('modules')))
+            valid_module_set = set(json.loads(valid_formulation['modules']))
             if valid_module_set == new_module_names:
                 valid = True
-                run.ngen_formulation_name = valid_formulation.get('name')
+                run.ngen_formulation_name = valid_formulation['name']
                 break
         if not valid:
             return JsonError("Invalid formulation-  '{}'".format(new_module_names))
@@ -388,22 +388,19 @@ def save_formulation_tab(request):
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
             for s in sloth_parameters:
                 # Check that the module is valid
-                if not CalibrationFormulation.objects.filter(name=s.get('maps_to_module'), calibration_run_id=run.id,
+                if not CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id,
                                                              used_by_calibration_run=True).exists():
-                    # error = f"Sloth parameters contain an invalid module - \'{s.get('maps_to_modules')}\'.  This module has not been added to this run"
-                    # print(error)
-                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(
-                        s.get('apps_to_modules')))
+                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
 
             run.save()
             for s in sloth_parameters:
                 # Get the new_module_names, so we can set it
-                module = CalibrationFormulation.objects.filter(name=s.get('maps_to_module'), calibration_run_id=run.id).first()
-                CalibrationSlothParam.objects.create(calibration_run=run, param_name=s.get('param_name'), param_count=s.get('param_count'),
-                                                     param_type=s.get('param_type'),
-                                                     param_units=s.get('param_units'), param_location=s.get('param_location'),
-                                                     param_value=s.get('param_value'), maps_to_module=module,
-                                                     maps_to_variable_name=s.get('maps_to_variable_name'))
+                module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id).first()
+                CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                                                     param_type=s['param_type'],
+                                                     param_units=s['param_units'], param_location=s['param_location'],
+                                                     param_value=s['param_value'], maps_to_module=module,
+                                                     maps_to_variable_name=s['maps_to_variable_name'])
 
             ngen_cal_input.ready_to_run(run)
 

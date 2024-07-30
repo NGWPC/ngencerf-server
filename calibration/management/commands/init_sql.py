@@ -49,9 +49,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Domain.objects.get_or_create(name=v.get('name'), defaults={"is_active": v.get('is_active', True),
-                                                                       "description": v.get('description'),
-                                                                       "created_by": self.user})
+            Domain.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                   "description": v['description'],
+                                                                   "created_by": self.user})
 
     def define_forcing_source(self):
         if self.DELETE_FLAG:
@@ -62,9 +62,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ForcingSource.objects.get_or_create(name=v.get('name'), defaults={"is_active": v.get('is_active', True),
-                                                                              "description": v.get('description'),
-                                                                              "created_by": self.user})
+            ForcingSource.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                          "description": v['description'],
+                                                                          "created_by": self.user})
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
@@ -82,9 +82,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ObservationalSource.objects.get_or_create(name=v.get('name'),
+            ObservationalSource.objects.get_or_create(name=v['name'],
                                                       defaults={"is_active": v.get('is_active', True),
-                                                                "description": v.get('description'),
+                                                                "description": v['description'],
                                                                 "created_by": self.user})
 
     def define_optimization(self):
@@ -105,19 +105,19 @@ class Command(BaseCommand):
 
         # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
         for v in values:
-            optimization, created = Optimization.objects.get_or_create(name=v.get('name'),
+            optimization, created = Optimization.objects.get_or_create(name=v['name'],
                                                                        defaults={"is_active": v.get('is_active', True),
-                                                                                 "description": v.get('description'),
+                                                                                 "description": v['description'],
                                                                                  "stop_criteria_name": "iterations",
                                                                                  "stop_criteria_data_type": DataTypeEnum.INTEGER,
                                                                                  "created_by": self.user})
 
-            for i in v.get('inputs'):
-                OptimizationInput.objects.get_or_create(name=i.get('name'), defaults={"is_active": i.get('is_active', True),
-                                                                                      "description": i.get('description'),
-                                                                                      "data_type": i.get('data_type'),
-                                                                                      "optimization": optimization,
-                                                                                      "created_by": self.user})
+            for i in v['inputs']:
+                OptimizationInput.objects.get_or_create(name=i['name'], defaults={"is_active": i.get('is_active', True),
+                                                                                  "description": i['description'],
+                                                                                  "data_type": i['data_type'],
+                                                                                  "optimization": optimization,
+                                                                                  "created_by": self.user})
 
     def define_metric(self):
         if self.DELETE_FLAG:
@@ -144,10 +144,10 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Metric.objects.get_or_create(name=v.get('name'), defaults={"is_active": v.get('is_active', True),
-                                                                       "description": v.get('description'),
-                                                                       "categorical": v.get('categorical', False),
-                                                                       "created_by": self.user})
+            Metric.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                   "description": v['description'],
+                                                                   "categorical": v.get('categorical', False),
+                                                                   "created_by": self.user})
 
     def define_status(self):
         if self.DELETE_FLAG:
@@ -179,6 +179,6 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            NgenCalFormulation.objects.get_or_create(name=v.get('name'), defaults={"modules": v.get('modules'),
-                                                                                   "description": v.get('description'),
-                                                                                   "created_by": self.user})
+            NgenCalFormulation.objects.get_or_create(name=v['name'], defaults={"modules": v['modules'],
+                                                                               "description": v['description'],
+                                                                               "created_by": self.user})
