@@ -30,16 +30,16 @@ config_template = {
         # Output variable to calibration is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "Noah-OWP-Modular",
         "output_variable_to_calibration_name": "parameter1",
-        "calib_start_period": "2019-10-01 00:00:00",
-        "calib_end_period": "2019-10-01 00:00:00",
-        "calib_eval_start_period": "2020-10-01 00:00:00",
-        "calib_eval_end_period": "2020-10-01 00:00:00",
-        "valid_start_period": "2016-10-01 00:00:00",
-        "valid_end_period": "2019-10-01 00:00:00",
-        "valid_eval_start_period": "2017-10-01 00:00:00",
-        "valid_eval_end_period": "2019-10-01 00:00:00",
-        "full_eval_start_period": "2017-10-01 00:00:00",
-        "full_eval_end_period": "2019-10-01 00:00:00",
+        "calib_start_period": "",
+        "calib_end_period": "",
+        "calib_eval_start_period": "",
+        "calib_eval_end_period": "",
+        "valid_start_period": "0000-00-00 00:00:00",
+        "valid_end_period": "0000-00-00 00:00:00",
+        "valid_eval_start_period": "0000-00-00 00:00:00",
+        "valid_eval_end_period": "0000-00-00 00:00:00",
+        "full_eval_start_period": "0000-00-00 00:00:00",
+        "full_eval_end_period": "",
         "save_output_iter": 0,
         "save_plot_iter": 0,
         "save_plot_iter_freq": 50,
@@ -212,7 +212,7 @@ def ready_to_run(run, build=None):
             not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period):
         messages.append(
             'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
-    else:
+    elif run.run_type == CalibrationRunType.VALID_BEST:
         calibration['valid_start_period'] = run.validation_start_period
         calibration['valid_end_period'] = run.validation_end_period
         calibration['valid_eval_start_period'] = run.validation_eval_start_period
