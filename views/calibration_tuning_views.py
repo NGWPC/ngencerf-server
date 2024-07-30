@@ -38,23 +38,18 @@ module_sample_data = {"modules_data": [
             {
                 "name": "parameter1",
                 "data_type": "double",
-                "units": "m/s",
-                "initial_value": 0.0,
-                "min": 0.0,
-                "max": 0.0
+                "description": "description of variable",
             },
 
             {
                 "name": "parameter2",
                 "data_type": "double",
-                "units": "m/s",
-                "initial_value": 0.0,
-                "min": 0.0,
-                "max": 0.0
+                "description": "description of variable",
             },
             {
                 "name": "parameter3",
                 "data_type": "double",
+                "description": "description of variable",
                 "units": "m/s",
                 "initial_value": 0.0,
                 "min": 0.0,
@@ -89,7 +84,6 @@ def load_tuning_tab(request):
             return errorReturn
 
         automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
-        print('automatic_validation', automatic_validation)
         validation_times = {}
         calibration_times = {}
 
@@ -159,7 +153,7 @@ def get_module_data_from_hydrofabric(run, modules):
 
     validator = ModuleDataHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
-        print(validator.errors)
+        logger.error(validator.errors)
         raise Exception('Module metadata from Hydrofabric is not in the expected format')
 
     module_data = module_sample_data.get("modules_data")
@@ -168,7 +162,6 @@ def get_module_data_from_hydrofabric(run, modules):
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
     with transaction.atomic():
         for m in module_data:
-            print('m', m)
             # Get the modules object from our list
             module = modules.filter(name=m['name']).first()
             # print('module', module)
@@ -177,7 +170,6 @@ def get_module_data_from_hydrofabric(run, modules):
             outputs = m['module_output_variables']
             o: dict
             for o in outputs:
-                print('o', o)
                 ModuleOutputVariable.objects.get_or_create(name=o['name'], calibration_formulation=module,
                                                            defaults={'description': o['description']})
             # Save parameters
@@ -185,10 +177,9 @@ def get_module_data_from_hydrofabric(run, modules):
             parameters = m['module_parameters']
             print('parameters from Hydro', parameters)
             for p in parameters:
-                # TODO need to handle min/max
                 CalibrationTuneParameter.objects.get_or_create(name=p['name'], calibration_formulation=module,
                                                                defaults={'data_type': p['data_type'],
-                                                                         'initial_value': p['initial_value']})  # Do we need description?
+                                                                         'description': p['description']})
 
         run.got_module_data_from_hydrofabric = True
         run.save()

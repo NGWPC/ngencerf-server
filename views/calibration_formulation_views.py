@@ -288,7 +288,7 @@ def get_modules_from_hydrofabric(run):
 
     validator = ModuleHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
-        print(validator.errors)
+        logger.debug(validator.errors)
         raise Exception('Module data from Hydrofabric is not in the expected format')
 
     module_data = module_sample_data.get("modules_data")

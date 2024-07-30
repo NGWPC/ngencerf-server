@@ -9,10 +9,15 @@ from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator
+from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator
 from views import ngen_cal_input
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from views.common import get_run, JsonException, JsonError, JsonValidationError
+
+geopackage_sample_data = {
+    "uri": "file://example.com/foo",
+    "creation_date": "2024-07-30T12:33:00.001Z"
+}
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +53,8 @@ def load_gage_tab(request):
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
         forcing_source_values = list(ForcingSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
-        observational_source_values = list(ObservationalSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
+        observational_source_values = list(
+            ObservationalSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
         domain_values = list(Domain.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
 
         # Get all the gages so the user can select another
@@ -59,7 +65,8 @@ def load_gage_tab(request):
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
                     'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_filename,
                     'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
-                    'domain_values': domain_values, 'forcing_source_values': forcing_source_values, 'observational_source_values': observational_source_values,
+                    'domain_values': domain_values, 'forcing_source_values': forcing_source_values,
+                    'observational_source_values': observational_source_values,
                     'gages': list(gages)}
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {response}')
 
@@ -99,6 +106,22 @@ def get_gage(request):
         return JsonException(e)
 
 
+def get_geopackage_from_hydrofabric(gage_id):
+    # Get this from hydrofabric
+    # modules_request = {"gage_id": gage_id
+    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+    # module_data = response.json()
+    geopackage_data = geopackage_sample_data
+
+    validator = GeopackageValidator(data=geopackage_data)
+    if not validator.is_valid():
+        logger.debug(validator.errors)
+        raise Exception('Geopackage data from Hydrofabric is not in the expected format')
+
+    # TODO Need to move this file to the local file system first
+    return geopackage_data['uri']
+
+
 @api_view(['POST'])
 # @login_required
 def save_gage_tab(request):
@@ -127,6 +150,8 @@ def save_gage_tab(request):
                 return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
             else:
                 run.gage = gage
+                geopackage = get_geopackage_from_hydrofabric(gage_id)
+                run.hydrofabric_gpkg_path = geopackage
 
         run.forcing_source = forcing_source
         run.forcing_user_filename = forcing_user_filename
@@ -139,7 +164,9 @@ def save_gage_tab(request):
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+        # TODO Need to return the actual geopackage file, not just the name
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name,
+                    'geopackage': geopackage}
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
         return JsonResponse(response)
     except (serializers.ValidationError, JSONDecodeError) as v:
