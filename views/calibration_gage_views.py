@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator
-from calibration.management.commands import ngen_cal_input
+from views import ngen_cal_input
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
@@ -54,7 +54,7 @@ def load_gage_tab(request):
         # Get all the gages so the user can select another
         gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
 
-        ngen_cal_input.ready_to_run(run=run)
+        ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
                     'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_filename,
@@ -137,7 +137,7 @@ def save_gage_tab(request):
         with transaction.atomic():
             run.save()
 
-        ngen_cal_input.ready_to_run(run=run)
+        ngen_cal_input.ready_to_run(run)
 
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')

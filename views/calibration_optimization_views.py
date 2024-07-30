@@ -8,7 +8,7 @@ from rest_framework import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
-from calibration.management.commands import ngen_cal_input
+from views import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
@@ -59,7 +59,7 @@ def load_optimization_tab(request):
         calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
         stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
 
-        ngen_cal_input.ready_to_run(run=run)
+        ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name,
                     'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
@@ -148,7 +148,7 @@ def save_optimization_tab(request):
 
             run.save()
 
-            ngen_cal_input.ready_to_run(run=run)
+            ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
             logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response}')

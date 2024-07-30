@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator
-from calibration.management.commands import ngen_cal_input
+from views import ngen_cal_input
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def is_ready(request):
         if errorReturn:
             return errorReturn
 
-        messages = ngen_cal_input.ready_to_run(run=run)
+        messages = ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name}
         ready_not_ready = 'not ready' if messages else 'ready'
@@ -64,7 +64,7 @@ def run_calibration(request):
         if errorReturn:
             return errorReturn
 
-        messages = ngen_cal_input.ready_to_run(run=run)
+        messages = ngen_cal_input.ready_to_run(run)
         if messages:
             return JsonError(f'Calibration Run {calibration_run_id} is not ready')
 

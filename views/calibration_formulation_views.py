@@ -8,7 +8,7 @@ from rest_framework import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
-from calibration.management.commands import ngen_cal_input
+from views import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
 from views.common import get_run, JsonError, JsonException, JsonValidationError
@@ -255,7 +255,7 @@ def load_formulation_tab(request):
         else:
             sloth_parameters = {}
 
-        ngen_cal_input.ready_to_run(run=run)
+        ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
                     "modules": module_list,
@@ -405,7 +405,7 @@ def save_formulation_tab(request):
                                                      param_value=s.get('param_value'), maps_to_module=module,
                                                      maps_to_variable_name=s.get('maps_to_variable_name'))
 
-            ngen_cal_input.ready_to_run(run=run)
+            ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
             logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response}')

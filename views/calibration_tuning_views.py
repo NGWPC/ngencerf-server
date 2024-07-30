@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
-from calibration.management.commands import ngen_cal_input
+from views import ngen_cal_input
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
@@ -134,7 +134,7 @@ def load_tuning_tab(request):
                                          'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
                 output_variable_list.append(output_variable_entry)
 
-            ngen_cal_input.ready_to_run(run=run)
+            ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list,
                     'module_output_variables': output_variable_list,
@@ -265,7 +265,7 @@ def save_tuning_tab(request):
                      .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
                      .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
 
-        ngen_cal_input.ready_to_run(run=run)
+        ngen_cal_input.ready_to_run(run)
 
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
         logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response}')

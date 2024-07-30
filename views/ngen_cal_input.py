@@ -74,17 +74,7 @@ config_template = {
 }
 
 
-class Command(BaseCommand):
-    help = "Check if ready"
 
-    def handle(self, *args, **options):
-        run_id = options['run_id']
-        run = options['run']
-        ready_to_run(run_id, run)
-
-    def add_arguments(self, parser):
-        parser.add_argument('run_id', type=int)
-        parser.add_argument('run', type=CalibrationRun)
 
 
 class NgenConfigGeneralValidator(serializers.Serializer):
@@ -150,7 +140,7 @@ class NgenConfigValidator(serializers.Serializer):
     DataFile = NgenConfigDatafileValidator(required=True)
 
 
-def ready_to_run(run_id=None, run=None):
+def ready_to_run(run):
     config = dict(config_template)
     general = config.get('General')
     calibration = config.get('Calibration')
@@ -158,10 +148,8 @@ def ready_to_run(run_id=None, run=None):
 
     messages = []
 
-    if run_id:
-        run = CalibrationRun.objects.filter(id=run_id).first()
     if not run:
-        raise Exception(f'CalibrationRun {run_id} does not exist')
+        raise Exception('Must pass a run instance to validate')
 
     if not run.gage:
         messages.append('gage_id must be specified')
@@ -324,9 +312,14 @@ def ready_to_run(run_id=None, run=None):
 
     run.status = Status.objects.filter(name=(StatusEnum.READY if validator.is_valid() else StatusEnum.SAVED)).first()
     run.save()
+
+    build_config(config)
     return messages
 
 
-def build_config():
+def build_config(config):
     # Need to write to a file
-    toml_config = toml.dumps(config_template)
+    toml_config = toml.dumps(config)
+    with open('input.config', 'w') as file:
+        file.write(toml_config)
+
