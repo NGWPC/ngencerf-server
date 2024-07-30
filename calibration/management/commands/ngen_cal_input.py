@@ -212,6 +212,7 @@ def ready_to_run(run_id=None, run=None):
     general['main_dir'] = settings.NGEN_CAL_RUN_DIR
 
     # TODO output variable to calibrate
+    # TODO Sloth parameters
     # TODO set run_date when we actually run it
 
     if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:

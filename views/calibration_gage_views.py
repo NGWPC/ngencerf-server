@@ -1,16 +1,18 @@
 import json
 import logging
+from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
+from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator
 from calibration.management.commands import ngen_cal_input
-from calibration.models import Gage, observational_source, ForcingSource, ObservationalSource, Domain
-from views.common import get_run, JsonException, JsonError
+from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +64,8 @@ def load_gage_tab(request):
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {response}')
 
         return JsonResponse(response, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)
 
@@ -89,6 +93,8 @@ def get_gage(request):
         logger.debug(f'Returning to {request.user} from get_gage() - {gage}')
 
         return JsonResponse(gage, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)
 
@@ -136,5 +142,7 @@ def save_gage_tab(request):
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
         return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)

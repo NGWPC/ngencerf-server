@@ -46,5 +46,6 @@ urlpatterns = [
     # Run tab
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
+    path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
 
 ]

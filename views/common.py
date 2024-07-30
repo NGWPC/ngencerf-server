@@ -42,3 +42,8 @@ def JsonError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
 def JsonException(e):
     logger.exception(e)
     return JsonResponse({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def JsonValidationError(e):
+    logger.exception(e)
+    return JsonResponse({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

@@ -1,14 +1,17 @@
 import json
 import logging
+from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.http import JsonResponse
+from rest_framework import serializers
 from rest_framework import status
+from rest_framework.authtoken import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
-from views.common import get_running, JsonException
+from views.common import get_running, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -41,5 +44,7 @@ def report_iteration(request):
             logger.debug(f'Returning to {request.user} from report_iteration() - {response}')
 
             return JsonResponse(response, status=status.HTTP_201_CREATED)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)

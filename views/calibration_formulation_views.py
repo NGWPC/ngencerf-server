@@ -1,15 +1,17 @@
 import json
 import logging
+from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.http import JsonResponse
+from rest_framework import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
 from calibration.management.commands import ngen_cal_input
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
-from views.common import get_run, JsonError, JsonException
+from views.common import get_run, JsonError, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +264,8 @@ def load_formulation_tab(request):
         logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response}')
 
         return JsonResponse(response, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)
 
@@ -406,5 +410,7 @@ def save_formulation_tab(request):
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
             logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response}')
             return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)

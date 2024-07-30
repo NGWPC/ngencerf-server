@@ -1,16 +1,18 @@
 import logging
+from json.decoder import JSONDecodeError
 
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Func, CharField, F
 from django.http import JsonResponse
+from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
-from views.common import JsonException
+from views.common import JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,8 @@ def create_calibration_run(request):
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
             logger.debug(f'Returning to {request.user} from create_calibration_run() - {response}')
             return JsonResponse(response, status=status.HTTP_201_CREATED)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)
 
@@ -44,26 +48,31 @@ def create_calibration_run(request):
 @api_view(['POST', 'GET'])
 # @login_required
 def get_jobs(request):
-    logger.debug(f'get_jobs() request from {request.user}')
+    try:
+        logger.debug(f'get_jobs() request from {request.user}')
 
-    # Get all jobs for this user
-    # TODO Need to filter jobs by user
-    runs = list(CalibrationRun.objects
-                .only('id', 'user_formulation_name', 'gage', 'run_date',
-                      'calibration_start_period', 'calibration_end_period', 'status')
-                .annotate(formatted_calibration_start_period=DateToChar('calibration_start_period'),
-                          formatted_calibration_end_period=DateToChar('calibration_end_period'))
-                .values('id', 'gage__gage_id', 'run_date', 'formatted_calibration_start_period', 'formatted_calibration_end_period',
-                        'status__name', formulation_name=F('user_formulation_name')))
-    for r in runs:
-        r['calibration_run_id'] = r.pop('id')
-        r['gage_id'] = r.pop('gage__gage_id')
-        r['status'] = r.pop('status__name')
-        r['calibration_start_period'] = r.pop('formatted_calibration_start_period')
-        r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
+        # Get all jobs for this user
+        # TODO Need to filter jobs by user
+        runs = list(CalibrationRun.objects
+                    .only('id', 'user_formulation_name', 'gage', 'run_date',
+                          'calibration_start_period', 'calibration_end_period', 'status')
+                    .annotate(formatted_calibration_start_period=DateToChar('calibration_start_period'),
+                              formatted_calibration_end_period=DateToChar('calibration_end_period'))
+                    .values('id', 'gage__gage_id', 'run_date', 'formatted_calibration_start_period', 'formatted_calibration_end_period',
+                            'status__name', formulation_name=F('user_formulation_name')))
+        for r in runs:
+            r['calibration_run_id'] = r.pop('id')
+            r['gage_id'] = r.pop('gage__gage_id')
+            r['status'] = r.pop('status__name')
+            r['calibration_start_period'] = r.pop('formatted_calibration_start_period')
+            r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
 
-    logger.debug(f'Returning to {request.user} from get_jobs()() - {runs}')
-    return JsonResponse(runs, safe=False)
+        logger.debug(f'Returning to {request.user} from get_jobs()() - {runs}')
+        return JsonResponse(runs, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
+    except Exception as e:
+        return JsonException(e)
 
 
 # noinspection PyUnusedLocal
@@ -74,5 +83,7 @@ def get_footer(request):
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
         logger.debug(f'Returning to {request.user} from get_footer() - {response}')
         return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)

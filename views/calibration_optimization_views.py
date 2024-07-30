@@ -1,14 +1,16 @@
 import json
 import logging
+from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.http import JsonResponse
+from rest_framework import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
 from calibration.management.commands import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
-from views.common import get_run, JsonException, JsonError
+from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +41,7 @@ def load_optimization_tab(request):
         if run.optimization:
             optimization = run.optimization.name
             optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name, is_active=True).values('name',
-                                                                                                                                    'data_type',
-                                                                                                                                    'description')
+                                                                                                                                    'data_type',                                                                                                                    'description')
         else:
             optimization = None
             optimization_inputs = []
@@ -72,6 +73,8 @@ def load_optimization_tab(request):
         logger.debug(f'Returning to {request.user} from load_optimization_tab() - {response}')
 
         return JsonResponse(response, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)
 
@@ -150,5 +153,7 @@ def save_optimization_tab(request):
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
             logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response}')
             return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)

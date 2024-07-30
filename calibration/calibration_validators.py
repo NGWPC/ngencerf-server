@@ -1,6 +1,5 @@
 from datetime import timezone
 
-from django.core.exceptions import ValidationError
 from rest_framework import serializers
 from rest_framework.fields import empty
 from rest_framework.settings import api_settings
@@ -35,12 +34,12 @@ class GageIdValidator(BaseSerializer):
 
 def forcingSourceValidator(value):
     if value not in ForcingSourceEnum.values():
-        raise ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
+        raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
 
 
 def observationSourceValidator(value):
     if value not in ObservationalSourceEnum.values():
-        raise ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
+        raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
 
 
 class SaveGageValidator(BaseSerializer):
@@ -54,17 +53,17 @@ class SaveGageValidator(BaseSerializer):
 
 def dataTypeValidator(value):
     if value not in DataTypeEnum.values():
-        raise ValidationError(f"This field must be one of {DataTypeEnum.values()}")
+        raise serializers.ValidationError(f"This field must be one of {DataTypeEnum.values()}")
 
 
 def unitsValidator(value):
     if value not in UnitsEnum.values():
-        raise ValidationError(f"This field must be one of {UnitsEnum.values()}")
+        raise serializers.ValidationError(f"This field must be one of {UnitsEnum.values()}")
 
 
 def locationValidator(value):
     if value not in LocationEnum.values():
-        raise ValidationError(f"This field must be one of {LocationEnum.values()}")
+        raise serializers.ValidationError(f"This field must be one of {LocationEnum.values()}")
 
 
 class SlothParameters(BaseSerializer):
