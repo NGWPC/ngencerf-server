@@ -1,14 +1,11 @@
 import toml
-from django.core.management import BaseCommand
+from django.conf import settings
 from django.db.models import F
 from rest_framework import serializers
 
-from django.conf import settings
-
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationOptimizationInput, CalibrationRun, Status, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationTuneParameter, Optimization
-from cerfServer.settings import NGEN_CAL_RUN_DIR
+from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
+    CalibrationTuneParameter
 from views.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
 
 config_template = {
@@ -74,9 +71,6 @@ config_template = {
         "lasam_lib": lasam_lib
     }
 }
-
-
-
 
 
 class NgenConfigGeneralValidator(serializers.Serializer):
@@ -259,13 +253,36 @@ def ready_to_run(run, build=None):
         calibration['number_iterations'] = stop_criteria.value()
     calibration['start_iterations'] = 0  # TODO ????'
 
-    calibration['streamflow_threshold'] = run.streamflow_threshold
+    if run.streamflow_threshold:
+        calibration['streamflow_threshold'] = run.streamflow_threshold
 
     if run.use_sloth:
-        sloth = (CalibrationSlothParam.objects.filter(calibration_run=run)
-                 .only('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name')
-                 .values('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name'))
-        print('sloth', sloth)
+        sloth_params = (CalibrationSlothParam.objects.filter(calibration_run=run)
+                        .only('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name')
+                        .values('param_name', 'param_count', 'param_units', 'param_location', 'param_value',
+                                'maps_to_variable_name', module=F('maps_to_module__name'), ))
+
+        sloth_error = False
+        for s in sloth_params:
+            # Make sure everything is specified
+            if not s['param_name'] or s['param_count'] is None or not s['param_units'] or not s['param_location'] or s['param_value'] is None or not \
+                    s['module'] or not s['maps_to_variable_name']:
+                sloth_error = True
+                messages.append(
+                    f"name, count, units, location, value, module and maps_to_variable_name must be specified for sloth parameter '{s['param_name']}'")
+
+        if not sloth_error and build:
+            sloth_parameter_file = f'{run.id}_sloth_parameters.txt'
+            print('sloth_parameter file', sloth_parameter_file)
+            with open(sloth_parameter_file, 'w') as file:
+                file.write(
+                    '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
+                                                                                'maps_to_variable_name'))
+                for s in sloth_params:
+                    file.write('{:30s} {:10d} {:8s} {:8s} {:10.5g} {:15s} {:30s}\n'
+                               .format(s['param_name'], s['param_count'], s['param_units'], s['param_location'], s['param_value'],
+                                       s['module'], s['maps_to_variable_name']))
+            datafile['sloth_parameter_file'] = sloth_parameter_file
 
     params = list(CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
                   .only('name', 'initial_value', 'minimum', 'maximum', 'calibration_formulation')
@@ -273,35 +290,27 @@ def ready_to_run(run, build=None):
     param_error = False
     for p in params:
         # Make sure everything is specified
-        if not p.get('name') or not p.get('initial_value') or not p.get('minimum') or not p.get('maximum'):
+        if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
             param_error = True
-            messages.append(f"value, min and max must be specified for parameter '{p.get('name')}' (module {p.get('model')})")
+            messages.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
-    if not param_error:
-        # Only do this when we're ready to run
+    if not param_error and build:
         parameter_file = f'{run.id}_parameters.txt'
         print('parameter file', parameter_file)
         with open(parameter_file, 'w') as file:
-            file.write('param            min        max        init       model\n')
+            file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
             for p in params:
                 file.write('{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'
-                           .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
+                   .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
 
+        datafile['calib_parameter_file'] = parameter_file
 
     datafile['noah_parameter_dir'] = noah_parameter_dir
 
     print('messages', messages)
 
-    # print('config', config)
+    # TODO This validation isn't really doing anything
     validator = NgenConfigValidator(data=config)
-    # if not validator.is_valid():
-    #     print(f"Not ready")
-    #     run.status = Status.objects.filter(name=StatusEnum.SAVED).first()
-    #
-    #     return False
-    # else:
-    #     run.status = Status.objects.filter(name=StatusEnum.READY).first()
-    #     return True
 
     run.status = Status.objects.filter(name=(StatusEnum.READY if validator.is_valid() else StatusEnum.SAVED)).first()
     run.save()
@@ -309,6 +318,7 @@ def ready_to_run(run, build=None):
     # TODO Only build if no messages
     if build:
         build_config(config)
+
 
     return messages
 
@@ -318,4 +328,3 @@ def build_config(config):
     toml_config = toml.dumps(config)
     with open('input.config', 'w') as file:
         file.write(toml_config)
-
