@@ -122,8 +122,8 @@ def load_tuning_tab(request):
             # For each module, get the Parameters and Output Variables
             for m in modules:
                 parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                  .only('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type')
-                                  .values('name', 'minimum', 'maximum', 'default_value', 'initial_value', 'data_type',
+                                  .only('name', 'minimum', 'maximum', 'initial_value', 'data_type')
+                                  .values('name', 'minimum', 'maximum', 'initial_value', 'data_type',
                                           module=F('calibration_formulation__name')))
 
                 parameter_list.extend(parameters)
@@ -157,7 +157,6 @@ def get_module_data_from_hydrofabric(run, modules):
     if not validator.is_valid():
         print(validator.errors)
         raise Exception('Module metadata from Hydrofabric is not in the expected format')
-    print('here i am')
 
     module_data = module_sample_data.get("modules_data")
 
@@ -167,27 +166,25 @@ def get_module_data_from_hydrofabric(run, modules):
         for m in module_data:
             print('m', m)
             # Get the modules object from our list
-            module = modules.filter(name=m.get('name')).first()
-            print('module', module)
+            module = modules.filter(name=m['name']).first()
+            # print('module', module)
 
             # Save output variables
-            outputs = m.get('module_output_variables')
+            outputs = m['module_output_variables']
             o: dict
             for o in outputs:
                 print('o', o)
-                ModuleOutputVariable.objects.get_or_create(name=o.get('name'), calibration_formulation=module,
-                                                           defaults={'description': o.get('description')})
+                ModuleOutputVariable.objects.get_or_create(name=o['name'], calibration_formulation=module,
+                                                           defaults={'description': o['description']})
             # Save parameters
             print('getting parameters for', m)
-            parameters = m.get('module_parameters')
+            parameters = m['module_parameters']
             print('parameters from Hydro', parameters)
             for p in parameters:
-                print('p', p)
-                print('module', module)
                 # TODO need to handle min/max
-                CalibrationTuneParameter.objects.get_or_create(name=p.get('name'), calibration_formulation=module,
-                                                               defaults={'data_type': p.get('data_type'),
-                                                                         'default_value': p.get('initial_value')})  # Do we need description?
+                CalibrationTuneParameter.objects.get_or_create(name=p['name'], calibration_formulation=module,
+                                                               defaults={'data_type': p['data_type'],
+                                                                         'initial_value': p['initial_value']})  # Do we need description?
 
         run.got_module_data_from_hydrofabric = True
         run.save()
@@ -238,22 +235,22 @@ def save_tuning_tab(request):
                 return JsonError('CalibrationTuneParameters have not been loaded from Hydrofabric')
             # Make sure the parameters we are trying to save exist
             for p in parameters:
-                if not CalibrationTuneParameter.objects.filter(name=p.get('name'), calibration_formulation__name=p.get('module')).exists():
-                    return JsonError("Invalid parameter '{}' specified for module '{}'".format(p.get('name'), p.get('module')))
+                if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
+                    return JsonError("Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module']))
 
         # Validate the output_variable_to_calibrate
         if output_variable_to_calibrate:
-            module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate.get('module'),
+            module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
                                                                                 calibration_run=run).first()
             if not module_with_output_variable:
-                return JsonError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate.get('module'), run.id))
+                return JsonError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id))
             module_output_variable = module_with_output_variable.output_variables.all().filter(
-                name=output_variable_to_calibrate.get('name')).first()
+                name=output_variable_to_calibrate['name']).first()
             if not module_output_variable:
                 return JsonError("Module output variable '{}' not found in module '{}' for this run".format(
-                    output_variable_to_calibrate.get('name'), output_variable_to_calibrate.get('module')))
+                    output_variable_to_calibrate['name'], output_variable_to_calibrate['module']))
 
-            print('module_output_variable', module_output_variable)
+            logger.debug(f'module_output_variable {module_output_variable}')
             run.module_output_variable = module_output_variable
 
         with transaction.atomic():
@@ -261,8 +258,8 @@ def save_tuning_tab(request):
             if parameters:
                 for p in parameters:
                     (CalibrationTuneParameter.objects
-                     .filter(name=p.get('name'), calibration_formulation__name=p.get('module'), calibration_formulation__calibration_run=run)
-                     .update(minimum=p.get('min'), maximum=p.get('max'), initial_value=p.get('initial_value')))
+                     .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
+                     .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
 
         ngen_cal_input.ready_to_run(run=run)
 

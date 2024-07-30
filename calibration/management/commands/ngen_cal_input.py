@@ -1,11 +1,15 @@
 import toml
 from django.core.management import BaseCommand
+from django.db.models import F
 from rest_framework import serializers
 
 from django.conf import settings
 
-from calibration.enums import CalibrationRunType, StatusEnum
-from calibration.models import CalibrationOptimizationInput, CalibrationRun, Status
+from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.models import CalibrationOptimizationInput, CalibrationRun, Status, CalibrationStopCriteria, CalibrationSlothParam, \
+    CalibrationTuneParameter, Optimization
+from cerfServer.settings import NGEN_CAL_RUN_DIR
+from views.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
 
 # TODO This is defined as a management command for dev purposes only.  Will be moved to the regular code
 
@@ -163,12 +167,42 @@ def ready_to_run(run_id=None, run=None):
         messages.append('gage_id must be specified')
     else:
         general['basin'] = run.gage.gage_id
+        calibration['station_name'] = run.gage.station_name
 
-    if not run.ngen_formulation_name:
+        if not run.forcing_source:
+            messages.append('forcing source must be specified')
+
+        if run.forcing_source == ForcingSourceEnum.UPLOAD.value and not run.forcing_path or not run.forcing_user_filename:
+            messages.append('forcing data must be uploaded')
+
+        if run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_path:
+            messages.append('Error getting forcing path from Hydrofabric')
+        else:
+            datafile['forcing_dir'] = run.forcing_path
+
+        if not run.observational_source:
+            messages.append('observational source must be specified')
+
+        if run.observational_source == ObservationalSourceEnum.UPLOAD.value and not run.observational_path or not run.observational_user_filename:
+            messages.append('observational data must be uploaded')
+
+        if run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_path:
+            messages.append('Error getting observational path from Hydrofabric')
+        else:
+            datafile['obs_dir'] = run.observational_path
+
+        if not run.hydrofab_dir:
+            messages.append('Error getting geopackage from Hydrofabric')
+        else:
+            datafile['hydrofab_dir'] = run.hydrofab_path
+
+    if not run.user_formulation_name:
         messages.append('formulation name must be specified')
     else:
-        # Not sure what we list for model
-        general['model'] = '?'
+        if not run.ngen_formulation_name:
+            messages.append('Coding error - ngen_formulation_name is not filled in')
+        else:
+            general['model'] = run.ngen_formulation_name
 
     if not run.run_type:
         messages.append(f'run_type must be specified - {CalibrationRunType.CALIB} or {CalibrationRunType.VALID_BEST}')
@@ -176,6 +210,9 @@ def ready_to_run(run_id=None, run=None):
         general['run_type'] = run.run_type
 
     general['main_dir'] = settings.NGEN_CAL_RUN_DIR
+
+    # TODO output variable to calibrate
+    # TODO set run_date when we actually run it
 
     if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:
         messages.append(
@@ -200,24 +237,76 @@ def ready_to_run(run_id=None, run=None):
         messages.append('objective function must be specified')
     calibration['objective_function'] = run.objective_function
 
-    # Are any of te parameters required?
-    inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run)
-    if swarm := inputs.filter(optimization_input__name='swarm_size').first():
-        calibration['swarm_size'] = swarm.value
-    if c1 := inputs.filter(optimization_input__name='c1').first():
-        calibration['c1'] = c1.value
-    if c2 := inputs.filter(optimization_input__name='c2').first():
-        calibration['c2'] = c2.value
-    if w := inputs.filter(optimization_input__name='w').first():
-        calibration['w'] = w.value
+    if not run.optimization:
+        messages.append('optimization must be specified')
+    else:
+        datafile['optimization_algorithm'] = run.optimization.name
 
-    calibration['save_plot_iter_freq'] = run.plot_frequency
-    # What is save_plot_iter?
+        # Are any of te parameters required?
+        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run)
+        if swarm := inputs.filter(optimization_input__name='swarm_size').first():
+            calibration['swarm_size'] = swarm.value
+        if c1 := inputs.filter(optimization_input__name='c1').first():
+            calibration['c1'] = c1.value
+        if c2 := inputs.filter(optimization_input__name='c2').first():
+            calibration['c2'] = c2.value
+        if w := inputs.filter(optimization_input__name='w').first():
+            calibration['w'] = w.value
 
-    # Where does stop criteria go?
-    # calibration[CalibrationStopCriteria.objects.filter(calibration_run=run).first().value()
+    if not run.plot_frequency:
+        messages.append('plot frequency must be specified')
+    else:
+        calibration['save_plot_iter_freq'] = run.plot_frequency
+    calibration['save_plot-iter'] = 0  # TODO ???
+    calibration['restart'] = 0  # TODO ???
+
+    stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
+    if not stop_criteria:
+        messages.append('stop criteria (number of iterations) must be specified')
+    else:
+        # We're assuming there is only 1 stop criteria record for now
+        calibration['number_iterations'] = stop_criteria.value()
+    calibration['start_iterations'] = 0  # TODO ????'
 
     calibration['streamflow_threshold'] = run.streamflow_threshold
+
+    if run.use_sloth:
+        sloth = (CalibrationSlothParam.objects.filter(calibration_run=run)
+                 .only('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name')
+                 .values('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name'))
+        print('sloth', sloth)
+
+    params = list(CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
+                  .only('name', 'initial_value', 'minimum', 'maximum', 'calibration_formulation')
+                  .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
+    param_error = False
+    for p in params:
+        # Make sure everything is specified
+        if not p.get('name') or not p.get('initial_value') or not p.get('minimum') or not p.get('maximum'):
+            param_error = True
+            messages.append(f"value, min and max must be specified for parameter '{p.get('name')}' (module {p.get('model')})")
+
+    if not param_error:
+        # Only do this when we're ready to run
+        parameter_file = f'{run.id}_parameters.txt'
+        print('parameter file', parameter_file)
+        with open(parameter_file, 'w') as file:
+            file.write('param            min        max        init       model\n')
+            for p in params:
+                file.write('{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'
+                           .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
+
+    # TODO Only do this when we're ready to run
+    general['main_dir'] = NGEN_CAL_RUN_DIR
+    datafile['ngen_exe_file'] = ngen_exe
+    datafile['cfe_lib'] = cfe_lib
+    datafile['sloth_lib'] = sloth_lib
+    datafile['topmd_lib'] = topmd_lib
+    datafile['noah_lib'] = noah_lib
+    datafile['sft_lib'] = sft_lib
+    datafile['smp_lib'] = smp_lib
+    datafile['lasam_lib'] = lasam_lib
+    datafile['noah_parameter_dir'] = noah_parameter_dir
 
     print('messages', messages)
 

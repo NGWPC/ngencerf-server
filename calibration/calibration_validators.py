@@ -150,7 +150,7 @@ class TuningParametersValidator(BaseSerializer):
     module = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=True)
     maximum = serializers.FloatField(required=True)
-    # initial_value = serializers.FloatField(required=True)
+    initial_value = serializers.FloatField(required=True)
 
 
 class CalibrationTimeControls(BaseSerializer):
