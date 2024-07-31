@@ -39,7 +39,7 @@ config_template = {
         "valid_eval_start_period": "0000-00-00 00:00:00",
         "valid_eval_end_period": "0000-00-00 00:00:00",
         "full_eval_start_period": "0000-00-00 00:00:00",
-        "full_eval_end_period": "",
+        "full_eval_end_period": "0000-00-00 00:00:00",
         "save_output_iter": 0,
         "save_plot_iter": 0,
         "save_plot_iter_freq": 50,
@@ -136,6 +136,9 @@ class NgenConfigValidator(serializers.Serializer):
     DataFile = NgenConfigDatafileValidator(required=True)
 
 
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+
 def ready_to_run(run, build=None):
     config = dict(config_template)
     general = config['General']
@@ -203,20 +206,23 @@ def ready_to_run(run, build=None):
         messages.append(
             'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
-        calibration['calib_start_period'] = run.calibration_start_period
-        calibration['calib_end_period'] = run.calibration_end_period
-        calibration['calib_eval_start_period'] = run.calibration_eval_start_period
-        calibration['calib_eval_start_period'] = run.calibration_eval_start_period
+        calibration['calib_start_period'] = run.calibration_start_period.strftime(DATE_FORMAT)
+        calibration['calib_end_period'] = run.calibration_end_period.strftime(DATE_FORMAT)
+        calibration['calib_eval_start_period'] = run.calibration_eval_start_period.strftime(DATE_FORMAT)
+        calibration['calib_eval_end_period'] = run.calibration_eval_end_period.strftime(DATE_FORMAT)
 
-    if run.run_type == CalibrationRunType.VALID_BEST and (
+    if run.run_type == CalibrationRunType.VALID_BEST.value and (
             not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period):
         messages.append(
             'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
-    elif run.run_type == CalibrationRunType.VALID_BEST:
-        calibration['valid_start_period'] = run.validation_start_period
-        calibration['valid_end_period'] = run.validation_end_period
-        calibration['valid_eval_start_period'] = run.validation_eval_start_period
-        calibration['valid_eval_start_period'] = run.validation_eval_start_period
+    elif run.run_type == CalibrationRunType.VALID_BEST.value:
+        calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
+        calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
+        calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
+        calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
+
+        calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
+        calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
     if not run.objective_function:
         messages.append('objective function must be specified')
@@ -301,7 +307,7 @@ def ready_to_run(run, build=None):
             file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
             for p in params:
                 file.write('{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'
-                   .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
+                           .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
 
         datafile['calib_parameter_file'] = parameter_file
 
@@ -318,7 +324,6 @@ def ready_to_run(run, build=None):
     # TODO Only build if no messages
     if build:
         build_config(config)
-
 
     return messages
 

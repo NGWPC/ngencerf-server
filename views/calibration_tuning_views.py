@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
@@ -211,16 +212,16 @@ def save_tuning_tab(request):
         if errorReturn:
             return errorReturn
 
-        run.calibration_start_period = calibration_times['simulation_start_time'] if calibration_times else None
-        run.calibration_end_period = calibration_times['simulation_end_time'] if calibration_times else None
-        run.calibration_eval_start_period = calibration_times['calibration_start_time'] if calibration_times else None
-        run.calibration_eval_end_period = calibration_times['calibration_end_time'] if calibration_times else None
+        run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times else None
+        run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times else None
+        run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times else None
+        run.calibration_eval_end_period = datetime.fromisoformat(calibration_times['calibration_end_time']) if calibration_times else None
 
         if automatic_validation:
-            run.validation_start_period = validation_times['simulation_start_time'] if validation_times else None
-            run.validation_end_period = validation_times['simulation_end_time'] if validation_times else None
-            run.validation_eval_start_period = validation_times['validation_start_time'] if validation_times else None
-            run.validation_eval_end_period = validation_times['validation_end_time'] if validation_times else None
+            run.validation_start_period = datetime.fromisoformat(validation_times['simulation_start_time']) if validation_times else None
+            run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times else None
+            run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times else None
+            run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times else None
 
         # Set the type
         run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
