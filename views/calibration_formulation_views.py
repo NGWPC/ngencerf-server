@@ -1,22 +1,32 @@
 import json
-import traceback
+import logging
+from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.http import JsonResponse
-from rest_framework import status
+from rest_framework import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleCollectionValidator
-from calibration.enums import StatusEnum
-from calibration.management.commands import ngen_cal_input
-from calibration.models import NgenCalFormulation, CalibrationRun, CalibrationFormulation, CalibrationSlothParam, \
-    Status, CalibrationTuneParameter, ModuleOutputVariable
+from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
+from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
+    CalibrationTuneParameter, ModuleOutputVariable
+from views import ngen_cal_input
+from views.common import get_run, JsonError, JsonException, JsonValidationError
+
+logger = logging.getLogger(__name__)
+
+SLOTH = 'SLoTH'
 
 # For testing
 module_sample_data = {"modules_data": [
     {
         "name": "GC2D",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Glacier"
         ]
@@ -24,6 +34,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "Noah-OWP-Modular",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -32,6 +47,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "Snow-17",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt"
         ]
@@ -39,6 +59,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "UEB",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -47,6 +72,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "CFE-S",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ],
@@ -54,6 +84,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "CFE-X",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ],
@@ -61,6 +96,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "PET",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Evapotranspiration"
         ]
@@ -68,6 +108,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "TopModel",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -75,6 +120,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "Sac-SMA",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -82,6 +132,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "LASAM",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -89,6 +144,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SMP",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Soil Moisture"
         ]
@@ -96,6 +156,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SFT",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Snowmelt"
         ]
@@ -103,6 +168,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "T-Route",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Routing"
         ],
@@ -110,6 +180,11 @@ module_sample_data = {"modules_data": [
     {
         "name": "SCHISM",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Coastal"
         ]
@@ -117,15 +192,13 @@ module_sample_data = {"modules_data": [
     {
         "name": "SFINCS",
         "description": "description of module",
+        "version": {
+            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "module_home_page": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
         "groups": [
             "Coastal"
-        ]
-    },
-    {
-        "name": "Sloth",
-        "description": "description of module",
-        "groups": [
-            "Inject"
         ]
     }
 ]
@@ -142,53 +215,59 @@ def load_formulation_tab(request):
         else:
             data = request.GET
 
+        logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+
         validate = CalibrationRunValidator(data=data)
         validate.is_valid(raise_exception=True)
 
         calibration_run_id = validate.data.get('calibration_run_id')
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
-        formulation_name = run.formulation_name
+        user_formulation_name = run.user_formulation_name
 
         get_modules_from_hydrofabric(run)
 
         modules = (
-            CalibrationFormulation.objects.filter(calibration_run=run)
+            CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
             .only('name', 'groups', 'used_by_calibration_run')
             .values('name', 'groups', 'used_by_calibration_run')
         )
         # Unwrap the groups
         for m in modules:
             m['groups'] = json.loads(m['groups'])
+        module_list = list(modules)
 
-        # Get sloth parameters
-        sloth_parameters = (
-            CalibrationSlothParam.objects.filter(calibration_run=run)
-            .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                  'maps_to_variable_name')
-            .values(
-                'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
-                'maps_to_variable_name')
-        )
-        print('sloth', sloth_parameters)
+        use_sloth = run.use_sloth
 
-        if ngen_cal_input.ready_to_run():
-            run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+        if use_sloth:
+            # Get sloth parameters
+            sloth_parameters = (
+                CalibrationSlothParam.objects.filter(calibration_run=run)
+                .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+                      'maps_to_variable_name')
+                .values(
+                    'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+                    'maps_to_variable_name')
+            )
+        else:
+            sloth_parameters = {}
 
-        return JsonResponse(
-            {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': formulation_name, "modules": list(modules),
-             "sloth_parameters": list(sloth_parameters)}, safe=False)
+        ngen_cal_input.ready_to_run(run)
+
+        response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
+                    "modules": module_list,
+                    'use_sloth': use_sloth,
+                    "sloth_parameters": list(sloth_parameters)}
+        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response}')
+
+        return JsonResponse(response, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e)
 
 
 def get_modules_from_hydrofabric(run):
@@ -207,13 +286,13 @@ def get_modules_from_hydrofabric(run):
 
     print('current_module_names', current_module_names)
 
-    validator = ModuleCollectionValidator(data=module_sample_data)
+    validator = ModuleHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
-        print(validator.errors)
+        logger.debug(validator.errors)
         raise Exception('Module data from Hydrofabric is not in the expected format')
 
     module_data = module_sample_data.get("modules_data")
-    new_modules_names = set(map(lambda mod: mod.get('name'), module_data))
+    new_modules_names = set(map(lambda mod: mod['name'], module_data))
     print('new_modules_names', new_modules_names)
 
     with transaction.atomic():
@@ -225,9 +304,9 @@ def get_modules_from_hydrofabric(run):
 
             # Create the new ones, if they don't already exist
             for m in module_data:
-                CalibrationFormulation.objects.get_or_create(name=m.get('name'), calibration_run=run,
-                                                             defaults={'groups': json.dumps(m.get('groups')),
-                                                                       'description': m.get('description')})
+                CalibrationFormulation.objects.get_or_create(name=m['name'], calibration_run=run,
+                                                             defaults={'groups': json.dumps(m['groups']),
+                                                                       'description': m['description']})
 
         return
 
@@ -238,39 +317,53 @@ def save_formulation_tab(request):
     try:
         print('user', request.user)
         body = json.loads(request.body or '{}')
+        logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
+
         validate = SaveFormulationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
         new_module_names = set(validate.data.get('modules'))
         calibration_run_id = validate.data.get('calibration_run_id')
-        formulation_name = validate.data.get('formulation_name')
+        user_formulation_name = validate.data.get('formulation_name')
+        use_sloth = validate.data.get('use_sloth')
         sloth_parameters = validate.data.get('sloth_parameters')
 
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
+
         # Make sure the formulation is valid
-        valid_formulations = NgenCalFormulation.objects.all().values_list('modules', flat=True)
+        valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
         valid = False
         for valid_formulation in valid_formulations:
-            valid_module_set = set(json.loads(valid_formulation))
+            valid_module_set = set(json.loads(valid_formulation['modules']))
             if valid_module_set == new_module_names:
                 valid = True
+                run.ngen_formulation_name = valid_formulation['name']
                 break
         if not valid:
-            return JsonResponse({"error": f"Invalid formulation - {new_module_names}"})
+            return JsonError("Invalid formulation-  '{}'".format(new_module_names))
 
-        # TODO Need to filter jobs by user
-        run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-        if not run:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'},
-                                status=status.HTTP_400_BAD_REQUEST)
-        if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
-            return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        run.user_formulation_name = user_formulation_name
 
-        run.formulation_name = formulation_name
+        if use_sloth:
+            new_module_names.add(SLOTH)
+            if not sloth_parameters:
+                return JsonError("Invalid formulation -  You must enter SLoTH parameters")
+
+        else:
+            if sloth_parameters:
+                return JsonError('You must check the box to allow Sloth parameters to be specified')
+
+        # Did we get the names from Hydrofabric
+        if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
+            return JsonError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+
+        run.use_sloth = use_sloth
 
         # Get current new_module_names
-        existing_module_names = set(
-            CalibrationFormulation.objects.filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
+        existing_module_names = set(CalibrationFormulation.objects
+                                    .filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
 
         print('old existing_module_names', existing_module_names)
         print('new existing_module_names', new_module_names)
@@ -289,31 +382,32 @@ def save_formulation_tab(request):
 
                 # Create any new formulations
                 for name in new_module_names:
-                    CalibrationFormulation.objects.get_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+                    CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
             # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
             for s in sloth_parameters:
                 # Check that the module is valid
-                if not CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id, used_by_calibration_run=True).exists():
-                    error = f"Sloth parameters contain an invalid module - \'{s.get('module')}\'.  This module has not been added to this run"
-                    print(error)
-                    return JsonResponse({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+                if not CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id,
+                                                             used_by_calibration_run=True).exists():
+                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
 
             run.save()
             for s in sloth_parameters:
                 # Get the new_module_names, so we can set it
-                module = CalibrationFormulation.objects.filter(name=s.get('module'), calibration_run_id=run.id).first()
-                CalibrationSlothParam.objects.create(calibration_run=run, param_name=s.get('name'), param_count=s.get('count'),
-                                                     param_type=s.get('type'),
-                                                     param_units=s.get('units'), param_location=s.get('location'),
-                                                     param_value=s.get('value'), maps_to_module=module,
-                                                     maps_to_variable_name=s.get('module_param'))
+                module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id).first()
+                CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                                                     param_type=s['param_type'],
+                                                     param_units=s['param_units'], param_location=s['param_location'],
+                                                     param_value=s['param_value'], maps_to_module=module,
+                                                     maps_to_variable_name=s['maps_to_variable_name'])
 
-            if ngen_cal_input.ready_to_run():
-                run.status = Status.objects.get(StatusEnum.READY) if ngen_cal_input.ready_to_run() else Status.objects.get(StatusEnum.SAVED)
+            ngen_cal_input.ready_to_run(run)
 
-            return JsonResponse({'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name})
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response}')
+            return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e)

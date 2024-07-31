@@ -9,12 +9,12 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
+import logging
 import os
 from pathlib import Path
 import re
 
 from dotenv import load_dotenv
-
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,17 +23,11 @@ dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
 
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY")
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('CERF_SERVER_DEBUG', False)
-
-ALLOWED_HOSTS = re.split(r',\s*', os.getenv('CERF_SERVER_ALLOWED_HOSTS', ''))
 
 
 # Application definition
@@ -62,11 +56,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'cerfServer.urls'
 
+# We should be able to get rid of this since we are not using templates
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates']
-        ,
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -80,29 +74,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
-
-
-# Database
-# https://docs.djangoproject.com/en/5.0/ref/settings/#databases
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
-DATABASES = {
-    'default': {
-        'ENGINE': os.getenv('CERF_SERVER_DATABASE_ENGINE', 'django.db.backends.postgresql'),
-        'NAME': os.getenv('CERF_SERVER_DATABASE_NAME', 'postgres'),
-        'USER': os.getenv('CERF_SERVER_DATABASE_USER', 'postgres'),
-        'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
-        'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
-        'PORT': os.getenv('CERF_SERVER_DATABASE_PORT', 5432),
-    }
-}
-
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -122,7 +93,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
@@ -133,7 +103,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
@@ -152,25 +121,66 @@ LOGIN_URL = "/accounts/login"
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # See http://localhost:8000/accounts/reset/MQ/c9jwqx-4d82a80dd0eea4aa39631edbb908d79d/ for additional SMTP settings
 
-VERSION = os.getenv('CERF_SERVER_VERSION')
-CONTACT_EMAIL = os.getenv('CERF_SERVER_CONTACT_EMAIL')
-HYDROFABRIC_URL = os.getenv('CERF_SERVER_HYDROFABRIC_URL')
-NGEN_CAL_MAIN_DIR = os.getenv('CERF_SERVER_NGEN_CALL_MAIN_DIR')
 
-
-if os.getenv('CERF_SERVER_SQL_LOGGING').upper() == 'TRUE':
-    LOGGING = {
-        'version': 1,
-        'disable_existing_loggers': False,
-        'handlers': {
-            'console': {
-                'class': 'logging.StreamHandler',
-            },
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO'
+    },
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
         },
-        'loggers': {
-            'django.db.backends': {
-                'handlers': ['console'],
-                'level': 'DEBUG',
-            },
+        'simple': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
         },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
+            'formatter': 'verbose'
+        }
+    },
+    'loggers': {
+        'django.db.backends': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,  # Allow logs to bubble up to parent loggers
+        }
     }
+}
+
+# Locations for running ngen-cal
+REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
+# Directory that Ngen is cloned into
+NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
+# directory that Ngen-cal is cloned into
+NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+
+NGEN_CAL_WORK_DIR = os.path.join(Path.home(), 'ngen-cal-work')
+# Directory where all the output runs are stored
+NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+# Directory containing the ngen-cal virtual environment
+NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv')
+
+
+# This needs to be at the end of settings.py
+try:
+    from .local_settings import *
+except ImportError:
+    print('local_settings.py not found')

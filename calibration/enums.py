@@ -54,3 +54,19 @@ class ForcingSourceEnum(StrEnum):
     @classmethod
     def values(cls):
         return [e.value for e in cls]
+
+class ObservationalSourceEnum(StrEnum):
+    USGS = 'USGS'
+    USACE = 'USACE'
+    BOR = 'BOR'
+    ENV = 'ENV'
+    CA_DWR = 'CA DWR'
+    TX_DOT = 'TX DoT'
+    RFC = 'RFC'
+    SNOTEL = 'SNOTEL'
+    UPLOAD = 'upload'
+
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]
+

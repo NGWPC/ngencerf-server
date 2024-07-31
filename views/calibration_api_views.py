@@ -1,14 +1,19 @@
 import json
-import traceback
+import logging
+from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.http import JsonResponse
+from rest_framework import serializers
 from rest_framework import status
+from rest_framework.authtoken import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import ReportIterationValidator
-from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Iteration
+from calibration.models import Iteration
+from views.common import get_running, JsonException, JsonValidationError
+
+logger = logging.getLogger(__name__)
 
 
 # Called by ngen_cal
@@ -18,26 +23,28 @@ def report_iteration(request):
     try:
         print('user', request.user)
         body = json.loads(request.body or '{}')
+        logger.debug(f'report_iteration() request from {request.user} - {body}')
+
         validate = ReportIterationValidator(data=body)
         validate.is_valid(raise_exception=True)
 
         calibration_run_id = validate.data.get('calibration_run_id')
         iteration_number = validate.data.get('iteration')
 
-        with transaction.atomic():
-            # Need to add request.user to the Run object - Will we know the user?  Can Ngen_Cal pass it?
-            run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status').first()
-            if not run:
-                return JsonResponse({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {request.user}'}, status=status.HTTP_400_BAD_REQUEST)
-            if run.status.name != StatusEnum.RUNNING:
-                return JsonResponse({'error': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'}, status=status.HTTP_400_BAD_REQUEST)
+        run, errorReturn = get_running(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
 
+        with transaction.atomic():
             # TODO Do we always create a new one, or check to see if this iteration number exists?
             # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
-            iteration = Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
-            return JsonResponse({'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                                 'status': run.status.name},
-                                status=status.HTTP_201_CREATED)
+            Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
+            response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                        'status': run.status.name}
+            logger.debug(f'Returning to {request.user} from report_iteration() - {response}')
+
+            return JsonResponse(response, status=status.HTTP_201_CREATED)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
     except Exception as e:
-        print(traceback.format_exc())
-        return JsonResponse({"exception": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JsonException(e)
