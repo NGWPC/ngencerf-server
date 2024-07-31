@@ -156,7 +156,6 @@ class Command(BaseCommand):
 
         e: StatusEnum
         for e in StatusEnum:
-            print('creating', e)
             Status.objects.get_or_create(name=e.value, defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
