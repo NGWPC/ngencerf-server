@@ -1,8 +1,12 @@
+import csv
+import datetime
 import json
 import logging
+import os
 from datetime import datetime
 from json.decoder import JSONDecodeError
 
+from datetimerange import DateTimeRange
 from django.db import transaction
 from django.db.models import F
 from django.http import JsonResponse
@@ -11,8 +15,8 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
-from views import ngen_cal_input
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from views import ngen_cal_input
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
@@ -174,9 +178,9 @@ def get_module_data_from_hydrofabric(run, modules):
                 ModuleOutputVariable.objects.get_or_create(name=o['name'], calibration_formulation=module,
                                                            defaults={'description': o['description']})
             # Save parameters
-            print('getting parameters for', m)
+            # print('getting parameters for', m)
             parameters = m['module_parameters']
-            print('parameters from Hydro', parameters)
+            # print('parameters from Hydro', parameters)
             for p in parameters:
                 CalibrationTuneParameter.objects.get_or_create(name=p['name'], calibration_formulation=module,
                                                                defaults={'data_type': p['data_type'],
@@ -268,8 +272,45 @@ def save_tuning_tab(request):
         return JsonException(e)
 
 
-def date_range_intersection(start1, end1, start2, end2):
+# Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
+def get_csv_daterange(file):
+    max_time = datetime.datetime(datetime.MINYEAR, 1, 1, 0, 0, 0)
+    min_time = datetime.datetime(datetime.MAXYEAR, 12, 31, 11, 59, 59)
+    with open(file, 'r') as f:
+        csv_reader = csv.reader(f, delimiter=',')
+        header = next(csv_reader, None)
+        line = 0
+        for row in csv_reader:
+            timestamp = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+            max_time = max(max_time, timestamp)
+            min_time = min(min_time, timestamp)
+
+    return DateTimeRange(min_time, max_time)
+
+
+def get_forcing_date_range():
+    dir = '/home/peter.a.kronenberg/ngen-cal-work/forcing/Gage_01123000/'
+    # Get all files in the dir
+    timerange = None
+    for file in os.listdir(dir):
+        new_range = get_csv_daterange(dir + file)
+        if timerange:
+            timerange = timerange.encompass(new_range)
+        else:
+            timerange = new_range
+
+    return timerange
+
+
+def get_observation_date_range():
+    obs_file = '/home/peter.a.kronenberg/ngen-cal-work/observation/01123000_hourly_discharge.csv'
+    return get_csv_daterange(obs_file)
+
+
+def date_range_intersection():
     # The get latest start data and the earlier end date
-    new_start = max([start1, start2])
-    new_end = min([end1, end2])
-    return new_start, new_end if new_start < new_end else 0
+    obs_range = get_observation_date_range()
+    print('obs_range', obs_range)
+    forcing_range = get_forcing_date_range()
+    print('forcing_range', forcing_range)
+    print(obs_range.intersection(forcing_range))

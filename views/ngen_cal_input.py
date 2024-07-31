@@ -313,7 +313,7 @@ def ready_to_run(run, build=None):
 
     datafile['noah_parameter_dir'] = noah_parameter_dir
 
-    print('messages', messages)
+    print('validation messages', messages)
 
     # TODO This validation isn't really doing anything
     validator = NgenConfigValidator(data=config)
