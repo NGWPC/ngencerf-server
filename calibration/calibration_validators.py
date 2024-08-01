@@ -27,6 +27,11 @@ class GageIdValidator(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
 
+class UploadForcingValidator(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
+
+
 def forcingSourceValidator(value):
     if value not in ForcingSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
@@ -41,9 +46,7 @@ class SaveGageValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=2, required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
-    forcing_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
-    observational_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
 
 
 def dataTypeValidator(value):

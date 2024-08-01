@@ -6,12 +6,12 @@ from json.decoder import JSONDecodeError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from django.http import JsonResponse
-from django.middleware.csrf import get_token
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator
+from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
+    UploadForcingValidator
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from views import ngen_cal_input
@@ -23,12 +23,6 @@ geopackage_sample_data = {
 }
 
 logger = logging.getLogger(__name__)
-
-
-# Probably don't need this
-@api_view(['GET'])
-def csrf(request):
-    return JsonResponse({'csrf': get_token(request)})
 
 
 @api_view(['GET', 'POST'])
@@ -139,9 +133,7 @@ def save_gage_tab(request):
         calibration_run_id = validate.data.get('calibration_run_id')
         gage_id = validate.data.get('gage_id')
         forcing_source = validate.data.get('forcing_source')
-        forcing_user_filename = validate.data.get('forcing_user_filename')
         observational_source = validate.data.get('observational_source')
-        observational_user_filename = validate.data.get('observational_user_filename')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -157,10 +149,7 @@ def save_gage_tab(request):
                 run.hydrofabric_gpkg_path = geopackage
 
         run.forcing_source = forcing_source
-        run.forcing_user_dir = forcing_user_filename
         run.observational_source = observational_source
-        run.observational_user_filename = observational_user_filename
-        # TODO Need to fill in forcing_path and observational_path with our location
 
         with transaction.atomic():
             run.save()
@@ -186,11 +175,10 @@ def upload_observational_data(request):
 
         body = request.POST
         logger.debug(f'upload_observational_data() request from {request.user} - {body}')
-        # validate = SaveGageValidator(data=body)
-        # validate.is_valid(raise_exception=True)
+        validate = CalibrationRunValidator(data=body)
+        validate.is_valid(raise_exception=True)
 
-        calibration_run_id = body['calibration_run_id']
-        # calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validate.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -199,17 +187,29 @@ def upload_observational_data(request):
         if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
             return JsonError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
-        if request.FILES.keys == 0:
+        if len(request.FILES) == 0:
             return JsonError('Observational data must be uploaded')
 
-        if request.FILES.keys > 1:
-            return JsonError("Only one observational observational_file should be uploaded")
+        keys = set(request.FILES.keys())
+        key = 'observational_file'
+        if key not in keys:
+            return JsonValidationError(f"Missing expected key '{key}'")
+
+        keys.remove(key)
+        if len(keys) > 0:
+            return JsonValidationError("unexpected keys - {keys}".format(keys=keys))
 
         observational_dir = '/home/peter.a.kronenberg/temp/obs'
-        fs = FileSystemStorage(location=run.observational_dir)
+        fs = FileSystemStorage(location=observational_dir)
 
-        observational_file = request.FILES[request.POST.keys()[0]]
-        run.observational_file_path = os.path.join(observational_dir, observational_file)
+        # Make sure file doesn't exist
+        files = request.FILES.getlist(key)
+        count = len(files)
+        if count > 1:
+            return JsonError("Only one observational file should be uploaded")
+
+        observational_file = files[0]
+        run.observational_file_path = os.path.join(observational_dir, observational_file.name)
         run.observational_user_filename = observational_file.name
         if fs.exists(observational_file.name):
             return JsonError(f"File {observational_file.name} already exists")
@@ -221,7 +221,7 @@ def upload_observational_data(request):
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Observational file {observational_file.name} saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
+        response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_key': run.id,
                     'status': run.status.name}
 
         logger.debug(f'Returning to {request.user} from upload_observational_data() - {response}')
@@ -240,45 +240,63 @@ def upload_forcing_data(request):
 
         body = request.POST
         logger.debug(f'upload_forcing_data() request from {request.user} - {body}')
-        # validate = SaveGageValidator(data=body)
-        # validate.is_valid(raise_exception=True)
+        validate = UploadForcingValidator(data=body)
+        validate.is_valid(raise_exception=True)
 
-        calibration_run_id = body['calibration_run_id']
-        forcing_user_dir = body['forcing_user_dir']
-        # calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validate.data.get('calibration_run_id')
+        forcing_user_dir = validate.data.get('forcing_user_dir')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
             return errorReturn
 
         if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
-            return JsonError('Forcing files uploads only allowed if ForcingSource is set to UPLOAD')
+            return JsonError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
-        if request.FILES.keys == 0:
+        # Validate the file keys and how many there are
+        count = len(request.FILES)
+        if count == 0:
             return JsonError('Forcing data must be uploaded')
 
-        run.forcing_dir_path = '/home/peter.a.kronenberg/temp/forcing'
+        keys = set(request.FILES.keys())
+        key = 'forcing_files'
+        if key not in keys:
+            return JsonValidationError(f"Missing expected key '{key}'")
+
+        keys.remove(key)
+        if len(keys) > 0:
+            return JsonValidationError("unexpected keys - {keys}".format(keys=keys))
+
+        # TODO Need to generate a subdirectory based on the gage name
+        subdir = 'gage_id'
+        run.forcing_dir_path = os.path.join('/home/peter.a.kronenberg/temp/forcing', subdir)
         run.forcing_user_dir = forcing_user_dir
+
         fs = FileSystemStorage(location=run.forcing_dir_path)
         errors = []
-        for file in request.FILES.keys():
-            # Check if any of them exist
-            forcing_file = request.FILES[request.POST.keys()[file]]
+
+        # Make sure they don't exist
+        files = request.FILES.getlist(key)
+        count = len(files)
+        for forcing_file in files:
+            print('forcing file', forcing_file)
 
             if fs.exists(forcing_file.name):
                 errors.append(f"File {forcing_file.name} already exists")
+
         if errors:
             return JsonError(errors)
 
-        for file in request.FILES.keys():
-            fs.save(file.name, file)
+        for forcing_file in files:
+            fs.save(forcing_file.name, forcing_file)
 
         with transaction.atomic():
             run.save()
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Forcing files saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
+        file_or_files = 'file' if count == 1 else 'files'
+        response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
                     'status': run.status.name}
 
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response}')

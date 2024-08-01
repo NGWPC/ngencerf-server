@@ -21,8 +21,9 @@ urlpatterns = [
     ##################################
     path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage_post"),
     path('calibration/load_gage_tab/', calibration_gage_views.load_gage_tab, name="loadGageTab"),
+    path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
+    path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
-    path('calibration/csrf/', calibration_gage_views.csrf, name="csrf"),
 
     ##################################
     # Formulation tab
@@ -47,10 +48,4 @@ urlpatterns = [
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
-
-    ##################################
-    # Testing
-    ##################################
-    path('calibration/upload/', test_upload_view.upload, name="upload"),
-
 ]
