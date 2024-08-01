@@ -329,7 +329,5 @@ def ready_to_run(run, build=None):
 
 
 def build_config(config):
-    # Need to write to a file
-    toml_config = toml.dumps(config)
     with open('input.config', 'w') as file:
-        file.write(toml_config)
+        toml.dump(config, file)
