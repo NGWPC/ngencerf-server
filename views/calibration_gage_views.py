@@ -1,7 +1,9 @@
 import json
 import logging
+import os
 from json.decoder import JSONDecodeError
 
+from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
@@ -10,8 +12,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator
-from views import ngen_cal_input
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from views import ngen_cal_input
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 geopackage_sample_data = {
@@ -63,7 +66,7 @@ def load_gage_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
-                    'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_filename,
+                    'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_dir,
                     'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
                     'domain_values': domain_values, 'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
@@ -154,7 +157,7 @@ def save_gage_tab(request):
                 run.hydrofabric_gpkg_path = geopackage
 
         run.forcing_source = forcing_source
-        run.forcing_user_filename = forcing_user_filename
+        run.forcing_user_dir = forcing_user_filename
         run.observational_source = observational_source
         run.observational_user_filename = observational_user_filename
         # TODO Need to fill in forcing_path and observational_path with our location
@@ -168,6 +171,117 @@ def save_gage_tab(request):
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name,
                     'geopackage': geopackage}
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
+        return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
+    except Exception as e:
+        return JsonException(e)
+
+
+@api_view(['POST'])
+# @login_required
+def upload_observational_data(request):
+    try:
+        print('user', request.user)
+
+        body = request.POST
+        logger.debug(f'upload_observational_data() request from {request.user} - {body}')
+        # validate = SaveGageValidator(data=body)
+        # validate.is_valid(raise_exception=True)
+
+        calibration_run_id = body['calibration_run_id']
+        # calibration_run_id = validate.data.get('calibration_run_id')
+
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
+
+        if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
+            return JsonError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
+
+        if request.FILES.keys == 0:
+            return JsonError('Observational data must be uploaded')
+
+        if request.FILES.keys > 1:
+            return JsonError("Only one observational observational_file should be uploaded")
+
+        observational_dir = '/home/peter.a.kronenberg/temp/obs'
+        fs = FileSystemStorage(location=run.observational_dir)
+
+        observational_file = request.FILES[request.POST.keys()[0]]
+        run.observational_file_path = os.path.join(observational_dir, observational_file)
+        run.observational_user_filename = observational_file.name
+        if fs.exists(observational_file.name):
+            return JsonError(f"File {observational_file.name} already exists")
+
+        fs.save(observational_file.name, observational_file)
+
+        with transaction.atomic():
+            run.save()
+
+        ngen_cal_input.ready_to_run(run)
+
+        response = {'message': f'Observational file {observational_file.name} saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
+                    'status': run.status.name}
+
+        logger.debug(f'Returning to {request.user} from upload_observational_data() - {response}')
+        return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
+    except Exception as e:
+        return JsonException(e)
+
+
+@api_view(['POST'])
+# @login_required
+def upload_forcing_data(request):
+    try:
+        print('user', request.user)
+
+        body = request.POST
+        logger.debug(f'upload_forcing_data() request from {request.user} - {body}')
+        # validate = SaveGageValidator(data=body)
+        # validate.is_valid(raise_exception=True)
+
+        calibration_run_id = body['calibration_run_id']
+        forcing_user_dir = body['forcing_user_dir']
+        # calibration_run_id = validate.data.get('calibration_run_id')
+
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
+
+        if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
+            return JsonError('Forcing files uploads only allowed if ForcingSource is set to UPLOAD')
+
+        if request.FILES.keys == 0:
+            return JsonError('Forcing data must be uploaded')
+
+        run.forcing_dir_path = '/home/peter.a.kronenberg/temp/forcing'
+        run.forcing_user_dir = forcing_user_dir
+        fs = FileSystemStorage(location=run.forcing_dir_path)
+        errors = []
+        for file in request.FILES.keys():
+            # Check if any of them exist
+            forcing_file = request.FILES[request.POST.keys()[file]]
+
+            if fs.exists(forcing_file.name):
+                errors.append(f"File {forcing_file.name} already exists")
+        if errors:
+            return JsonError(errors)
+
+        for file in request.FILES.keys():
+            fs.save(file.name, file)
+
+        with transaction.atomic():
+            run.save()
+
+        ngen_cal_input.ready_to_run(run)
+
+        response = {'message': f'Forcing files saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
+                    'status': run.status.name}
+
+        logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response}')
         return JsonResponse(response)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)

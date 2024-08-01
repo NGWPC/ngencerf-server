@@ -159,24 +159,24 @@ def ready_to_run(run, build=None):
         if not run.forcing_source:
             messages.append('forcing source must be specified')
 
-        if run.forcing_source == ForcingSourceEnum.UPLOAD.value and not run.forcing_path or not run.forcing_user_filename:
+        if run.forcing_source == ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path or not run.forcing_user_dir:
             messages.append('forcing data must be uploaded')
 
-        if run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_path:
+        if run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_dir_path:
             messages.append('Error getting forcing path from Hydrofabric')
         else:
-            datafile['forcing_dir'] = run.forcing_path
+            datafile['forcing_dir'] = run.forcing_dir_path
 
         if not run.observational_source:
             messages.append('observational source must be specified')
 
-        if run.observational_source == ObservationalSourceEnum.UPLOAD.value and not run.observational_path or not run.observational_user_filename:
+        if run.observational_source == ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path or not run.observational_user_filename:
             messages.append('observational data must be uploaded')
 
-        if run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_path:
+        if run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
             messages.append('Error getting observational path from Hydrofabric')
         else:
-            datafile['obs_dir'] = run.observational_path
+            datafile['obs_dir'] = run.observational_file_path
 
         if not run.hydrofabric_gpkg_path:
             messages.append('Error getting geopackage from Hydrofabric')
