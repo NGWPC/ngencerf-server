@@ -1,9 +1,10 @@
 import csv
-import datetime
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import MAXYEAR as MAXYEAR
+from datetime import MINYEAR as MINYEAR
+from datetime import datetime, timezone
 from json.decoder import JSONDecodeError
 
 from datetimerange import DateTimeRange
@@ -20,6 +21,10 @@ from views import ngen_cal_input
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
+
+MIN_TIME = datetime(MAXYEAR, 12, 31, 11, 59, 59).replace(tzinfo=timezone.utc)
+MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
+
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -133,12 +138,20 @@ def load_tuning_tab(request):
                                          'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
                 output_variable_list.append(output_variable_entry)
 
+        # Get data range intersection of observational and forcing data
+        if run.observational_file_path and run.forcing_dir_path:
+            daterange = get_date_range_intersection(run.observational_file_path, run.forcing_dir_path)
+            run.time_range_start = daterange.start_datetime
+            run.time_range_end = daterange.end_datetime
+            run.save()
+
             ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list,
                     'module_output_variables': output_variable_list,
                     'calibration_times': calibration_times,
                     'validation_times': validation_times, 'automatic_validation': automatic_validation,
+                    'time_range': {'start_time': run.time_range_start, 'end_time': run.time_range_end},
                     'output_variable_to_calibrate': output_variable_to_calibrate}
         logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
@@ -274,26 +287,26 @@ def save_tuning_tab(request):
 
 # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
 def get_csv_daterange(file):
-    max_time = datetime.datetime(datetime.MINYEAR, 1, 1, 0, 0, 0)
-    min_time = datetime.datetime(datetime.MAXYEAR, 12, 31, 11, 59, 59)
+    max_time = MAX_TIME
+    min_time = MIN_TIME
     with open(file, 'r') as f:
         csv_reader = csv.reader(f, delimiter=',')
-        header = next(csv_reader, None)
-        line = 0
+        # skip the neader
+        next(csv_reader, None)
         for row in csv_reader:
-            timestamp = datetime.datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S')
+            timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             max_time = max(max_time, timestamp)
             min_time = min(min_time, timestamp)
 
     return DateTimeRange(min_time, max_time)
 
 
-def get_forcing_date_range():
-    dir = '/home/peter.a.kronenberg/ngen-cal-work/forcing/Gage_01123000/'
+def get_forcing_date_range(forcing_dir_path):
+    # dir = '/home/peter.a.kronenberg/ngen-cal-work/forcing/Gage_01123000/'
     # Get all files in the dir
     timerange = None
-    for file in os.listdir(dir):
-        new_range = get_csv_daterange(dir + file)
+    for file in os.listdir(forcing_dir_path):
+        new_range = get_csv_daterange(os.path.join(forcing_dir_path, file))
         if timerange:
             timerange = timerange.encompass(new_range)
         else:
@@ -302,15 +315,15 @@ def get_forcing_date_range():
     return timerange
 
 
-def get_observation_date_range():
-    obs_file = '/home/peter.a.kronenberg/ngen-cal-work/observation/01123000_hourly_discharge.csv'
-    return get_csv_daterange(obs_file)
+def get_observation_date_range(observational_filepath):
+    # obs_file = '/home/peter.a.kronenberg/ngen-cal-work/observation/01123000_hourly_discharge.csv'
+    return get_csv_daterange(observational_filepath)
 
 
-def date_range_intersection():
+def get_date_range_intersection(observational_file_path, forcing_dir_path):
     # The get latest start data and the earlier end date
-    obs_range = get_observation_date_range()
-    print('obs_range', obs_range)
-    forcing_range = get_forcing_date_range()
-    print('forcing_range', forcing_range)
-    print(obs_range.intersection(forcing_range))
+    obs_range = get_observation_date_range(observational_file_path)
+    logger.debug(f'obs_range: {obs_range}')
+    forcing_range = get_forcing_date_range(forcing_dir_path)
+    logger.debug(f'forcing_range: {forcing_range}')
+    return obs_range.intersection(forcing_range)
