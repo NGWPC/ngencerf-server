@@ -3,6 +3,7 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
+from django.db.models import F
 from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework.decorators import api_view
@@ -40,13 +41,16 @@ def load_optimization_tab(request):
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
         if run.optimization:
             optimization = run.optimization.name
-            optimization_inputs = OptimizationInput.objects.filter(optimization__name=run.optimization.name, is_active=True).values('name',
-                                                                                                                                    'data_type',                                                                                                                    'description')
+            optimization_inputs = list(
+                CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
+                .only('optimization_input__name', 'value')
+                .values('value', name=F('optimization_input__name')))
         else:
             optimization = None
             optimization_inputs = []
 
-        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical').values('name', 'description', 'is_active', 'categorical')
+        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical').values('name', 'description',
+                                                                                                                       'is_active', 'categorical')
 
         optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
         optimization_list = []
@@ -64,7 +68,7 @@ def load_optimization_tab(request):
         response = {'calibration_run_id': run.id, 'status': run.status.name,
                     'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
                     'optimization': optimization,
-                    'optimization_inputs': list(optimization_inputs),
+                    'optimization_inputs': optimization_inputs,
                     'objective_function': objective_function,
                     'optimizations': optimization_list,
                     'plot_generation_frequency': plot_generation_frequency,

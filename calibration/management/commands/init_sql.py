@@ -45,7 +45,7 @@ class Command(BaseCommand):
         values = [{"name": "Alaska", "description": "Alaska"},
                   {"name": "Hawaii", "description": "Hawaii"},
                   {"name": "CONUS", "description": "Continental United Status"},
-                  {"name": "Puerto Rico, including US Virgin Island", "description": "Puerto Rico, including US Virgin Island"}
+                  {"name": "Puerto Rico, including US Virgin Islands", "description": "Puerto Rico, including US Virgin Islands"}
                   ]
 
         for v in values:

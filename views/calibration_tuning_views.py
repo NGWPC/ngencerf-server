@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 MIN_TIME = datetime(MAXYEAR, 12, 31, 11, 59, 59).replace(tzinfo=timezone.utc)
 MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 
-
 # For testing
 module_sample_data = {"modules_data": [
     {
@@ -118,7 +117,7 @@ def load_tuning_tab(request):
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
         parameter_list = []
-        output_variable_list = []
+        module_list = []
         if modules:
             # Only do this if modules have been saved in the formulation tab
 
@@ -128,15 +127,15 @@ def load_tuning_tab(request):
             # For each module, get the Parameters and Output Variables
             for m in modules:
                 parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                  .only('name', 'minimum', 'maximum', 'initial_value', 'data_type')
-                                  .values('name', 'minimum', 'maximum', 'initial_value', 'data_type',
-                                          module=F('calibration_formulation__name')))
+                                  .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description')
+                                  .values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
 
-                parameter_list.extend(parameters)
+                # parameter_list.extend(parameters)
 
-                output_variable_entry = {'name': m.name,
-                                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
-                output_variable_list.append(output_variable_entry)
+                module_entry = {'name': m.name,
+                                'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description')),
+                                'parameters': parameters}
+                module_list.append(module_entry)
 
         # Get data range intersection of observational and forcing data
         if run.observational_file_path and run.forcing_dir_path:
@@ -147,8 +146,8 @@ def load_tuning_tab(request):
 
             ngen_cal_input.ready_to_run(run)
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list,
-                    'module_output_variables': output_variable_list,
+        response = {'calibration_run_id': run.id, 'status': run.status.name,
+                    'modules': module_list,
                     'calibration_times': calibration_times,
                     'validation_times': validation_times, 'automatic_validation': automatic_validation,
                     'time_range': {'start_time': run.time_range_start, 'end_time': run.time_range_end},

@@ -60,7 +60,7 @@ def load_gage_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
-                    'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_dir,
+                    'forcing_source': run.forcing_source, 'forcing_user_dir': run.forcing_user_dir,
                     'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
                     'domain_values': domain_values, 'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
