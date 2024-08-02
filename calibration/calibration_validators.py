@@ -1,3 +1,5 @@
+import re
+
 from datetimerange import DateTimeRange
 from rest_framework import serializers
 from rest_framework.fields import empty
@@ -40,6 +42,18 @@ def forcingSourceValidator(value):
 def observationSourceValidator(value):
     if value not in ObservationalSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
+
+
+def s3FileValidator(value):
+    pattern = re.compile('^s3://([^/]+)/(.*?([^/]+))$')
+    if not pattern.match(value):
+        raise serializers.ValidationError('This field must be a valid S3 uri to a file')
+
+
+def s3DirectoryValidator(value):
+    pattern = re.compile('^s3://([^/]+)/(.*?([^/]+)/)$')
+    if not pattern.match(value):
+        raise serializers.ValidationError('This field must be a valid S3 uri to a directory')
 
 
 class SaveGageValidator(BaseSerializer):
@@ -239,3 +253,11 @@ class SaveOptimizationValidator(BaseSerializer):
     streamflow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False)
     plot_generation_frequency = serializers.IntegerField(required=False)
+
+
+class ObservationalHydrofabricValidator(BaseSerializer):
+    uri = serializers.CharField(required=True, validators=[s3FileValidator])
+
+
+class ForcingHydrofabricValidator(BaseSerializer):
+    uri = serializers.CharField(required=True, validators=[s3DirectoryValidator])
