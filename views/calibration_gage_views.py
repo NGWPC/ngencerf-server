@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -15,10 +16,11 @@ from calibration.calibration_validators import SaveGageValidator, GageIdValidato
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from views import ngen_cal_input
+from views.aws_util import parse_s3_uri, download_s3
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 geopackage_sample_data = {
-    "uri": "file://example.com/foo",
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
     "creation_date": "2024-07-30T12:33:00.001Z"
 }
 
@@ -115,8 +117,13 @@ def get_geopackage_from_hydrofabric(gage_id):
         logger.debug(validator.errors)
         raise Exception('Geopackage data from Hydrofabric is not in the expected format')
 
-    # TODO Need to move this file to the local file system first
-    return geopackage_data['uri']
+    uri = geopackage_data['uri']
+    bucket, key = parse_s3_uri(uri)
+    save_as = '/home/peter.a.kronenberg/temp/my_gpkg.gpkg'
+    download_s3(bucket, key, save_as)
+
+
+    return save_as
 
 
 @api_view(['POST'])
@@ -145,8 +152,23 @@ def save_gage_tab(request):
                 return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
             else:
                 run.gage = gage
-                geopackage = get_geopackage_from_hydrofabric(gage_id)
-                run.hydrofabric_gpkg_path = geopackage
+                geopackage_path = get_geopackage_from_hydrofabric(gage_id)
+                run.hydrofabric_gpkg_path = geopackage_path
+
+                # geopackage_png = convert_to_png(geopackage_path)
+                geopackage_png = geopackage_path
+
+                # Convert to base64 so we can return to the front-end
+                with open(geopackage_png, 'rb') as geopackage_data:
+                    base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
+                # print('base64:', base64_str)
+                extension = geopackage_path.split('.')[-1]
+                dataurl = f'data:image/{extension};base64,{base64_str}'
+                print('dataurl:', dataurl)
+
+                # Assuming we return a ByteIO object
+                # base64.b64encode(buffer.get.value()).decode('utf-8')
+
 
         run.forcing_source = forcing_source
         run.observational_source = observational_source
@@ -158,7 +180,7 @@ def save_gage_tab(request):
 
         # TODO Need to return the actual geopackage file, not just the name
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name,
-                    'geopackage': geopackage}
+                    'geopackage_image': dataurl}
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
         return JsonResponse(response)
     except (serializers.ValidationError, JSONDecodeError) as v:
@@ -215,6 +237,10 @@ def upload_observational_data(request):
             return JsonError(f"File {observational_file.name} already exists")
 
         fs.save(observational_file.name, observational_file)
+
+        # Invalidate the dates, since we'll have to compute the intersection again
+        run.time_range_start = None
+        run.time_range_end = None
 
         with transaction.atomic():
             run.save()
@@ -289,6 +315,10 @@ def upload_forcing_data(request):
 
         for forcing_file in files:
             fs.save(forcing_file.name, forcing_file)
+
+        # Invalidate the dates, since we'll have to compute the intersection again
+        run.time_range_start = None
+        run.time_range_end = None
 
         with transaction.atomic():
             run.save()
