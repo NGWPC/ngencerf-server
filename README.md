@@ -8,15 +8,16 @@ You might have to use the `python3.11` command instead of `python`
 Once you are in the virtual environment, you can use `python`
 
 ```
-cd $cerfServer
-python -m venv .venv-cerf
+$ cd $cerfServer
+$ python -m venv .venv-cerf
 $ source $cerfServer/.venv-cerf/bin/activate
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
-The `settings.py` file contains settings that are application to all environments.
+The `settings.py` file contains settings that are application to all environments and should normally not be changed.
+
 You should make copies of `__locall_settings.py` and `__.env`. 
 ```
 (.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_setings.py
