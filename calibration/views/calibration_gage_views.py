@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
-    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator
+    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.views import ngen_cal_input
@@ -65,7 +65,7 @@ def load_gage_tab(request):
         domain_values = list(Domain.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
 
         # Get all the gages so the user can select another
-        gages = Gage.objects.filter(is_active=True).values_list('gage_id', flat=True)
+        gages = Gage.objects.filter(is_active=True).only('gage_id').values_list('gage_id', flat=True)
 
         ngen_cal_input.ready_to_run(run)
 
@@ -76,6 +76,33 @@ def load_gage_tab(request):
                     'observational_source_values': observational_source_values,
                     'gages': list(gages)}
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {response}')
+
+        return JsonResponse(response, safe=False)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
+    except Exception as e:
+        return JsonException(e)
+
+
+@api_view(['GET', 'POST'])
+def get_gages(request):
+    try:
+        if request.method == 'POST':
+            data = json.loads(request.body or '{}')
+        else:
+            data = request.GET
+
+        logger.debug(f'get_gages() request from {request.user} - {data}')
+
+        validator = DomainValidator(data=data)
+        validator.is_valid(raise_exception=True)
+
+        domain = validator.data.get('domain')
+
+        gages = Gage.objects.filter(domain__name=domain).only('gage_id').values('gage_id').first()
+
+        response = {'domain': domain, 'gages': gages}
+        logger.debug(f'Returning to {request.user} from get_gages() - {response}')
 
         return JsonResponse(response, safe=False)
     except (serializers.ValidationError, JSONDecodeError) as v:

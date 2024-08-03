@@ -151,7 +151,22 @@ LOGGING = {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
-            'propagate': True,  # Allow logs to bubble up to parent loggers
+            'propagate': True,
+        },
+        'django.request': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+        'calibration': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+        'cerfServer': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False
         }
     }
 }
