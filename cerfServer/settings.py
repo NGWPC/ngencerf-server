@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'calibration.apps.CalibrationConfig',
-    'accounts.apps.AccountsConfig',
 ]
 
 MIDDLEWARE = [
@@ -113,14 +112,6 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# Added by Peter - Not sure if we need this once the front-end is hooked up
-LOGIN_REDIRECT_URL = "home"
-LOGOUT_REDIRECT_URL = "home"
-LOGIN_URL = "/accounts/login"
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-# See http://localhost:8000/accounts/reset/MQ/c9jwqx-4d82a80dd0eea4aa39631edbb908d79d/ for additional SMTP settings
-
 
 LOGGING = {
     'version': 1,
