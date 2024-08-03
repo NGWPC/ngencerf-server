@@ -1,31 +1,38 @@
+import base64
 import json
 import logging
+import os
 from json.decoder import JSONDecodeError
 
+from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from django.http import JsonResponse
-from django.middleware.csrf import get_token
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator
-from views import ngen_cal_input
+from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
+    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from views import ngen_cal_input
+from views.aws_util import download_s3, download_all_s3
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 geopackage_sample_data = {
-    "uri": "file://example.com/foo",
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
     "creation_date": "2024-07-30T12:33:00.001Z"
 }
 
+forcing_sample_data = {
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/"
+}
+
+observational_sample_data = {
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
+}
+
 logger = logging.getLogger(__name__)
-
-
-# Probably don't need this
-@api_view(['GET'])
-def csrf(request):
-    return JsonResponse({'csrf': get_token(request)})
 
 
 @api_view(['GET', 'POST'])
@@ -40,10 +47,10 @@ def load_gage_tab(request):
 
         logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
-        validate = CalibrationRunValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=data)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -63,7 +70,7 @@ def load_gage_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
-                    'forcing_source': run.forcing_source, 'forcing_user_filename': run.forcing_user_filename,
+                    'forcing_source': run.forcing_source, 'forcing_user_dir': run.forcing_user_dir,
                     'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
                     'domain_values': domain_values, 'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
@@ -88,10 +95,10 @@ def get_gage(request):
 
         logger.debug(f'get_gage() request from {request.user} - {data}')
 
-        validate = GageIdValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        validator = GageIdValidator(data=data)
+        validator.is_valid(raise_exception=True)
 
-        gage_id = validate.data.get('gage_id')
+        gage_id = validator.data.get('gage_id')
 
         gage = Gage.objects.filter(gage_id=gage_id).only('gage_id', 'agency', 'station_name').values(
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
@@ -116,10 +123,56 @@ def get_geopackage_from_hydrofabric(gage_id):
     validator = GeopackageValidator(data=geopackage_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception('Geopackage data from Hydrofabric is not in the expected format')
+        raise Exception(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    # TODO Need to move this file to the local file system first
-    return geopackage_data['uri']
+    uri = geopackage_data['uri']
+    save_dir = '/home/peter.a.kronenberg/temp/'
+    file_path = download_s3(uri, save_dir)
+
+    return file_path
+
+
+def get_observational_data_from_hydrofabric(observation_source):
+    print('Getting observational data from Hydrofabric')
+    # Get this from hydrofabric
+    # request = {"source": observational_source
+    # response = requests.post(settings.HYDROFABRIC_URL, json=request)
+    # response = response.json()
+    response = observational_sample_data
+    validator = ObservationalHydrofabricValidator(data=response)
+    if not validator.is_valid():
+        logger.debug(validator.errors)
+        raise Exception(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
+
+    s3_uri = validator.data.get('uri')
+
+    # This is a path to a single file, which we just need to download
+    # bucket, key = parse_s3_uri(s3_uri)
+    # filename = key.split('/')[-1]
+    save_dir = f'/home/peter.a.kronenberg/temp/'
+    download_s3(s3_uri, save_dir)
+
+
+def get_forcing_data_from_hydrofabric(forcing_source):
+    print('Getting forcing data from Hydrofabric')
+    # Get this from hydrofabric
+    # request = {"source": forcing_source
+    # response = requests.post(settings.HYDROFABRIC_URL, json=request)
+    # response = response.json()
+    response = forcing_sample_data
+    validator = ForcingHydrofabricValidator(data=response)
+    if not validator.is_valid():
+        logger.debug(validator.errors)
+        raise Exception(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
+
+    s3_uri = validator.data.get('uri')
+
+    # This is a path to a directory, so we want to download all files
+    # bucket, key = parse_s3_uri(s3_uri)
+    # subdir = key.split('/')[-1]
+
+    save_dir = f'/home/peter.a.kronenberg/temp/'
+    download_all_s3(s3_uri, save_dir)
 
 
 @api_view(['POST'])
@@ -130,34 +183,48 @@ def save_gage_tab(request):
 
         body = json.loads(request.body or '{}')
         logger.debug(f'save_gage_tab() request from {request.user} - {body}')
-        validate = SaveGageValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = SaveGageValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
-        gage_id = validate.data.get('gage_id')
-        forcing_source = validate.data.get('forcing_source')
-        forcing_user_filename = validate.data.get('forcing_user_filename')
-        observational_source = validate.data.get('observational_source')
-        observational_user_filename = validate.data.get('observational_user_filename')
+        calibration_run_id = validator.data.get('calibration_run_id')
+        gage_id = validator.data.get('gage_id')
+        forcing_source = validator.data.get('forcing_source')
+        observational_source = validator.data.get('observational_source')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
             return errorReturn
 
+        geopackage_image_url = None
         if gage_id:
             gage = Gage.objects.filter(gage_id=gage_id).first()
             if not gage:
                 return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
             else:
                 run.gage = gage
-                geopackage = get_geopackage_from_hydrofabric(gage_id)
-                run.hydrofabric_gpkg_path = geopackage
+                geopackage_path = get_geopackage_from_hydrofabric(gage_id)
+                run.hydrofabric_gpkg_path = geopackage_path
 
-        run.forcing_source = forcing_source
-        run.forcing_user_filename = forcing_user_filename
-        run.observational_source = observational_source
-        run.observational_user_filename = observational_user_filename
-        # TODO Need to fill in forcing_path and observational_path with our location
+                # geopackage_png = convert_to_png(geopackage_path)
+                geopackage_png = geopackage_path
+
+                # Convert to base64 so we can return to the front-end
+                with open(geopackage_png, 'rb') as geopackage_data:
+                    base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
+                extension = geopackage_path.split('.')[-1]
+                geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
+
+                # Assuming we return a ByteIO object
+                # base64.b64encode(buffer.get.value()).decode('utf-8')
+
+                # Get observational data
+                run.forcing_source = forcing_source
+                run.observational_source = observational_source
+                if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
+                    run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+
+                if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
+                    run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
 
         with transaction.atomic():
             run.save()
@@ -166,8 +233,159 @@ def save_gage_tab(request):
 
         # TODO Need to return the actual geopackage file, not just the name
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name,
-                    'geopackage': geopackage}
+                    'geopackage_image': geopackage_image_url}
+
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
+        # Add this now so it doesn't get printed above
+        # response['geopackage_image'] = geopackage_image_url
+        return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
+    except Exception as e:
+        return JsonException(e)
+
+
+@api_view(['POST'])
+# @login_required
+def upload_observational_data(request):
+    try:
+        print('user', request.user)
+
+        body = request.POST
+        logger.debug(f'upload_observational_data() request from {request.user} - {body}')
+        validator = CalibrationRunValidator(data=body)
+        validator.is_valid(raise_exception=True)
+
+        calibration_run_id = validator.data.get('calibration_run_id')
+
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
+
+        if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
+            return JsonError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
+
+        if len(request.FILES) == 0:
+            return JsonError('Observational data must be uploaded')
+
+        keys = set(request.FILES.keys())
+        key = 'observational_file'
+        if key not in keys:
+            return JsonValidationError(f"Missing expected key '{key}'")
+
+        keys.remove(key)
+        if len(keys) > 0:
+            return JsonValidationError("unexpected keys - {keys}".format(keys=keys))
+
+        observational_dir = '/home/peter.a.kronenberg/temp/obs'
+        fs = FileSystemStorage(location=observational_dir)
+
+        # Make sure file doesn't exist
+        files = request.FILES.getlist(key)
+        count = len(files)
+        if count > 1:
+            return JsonError("Only one observational file should be uploaded")
+
+        observational_file = files[0]
+        run.observational_file_path = os.path.join(observational_dir, observational_file.name)
+        run.observational_user_filename = observational_file.name
+        if fs.exists(observational_file.name):
+            return JsonError(f"File {observational_file.name} already exists")
+
+        fs.save(observational_file.name, observational_file)
+
+        # Invalidate the dates, since we'll have to compute the intersection again
+        run.time_range_start = None
+        run.time_range_end = None
+
+        with transaction.atomic():
+            run.save()
+
+        ngen_cal_input.ready_to_run(run)
+
+        response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_key': run.id,
+                    'status': run.status.name}
+
+        logger.debug(f'Returning to {request.user} from upload_observational_data() - {response}')
+        return JsonResponse(response)
+    except (serializers.ValidationError, JSONDecodeError) as v:
+        return JsonValidationError(v)
+    except Exception as e:
+        return JsonException(e)
+
+
+@api_view(['POST'])
+# @login_required
+def upload_forcing_data(request):
+    try:
+        print('user', request.user)
+
+        body = request.POST
+        logger.debug(f'upload_forcing_data() request from {request.user} - {body}')
+        validator = UploadForcingValidator(data=body)
+        validator.is_valid(raise_exception=True)
+
+        calibration_run_id = validator.data.get('calibration_run_id')
+        forcing_user_dir = validator.data.get('forcing_user_dir')
+
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        if errorReturn:
+            return errorReturn
+
+        if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
+            return JsonError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
+
+        # Validate the file keys and how many there are
+        count = len(request.FILES)
+        if count == 0:
+            return JsonError('Forcing data must be uploaded')
+
+        keys = set(request.FILES.keys())
+        key = 'forcing_files'
+        if key not in keys:
+            return JsonValidationError(f"Missing expected key '{key}'")
+
+        keys.remove(key)
+        if len(keys) > 0:
+            return JsonValidationError("unexpected keys - {keys}".format(keys=keys))
+
+        # TODO Need to generate a subdirectory based on the gage name
+        subdir = 'gage_id'
+        run.forcing_dir_path = os.path.join('/home/peter.a.kronenberg/temp/forcing', subdir)
+        run.forcing_user_dir = forcing_user_dir
+
+        fs = FileSystemStorage(location=run.forcing_dir_path)
+        errors = []
+
+        # Make sure they don't exist
+        files = request.FILES.getlist(key)
+        count = len(files)
+        for forcing_file in files:
+            print('forcing file', forcing_file)
+
+            if fs.exists(forcing_file.name):
+                errors.append(f"File {forcing_file.name} already exists")
+
+        if errors:
+            return JsonError(errors)
+
+        for forcing_file in files:
+            fs.save(forcing_file.name, forcing_file)
+
+        # Invalidate the dates, since we'll have to compute the intersection again
+        run.time_range_start = None
+        run.time_range_end = None
+
+        with transaction.atomic():
+            run.save()
+
+        ngen_cal_input.ready_to_run(run)
+
+        file_or_files = 'file' if count == 1 else 'files'
+        response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
+                    'status': run.status.name}
+
+        logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response}')
         return JsonResponse(response)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)

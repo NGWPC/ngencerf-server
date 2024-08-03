@@ -1,8 +1,13 @@
+import csv
 import json
 import logging
-from datetime import datetime
+import os
+from datetime import MAXYEAR as MAXYEAR
+from datetime import MINYEAR as MINYEAR
+from datetime import datetime, timezone
 from json.decoder import JSONDecodeError
 
+from datetimerange import DateTimeRange
 from django.db import transaction
 from django.db.models import F
 from django.http import JsonResponse
@@ -11,11 +16,14 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
-from views import ngen_cal_input
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from views import ngen_cal_input
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
+
+MIN_TIME = datetime(MAXYEAR, 12, 31, 11, 59, 59).replace(tzinfo=timezone.utc)
+MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 
 # For testing
 module_sample_data = {"modules_data": [
@@ -109,7 +117,7 @@ def load_tuning_tab(request):
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
         parameter_list = []
-        output_variable_list = []
+        module_list = []
         if modules:
             # Only do this if modules have been saved in the formulation tab
 
@@ -119,22 +127,31 @@ def load_tuning_tab(request):
             # For each module, get the Parameters and Output Variables
             for m in modules:
                 parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                  .only('name', 'minimum', 'maximum', 'initial_value', 'data_type')
-                                  .values('name', 'minimum', 'maximum', 'initial_value', 'data_type',
-                                          module=F('calibration_formulation__name')))
+                                  .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description')
+                                  .values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
 
-                parameter_list.extend(parameters)
+                # parameter_list.extend(parameters)
 
-                output_variable_entry = {'name': m.name,
-                                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
-                output_variable_list.append(output_variable_entry)
+                module_entry = {'name': m.name,
+                                'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description')),
+                                'parameters': parameters}
+                module_list.append(module_entry)
+
+        # Get data range intersection of observational and forcing data if we don't already have it
+        if (run.observational_file_path and run.forcing_dir_path
+                and (not run.time_range_start or not run.time_range_end)):
+            daterange = get_date_range_intersection(run.observational_file_path, run.forcing_dir_path)
+            run.time_range_start = daterange.start_datetime
+            run.time_range_end = daterange.end_datetime
+            run.save()
 
             ngen_cal_input.ready_to_run(run)
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name, 'parameters': parameter_list,
-                    'module_output_variables': output_variable_list,
+        response = {'calibration_run_id': run.id, 'status': run.status.name,
+                    'modules': module_list,
                     'calibration_times': calibration_times,
                     'validation_times': validation_times, 'automatic_validation': automatic_validation,
+                    'time_range': {'start_time': run.time_range_start, 'end_time': run.time_range_end},
                     'output_variable_to_calibrate': output_variable_to_calibrate}
         logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
@@ -174,9 +191,9 @@ def get_module_data_from_hydrofabric(run, modules):
                 ModuleOutputVariable.objects.get_or_create(name=o['name'], calibration_formulation=module,
                                                            defaults={'description': o['description']})
             # Save parameters
-            print('getting parameters for', m)
+            # print('getting parameters for', m)
             parameters = m['module_parameters']
-            print('parameters from Hydro', parameters)
+            # print('parameters from Hydro', parameters)
             for p in parameters:
                 CalibrationTuneParameter.objects.get_or_create(name=p['name'], calibration_formulation=module,
                                                                defaults={'data_type': p['data_type'],
@@ -268,8 +285,45 @@ def save_tuning_tab(request):
         return JsonException(e)
 
 
-def date_range_intersection(start1, end1, start2, end2):
+# Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
+def get_csv_daterange(file):
+    max_time = MAX_TIME
+    min_time = MIN_TIME
+    with open(file, 'r') as f:
+        csv_reader = csv.reader(f, delimiter=',')
+        # skip the neader
+        next(csv_reader, None)
+        for row in csv_reader:
+            timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            max_time = max(max_time, timestamp)
+            min_time = min(min_time, timestamp)
+
+    return DateTimeRange(min_time, max_time)
+
+
+def get_forcing_date_range(forcing_dir_path):
+    # dir = '/home/peter.a.kronenberg/ngen-cal-work/forcing/Gage_01123000/'
+    # Get all files in the dir
+    timerange = None
+    for file in os.listdir(forcing_dir_path):
+        new_range = get_csv_daterange(os.path.join(forcing_dir_path, file))
+        if timerange:
+            timerange = timerange.encompass(new_range)
+        else:
+            timerange = new_range
+
+    return timerange
+
+
+def get_observation_date_range(observational_filepath):
+    # obs_file = '/home/peter.a.kronenberg/ngen-cal-work/observation/01123000_hourly_discharge.csv'
+    return get_csv_daterange(observational_filepath)
+
+
+def get_date_range_intersection(observational_file_path, forcing_dir_path):
     # The get latest start data and the earlier end date
-    new_start = max([start1, start2])
-    new_end = min([end1, end2])
-    return new_start, new_end if new_start < new_end else 0
+    obs_range = get_observation_date_range(observational_file_path)
+    logger.debug(f'obs_range: {obs_range}')
+    forcing_range = get_forcing_date_range(forcing_dir_path)
+    logger.debug(f'forcing_range: {forcing_range}')
+    return obs_range.intersection(forcing_range)

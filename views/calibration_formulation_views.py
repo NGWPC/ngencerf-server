@@ -289,9 +289,9 @@ def get_modules_from_hydrofabric(run):
     validator = ModuleHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception('Module data from Hydrofabric is not in the expected format')
+        raise Exception(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    module_data = module_sample_data.get("modules_data")
+    module_data = validator.data.get('modules_data')
     new_modules_names = set(map(lambda mod: mod['name'], module_data))
     print('new_modules_names', new_modules_names)
 
@@ -390,7 +390,8 @@ def save_formulation_tab(request):
                 # Check that the module is valid
                 if not CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id,
                                                              used_by_calibration_run=True).exists():
-                    return JsonError("Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
+                    return JsonError(
+                        "Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
 
             run.save()
             for s in sloth_parameters:

@@ -5,31 +5,33 @@ from rest_framework import serializers
 
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationTuneParameter
+    CalibrationTuneParameter, OptimizationInput
 from views.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
 
 config_template = {
 
     "General": {
-        "basin": "01010101",
-        "model": "cfe",
-        "run_type": "calib",
+        "calibration_run_id": 0,
+        "user": "",
+        "basin": "",
+        "model": "",
+        "run_type": "",
         "main_dir": ""
     },
 
     "Calibration": {
-        "optimization_algorithm": "DDS",
-        "swarm_size": 20,
-        "c1": 2,
-        "c2": 2,
-        "w": 0.7,
-        "objective_function": "kge",
+        "optimization_algorithm": "",
+        "swarm_size": 0,
+        "c1": 0,
+        "c2": 0,
+        "w": 0,
+        "objective_function": "",
         "start_iteration": 0,
-        "number_iteration": 10,
+        "number_iteration": 0,
         "restart": 0,
         # Output variable to calibration is not supported yet by ngen-cal
-        "output_variable_to_calibration_module": "Noah-OWP-Modular",
-        "output_variable_to_calibration_name": "parameter1",
+        "output_variable_to_calibration_module": "",
+        "output_variable_to_calibration_name": "",
         "calib_start_period": "",
         "calib_end_period": "",
         "calib_eval_start_period": "",
@@ -42,7 +44,7 @@ config_template = {
         "full_eval_end_period": "0000-00-00 00:00:00",
         "save_output_iter": 0,
         "save_plot_iter": 0,
-        "save_plot_iter_freq": 50,
+        "save_plot_iter_freq": 0,
         "streamflow_threshold": "",
         "station_name": "",
         "user_email": "",
@@ -54,7 +56,7 @@ config_template = {
         "hydrofab_dir": "",
         "cfe_dir": "",
         "topmd_dir": "",
-        "noah_parameter_dir": "",
+        "noah_parameter_dir": noah_parameter_dir,
         "attributes_file": "",
         "calib_parameter_file": "",
         # Sloth parameter file is not supported by ngen-cal yet
@@ -150,6 +152,9 @@ def ready_to_run(run, build=None):
     if not run:
         raise Exception('Must pass a run instance to validate')
 
+    general['calibration_run_id'] = run.id
+    general['user'] = run.owner
+
     if not run.gage:
         messages.append('gage_id must be specified')
     else:
@@ -158,25 +163,23 @@ def ready_to_run(run, build=None):
 
         if not run.forcing_source:
             messages.append('forcing source must be specified')
-
-        if run.forcing_source == ForcingSourceEnum.UPLOAD.value and not run.forcing_path or not run.forcing_user_filename:
-            messages.append('forcing data must be uploaded')
-
-        if run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_path:
-            messages.append('Error getting forcing path from Hydrofabric')
         else:
-            datafile['forcing_dir'] = run.forcing_path
+            if run.forcing_source == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
+                messages.append('forcing data must be uploaded')
+            elif run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_dir_path:
+                messages.append('Error getting forcing path from Hydrofabric')
+            else:
+                datafile['forcing_dir'] = run.forcing_dir_path
 
         if not run.observational_source:
             messages.append('observational source must be specified')
-
-        if run.observational_source == ObservationalSourceEnum.UPLOAD.value and not run.observational_path or not run.observational_user_filename:
-            messages.append('observational data must be uploaded')
-
-        if run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_path:
-            messages.append('Error getting observational path from Hydrofabric')
         else:
-            datafile['obs_dir'] = run.observational_path
+            if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (not run.observational_file_path or not run.observational_user_filename):
+                messages.append('observational data must be uploaded')
+            elif run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
+                messages.append('Error getting observational path from Hydrofabric')
+            else:
+                datafile['obs_dir'] = run.observational_file_path
 
         if not run.hydrofabric_gpkg_path:
             messages.append('Error getting geopackage from Hydrofabric')
@@ -199,7 +202,6 @@ def ready_to_run(run, build=None):
     general['main_dir'] = settings.NGEN_CAL_RUN_DIR
 
     # TODO output variable to calibrate
-    # TODO Sloth parameters
     # TODO set run_date when we actually run it
 
     if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:
@@ -226,23 +228,25 @@ def ready_to_run(run, build=None):
 
     if not run.objective_function:
         messages.append('objective function must be specified')
-    calibration['objective_function'] = run.objective_function
+    else:
+        calibration['objective_function'] = run.objective_function.name
 
     if not run.optimization:
         messages.append('optimization must be specified')
     else:
-        datafile['optimization_algorithm'] = run.optimization.name
+        calibration['optimization_algorithm'] = run.optimization.name
 
-        # Are any of te parameters required?
-        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run)
-        if swarm := inputs.filter(optimization_input__name='swarm_size').first():
-            calibration['swarm_size'] = swarm.value
-        if c1 := inputs.filter(optimization_input__name='c1').first():
-            calibration['c1'] = c1.value
-        if c2 := inputs.filter(optimization_input__name='c2').first():
-            calibration['c2'] = c2.value
-        if w := inputs.filter(optimization_input__name='w').first():
-            calibration['w'] = w.value
+        all_input_names = set(OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list('name', flat=True))
+        # See if we have values for all the inputs
+        CalibrationOptimizationInput.objects.filter()
+        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F('optimization_input__name'))
+        print('inputs', inputs)
+        for input in inputs:
+            calibration[input['name']] = input['value']
+            all_input_names.remove(input['name'])
+        # See if there are any names leftover
+        if all_input_names:
+            messages.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
     if not run.plot_frequency:
         messages.append('plot frequency must be specified')
@@ -256,7 +260,8 @@ def ready_to_run(run, build=None):
         messages.append('stop criteria (number of iterations) must be specified')
     else:
         # We're assuming there is only 1 stop criteria record for now
-        calibration['number_iterations'] = stop_criteria.value()
+        calibration['number_iterations'] = stop_criteria.value
+
     calibration['start_iterations'] = 0  # TODO ????'
 
     if run.streamflow_threshold:
@@ -311,9 +316,7 @@ def ready_to_run(run, build=None):
 
         datafile['calib_parameter_file'] = parameter_file
 
-    datafile['noah_parameter_dir'] = noah_parameter_dir
-
-    print('messages', messages)
+    print('validation messages', messages)
 
     # TODO This validation isn't really doing anything
     validator = NgenConfigValidator(data=config)
@@ -329,7 +332,5 @@ def ready_to_run(run, build=None):
 
 
 def build_config(config):
-    # Need to write to a file
-    toml_config = toml.dumps(config)
     with open('input.config', 'w') as file:
-        file.write(toml_config)
+        toml.dump(config, file)

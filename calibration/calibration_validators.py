@@ -1,3 +1,5 @@
+import re
+
 from datetimerange import DateTimeRange
 from rest_framework import serializers
 from rest_framework.fields import empty
@@ -27,6 +29,11 @@ class GageIdValidator(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
 
+class UploadForcingValidator(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
+
+
 def forcingSourceValidator(value):
     if value not in ForcingSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
@@ -37,13 +44,23 @@ def observationSourceValidator(value):
         raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
 
 
+def s3FileValidator(value):
+    pattern = re.compile('^s3://([^/]+)/(.*?([^/]+))$')
+    if not pattern.match(value):
+        raise serializers.ValidationError('This field must be a valid S3 uri to a file')
+
+
+def s3DirectoryValidator(value):
+    pattern = re.compile('^s3://([^/]+)/(.*?([^/]+)/)$')
+    if not pattern.match(value):
+        raise serializers.ValidationError('This field must be a valid S3 uri to a directory')
+
+
 class SaveGageValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=2, required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
-    forcing_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
-    observational_user_filename = serializers.CharField(min_length=2, required=False, allow_blank=False)
 
 
 def dataTypeValidator(value):
@@ -236,3 +253,11 @@ class SaveOptimizationValidator(BaseSerializer):
     streamflow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False)
     plot_generation_frequency = serializers.IntegerField(required=False)
+
+
+class ObservationalHydrofabricValidator(BaseSerializer):
+    uri = serializers.CharField(required=True, validators=[s3FileValidator])
+
+
+class ForcingHydrofabricValidator(BaseSerializer):
+    uri = serializers.CharField(required=True, validators=[s3DirectoryValidator])

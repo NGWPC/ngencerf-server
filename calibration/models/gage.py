@@ -6,6 +6,9 @@ from calibration.models.base_model import BaseModel
 class Gage(BaseModel):
     is_active = models.BooleanField(null=False, blank=False)
     gage_id = models.TextField(unique=True, null=False)
+    nws_id = models.TextField(null=True)
+    rfc = models.TextField(null=True)
+    calibratable = models.BooleanField(null=False, blank=False, default=False)
     agency = models.TextField(null=False, blank=False)
     station_name = models.TextField(null=False, blank=False)
     site_type = models.TextField(null=False, blank=False)

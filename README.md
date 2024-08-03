@@ -1,33 +1,55 @@
+# Create virtual environment and install dependencies
+
+Connect to the root directory where you cloned the repo, assumed to be `$cerfServer`
+
+**_Important:_**
+Make sure you create the virtual environment with Python 3.11.
+You might have to use the `python3.11` command instead of `python`
+Once you are in the virtual environment, you can use `python`
+
+```
+cd $cerfServer
+python -m venv .venv-cerf
+$ source $cerfServer/.venv-cerf/bin/activate
+(.venv-cerf) $ pip install -r requirements.txt
+```
+
+# Setup local configuration
+There are 2 files which need to be copied in order to provide custom settings for this installation.
+The `settings.py` file contains settings that are application to all environments.
+You should make copies of `__locall_settings.py` and `__.env`. 
+```
+(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_setings.py
+(.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env
+```
+The 2 template files are suitable for development and no changes need to be made.
+Note that these files are not checked in to Git
+
 # Initial Set-up of database
 
-Start up `manage.py`.  
-Assuming `$cerfServer` is the root directory of the project
+Ensure that you are still in the `.venv-cerf` virtual envionement
+Run `manage.py migrate` to create all the tables
 ```
-$ source $cerfServer/.venv/bin/activate
-$ $cerfServer/manage.py
-```
-Run `migrate` to create all the tables
-```
-manage.py@cerfServer> migrate
+(.venv-cerf) $ python manage.py migrate
 ```
 
 Create a superuser called `admin` that is used for initializing 
 the static tables. 
 
 ```
-manage.py@cerfServer> createsuperuser
+(.venv-cerf) $ python manage.py createsuperuser
 ```
 Run `init_sql` and `init_gages` to initialize the static tables
 ```
-manage.py@cerfServer> init_sql
-manage.py@cerfServer> init_gages
+(.venv-cerf) $ python manage.py init_sql
+(.venv-cerf) $ python manage.py init_gages
 ```
 
 # Updating
 After pulling the latest updates from the repo, you should run `migrate` 
 in case there have been any database changes
 ```
-manage.py@cerfServer> migrate
+(.venv-cerf) $ python manage.py migrate
 ```
 
 # Running the server
