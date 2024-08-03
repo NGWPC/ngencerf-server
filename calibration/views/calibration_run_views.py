@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator
 from calibration.views import ngen_cal_input
-from views.common import get_run, JsonException, JsonValidationError
+from calibration.views.common import get_run, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,6 @@ def run_calibration(request):
         # TODO Normally, we return if not ready, but for testing, we'll skip this test
         # if messages:
         #     return JsonError(f'Calibration Run {calibration_run_id} is not ready')
-
 
         response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id, 'status': run.status.name}
         logger.debug(f'Returning to {request.user} from run_calibration() - {response}')

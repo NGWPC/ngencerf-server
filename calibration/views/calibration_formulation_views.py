@@ -11,7 +11,7 @@ from calibration.calibration_validators import SaveFormulationValidator, Calibra
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
 from calibration.views import ngen_cal_input
-from views.common import get_run, JsonError, JsonException, JsonValidationError
+from calibration.views.common import get_run, JsonError, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 

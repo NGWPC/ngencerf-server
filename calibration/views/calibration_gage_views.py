@@ -16,8 +16,8 @@ from calibration.calibration_validators import SaveGageValidator, GageIdValidato
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.views import ngen_cal_input
-from views.aws_util import download_s3, download_all_s3
-from views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.util.aws_util import download_s3, download_all_s3
+from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
 
 geopackage_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",

@@ -11,7 +11,7 @@ from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
-from views.common import get_running, JsonException, JsonValidationError
+from calibration.views.common import get_running, JsonValidationError, JsonException
 
 logger = logging.getLogger(__name__)
 

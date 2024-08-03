@@ -11,7 +11,7 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
 from calibration.views import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
-from views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
 

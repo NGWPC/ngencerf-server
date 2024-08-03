@@ -17,7 +17,7 @@ from calibration.calibration_validators import CalibrationRunValidator, SaveTuni
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from calibration.views import ngen_cal_input
-from views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,6 @@ def load_tuning_tab(request):
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
-        parameter_list = []
         module_list = []
         if modules:
             # Only do this if modules have been saved in the formulation tab

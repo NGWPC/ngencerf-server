@@ -55,6 +55,7 @@ class ForcingSourceEnum(StrEnum):
     def values(cls):
         return [e.value for e in cls]
 
+
 class ObservationalSourceEnum(StrEnum):
     USGS = 'USGS'
     USACE = 'USACE'

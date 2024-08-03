@@ -1,7 +1,5 @@
 import logging
 import os
-import tempfile
-from urllib.parse import urlparse
 
 import boto3
 

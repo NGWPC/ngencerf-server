@@ -1,8 +1,7 @@
 from django.urls import path
 
-from views import calibration_gage_views, calibration_landing_views, \
-    calibration_optimization_views, calibration_api_views, calibration_run_views
-from calibration.views import calibration_formulation_views, calibration_tuning_views
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
+    calibration_gage_views, calibration_optimization_views, calibration_run_views
 
 urlpatterns = [
     ##################################
