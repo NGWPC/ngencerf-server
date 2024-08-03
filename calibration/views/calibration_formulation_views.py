@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
-from views import ngen_cal_input
+from calibration.views import ngen_cal_input
 from views.common import get_run, JsonError, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)

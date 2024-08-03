@@ -7,8 +7,8 @@ from rest_framework import serializers
 from rest_framework.decorators import api_view
 
 from calibration.calibration_validators import CalibrationRunValidator
-from views import ngen_cal_input
-from views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.views import ngen_cal_input
+from views.common import get_run, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 

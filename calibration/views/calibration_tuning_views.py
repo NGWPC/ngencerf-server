@@ -9,7 +9,6 @@ from json.decoder import JSONDecodeError
 
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import F
 from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework.decorators import api_view
@@ -17,7 +16,7 @@ from rest_framework.decorators import api_view
 from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
-from views import ngen_cal_input
+from calibration.views import ngen_cal_input
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)

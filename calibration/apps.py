@@ -2,7 +2,7 @@ import os
 
 from django.apps import AppConfig
 
-from views.ngen_locations import libs, dirs
+from calibration.views.ngen_locations import libs, dirs
 
 
 class CalibrationConfig(AppConfig):

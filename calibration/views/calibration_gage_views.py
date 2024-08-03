@@ -15,7 +15,7 @@ from calibration.calibration_validators import SaveGageValidator, GageIdValidato
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
-from views import ngen_cal_input
+from calibration.views import ngen_cal_input
 from views.aws_util import download_s3, download_all_s3
 from views.common import get_run, JsonException, JsonError, JsonValidationError
 
