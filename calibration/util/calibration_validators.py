@@ -62,8 +62,6 @@ def statusValidator(value):
         raise serializers.ValidationError(f"This field must be one of {StatusEnum.values()}")
 
 
-
-
 def s3FileValidator(value):
     pattern = re.compile('^s3://([^/]+)/(.*?([^/]+))$')
     if not pattern.match(value):
@@ -109,14 +107,14 @@ class GageValidator(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
     agency = serializers.CharField(required=True, allow_blank=False)
     station_name = serializers.CharField(required=True, allow_blank=False)
-    latitude = serializers.FloatField(required=True, allow_blank=False)
-    longitude = serializers.FloatField(required=True, allow_blank=False)
-    altitude = serializers.FloatField(required=True, allow_blank=False)
+    latitude = serializers.FloatField(required=True)
+    longitude = serializers.FloatField(required=True)
+    altitude = serializers.FloatField(required=True)
 
 
 class SaveGageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
-    calibration_run_key = serializers.IntegerField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
     geopackage_image = serializers.CharField(required=False)
 
@@ -151,19 +149,10 @@ class SlothParameters(BaseSerializer):
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
 
-class UploadResponseSerializer(BaseSerializer):
+class GenericResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
-
-
-
-class SaveFormulationValidator(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(min_length=2, required=False, allow_blank=False)
-    modules = serializers.ListField(child=serializers.CharField(min_length=2, required=True), min_length=2)
-    use_sloth = serializers.BooleanField(required=True)
-    sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
 
 
 # Geopackage from Hydrofabric
@@ -172,8 +161,30 @@ class GeopackageValidator(BaseSerializer):
     creation_date = serializers.DateTimeField(required=True)
 
 
+##################################
+# Formulation Tab
+##################################
+
+class SaveFormulationRequestValidator(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    formulation_name = serializers.CharField(min_length=2, required=False, allow_blank=False)
+    modules = serializers.ListField(child=serializers.CharField(min_length=2, required=True), min_length=2)
+    use_sloth = serializers.BooleanField(required=True)
+    sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
 
 
+class ModuleStaticSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    groups = serializers.ListField(child=serializers.CharField(required=True))
+
+
+class LoadFormulationResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    formulation_name = serializers.CharField(required=False, allow_blank=False)
+    modules = ModuleStaticSerializer(many=True)
+    use_sloth = serializers.BooleanField(required=True)
+    sloth_parameters = SlothParameters(required=False, many=True, )
+    status = serializers.CharField(validators=[statusValidator], required=True)
 
 
 # Output variables from Hydrofabric
@@ -335,7 +346,7 @@ class SaveOptimizationRequestValidator(BaseSerializer):
 
 class SaveOptimizationResponseSerializer(serializers.Serializer):
     message = serializers.CharField()
-    calibration_run_key = serializers.IntegerField()
+    calibration_run_id = serializers.IntegerField()
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 

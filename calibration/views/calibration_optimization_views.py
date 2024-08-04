@@ -174,7 +174,7 @@ def save_optimization_tab(request):
 
             ngen_cal_input.ready_to_run(run)
 
-            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
             serializer = SaveOptimizationResponseSerializer(response)
             logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
             return Response(serializer.data)

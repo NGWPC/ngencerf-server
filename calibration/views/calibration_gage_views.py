@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageValidator, UploadResponseSerializer
+    LoadGageResponseSerializer, GageValidator, GenericResponseSerializer
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.views import ngen_cal_input
@@ -292,7 +292,7 @@ def save_gage_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         # TODO Need to return the actual geopackage file, not just the name
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name,
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                     'geopackage_image': geopackage_image_url}
 
         serializer = SaveGageResponseSerializer(response)
@@ -307,7 +307,7 @@ def save_gage_tab(request):
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: UploadResponseSerializer
+        200: GenericResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -369,10 +369,10 @@ def upload_observational_data(request):
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_key': run.id,
+        response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                     'status': run.status.name}
 
-        serializer = UploadResponseSerializer(response)
+        serializer = GenericResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
         return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
@@ -384,7 +384,7 @@ def upload_observational_data(request):
 @extend_schema(
     request=UploadForcingValidator,
     responses={
-        200: UploadResponseSerializer
+        200: GenericResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -456,7 +456,7 @@ def upload_forcing_data(request):
         ngen_cal_input.ready_to_run(run)
 
         file_or_files = 'file' if count == 1 else 'files'
-        response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_key': run.id,
+        response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
 
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response}')

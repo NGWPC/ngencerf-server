@@ -274,7 +274,7 @@ def save_tuning_tab(request):
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
         logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response}')
         return JsonResponse(response)
     except (serializers.ValidationError, JSONDecodeError) as v:
@@ -289,7 +289,7 @@ def get_csv_daterange(file):
     min_time = MIN_TIME
     with open(file, 'r') as f:
         csv_reader = csv.reader(f, delimiter=',')
-        # skip the neader
+        # skip the header
         next(csv_reader, None)
         for row in csv_reader:
             timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)

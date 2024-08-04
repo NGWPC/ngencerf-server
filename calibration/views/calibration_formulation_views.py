@@ -3,13 +3,15 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
-from django.http import JsonResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
+from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
+    GenericResponseSerializer, LoadFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, JsonError, JsonException, JsonValidationError
 
@@ -205,6 +207,16 @@ module_sample_data = {"modules_data": [
 }
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: LoadFormulationResponseSerializer
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Load formulation tab data"
+)
 @api_view(['GET', 'POST'])
 # @login_required()
 def load_formulation_tab(request):
@@ -261,9 +273,10 @@ def load_formulation_tab(request):
                     "modules": module_list,
                     'use_sloth': use_sloth,
                     "sloth_parameters": list(sloth_parameters)}
-        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response}')
+        serializer = LoadFormulationResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
 
-        return JsonResponse(response, safe=False)
+        return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:
@@ -311,6 +324,13 @@ def get_modules_from_hydrofabric(run):
         return
 
 
+@extend_schema(
+    request=SaveFormulationRequestValidator,
+    responses={
+        200: GenericResponseSerializer
+    },
+    description="Save formulation tab data"
+)
 @api_view(['POST'])
 # @login_required
 def save_formulation_tab(request):
@@ -319,7 +339,7 @@ def save_formulation_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
 
-        validator = SaveFormulationValidator(data=body)
+        validator = SaveFormulationRequestValidator(data=body)
         validator.is_valid(raise_exception=True)
 
         new_module_names = set(validator.data.get('modules'))
@@ -405,9 +425,10 @@ def save_formulation_tab(request):
 
             ngen_cal_input.ready_to_run(run)
 
-            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
-            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response}')
-            return JsonResponse(response)
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+            serializer = GenericResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
+            return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:
