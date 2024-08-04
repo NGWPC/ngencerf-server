@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer
+    LoadGageResponseSerializer, GageValidator, UploadResponseSerializer
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.views import ngen_cal_input
@@ -126,6 +126,16 @@ def get_gages(request):
         return JsonException(e)
 
 
+@extend_schema(
+    request=GageIdValidator,
+    responses={
+        200: GageValidator
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Get details for a specific gage"
+)
 @api_view(['GET', 'POST'])
 # @login_required()
 def get_gage(request):
@@ -146,9 +156,10 @@ def get_gage(request):
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
             return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-        logger.debug(f'Returning to {request.user} from get_gage() - {gage}')
+        serializer = GageValidator(gage)
+        logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
-        return JsonResponse(gage, safe=False)
+        return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:
@@ -293,6 +304,13 @@ def save_gage_tab(request):
         return JsonException(e)
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: UploadResponseSerializer
+    },
+    description="Allow user to upload observational data"
+)
 @api_view(['POST'])
 # @login_required
 def upload_observational_data(request):
@@ -354,14 +372,22 @@ def upload_observational_data(request):
         response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_key': run.id,
                     'status': run.status.name}
 
-        logger.debug(f'Returning to {request.user} from upload_observational_data() - {response}')
-        return JsonResponse(response)
+        serializer = UploadResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
+        return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:
         return JsonException(e)
 
 
+@extend_schema(
+    request=UploadForcingValidator,
+    responses={
+        200: UploadResponseSerializer
+    },
+    description="Allow user to upload observational data"
+)
 @api_view(['POST'])
 # @login_required
 def upload_forcing_data(request):

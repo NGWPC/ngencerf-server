@@ -11,6 +11,10 @@ class StatusEnum(StrEnum):
     RESUMED = 'Resumed',
     SERVER_ERROR = 'Server error'
 
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]
+
 
 class CalibrationRunType(StrEnum):
     CALIB = 'calib'
