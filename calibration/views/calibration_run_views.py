@@ -6,7 +6,7 @@ from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import CalibrationRunValidator
+from calibration.util.calibration_validators import CalibrationRunValidator
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, JsonException, JsonValidationError
 

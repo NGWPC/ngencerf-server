@@ -13,7 +13,7 @@ from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
+from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from calibration.views import ngen_cal_input

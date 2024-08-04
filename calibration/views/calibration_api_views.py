@@ -9,7 +9,7 @@ from rest_framework import status
 from rest_framework.authtoken import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import ReportIterationValidator
+from calibration.util.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
 from calibration.views.common import get_running, JsonValidationError, JsonException
 

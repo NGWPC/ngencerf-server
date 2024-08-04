@@ -11,7 +11,7 @@ from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
+from calibration.util.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
