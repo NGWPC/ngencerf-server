@@ -13,6 +13,6 @@ class CalibrationConfig(AppConfig):
         for lib in libs:
             if not os.path.exists(lib):
                 print(lib, 'does not exist')
-        for dir in dirs:
-            if not os.path.exists(dir):
-                print(dir, 'does not exist')
+        for directory in dirs:
+            if not os.path.exists(directory):
+                print(directory, 'does not exist')

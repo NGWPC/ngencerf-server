@@ -21,7 +21,6 @@ class BaseSerializer(serializers.Serializer):
         return super().run_validation(data)
 
 
-
 def forcingSourceValidator(value):
     if value not in ForcingSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
@@ -48,6 +47,7 @@ def s3DirectoryValidator(value):
     if not pattern.match(value):
         raise serializers.ValidationError('This field must be a valid S3 uri to a directory')
 
+
 class CalibrationRunValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
@@ -63,7 +63,6 @@ class GageIdValidator(BaseSerializer):
 class UploadForcingValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
-
 
 
 class SaveGageValidator(BaseSerializer):
