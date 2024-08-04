@@ -7,12 +7,15 @@ from json.decoder import JSONDecodeError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from django.http import JsonResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import SaveGageValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
-    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator
+from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
+    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
+    LoadGageResponseSerializer
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.views import ngen_cal_input
@@ -35,6 +38,16 @@ observational_sample_data = {
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: LoadGageResponseSerializer
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Load gage tab data"
+)
 @api_view(['GET', 'POST'])
 # @login_required
 def load_gage_tab(request):
@@ -59,10 +72,10 @@ def load_gage_tab(request):
         gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
-        forcing_source_values = list(ForcingSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
+        forcing_source_values = list(ForcingSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
         observational_source_values = list(
-            ObservationalSource.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
-        domain_values = list(Domain.objects.only('name', 'description', 'is_active').values_list('name', 'description', 'is_active'))
+            ObservationalSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
+        domain_values = list(Domain.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
 
         # Get all the gages so the user can select another
         gages = Gage.objects.filter(is_active=True).only('gage_id').values_list('gage_id', flat=True)
@@ -72,12 +85,14 @@ def load_gage_tab(request):
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
                     'forcing_source': run.forcing_source, 'forcing_user_dir': run.forcing_user_dir,
                     'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
-                    'domain_values': domain_values, 'forcing_source_values': forcing_source_values,
+                    'domain_values': domain_values,
+                    'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
                     'gages': list(gages)}
-        logger.debug(f'Returning to {request.user} from load_gage_tab() - {response}')
+        serializer = LoadGageResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
-        return JsonResponse(response, safe=False)
+        return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:
@@ -202,6 +217,13 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     download_all_s3(s3_uri, save_dir)
 
 
+@extend_schema(
+    request=SaveGageRequestValidator,
+    responses={
+        200: SaveGageResponseSerializer
+    },
+    description="Save gage tab data"
+)
 @api_view(['POST'])
 # @login_required
 def save_gage_tab(request):
@@ -210,7 +232,7 @@ def save_gage_tab(request):
 
         body = json.loads(request.body or '{}')
         logger.debug(f'save_gage_tab() request from {request.user} - {body}')
-        validator = SaveGageValidator(data=body)
+        validator = SaveGageRequestValidator(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -262,10 +284,9 @@ def save_gage_tab(request):
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name,
                     'geopackage_image': geopackage_image_url}
 
-        logger.debug(f'Returning to {request.user} from save_gage_tab() - {response}')
-        # Add this now so it doesn't get printed above
-        # response['geopackage_image'] = geopackage_image_url
-        return JsonResponse(response)
+        serializer = SaveGageResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
+        return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:

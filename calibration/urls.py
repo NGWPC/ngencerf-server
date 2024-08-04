@@ -1,4 +1,5 @@
 from django.urls import path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
     calibration_gage_views, calibration_optimization_views, calibration_run_views
@@ -49,4 +50,11 @@ urlpatterns = [
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
+
+    ##################################
+    # Swagger - drf_spectacular
+    ##################################
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Optional UI:
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]

@@ -4,18 +4,30 @@ from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.db.models import F
-from django.http import JsonResponse
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import serializers
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
-from calibration.views import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
+from calibration.util.calibration_validators import CalibrationRunValidator, LoadOptimizationResponseSerializer, \
+    SaveOptimizationRequestValidator, SaveOptimizationResponseSerializer
+from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: LoadOptimizationResponseSerializer
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Load optimization tab data"
+)
 @api_view(['GET', 'POST'])
 # @login_required()
 def load_optimization_tab(request):
@@ -74,9 +86,10 @@ def load_optimization_tab(request):
                     'plot_generation_frequency': plot_generation_frequency,
                     'stop_criteria': stop_criteria
                     }
-        logger.debug(f'Returning to {request.user} from load_optimization_tab() - {response}')
+        serializer = LoadOptimizationResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
 
-        return JsonResponse(response, safe=False)
+        return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:
@@ -86,6 +99,13 @@ def load_optimization_tab(request):
 # noinspection PyUnusedLocal
 
 
+@extend_schema(
+    request=SaveOptimizationRequestValidator,
+    responses={
+        200: SaveOptimizationResponseSerializer
+    },
+    description="Save optimization tab data"
+)
 @api_view(['POST'])
 # @login_required
 def save_optimization_tab(request):
@@ -94,7 +114,7 @@ def save_optimization_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_optimization_tab() request from {request.user} - {body}')
 
-        validator = SaveOptimizationValidator(data=body)
+        validator = SaveOptimizationRequestValidator(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -155,8 +175,9 @@ def save_optimization_tab(request):
             ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
-            logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response}')
-            return JsonResponse(response)
+            serializer = SaveOptimizationResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
+            return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
         return JsonValidationError(v)
     except Exception as e:

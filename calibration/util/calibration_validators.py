@@ -8,6 +8,12 @@ from rest_framework.settings import api_settings
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum
 
 
+# The validators/serializers have 2 purposes.
+# The ones called 'validator' are used for validating inputs
+# The ones called 'serializer' are used for serializing the responses from endpoints
+# Both of them are used to document the inputs and outputs for use by drf_spectacular
+
+
 class BaseSerializer(serializers.Serializer):
     def run_validation(self, data=None):
         if data != empty:
@@ -36,6 +42,21 @@ def observationSourceValidator(value):
         raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
 
 
+def dataTypeValidator(value):
+    if value not in DataTypeEnum.values():
+        raise serializers.ValidationError(f"This field must be one of {DataTypeEnum.values()}")
+
+
+def unitsValidator(value):
+    if value not in UnitsEnum.values():
+        raise serializers.ValidationError(f"This field must be one of {UnitsEnum.values()}")
+
+
+def locationValidator(value):
+    if value not in LocationEnum.values():
+        raise serializers.ValidationError(f"This field must be one of {LocationEnum.values()}")
+
+
 def s3FileValidator(value):
     pattern = re.compile('^s3://([^/]+)/(.*?([^/]+))$')
     if not pattern.match(value):
@@ -52,6 +73,11 @@ class CalibrationRunValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+##################################
+# Gage Tab
+##################################
+
+
 class DomainValidator(BaseSerializer):
     domain = serializers.CharField(required=True, validators=[domainNameValidator])
 
@@ -65,26 +91,36 @@ class UploadForcingValidator(BaseSerializer):
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
 
 
-class SaveGageValidator(BaseSerializer):
+class SaveGageRequestValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(min_length=2, required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
 
 
-def dataTypeValidator(value):
-    if value not in DataTypeEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {DataTypeEnum.values()}")
+class SaveGageResponseSerializer(serializers.Serializer):
+    message = serializers.CharField(required=True)
+    calibration_run_key = serializers.IntegerField(required=True)
+    status = serializers.CharField(required=True)
+    geopackage_image = serializers.CharField(required=False)
 
 
-def unitsValidator(value):
-    if value not in UnitsEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {UnitsEnum.values()}")
+class DomainSerializer(serializers.Serializer):
+    name = serializers.CharField(validators=[domainNameValidator], required=True)
+    description = serializers.CharField(required=True, allow_blank=False)
+    is_active = serializers.BooleanField(required=True)
 
 
-def locationValidator(value):
-    if value not in LocationEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {LocationEnum.values()}")
+class LoadGageResponseSerializer(serializers.Serializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
+    forcing_user_Dir = serializers.CharField(required=False)
+    forcing_source_values = serializers.ListField(child=serializers.CharField(validators=[forcingSourceValidator], required=True))
+    observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
+    observational_user_Filename = serializers.CharField(required=False)
+    observational_source_values = serializers.ListField(child=serializers.CharField(validators=[observationSourceValidator], required=True))
+    gages = serializers.ListField(child=serializers.CharField(required=True, allow_blank=False))
+    domain_values = DomainSerializer(many=True)
 
 
 class SlothParameters(BaseSerializer):
@@ -249,19 +285,69 @@ class MetricNameValidator(BaseSerializer):
     metric = serializers.CharField(min_length=3, allow_blank=False)
 
 
-class AlgorithmInputsValidator(BaseSerializer):
+##################################
+# Optimization Tab
+##################################
+
+
+class OptimizationInputsValidator(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     value = serializers.FloatField(required=True)
 
 
-class SaveOptimizationValidator(BaseSerializer):
+class SaveOptimizationRequestValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    optimization_inputs = AlgorithmInputsValidator(many=True, required=False)
+    optimization_inputs = OptimizationInputsValidator(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False)
     objective_function = serializers.CharField(allow_blank=False, required=False)
     streamflow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False)
     plot_generation_frequency = serializers.IntegerField(required=False)
+
+
+class SaveOptimizationResponseSerializer(serializers.Serializer):
+    message = serializers.CharField()
+    calibration_run_key = serializers.IntegerField()
+    status = serializers.CharField()
+
+
+class OptimizationInputStaticSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    description = serializers.CharField()
+    data_type = serializers.CharField()
+    is_active = serializers.BooleanField()
+
+
+class OptimizationInputsUserSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True)
+    value = serializers.FloatField(required=True)
+
+
+class MetricSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    description = serializers.CharField()
+    is_active = serializers.BooleanField()
+    categorical = serializers.BooleanField()
+
+
+class OptimizationStaticSerializer(serializers.Serializer):
+    name = serializers.CharField()
+    description = serializers.CharField()
+    is_active = serializers.BooleanField()
+    inputs = OptimizationInputStaticSerializer(many=True)
+
+
+class LoadOptimizationResponseSerializer(serializers.Serializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(required=True)
+    streamflow_threshold = serializers.FloatField(allow_null=True)
+    metrics = MetricSerializer(many=True)
+    optimization = serializers.CharField(allow_null=True)
+    optimization_inputs = OptimizationInputsUserSerializer(many=True)
+    objective_function = serializers.CharField(allow_null=True)
+    optimizations = OptimizationStaticSerializer(many=True)
+    plot_generation_frequency = serializers.IntegerField(allow_null=True)
+    stop_criteria = serializers.CharField(allow_null=True)
 
 
 class ObservationalHydrofabricValidator(BaseSerializer):
