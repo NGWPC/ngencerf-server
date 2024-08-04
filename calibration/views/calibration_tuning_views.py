@@ -9,16 +9,15 @@ from json.decoder import JSONDecodeError
 
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import F
 from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
+from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
-from views import ngen_cal_input
-from views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.views import ngen_cal_input
+from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -83,10 +82,10 @@ def load_tuning_tab(request):
 
         logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
-        validate = CalibrationRunValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=data)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -116,7 +115,6 @@ def load_tuning_tab(request):
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
-        parameter_list = []
         module_list = []
         if modules:
             # Only do this if modules have been saved in the formulation tab
@@ -214,16 +212,16 @@ def save_tuning_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_tuning_tab() request from {request.user} - {body}')
 
-        validate = SaveTuningValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = SaveTuningValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
-        automatic_validation = validate.data.get('automatic_validation')
-        calibration_times = validate.data.get('calibration_times')
-        validation_times = validate.data.get('validation_times')
-        parameters = validate.data.get('parameters')
+        calibration_run_id = validator.data.get('calibration_run_id')
+        automatic_validation = validator.data.get('automatic_validation')
+        calibration_times = validator.data.get('calibration_times')
+        validation_times = validator.data.get('validation_times')
+        parameters = validator.data.get('parameters')
 
-        output_variable_to_calibrate = validate.data.get('output_variable_to_calibrate')
+        output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:

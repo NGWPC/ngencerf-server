@@ -18,8 +18,12 @@ DEBUG = True
 
 # SQL logging
 LOGGING['loggers']['django.db.backends']['level'] = 'INFO'
+
+# Calibration logging
+LOGGING['loggers']['calibration']['level'] = 'INFO'
+
 # Regular logging
-LOGGING['root']['level'] = 'DEBUG'
+LOGGING['root']['level'] = 'INFO'
 
 VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'

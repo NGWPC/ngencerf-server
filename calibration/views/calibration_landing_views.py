@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
-from views.common import JsonException, JsonValidationError
+from calibration.views.common import JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 

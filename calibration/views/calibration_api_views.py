@@ -9,9 +9,9 @@ from rest_framework import status
 from rest_framework.authtoken import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import ReportIterationValidator
+from calibration.util.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
-from views.common import get_running, JsonException, JsonValidationError
+from calibration.views.common import get_running, JsonValidationError, JsonException
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,11 @@ def report_iteration(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'report_iteration() request from {request.user} - {body}')
 
-        validate = ReportIterationValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = ReportIterationValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
-        iteration_number = validate.data.get('iteration')
+        calibration_run_id = validator.data.get('calibration_run_id')
+        iteration_number = validator.data.get('iteration')
 
         run, errorReturn = get_running(calibration_run_id, request.user)
         if errorReturn:

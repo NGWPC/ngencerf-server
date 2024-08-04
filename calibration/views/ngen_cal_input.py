@@ -6,7 +6,7 @@ from rest_framework import serializers
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationTuneParameter, OptimizationInput
-from views.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
+from calibration.util.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
 
 config_template = {
 
@@ -241,9 +241,9 @@ def ready_to_run(run, build=None):
         CalibrationOptimizationInput.objects.filter()
         inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F('optimization_input__name'))
         print('inputs', inputs)
-        for input in inputs:
-            calibration[input['name']] = input['value']
-            all_input_names.remove(input['name'])
+        for opt_input in inputs:
+            calibration[opt_input['name']] = opt_input['value']
+            all_input_names.remove(opt_input['name'])
         # See if there are any names leftover
         if all_input_names:
             messages.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')

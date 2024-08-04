@@ -1,7 +1,7 @@
 from django.urls import path
 
-from views import calibration_formulation_views, calibration_gage_views, calibration_landing_views, \
-    calibration_optimization_views, calibration_tuning_views, calibration_api_views, calibration_run_views, test_upload_view
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
+    calibration_gage_views, calibration_optimization_views, calibration_run_views
 
 urlpatterns = [
     ##################################
@@ -19,7 +19,8 @@ urlpatterns = [
     ##################################
     # Gage tab
     ##################################
-    path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage_post"),
+    path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage"),
+    path('calibration/get_gages/', calibration_gage_views.get_gages, name="getGages"),
     path('calibration/load_gage_tab/', calibration_gage_views.load_gage_tab, name="loadGageTab"),
     path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),

@@ -18,6 +18,17 @@ class CalibrationRunType(StrEnum):
     VALID_BEST = 'valid_best'
 
 
+class DomainEnum(StrEnum):
+    ALASKA = 'Alaska'
+    HAWAII = 'Hawaii'
+    CONUS = 'CONUS'
+    PUERTO_RICO = 'Puerto Rico, including US Virgin Islands'
+
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]
+
+
 ####  These enums are used in validators
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
@@ -54,6 +65,7 @@ class ForcingSourceEnum(StrEnum):
     @classmethod
     def values(cls):
         return [e.value for e in cls]
+
 
 class ObservationalSourceEnum(StrEnum):
     USGS = 'USGS'

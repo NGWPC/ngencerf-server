@@ -2,6 +2,7 @@ import os
 
 from django.conf import settings
 
+
 forcing_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing')
 observation_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation')
 geopackage_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')

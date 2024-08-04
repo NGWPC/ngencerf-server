@@ -5,7 +5,7 @@ from rest_framework import serializers
 from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
-from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -21,22 +21,14 @@ class BaseSerializer(serializers.Serializer):
         return super().run_validation(data)
 
 
-class CalibrationRunValidator(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-
-
-class GageIdValidator(BaseSerializer):
-    gage_id = serializers.CharField(required=True, allow_blank=False)
-
-
-class UploadForcingValidator(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
-
-
 def forcingSourceValidator(value):
     if value not in ForcingSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
+
+
+def domainNameValidator(value):
+    if value not in DomainEnum.values():
+        raise serializers.ValidationError(f'This field must be one of {DomainEnum.values()}')
 
 
 def observationSourceValidator(value):
@@ -54,6 +46,23 @@ def s3DirectoryValidator(value):
     pattern = re.compile('^s3://([^/]+)/(.*?([^/]+)/)$')
     if not pattern.match(value):
         raise serializers.ValidationError('This field must be a valid S3 uri to a directory')
+
+
+class CalibrationRunValidator(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+
+
+class DomainValidator(BaseSerializer):
+    domain = serializers.CharField(required=True, validators=[domainNameValidator])
+
+
+class GageIdValidator(BaseSerializer):
+    gage_id = serializers.CharField(required=True, allow_blank=False)
+
+
+class UploadForcingValidator(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
 
 
 class SaveGageValidator(BaseSerializer):

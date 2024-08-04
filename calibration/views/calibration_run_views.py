@@ -6,9 +6,9 @@ from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework.decorators import api_view
 
-from calibration.calibration_validators import CalibrationRunValidator
-from views import ngen_cal_input
-from views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.util.calibration_validators import CalibrationRunValidator
+from calibration.views import ngen_cal_input
+from calibration.views.common import get_run, JsonException, JsonValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,10 @@ def is_ready(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'is_ready() request from {request.user} - {body}')
 
-        validate = CalibrationRunValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -55,10 +55,10 @@ def run_calibration(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'run_calibration() request from {request.user} - {body}')
 
-        validate = CalibrationRunValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -69,7 +69,6 @@ def run_calibration(request):
         # TODO Normally, we return if not ready, but for testing, we'll skip this test
         # if messages:
         #     return JsonError(f'Calibration Run {calibration_run_id} is not ready')
-
 
         response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id, 'status': run.status.name}
         logger.debug(f'Returning to {request.user} from run_calibration() - {response}')
