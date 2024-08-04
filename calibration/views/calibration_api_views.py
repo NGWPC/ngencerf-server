@@ -3,19 +3,26 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
-from django.http import JsonResponse
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
-from rest_framework import status
 from rest_framework.authtoken import serializers
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import ReportIterationValidator
 from calibration.models import Iteration
-from calibration.views.common import get_running, JsonValidationError, JsonException
+from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer
+from calibration.views.common import get_running, ResponseValidationError, ResponseException
 
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=ReportIterationValidator,
+    responses={
+        200: GenericResponseSerializer
+    },
+    description="Report iteration of a running calibration"
+)
 # Called by ngen_cal
 @api_view(['POST'])
 # @login_required
@@ -41,10 +48,11 @@ def report_iteration(request):
             Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
             response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
                         'status': run.status.name}
-            logger.debug(f'Returning to {request.user} from report_iteration() - {response}')
+            serializer = GenericResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
-            return JsonResponse(response, status=status.HTTP_201_CREATED)
+            return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)

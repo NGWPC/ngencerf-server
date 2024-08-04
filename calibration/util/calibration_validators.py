@@ -187,6 +187,10 @@ class LoadFormulationResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
+##################################
+# Tuning Tab
+##################################
+
 # Output variables from Hydrofabric
 class ModuleOutputVariablesValidator(BaseSerializer):
     name = serializers.CharField(min_length=2, required=True, allow_blank=False)
@@ -302,7 +306,7 @@ class OutputVariableValidator(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
 
 
-class SaveTuningValidator(BaseSerializer):
+class SaveTuningRequestValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     parameters = TuningParametersValidator(many=True, required=False)
     calibration_times = CalibrationTimeControls(required=False)
@@ -320,8 +324,30 @@ class SaveTuningValidator(BaseSerializer):
         return data
 
 
-class MetricNameValidator(BaseSerializer):
-    metric = serializers.CharField(min_length=3, allow_blank=False)
+class TimeRangeValidator(BaseSerializer):
+    start_time = serializers.DateTimeField(required=True)
+    end_time = serializers.DateTimeField(required=True)
+
+
+class ModuleMetadataStaticSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    parameters = TuningParametersValidator()
+    output_variable = OutputVariableValidator(required=True)
+
+
+class LoadTuningResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    calibration_times = CalibrationTimeControls(required=False)
+    validation_times = ValidationTimeControls(required=False)
+    automatic_validation = serializers.BooleanField(required=True)
+    output_variable_to_calibrate = OutputVariableValidator(required=False)
+    time_range = TimeRangeValidator(required=False)
+    modules = ModuleMetadataStaticSerializer(required=True)
+    status = serializers.CharField(validators=[statusValidator], required=True)
+
+
+# class MetricNameValidator(BaseSerializer):
+#     metric = serializers.CharField(min_length=3, allow_blank=False)
 
 
 ##################################
@@ -395,3 +421,13 @@ class ObservationalHydrofabricValidator(BaseSerializer):
 
 class ForcingHydrofabricValidator(BaseSerializer):
     uri = serializers.CharField(required=True, validators=[s3DirectoryValidator])
+
+
+##################################
+# Run Tab
+##################################
+
+class IsReadyResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    errors = serializers.ListField(required=False, child=serializers.CharField(required=True)
+                                   )

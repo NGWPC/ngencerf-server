@@ -13,14 +13,14 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
+from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageValidator, GenericResponseSerializer
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.views import ngen_cal_input
-from calibration.util.aws_util import download_s3, download_all_s3
-from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.views.common import get_run, ResponseException, ResponseError, ResponseValidationError
 
 geopackage_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
@@ -94,9 +94,9 @@ def load_gage_tab(request):
 
         return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 @api_view(['GET', 'POST'])
@@ -121,9 +121,9 @@ def get_gages(request):
 
         return JsonResponse(response, safe=False)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 @extend_schema(
@@ -155,15 +155,15 @@ def get_gage(request):
         gage = Gage.objects.filter(gage_id=gage_id).only('gage_id', 'agency', 'station_name').values(
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
-            return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+            return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
         serializer = GageValidator(gage)
         logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
         return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 def get_geopackage_from_hydrofabric(gage_id):
@@ -259,7 +259,7 @@ def save_gage_tab(request):
         if gage_id:
             gage = Gage.objects.filter(gage_id=gage_id).first()
             if not gage:
-                return JsonError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+                return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
             else:
                 run.gage = gage
                 geopackage_path = get_geopackage_from_hydrofabric(gage_id)
@@ -299,9 +299,9 @@ def save_gage_tab(request):
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
         return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 @extend_schema(
@@ -329,19 +329,19 @@ def upload_observational_data(request):
             return errorReturn
 
         if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
-            return JsonError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
+            return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
         if len(request.FILES) == 0:
-            return JsonError('Observational data must be uploaded')
+            return ResponseError('Observational data must be uploaded')
 
         keys = set(request.FILES.keys())
         key = 'observational_file'
         if key not in keys:
-            return JsonValidationError(f"Missing expected key '{key}'")
+            return ResponseValidationError(f"Missing expected key '{key}'")
 
         keys.remove(key)
         if len(keys) > 0:
-            return JsonValidationError("unexpected keys - {keys}".format(keys=keys))
+            return ResponseValidationError("unexpected keys - {keys}".format(keys=keys))
 
         observational_dir = '/home/peter.a.kronenberg/temp/obs'
         fs = FileSystemStorage(location=observational_dir)
@@ -350,13 +350,13 @@ def upload_observational_data(request):
         files = request.FILES.getlist(key)
         count = len(files)
         if count > 1:
-            return JsonError("Only one observational file should be uploaded")
+            return ResponseError("Only one observational file should be uploaded")
 
         observational_file = files[0]
         run.observational_file_path = os.path.join(observational_dir, observational_file.name)
         run.observational_user_filename = observational_file.name
         if fs.exists(observational_file.name):
-            return JsonError(f"File {observational_file.name} already exists")
+            return ResponseError(f"File {observational_file.name} already exists")
 
         fs.save(observational_file.name, observational_file)
 
@@ -376,9 +376,9 @@ def upload_observational_data(request):
         logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
         return Response(serializer.data)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 @extend_schema(
@@ -407,21 +407,21 @@ def upload_forcing_data(request):
             return errorReturn
 
         if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
-            return JsonError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
+            return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
         # Validate the file keys and how many there are
         count = len(request.FILES)
         if count == 0:
-            return JsonError('Forcing data must be uploaded')
+            return ResponseError('Forcing data must be uploaded')
 
         keys = set(request.FILES.keys())
         key = 'forcing_files'
         if key not in keys:
-            return JsonValidationError(f"Missing expected key '{key}'")
+            return ResponseValidationError(f"Missing expected key '{key}'")
 
         keys.remove(key)
         if len(keys) > 0:
-            return JsonValidationError("unexpected keys - {keys}".format(keys=keys))
+            return ResponseValidationError("unexpected keys - {keys}".format(keys=keys))
 
         # TODO Need to generate a subdirectory based on the gage name
         subdir = 'gage_id'
@@ -441,7 +441,7 @@ def upload_forcing_data(request):
                 errors.append(f"File {forcing_file.name} already exists")
 
         if errors:
-            return JsonError(errors)
+            return ResponseError(errors)
 
         for forcing_file in files:
             fs.save(forcing_file.name, forcing_file)
@@ -462,6 +462,6 @@ def upload_forcing_data(request):
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response}')
         return JsonResponse(response)
     except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)

@@ -13,7 +13,7 @@ from calibration.models import NgenCalFormulation, CalibrationFormulation, Calib
 from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
     GenericResponseSerializer, LoadFormulationResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, JsonError, JsonException, JsonValidationError
+from calibration.views.common import get_run, ResponseError, ResponseException, ResponseValidationError, ResponseJsonError
 
 logger = logging.getLogger(__name__)
 
@@ -277,10 +277,12 @@ def load_formulation_tab(request):
         logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
 
         return Response(serializer.data)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 def get_modules_from_hydrofabric(run):
@@ -362,22 +364,22 @@ def save_formulation_tab(request):
                 run.ngen_formulation_name = valid_formulation['name']
                 break
         if not valid:
-            return JsonError("Invalid formulation-  '{}'".format(new_module_names))
+            return ResponseError("Invalid formulation-  '{}'".format(new_module_names))
 
         run.user_formulation_name = user_formulation_name
 
         if use_sloth:
             new_module_names.add(SLOTH)
             if not sloth_parameters:
-                return JsonError("Invalid formulation -  You must enter SLoTH parameters")
+                return ResponseError("Invalid formulation -  You must enter SLoTH parameters")
 
         else:
             if sloth_parameters:
-                return JsonError('You must check the box to allow Sloth parameters to be specified')
+                return ResponseError('You must check the box to allow Sloth parameters to be specified')
 
         # Did we get the names from Hydrofabric
         if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
-            return JsonError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+            return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
 
         run.use_sloth = use_sloth
 
@@ -410,7 +412,7 @@ def save_formulation_tab(request):
                 # Check that the module is valid
                 if not CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id,
                                                              used_by_calibration_run=True).exists():
-                    return JsonError(
+                    return ResponseError(
                         "Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
 
             run.save()
@@ -429,7 +431,9 @@ def save_formulation_tab(request):
             serializer = GenericResponseSerializer(response)
             logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
             return Response(serializer.data)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)

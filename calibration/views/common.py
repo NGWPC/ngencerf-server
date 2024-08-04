@@ -2,6 +2,7 @@ import logging
 
 from django.http import JsonResponse
 from rest_framework import status
+from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
@@ -34,16 +35,21 @@ def get_running(calibration_run_id, user):
     return run, None
 
 
-def JsonError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
+def ResponseError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
     logger.error(error)
-    return JsonResponse({'error': error}, status=httpStatus, safe=False)
+    return Response({'error': error}, status=httpStatus)
 
 
-def JsonException(e):
+def ResponseException(e):
     logger.exception(e)
-    return JsonResponse({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-def JsonValidationError(e):
+def ResponseValidationError(e):
     logger.exception(e)
-    return JsonResponse({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+def ResponseJsonError(e):
+    logger.exception(e)
+    return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)

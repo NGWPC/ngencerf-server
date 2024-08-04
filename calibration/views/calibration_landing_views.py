@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
-from calibration.views.common import JsonException, JsonValidationError
+from calibration.views.common import ResponseException, ResponseValidationError, ResponseJsonError
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +38,12 @@ def create_calibration_run(request):
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
             logger.debug(f'Returning to {request.user} from create_calibration_run() - {response}')
             return JsonResponse(response, status=status.HTTP_201_CREATED)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 # noinspection PyUnusedLocal
@@ -69,10 +71,12 @@ def get_jobs(request):
 
         logger.debug(f'Returning to {request.user} from get_jobs()() - {runs}')
         return JsonResponse(runs, safe=False)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
 
 
 # noinspection PyUnusedLocal
@@ -83,7 +87,9 @@ def get_footer(request):
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
         logger.debug(f'Returning to {request.user} from get_footer() - {response}')
         return JsonResponse(response)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
+        return ResponseValidationError(v)
     except Exception as e:
-        return JsonException(e)
+        return ResponseException(e)
