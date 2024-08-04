@@ -16,7 +16,7 @@ $ source $cerfServer/.venv-cerf/bin/activate
 
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
-The `settings.py` file contains settings that are application to all environments and should normally not be changed.
+The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
 
 You should make copies of `__locall_settings.py` and `__.env`. 
 ```

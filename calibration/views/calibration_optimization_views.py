@@ -28,10 +28,10 @@ def load_optimization_tab(request):
 
         logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 
-        validate = CalibrationRunValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=data)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -94,16 +94,16 @@ def save_optimization_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_optimization_tab() request from {request.user} - {body}')
 
-        validate = SaveOptimizationValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = SaveOptimizationValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
-        optimization_name = validate.data.get('optimization')
-        objective_function_name = validate.data.get('objective_function')
-        streamflow_threshold = validate.data.get('streamflow_threshold')
-        optimization_inputs = validate.data.get('optimization_inputs')
-        stop_criteria = validate.data.get('stop_criteria')
-        plot_generation_frequency = validate.data.get('plot_generation_frequency')
+        calibration_run_id = validator.data.get('calibration_run_id')
+        optimization_name = validator.data.get('optimization')
+        objective_function_name = validator.data.get('objective_function')
+        streamflow_threshold = validator.data.get('streamflow_threshold')
+        optimization_inputs = validator.data.get('optimization_inputs')
+        stop_criteria = validator.data.get('stop_criteria')
+        plot_generation_frequency = validator.data.get('plot_generation_frequency')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:

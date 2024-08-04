@@ -217,10 +217,10 @@ def load_formulation_tab(request):
 
         logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
-        validate = CalibrationRunValidator(data=data)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=data)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -319,14 +319,14 @@ def save_formulation_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
 
-        validate = SaveFormulationValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = SaveFormulationValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        new_module_names = set(validate.data.get('modules'))
-        calibration_run_id = validate.data.get('calibration_run_id')
-        user_formulation_name = validate.data.get('formulation_name')
-        use_sloth = validate.data.get('use_sloth')
-        sloth_parameters = validate.data.get('sloth_parameters')
+        new_module_names = set(validator.data.get('modules'))
+        calibration_run_id = validator.data.get('calibration_run_id')
+        user_formulation_name = validator.data.get('formulation_name')
+        use_sloth = validator.data.get('use_sloth')
+        sloth_parameters = validator.data.get('sloth_parameters')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:

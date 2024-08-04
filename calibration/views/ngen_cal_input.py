@@ -6,7 +6,7 @@ from rest_framework import serializers
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationTuneParameter, OptimizationInput
-from calibration.views.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
+from calibration.util.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
 
 config_template = {
 

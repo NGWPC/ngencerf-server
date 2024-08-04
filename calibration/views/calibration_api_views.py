@@ -25,11 +25,11 @@ def report_iteration(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'report_iteration() request from {request.user} - {body}')
 
-        validate = ReportIterationValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = ReportIterationValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
-        iteration_number = validate.data.get('iteration')
+        calibration_run_id = validator.data.get('calibration_run_id')
+        iteration_number = validator.data.get('iteration')
 
         run, errorReturn = get_running(calibration_run_id, request.user)
         if errorReturn:

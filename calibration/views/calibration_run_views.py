@@ -22,10 +22,10 @@ def is_ready(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'is_ready() request from {request.user} - {body}')
 
-        validate = CalibrationRunValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -55,10 +55,10 @@ def run_calibration(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'run_calibration() request from {request.user} - {body}')
 
-        validate = CalibrationRunValidator(data=body)
-        validate.is_valid(raise_exception=True)
+        validator = CalibrationRunValidator(data=body)
+        validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validate.data.get('calibration_run_id')
+        calibration_run_id = validator.data.get('calibration_run_id')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
