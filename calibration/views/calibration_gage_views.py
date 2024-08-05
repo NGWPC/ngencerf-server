@@ -20,7 +20,7 @@ from calibration.util.calibration_validators import SaveGageRequestValidator, Ga
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageValidator, GenericResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseException, ResponseError, ResponseValidationError
+from calibration.views.common import get_run, ResponseException, ResponseError, ResponseValidationError, ResponseJsonError
 
 geopackage_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
@@ -78,7 +78,8 @@ def load_gage_tab(request):
         domain_values = list(Domain.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
 
         # Get all the gages so the user can select another
-        gages = Gage.objects.filter(is_active=True).only('gage_id').values_list('gage_id', flat=True)
+        gages = list(Gage.objects.filter(is_active=True).only('gage_id', 'nws_id').values('gage_id', 'nws_id'))
+        gage_dict = {gage['gage_id']: gage['nws_id'] for gage in gages}
 
         ngen_cal_input.ready_to_run(run)
 
@@ -88,12 +89,14 @@ def load_gage_tab(request):
                     'domain_values': domain_values,
                     'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
-                    'gages': list(gages)}
+                    'gages': gage_dict}
         serializer = LoadGageResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
         return Response(serializer.data)
-    except (serializers.ValidationError, JSONDecodeError) as v:
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
         return ResponseValidationError(v)
     except Exception as e:
         return ResponseException(e)
@@ -120,7 +123,9 @@ def get_gages(request):
         logger.debug(f'Returning to {request.user} from get_gages() - {response}')
 
         return JsonResponse(response, safe=False)
-    except (serializers.ValidationError, JSONDecodeError) as v:
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
         return ResponseValidationError(v)
     except Exception as e:
         return ResponseException(e)
@@ -160,7 +165,9 @@ def get_gage(request):
         logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
         return Response(serializer.data)
-    except (serializers.ValidationError, JSONDecodeError) as v:
+    except JSONDecodeError as e:
+        return ResponseJsonError(e)
+    except serializers.ValidationError as v:
         return ResponseValidationError(v)
     except Exception as e:
         return ResponseException(e)

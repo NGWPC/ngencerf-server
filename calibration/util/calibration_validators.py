@@ -133,7 +133,7 @@ class LoadGageResponseSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
     observational_user_Filename = serializers.CharField(required=False)
     observational_source_values = serializers.ListField(child=serializers.CharField(validators=[observationSourceValidator], required=True))
-    gages = serializers.ListField(child=serializers.CharField(required=True, allow_blank=False))
+    gages = serializers.DictField(required=True, allow_empty=False)
     gage = GageValidator(required=False)
     domain_values = DomainSerializer(many=True)
 
