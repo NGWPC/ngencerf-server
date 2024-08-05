@@ -53,8 +53,8 @@ def report_iteration(request):
 
             return Response(serializer.data)
     except JSONDecodeError as e:
-            logger.exception(e)
-            return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        logger.exception(e)
+        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except serializers.ValidationError as e:
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

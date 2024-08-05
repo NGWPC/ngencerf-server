@@ -20,7 +20,7 @@ from calibration.util.calibration_validators import SaveGageRequestValidator, Ga
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageValidator, GenericResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseException, ResponseError, ResponseValidationError, ResponseJsonError
+from calibration.views.common import get_run, ResponseError
 
 geopackage_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
@@ -105,6 +105,7 @@ def load_gage_tab(request):
         return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# TODO Not sure we need this endpoint
 @api_view(['GET', 'POST'])
 def get_gages(request):
     try:
@@ -358,11 +359,11 @@ def upload_observational_data(request):
         keys = set(request.FILES.keys())
         key = 'observational_file'
         if key not in keys:
-            return ResponseValidationError(f"Missing expected key '{key}'")
+            return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
         keys.remove(key)
         if len(keys) > 0:
-            return ResponseValidationError("unexpected keys - {keys}".format(keys=keys))
+            return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
         observational_dir = '/home/peter.a.kronenberg/temp/obs'
         fs = FileSystemStorage(location=observational_dir)
@@ -443,11 +444,11 @@ def upload_forcing_data(request):
         keys = set(request.FILES.keys())
         key = 'forcing_files'
         if key not in keys:
-            return ResponseValidationError(f"Missing expected key '{key}'")
+            return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
         keys.remove(key)
         if len(keys) > 0:
-            return ResponseValidationError("unexpected keys - {keys}".format(keys=keys))
+            return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
         # TODO Need to generate a subdirectory based on the gage name
         subdir = 'gage_id'
@@ -485,8 +486,9 @@ def upload_forcing_data(request):
         response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
 
-        logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response}')
-        return JsonResponse(response)
+        serializer = GenericResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
+        return JsonResponse(serializer.data)
     except JSONDecodeError as e:
         logger.exception(e)
         return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)

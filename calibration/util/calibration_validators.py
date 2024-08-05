@@ -79,9 +79,28 @@ class CalibrationRunValidator(BaseSerializer):
 
 
 ##################################
+# Landing page
+##################################
+class JobsResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    gage_id = serializers.CharField(required=True)
+    status = serializers.CharField(required=True, validators=[statusValidator])
+    calibration_start_period = serializers.DateTimeField()
+    calibration_end_period = serializers.DateTimeField()
+
+
+class GetJobsResponseSerializer(BaseSerializer):
+    jobs = serializers.ListSerializer(child=JobsResponseSerializer(), required=True)
+
+
+class FooterResponseSerializer(BaseSerializer):
+    version = serializers.CharField(required=True)
+    contact_email = serializers.CharField(required=True)
+
+
+##################################
 # Gage Tab
 ##################################
-
 
 class DomainValidator(BaseSerializer):
     domain = serializers.CharField(required=True, validators=[domainNameValidator])
@@ -138,21 +157,14 @@ class LoadGageResponseSerializer(BaseSerializer):
     domain_values = DomainSerializer(many=True)
 
 
-class SlothParameters(BaseSerializer):
-    param_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    param_count = serializers.IntegerField(required=True)
-    param_type = serializers.CharField(required=True, validators=[dataTypeValidator])
-    param_units = serializers.CharField(required=True, validators=[unitsValidator])
-    param_location = serializers.CharField(required=True, validators=[locationValidator])
-    param_value = serializers.FloatField(required=True)
-    maps_to_module = serializers.CharField(required=True, allow_blank=False)
-    maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
-
-
 class GenericResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
+
+
+class GenericMessageResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
 
 
 # Geopackage from Hydrofabric
@@ -164,6 +176,17 @@ class GeopackageValidator(BaseSerializer):
 ##################################
 # Formulation Tab
 ##################################
+
+class SlothParameters(BaseSerializer):
+    param_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    param_count = serializers.IntegerField(required=True)
+    param_type = serializers.CharField(required=True, validators=[dataTypeValidator])
+    param_units = serializers.CharField(required=True, validators=[unitsValidator])
+    param_location = serializers.CharField(required=True, validators=[locationValidator])
+    param_value = serializers.FloatField(required=True)
+    maps_to_module = serializers.CharField(required=True, allow_blank=False)
+    maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
+
 
 class SaveFormulationRequestValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
@@ -233,11 +256,6 @@ class ModuleHydrofabricValidator(BaseSerializer):
 # List of module objects from Hydrofabric containing group names and version
 class ModuleHydrofabricListValidator(BaseSerializer):
     modules_data = ModuleHydrofabricValidator(many=True, min_length=1, required=True)
-
-
-class ReportIterationValidator(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    iteration = serializers.IntegerField(required=True, min_value=1)
 
 
 class TuningParametersValidator(BaseSerializer):
@@ -346,10 +364,6 @@ class LoadTuningResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
-# class MetricNameValidator(BaseSerializer):
-#     metric = serializers.CharField(min_length=3, allow_blank=False)
-
-
 ##################################
 # Optimization Tab
 ##################################
@@ -430,4 +444,11 @@ class ForcingHydrofabricValidator(BaseSerializer):
 class IsReadyResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
-    
+
+
+##################################
+# Misc  Tab
+##################################
+class ReportIterationValidator(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    iteration = serializers.IntegerField(required=True, min_value=1)

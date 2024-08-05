@@ -5,6 +5,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Func, CharField, F
 from django.http import JsonResponse
+from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -13,6 +14,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
+from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +26,12 @@ class DateToChar(Func):
     template = "%(function)s(%(expressions)s, 'dd-MM-yyyy HH:MI:SS')"
 
 
+@extend_schema(
+    responses={
+        201: GenericMessageResponseSerializer
+    },
+    description="Create a new calibration"
+)
 @api_view(['POST'])
 # @login_required
 def create_calibration_run(request):
@@ -36,8 +44,9 @@ def create_calibration_run(request):
             run = CalibrationRun.objects.create(is_active=True, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
-            logger.debug(f'Returning to {request.user} from create_calibration_run() - {response}')
-            return Response(response, status=status.HTTP_201_CREATED)
+            serializer = GenericMessageResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from create_calibration_run() - {serializer.data}')
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
     except JSONDecodeError as e:
         logger.exception(e)
         return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -49,6 +58,13 @@ def create_calibration_run(request):
         return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@extend_schema(
+    responses={
+        200: GetJobsResponseSerializer
+    },
+
+    description="Get all jobs"
+)
 # noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
 # @login_required
@@ -72,8 +88,11 @@ def get_jobs(request):
             r['calibration_start_period'] = r.pop('formatted_calibration_start_period')
             r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
 
-        logger.debug(f'Returning to {request.user} from get_jobs()() - {runs}')
-        return Response(runs)
+        response = {'jobs': runs}
+        serializer = GetJobsResponseSerializer(response)
+
+        logger.debug(f'Returning to {request.user} from get_jobs()() - {serializer.data}')
+        return Response(serializer.data)
     except JSONDecodeError as e:
         logger.exception(e)
         return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -85,14 +104,21 @@ def get_jobs(request):
         return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@extend_schema(
+    responses={
+        200: FooterResponseSerializer
+    },
+    description="Load gage tab data"
+)
 # noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
 # @login_required
 def get_footer(request):
     try:
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
-        logger.debug(f'Returning to {request.user} from get_footer() - {response}')
-        return JsonResponse(response)
+        serializer = FooterResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from get_footer() - {serializer.data}')
+        return JsonResponse(serializer.data)
     except Exception as e:
         logger.exception(e)
         return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
