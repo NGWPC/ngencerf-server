@@ -39,17 +39,17 @@ def ResponseError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
     logger.error(error)
     return Response({'error': error}, status=httpStatus)
 
-
-def ResponseException(e):
-    logger.exception(e)
-    return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-def ResponseValidationError(e):
-    logger.exception(e)
-    return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
-
-def ResponseJsonError(e):
-    logger.exception(e)
-    return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+#
+# def ResponseException(e):
+#     logger.exception(e)
+#     return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#
+#
+# def ResponseValidationError(e):
+#     logger.exception(e)
+#     return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+#
+#
+# def ResponseJsonError(e):
+#     logger.exception(e)
+#     return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)

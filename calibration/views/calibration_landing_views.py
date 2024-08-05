@@ -8,11 +8,11 @@ from django.http import JsonResponse
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
-from calibration.views.common import ResponseException, ResponseValidationError, ResponseJsonError
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +37,16 @@ def create_calibration_run(request):
 
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
             logger.debug(f'Returning to {request.user} from create_calibration_run() - {response}')
-            return JsonResponse(response, status=status.HTTP_201_CREATED)
+            return Response(response, status=status.HTTP_201_CREATED)
     except JSONDecodeError as e:
-        return ResponseJsonError(e)
-    except serializers.ValidationError as v:
-        return ResponseValidationError(v)
+        logger.exception(e)
+        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except serializers.ValidationError as e:
+        logger.exception(e)
+        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # noinspection PyUnusedLocal
@@ -70,13 +73,16 @@ def get_jobs(request):
             r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
 
         logger.debug(f'Returning to {request.user} from get_jobs()() - {runs}')
-        return JsonResponse(runs, safe=False)
+        return Response(runs)
     except JSONDecodeError as e:
-        return ResponseJsonError(e)
-    except serializers.ValidationError as v:
-        return ResponseValidationError(v)
+        logger.exception(e)
+        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except serializers.ValidationError as e:
+        logger.exception(e)
+        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # noinspection PyUnusedLocal
@@ -87,9 +93,6 @@ def get_footer(request):
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
         logger.debug(f'Returning to {request.user} from get_footer() - {response}')
         return JsonResponse(response)
-    except JSONDecodeError as e:
-        return ResponseJsonError(e)
-    except serializers.ValidationError as v:
-        return ResponseValidationError(v)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

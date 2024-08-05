@@ -10,7 +10,7 @@ from json.decoder import JSONDecodeError
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -19,7 +19,7 @@ from calibration.models import CalibrationFormulation, ModuleOutputVariable, Cal
 from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestValidator, ModuleDataHydrofabricListValidator, \
     LoadTuningResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseException, ResponseError, ResponseValidationError, ResponseJsonError
+from calibration.views.common import get_run, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -168,11 +168,14 @@ def load_tuning_tab(request):
 
         return Response(serializer.data)
     except JSONDecodeError as e:
-        return ResponseJsonError(e)
-    except serializers.ValidationError as v:
-        return ResponseValidationError(v)
+        logger.exception(e)
+        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except serializers.ValidationError as e:
+        logger.exception(e)
+        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # @login_required()
@@ -300,11 +303,14 @@ def save_tuning_tab(request):
         logger.debug(f'Returning to {request.user} from save_tuning_tab() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
-        return ResponseJsonError(e)
-    except serializers.ValidationError as v:
-        return ResponseValidationError(v)
+        logger.exception(e)
+        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except serializers.ValidationError as e:
+        logger.exception(e)
+        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range

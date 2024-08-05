@@ -4,8 +4,9 @@ from json.decoder import JSONDecodeError
 
 from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view
+from rest_framework.response import Response
 
 from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
@@ -92,10 +93,13 @@ def run_calibration(request):
         logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
         return JsonResponse(serializer.data)
     except JSONDecodeError as e:
-        return ResponseJsonError(e)
-    except serializers.ValidationError as v:
-        return ResponseValidationError(v)
+        logger.exception(e)
+        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except serializers.ValidationError as e:
+        logger.exception(e)
+        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

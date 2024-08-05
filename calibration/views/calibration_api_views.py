@@ -4,14 +4,14 @@ from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers
+from rest_framework import serializers, status
 from rest_framework.authtoken import serializers
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import Iteration
 from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer
-from calibration.views.common import get_running, ResponseValidationError, ResponseException
+from calibration.views.common import get_running
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,12 @@ def report_iteration(request):
             logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
             return Response(serializer.data)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return ResponseValidationError(v)
+    except JSONDecodeError as e:
+            logger.exception(e)
+            return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    except serializers.ValidationError as e:
+        logger.exception(e)
+        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return ResponseException(e)
+        logger.exception(e)
+        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

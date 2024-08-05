@@ -429,5 +429,5 @@ class ForcingHydrofabricValidator(BaseSerializer):
 
 class IsReadyResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
-    errors = serializers.ListField(required=False, child=serializers.CharField(required=True)
-                                   )
+    errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    
