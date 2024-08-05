@@ -26,7 +26,7 @@ class DomainEnum(StrEnum):
     ALASKA = 'Alaska'
     HAWAII = 'Hawaii'
     CONUS = 'CONUS'
-    PUERTO_RICO = 'Puerto Rico, including US Virgin Islands'
+    PUERTO_RICO = 'Puerto Rico'
 
     @classmethod
     def values(cls):
