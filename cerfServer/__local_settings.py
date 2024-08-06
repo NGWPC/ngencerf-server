@@ -1,5 +1,5 @@
 # This is a template for local_settings.py.
-# It should be copied to local_settings.py and add your custom local settings for your environment (e.g., staging, production, etc
+# It should be copied to local_settings.py and add your custom local settings for your environment (e.g., staging, production, etc.)
 # local_settings.py should not be checked into git.  Only this template.
 # The values in this template are suitable for use in Development.
 # Any Django or other properties can be added to this file.  For secure values, such as passwords,

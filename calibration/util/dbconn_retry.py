@@ -7,11 +7,11 @@ logger = logging.getLogger(__name__)
 
 
 @receiver(pre_reconnect)
-def pre_reconnect_handler(sender, dbwrapper, **kwargs):
+def pre_reconnect_handler(_sender, _dbwrapper, **_kwargs):
     logger.warning('Attempting to reconnect the  the database...')
 
 
 @receiver(post_reconnect)
-def post_reconnect_handler(sender, dbwrapper, **kwargs):
+def post_reconnect_handler(_sender, _dbwrapper, **_kwargs):
     logger.warning('Reconnection attempt completed...')
     

@@ -4,18 +4,42 @@ from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.db.models import F
-from django.http import JsonResponse
-from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, OpenApiParameter, PolymorphicProxySerializer
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import CalibrationRunValidator, SaveOptimizationValidator
-from calibration.views import ngen_cal_input
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
-from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.util.calibration_validators import CalibrationRunValidator, LoadOptimizationResponseSerializer, \
+    SaveOptimizationRequestValidator, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
+    ValidationErrorSerializer, ValidationExceptionSerializer
+from calibration.views import ngen_cal_input
+from calibration.views.common import get_run, ResponseError
 
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: LoadOptimizationResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Load optimization tab data"
+)
 @api_view(['GET', 'POST'])
 # @login_required()
 def load_optimization_tab(request):
@@ -74,18 +98,49 @@ def load_optimization_tab(request):
                     'plot_generation_frequency': plot_generation_frequency,
                     'stop_criteria': stop_criteria
                     }
-        logger.debug(f'Returning to {request.user} from load_optimization_tab() - {response}')
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        return JsonResponse(response, safe=False)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        serializer = LoadOptimizationResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
+
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # noinspection PyUnusedLocal
 
 
+@extend_schema(
+    request=SaveOptimizationRequestValidator,
+    responses={
+        200: SaveOptimizationResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Save optimization tab data"
+)
 @api_view(['POST'])
 # @login_required
 def save_optimization_tab(request):
@@ -94,7 +149,7 @@ def save_optimization_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_optimization_tab() request from {request.user} - {body}')
 
-        validator = SaveOptimizationValidator(data=body)
+        validator = SaveOptimizationRequestValidator(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -110,11 +165,11 @@ def save_optimization_tab(request):
             return errorReturn
 
         if optimization_inputs and not optimization_name:
-            return JsonError('Optimization inputs cannot be specified without an optimization name')
+            return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
         optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
         if not optimization:
-            return JsonError("Invalid optimization - '{}'".format(optimization_name))
+            return ResponseError("Invalid optimization - '{}'".format(optimization_name))
         run.optimization = optimization
 
         if optimization_inputs:
@@ -123,18 +178,18 @@ def save_optimization_tab(request):
                 # See if parameter is valid for this optimization
                 optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
                 if not optimization_input:
-                    return JsonError("'{}' is not a valid parameter input for '{}'".format(name, optimization_name))
+                    return ResponseError("'{}' is not a valid parameter input for '{}'".format(name, optimization_name))
 
         if objective_function_name:
             objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
             if not objective_function:
-                return JsonError("Invalid metric specified for objective function - '{}'".format(objective_function_name))
+                return ResponseError("Invalid metric specified for objective function - '{}'".format(objective_function_name))
 
             run.objective_function = objective_function
 
             if objective_function.categorical:
                 if not streamflow_threshold:
-                    return JsonError("Streamflow threshold must be specified for a categorical function'")
+                    return ResponseError("Streamflow threshold must be specified for a categorical function'")
                 run.streamflow_threshold = streamflow_threshold
 
         run.plot_frequency = plot_generation_frequency
@@ -154,10 +209,22 @@ def save_optimization_tab(request):
 
             ngen_cal_input.ready_to_run(run)
 
-            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
-            logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response}')
-            return JsonResponse(response)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+            serializer = SaveOptimizationResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
+            return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

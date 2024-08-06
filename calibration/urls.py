@@ -1,4 +1,5 @@
 from django.urls import path
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
     calibration_gage_views, calibration_optimization_views, calibration_run_views
@@ -20,7 +21,6 @@ urlpatterns = [
     # Gage tab
     ##################################
     path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage"),
-    path('calibration/get_gages/', calibration_gage_views.get_gages, name="getGages"),
     path('calibration/load_gage_tab/', calibration_gage_views.load_gage_tab, name="loadGageTab"),
     path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
@@ -49,4 +49,11 @@ urlpatterns = [
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
+
+    ##################################
+    # Swagger - drf_spectacular
+    ##################################
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Optional UI:
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
