@@ -7,7 +7,6 @@ from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc
-# from calibration.models.rfc import Rfc
 from calibration.models.status import Status
 
 
@@ -59,7 +58,6 @@ class Command(BaseCommand):
     def define_rfc(self):
         if self.DELETE_FLAG:
             Rfc.objects.all().delete()
-        Rfc.objects.all().delete()
 
         values = [{"name": "NWRFC", "description": "Northwest River Forecast Center"},
                   {"name": "CNRFC", "description": "California/Nevada River Forecast Center"},

@@ -4,7 +4,6 @@ from json.decoder import JSONDecodeError
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Func, CharField, F
-from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework import status
@@ -118,7 +117,7 @@ def get_footer(request):
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
         serializer = FooterResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from get_footer() - {serializer.data}')
-        return JsonResponse(serializer.data)
+        return Response(serializer.data)
     except Exception as e:
         logger.exception(e)
         return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

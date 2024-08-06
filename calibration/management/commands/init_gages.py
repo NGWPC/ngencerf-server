@@ -25,7 +25,7 @@ class Command(BaseCommand):
     help = "Initialize Gage table"
 
     def handle(self, *args, **options):
-        Gage.objects.all().delete()
+        # Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin
         user = get_user_model().objects.get(username='admin')

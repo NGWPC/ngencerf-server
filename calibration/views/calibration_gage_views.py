@@ -6,7 +6,6 @@ from json.decoder import JSONDecodeError
 
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
-from django.http import JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers
 from rest_framework import status
@@ -126,7 +125,7 @@ def get_gages(request):
         response = {'domain': domain, 'gages': gages}
         logger.debug(f'Returning to {request.user} from get_gages() - {response}')
 
-        return JsonResponse(response, safe=False)
+        return Response(response)
     except JSONDecodeError as e:
         logger.exception(e)
         return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -488,7 +487,7 @@ def upload_forcing_data(request):
 
         serializer = GenericResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
-        return JsonResponse(serializer.data)
+        return Response(serializer.data)
     except JSONDecodeError as e:
         logger.exception(e)
         return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)

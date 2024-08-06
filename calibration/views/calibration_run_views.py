@@ -2,7 +2,6 @@ import json
 import logging
 from json.decoder import JSONDecodeError
 
-from django.http import JsonResponse
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view
@@ -94,7 +93,7 @@ def run_calibration(request):
         response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id, 'status': run.status.name}
         serializer = GenericResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
-        return JsonResponse(serializer.data)
+        return Response(serializer.data)
     except JSONDecodeError as e:
         logger.exception(e)
         return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)

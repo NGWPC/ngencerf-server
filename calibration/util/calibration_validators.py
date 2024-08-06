@@ -447,8 +447,12 @@ class IsReadyResponseSerializer(BaseSerializer):
 
 
 ##################################
-# Misc  Tab
+# Misc
 ##################################
 class ReportIterationValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     iteration = serializers.IntegerField(required=True, min_value=1)
+
+
+class ErrorResponseSerializer(BaseSerializer):
+    error = serializers.CharField(required=True)
