@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 DEBUG = True
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-AUTH_PASSWORD_VALIDATORS = [{"NAME": "testapp.validators.Is666"}]
+AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.validators.Is666"}]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -49,9 +49,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "djoser",
-    "djoser_auth",
     "social_django",
-    "templated_mail",
     "rest_framework_simplejwt",
 ]
 
@@ -116,6 +114,7 @@ SOCIAL_AUTH_OPENID_TRUST_ROOT = "http://test.localhost/"
 DJOSER = {
     "SEND_CONFIRMATION_EMAIL" : False,
     "SEND_ACTIVATION_EMAIL": False,
+    "SET_PASSWORD_RETYPE" : True,
     "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
     "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
     "ACTIVATION_URL": "#/activation/{uid}/{token}",

@@ -20,8 +20,8 @@ from django.contrib import admin
 urlpatterns = [
     path('', include("calibration.urls")),
     path('admin/', admin.site.urls),
-    re_path(r"^auth/", include("djoser.urls.base")),
-    re_path(r"^auth/", include("djoser.urls.authtoken")),
+    re_path(r"^auth/", include("djoser.urls")),
+    #re_path(r"^auth/", include("djoser.urls.authtoken")),
     re_path(r"^auth/", include("djoser.urls.jwt")),
-    re_path(r"^auth/", include("djoser.social.urls")),
+    #re_path(r"^auth/", include("djoser.social.urls")),
 ]
