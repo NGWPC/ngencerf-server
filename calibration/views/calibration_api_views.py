@@ -3,7 +3,7 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -21,11 +21,15 @@ logger = logging.getLogger(__name__)
     request=ReportIterationValidator,
     responses={
         200: GenericResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     description="Report iteration of a running calibration"

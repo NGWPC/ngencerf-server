@@ -3,7 +3,7 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -213,11 +213,15 @@ module_sample_data = {"modules_data": [
     request=CalibrationRunValidator,
     responses={
         200: LoadFormulationResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     parameters=[
@@ -349,11 +353,15 @@ def get_modules_from_hydrofabric(run):
     request=SaveFormulationRequestValidator,
     responses={
         200: GenericResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     description="Save formulation tab data"

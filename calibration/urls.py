@@ -21,7 +21,6 @@ urlpatterns = [
     # Gage tab
     ##################################
     path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage"),
-    path('calibration/get_gages/', calibration_gage_views.get_gages, name="getGages"),
     path('calibration/load_gage_tab/', calibration_gage_views.load_gage_tab, name="loadGageTab"),
     path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),

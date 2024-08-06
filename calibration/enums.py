@@ -2,13 +2,13 @@ from enum import StrEnum
 
 
 class StatusEnum(StrEnum):
-    SAVED = 'Saved',
-    READY = 'Ready',
-    RUNNING = 'Running',
-    DONE = 'Done',
-    CANCELLED = 'Cancelled',
-    FAILED = 'Failed',
-    RESUMED = 'Resumed',
+    SAVED = 'Saved'
+    READY = 'Ready'
+    RUNNING = 'Running'
+    DONE = 'Done'
+    CANCELLED = 'Cancelled'
+    FAILED = 'Failed'
+    RESUMED = 'Resumed'
     SERVER_ERROR = 'Server error'
 
     @classmethod
@@ -85,4 +85,3 @@ class ObservationalSourceEnum(StrEnum):
     @classmethod
     def values(cls):
         return [e.value for e in cls]
-

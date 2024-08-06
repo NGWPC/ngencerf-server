@@ -4,7 +4,7 @@ from json.decoder import JSONDecodeError
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Func, CharField, F
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -28,8 +28,18 @@ class DateToChar(Func):
 
 
 @extend_schema(
+    request=None,
     responses={
-        201: GenericMessageResponseSerializer
+        201: GenericMessageResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
     },
     description="Create a new calibration"
 )
@@ -62,13 +72,18 @@ def create_calibration_run(request):
 
 
 @extend_schema(
+    request=None,
     responses={
         200: GetJobsResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
 
@@ -120,13 +135,9 @@ def get_jobs(request):
 
 
 @extend_schema(
+    request=None,
     responses={
         200: FooterResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
         500: ExceptionResponseSerializer
     },
     description="Load gage tab data"

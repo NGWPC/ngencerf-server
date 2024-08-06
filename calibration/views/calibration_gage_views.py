@@ -6,7 +6,7 @@ from json.decoder import JSONDecodeError
 
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -17,7 +17,7 @@ from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
-    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
+    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
@@ -43,11 +43,15 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunValidator,
     responses={
         200: LoadGageResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     parameters=[
@@ -84,7 +88,9 @@ def load_gage_tab(request):
             ObservationalSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
         domain_values = list(Domain.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
 
-        gages = list(Gage.objects.filter(is_active=True).only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain').values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain'))
+        gages = list(Gage.objects.filter(is_active=True).only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain').values('gage_id', 'nws_id',
+                                                                                                                         'nwm_v3_calibrated',
+                                                                                                                         'domain'))
 
         ngen_cal_input.ready_to_run(run)
 
@@ -118,54 +124,19 @@ def load_gage_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# TODO Not sure we need this endpoint
-@api_view(['GET', 'POST'])
-def get_gages(request):
-    try:
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
-
-        logger.debug(f'get_gages() request from {request.user} - {data}')
-
-        validator = DomainValidator(data=data)
-        validator.is_valid(raise_exception=True)
-
-        domain = validator.data.get('domain')
-
-        gages = Gage.objects.filter(domain__name=domain).only('gage_id').values('gage_id').first()
-
-        response = {'domain': domain, 'gages': gages}
-        logger.debug(f'Returning to {request.user} from get_gages() - {response}')
-
-        return Response(response)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 @extend_schema(
     request=GageIdValidator,
     responses={
         200: GageValidator,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     parameters=[
@@ -280,11 +251,15 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     request=SaveGageRequestValidator,
     responses={
         200: SaveGageResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     description="Save gage tab data"
@@ -373,11 +348,15 @@ def save_gage_tab(request):
     request=CalibrationRunValidator,
     responses={
         200: GenericResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     description="Allow user to upload observational data"
@@ -463,11 +442,15 @@ def upload_observational_data(request):
     request=UploadForcingValidator,
     responses={
         200: GenericResponseSerializer,
-        400: OpenApiResponse(response={
-            ValidationExceptionSerializer,
-            ValidationErrorSerializer,
-            ErrorResponseSerializer
-        }),
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
         500: ExceptionResponseSerializer
     },
     description="Allow user to upload observational data"
