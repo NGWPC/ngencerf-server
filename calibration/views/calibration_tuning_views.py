@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestValidator, ModuleDataHydrofabricListValidator, \
-    LoadTuningResponseSerializer, GenericResponseSerializer
+    LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -75,7 +75,8 @@ module_sample_data = {"modules_data": [
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: LoadTuningResponseSerializer
+        200: LoadTuningResponseSerializer,
+        400: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -224,7 +225,8 @@ def get_module_data_from_hydrofabric(run, modules):
 @extend_schema(
     request=SaveTuningRequestValidator,
     responses={
-        200: GenericResponseSerializer
+        200: GenericResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Save tuning tab data"
 )

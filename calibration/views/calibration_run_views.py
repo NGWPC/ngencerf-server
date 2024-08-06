@@ -7,7 +7,8 @@ from rest_framework import serializers, status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer
+from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
+    ErrorResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run
 
@@ -17,7 +18,8 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: IsReadyResponseSerializer
+        200: IsReadyResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Check if a job is ready to run"
 )
@@ -63,7 +65,8 @@ def is_ready(request):
 
 @extend_schema(
     responses={
-        200: GenericResponseSerializer
+        200: GenericResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Run a calibration"
 )

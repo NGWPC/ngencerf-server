@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
 from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
-    GenericResponseSerializer, LoadFormulationResponseSerializer
+    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -210,7 +210,8 @@ module_sample_data = {"modules_data": [
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: LoadFormulationResponseSerializer
+        200: LoadFormulationResponseSerializer,
+        400: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -332,7 +333,8 @@ def get_modules_from_hydrofabric(run):
 @extend_schema(
     request=SaveFormulationRequestValidator,
     responses={
-        200: GenericResponseSerializer
+        200: GenericResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Save formulation tab data"
 )

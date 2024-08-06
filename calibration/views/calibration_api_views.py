@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import Iteration
-from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer
+from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer, ErrorResponseSerializer
 from calibration.views.common import get_running
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,8 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=ReportIterationValidator,
     responses={
-        200: GenericResponseSerializer
+        200: GenericResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Report iteration of a running calibration"
 )

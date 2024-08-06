@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunValidator, LoadOptimizationResponseSerializer, \
-    SaveOptimizationRequestValidator, SaveOptimizationResponseSerializer
+    SaveOptimizationRequestValidator, SaveOptimizationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -21,7 +21,8 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: LoadOptimizationResponseSerializer
+        200: LoadOptimizationResponseSerializer,
+        400: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -107,7 +108,8 @@ def load_optimization_tab(request):
 @extend_schema(
     request=SaveOptimizationRequestValidator,
     responses={
-        200: SaveOptimizationResponseSerializer
+        200: SaveOptimizationResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Save optimization tab data"
 )

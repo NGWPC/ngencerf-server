@@ -17,7 +17,7 @@ from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageValidator, GenericResponseSerializer
+    LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -40,7 +40,8 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: LoadGageResponseSerializer
+        200: LoadGageResponseSerializer,
+        400: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -140,7 +141,8 @@ def get_gages(request):
 @extend_schema(
     request=GageIdValidator,
     responses={
-        200: GageValidator
+        200: GageValidator,
+        400: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -247,7 +249,8 @@ def get_forcing_data_from_hydrofabric(forcing_source):
 @extend_schema(
     request=SaveGageRequestValidator,
     responses={
-        200: SaveGageResponseSerializer
+        200: SaveGageResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Save gage tab data"
 )
@@ -328,7 +331,8 @@ def save_gage_tab(request):
 @extend_schema(
     request=CalibrationRunValidator,
     responses={
-        200: GenericResponseSerializer
+        200: GenericResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -410,7 +414,8 @@ def upload_observational_data(request):
 @extend_schema(
     request=UploadForcingValidator,
     responses={
-        200: GenericResponseSerializer
+        200: GenericResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )

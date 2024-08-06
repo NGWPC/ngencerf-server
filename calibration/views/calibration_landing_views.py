@@ -13,7 +13,8 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
-from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer
+from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
+    ErrorResponseSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,8 @@ def create_calibration_run(request):
 
 @extend_schema(
     responses={
-        200: GetJobsResponseSerializer
+        200: GetJobsResponseSerializer,
+        400: ErrorResponseSerializer
     },
 
     description="Get all jobs"
@@ -105,7 +107,8 @@ def get_jobs(request):
 
 @extend_schema(
     responses={
-        200: FooterResponseSerializer
+        200: FooterResponseSerializer,
+        400: ErrorResponseSerializer
     },
     description="Load gage tab data"
 )
