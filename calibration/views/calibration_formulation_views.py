@@ -276,6 +276,8 @@ def load_formulation_tab(request):
                     "modules": module_list,
                     'use_sloth': use_sloth,
                     "sloth_parameters": list(sloth_parameters)}
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+
         serializer = LoadFormulationResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
 

@@ -89,6 +89,8 @@ def load_optimization_tab(request):
                     'plot_generation_frequency': plot_generation_frequency,
                     'stop_criteria': stop_criteria
                     }
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+
         serializer = LoadOptimizationResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
 

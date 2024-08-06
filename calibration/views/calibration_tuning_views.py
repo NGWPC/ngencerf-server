@@ -166,6 +166,8 @@ def load_tuning_tab(request):
                     'validation_times': validation_times, 'automatic_validation': automatic_validation,
                     'time_range': {'start_time': run.time_range_start, 'end_time': run.time_range_end},
                     'output_variable_to_calibrate': output_variable_to_calibrate}
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+
         serializer = LoadTuningResponseSerializer(response)
         logger.debug(f'load_tuning_tab() request from {request.user} - {serializer.data}')
 

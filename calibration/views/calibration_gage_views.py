@@ -92,6 +92,8 @@ def load_gage_tab(request):
                     'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
                     'gages': gage_dict}
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+
         serializer = LoadGageResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 

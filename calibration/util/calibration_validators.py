@@ -361,7 +361,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     automatic_validation = serializers.BooleanField(required=True)
     output_variable_to_calibrate = OutputVariableValidator(required=False)
     time_range = TimeRangeValidator(required=False)
-    modules = ModuleMetadataStaticSerializer(required=True)
+    modules = ModuleMetadataStaticSerializer(required=False)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
@@ -423,7 +423,7 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     streamflow_threshold = serializers.FloatField(allow_null=True)
     metrics = MetricSerializer(many=True)
     optimization = serializers.CharField(allow_null=True)
-    optimization_inputs = OptimizationInputsUserSerializer(many=True)
+    optimization_inputs = OptimizationInputsUserSerializer(many=True, required=False)
     objective_function = serializers.CharField(allow_null=True)
     optimizations = OptimizationStaticSerializer(many=True)
     plot_generation_frequency = serializers.IntegerField(allow_null=True)
