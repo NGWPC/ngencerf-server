@@ -17,7 +17,6 @@ hawaii_domain = next(item for item in domains if item['name'] == DomainEnum.HAWA
 puerto_rico_domain = next(item for item in domains if item['name'] == DomainEnum.PUERTO_RICO.value)
 conus_domain = next(item for item in domains if item['name'] == DomainEnum.CONUS.value)
 
-
 rfc_dict = {rfc['name']: rfc['id'] for rfc in list(Rfc.objects.only('id', 'name').values('id', 'name'))}
 
 
@@ -46,7 +45,8 @@ class Command(BaseCommand):
                 longitude = None if row[2] == 'NA' else float(row[2])
                 latitude = None if row[3] == 'NA' else float(row[3])
                 rfc_id = rfc_dict[row[4]]
-                gage = {'gage_id': row[0], 'longitude': longitude, 'latitude': latitude, 'rfc_id': rfc_id, 'is_active': True, 'nwm_v3_calibrated': True,
+                gage = {'gage_id': row[0], 'longitude': longitude, 'latitude': latitude, 'rfc_id': rfc_id, 'is_active': True,
+                        'nwm_v3_calibrated': True,
                         'domain_id': puerto_rico_domain['id']}
                 gages[row[0]] = gage
 
@@ -76,7 +76,8 @@ class Command(BaseCommand):
                 longitude = None if row[2] == 'NA' else float(row[2])
                 latitude = None if row[3] == 'NA' else float(row[3])
                 rfc_id = rfc_dict[row[8]]
-                gage = {'gage_id': row[0], 'longitude': longitude, 'latitude': latitude, 'rfc_id': rfc_id, 'is_active': True, 'nwm_v3_calibrated': True,
+                gage = {'gage_id': row[0], 'longitude': longitude, 'latitude': latitude, 'rfc_id': rfc_id, 'is_active': True,
+                        'nwm_v3_calibrated': True,
                         'domain_id': alaska_domain['id']}
                 gages[row[0]] = gage
 
@@ -93,7 +94,8 @@ class Command(BaseCommand):
                 longitude = None if row[3] == 'NA' else float(row[3])
                 latitude = None if row[4] == 'NA' else float(row[4])
                 rfc_id = rfc_dict[row[2]]
-                gage = {'gage_id': row[0], 'longitude': longitude, 'latitude': latitude, 'rfc_id': rfc_id, 'is_active': True, 'nwm_v3_calibrated': True,
+                gage = {'gage_id': row[0], 'longitude': longitude, 'latitude': latitude, 'rfc_id': rfc_id, 'is_active': True,
+                        'nwm_v3_calibrated': True,
                         'domain_id': conus_domain['id']}
                 gages[row[0]] = gage
 
@@ -188,9 +190,15 @@ class Command(BaseCommand):
                 # Figure out the domain
                 gage['domain_id'] = calculate_domain(gage['latitude'], gage['longitude'])['id']
 
-        # Finally, insert into table
-        gage_objects = [Gage(**item) for item in gages.values()]
-        Gage.objects.bulk_create(gage_objects, batch_size=1000)
+        unique_field = 'gage_id'
+        print('Creating objects.... this will take a minute or two')
+        row_num = 0
+        for gage in gages.values():
+            Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
+                                          **{unique_field: gage[unique_field]})
+            row_num += 1
+            if row_num % 1000 == 0:
+                print(row_num, 'of', len(gages), '...')
 
 
 def dms_to_dd(lat_long_str):
