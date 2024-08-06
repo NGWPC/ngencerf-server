@@ -28,7 +28,9 @@ Note that these files are not checked in to Git
 
 # Initial Set-up of database
 
-Ensure that you are still in the `.venv-cerf` virtual envionement
+Install Postgres if not already done.
+
+Ensure that you are still in the `.venv-cerf` virtual environment
 Run `manage.py migrate` to create all the tables
 ```
 (.venv-cerf) $ python manage.py migrate
