@@ -84,9 +84,7 @@ def load_gage_tab(request):
             ObservationalSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
         domain_values = list(Domain.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
 
-        # Get all the gages so the user can select another
-        gages = list(Gage.objects.filter(is_active=True).only('gage_id', 'nws_id').values('gage_id', 'nws_id'))
-        gage_dict = {gage['gage_id']: gage['nws_id'] for gage in gages}
+        gages = list(Gage.objects.filter(is_active=True).only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain').values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain'))
 
         ngen_cal_input.ready_to_run(run)
 
@@ -96,7 +94,7 @@ def load_gage_tab(request):
                     'domain_values': domain_values,
                     'forcing_source_values': forcing_source_values,
                     'observational_source_values': observational_source_values,
-                    'gages': gage_dict}
+                    'gages': gages}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
         serializer = LoadGageResponseSerializer(response)

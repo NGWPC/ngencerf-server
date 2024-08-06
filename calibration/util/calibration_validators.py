@@ -145,6 +145,13 @@ class DomainSerializer(BaseSerializer):
     is_active = serializers.BooleanField(required=True)
 
 
+class GagesSerializer(BaseSerializer):
+    gage_id = serializers.CharField(required=True, allow_blank=False)
+    nws_id = serializers.CharField(required=True, allow_blank=False)
+    domain = serializers.CharField(required=True, validators=[domainNameValidator])
+    nwm_v3_calibrated = serializers.BooleanField(required=True)
+
+
 class LoadGageResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
@@ -153,7 +160,7 @@ class LoadGageResponseSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
     observational_user_Filename = serializers.CharField(required=False)
     observational_source_values = serializers.ListField(child=serializers.CharField(validators=[observationSourceValidator], required=True))
-    gages = serializers.DictField(required=True, allow_empty=False)
+    gages = GagesSerializer(required=True, many=True)
     gage = GageValidator(required=False)
     domain_values = DomainSerializer(many=True)
 
