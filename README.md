@@ -62,6 +62,11 @@ Running the server in production is likely very different,
 but it's important to run `pre_start.py` from `manage.py` before the server starts, 
 in order to clean up any  Calibrations or Validations that were running at the time the server went down.
 
+**_Note:_**
+You will get warnings about `ngen` and `ngen-cal` files that don't exist.  That is fine if you haven't installed them yet.
+The server will still run.  You just won't be able to actually run a Calibration.
+
+
 # Installing ngen and ngen-cal
 
 Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab
