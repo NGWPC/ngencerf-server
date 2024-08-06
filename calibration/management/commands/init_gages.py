@@ -99,6 +99,20 @@ class Command(BaseCommand):
                         'domain_id': conus_domain['id']}
                 gages[row[0]] = gage
 
+        # Some extra manually added gages
+        with open('calibration/management/commands/Supplemental.csv') as file:
+            # "gage_id,nws_id,lat,long"
+            reader = csv.reader(file, delimiter=',')
+            row_num = 0
+            for row in reader:
+                row_num += 1
+                # Skip the first 3 lines
+                if row_num <= 3:
+                    continue
+
+                gage = {'gage_id': row[0], 'nws_id': row[1], 'longitude': row[3], 'latitude': row[2], 'station_name': row[4], 'is_active': True, 'nwm_v3_calibrated': False}
+                gages[row[0]] = gage
+
         # Read the main file and supplement with info from the previous file, if available for that gage
         with open('calibration/management/commands/USGS_streamflow_gage_list_2024-06-16.txt', 'r') as file:
             reader = csv.reader(file, delimiter='\t')
@@ -152,7 +166,7 @@ class Command(BaseCommand):
                 gage = gages.get(gage_id)
                 if not gage:
                     # print(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt, line {row_num}")
-                    # According to Yuqiong, there are reservoirs gage and not streamflow gages, so we can ignore them
+                    # According to Yuqiong, there are reservoir gage and not streamflow gages, so we can ignore them
                     continue
                 if 'latitude' not in gage or gage['latitude'] is None:
                     # The ALL_USGS-HADS_SITES.txt file has all longitude values as positive, even though they are in the Western hemisphere.  So we'll switch it.
