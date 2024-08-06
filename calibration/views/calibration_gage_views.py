@@ -6,7 +6,7 @@ from json.decoder import JSONDecodeError
 
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -43,7 +43,12 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunValidator,
     responses={
         200: LoadGageResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -158,7 +163,12 @@ def get_gages(request):
     request=GageIdValidator,
     responses={
         200: GageValidator,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -272,7 +282,12 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     request=SaveGageRequestValidator,
     responses={
         200: SaveGageResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Save gage tab data"
 )
@@ -360,7 +375,12 @@ def save_gage_tab(request):
     request=CalibrationRunValidator,
     responses={
         200: GenericResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -445,7 +465,12 @@ def upload_observational_data(request):
     request=UploadForcingValidator,
     responses={
         200: GenericResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Allow user to upload observational data"
 )

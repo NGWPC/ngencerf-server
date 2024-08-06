@@ -2,7 +2,7 @@ import json
 import logging
 from json.decoder import JSONDecodeError
 
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -20,7 +20,12 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunValidator,
     responses={
         200: IsReadyResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Check if a job is ready to run"
 )
@@ -73,7 +78,12 @@ def is_ready(request):
 @extend_schema(
     responses={
         200: GenericResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Run a calibration"
 )

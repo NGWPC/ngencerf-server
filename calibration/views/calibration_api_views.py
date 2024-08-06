@@ -3,7 +3,7 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -21,7 +21,12 @@ logger = logging.getLogger(__name__)
     request=ReportIterationValidator,
     responses={
         200: GenericResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Report iteration of a running calibration"
 )

@@ -4,7 +4,7 @@ from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.db.models import F
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -24,7 +24,12 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunValidator,
     responses={
         200: LoadOptimizationResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -119,7 +124,12 @@ def load_optimization_tab(request):
     request=SaveOptimizationRequestValidator,
     responses={
         200: SaveOptimizationResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Save optimization tab data"
 )

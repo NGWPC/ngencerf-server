@@ -4,7 +4,7 @@ from json.decoder import JSONDecodeError
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Func, CharField, F
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -64,7 +64,12 @@ def create_calibration_run(request):
 @extend_schema(
     responses={
         200: GetJobsResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
 
     description="Get all jobs"
@@ -117,7 +122,12 @@ def get_jobs(request):
 @extend_schema(
     responses={
         200: FooterResponseSerializer,
-        400: ErrorResponseSerializer
+        400: OpenApiResponse(response={
+            ValidationExceptionSerializer,
+            ValidationErrorSerializer,
+            ErrorResponseSerializer
+        }),
+        500: ExceptionResponseSerializer
     },
     description="Load gage tab data"
 )
