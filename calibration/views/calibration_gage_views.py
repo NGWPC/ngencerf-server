@@ -10,6 +10,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
@@ -17,7 +18,8 @@ from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, DomainValidator, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer
+    LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
+    ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -95,14 +97,20 @@ def load_gage_tab(request):
 
         return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # TODO Not sure we need this endpoint
@@ -128,14 +136,20 @@ def get_gages(request):
 
         return Response(response)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @extend_schema(
@@ -174,14 +188,20 @@ def get_gage(request):
 
         return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def get_geopackage_from_hydrofabric(gage_id):
@@ -318,14 +338,20 @@ def save_gage_tab(request):
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @extend_schema(
@@ -407,8 +433,10 @@ def upload_observational_data(request):
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @extend_schema(
@@ -500,5 +528,7 @@ def upload_forcing_data(request):
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

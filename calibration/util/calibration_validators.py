@@ -2,6 +2,7 @@ import re
 
 from datetimerange import DateTimeRange
 from rest_framework import serializers
+from rest_framework.exceptions import ErrorDetail
 from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
@@ -456,3 +457,31 @@ class ReportIterationValidator(BaseSerializer):
 
 class ErrorResponseSerializer(BaseSerializer):
     error = serializers.CharField(required=True)
+
+
+class ErrorDetailListField(serializers.ListField):
+    child = serializers.CharField()
+
+    def to_representation(self, value):
+        # Ensure that the value is a list of ErrorDetail objects
+        if not all(isinstance(item, ErrorDetail) for item in value):
+            raise serializers.ValidationError("All items must be instances of ErrorDetail.")
+        return [str(item) for item in value]
+
+    def to_internal_value(self, data):
+        if not isinstance(data, list):
+            raise serializers.ValidationError("Expected a list of strings.")
+        return [ErrorDetail(item) for item in data]
+
+
+class ValidationExceptionSerializer(BaseSerializer):
+    # validation_error = serializers.DictField(child=ErrorDetailListField(), required=True)
+    validation_error = serializers.JSONField(required=True)
+
+
+class ValidationErrorSerializer(BaseSerializer):
+    validation_error = serializers.CharField(required=True)
+
+
+class ExceptionResponseSerializer(BaseSerializer):
+    exception = serializers.CharField(required=True)

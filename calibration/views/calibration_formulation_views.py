@@ -4,14 +4,16 @@ from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from rest_framework import serializers, status
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
 from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
-    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer
+    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
+    ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -279,14 +281,20 @@ def load_formulation_tab(request):
 
         return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def get_modules_from_hydrofabric(run):
@@ -437,11 +445,17 @@ def save_formulation_tab(request):
             logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
             return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

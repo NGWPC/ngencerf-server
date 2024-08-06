@@ -15,10 +15,10 @@ def get_run(calibration_run_id, user):
     run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
     if not run:
         return run, Response({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user}'},
-                                 status=status.HTTP_400_BAD_REQUEST)
+                             status=status.HTTP_400_BAD_REQUEST)
     if run.status.name != StatusEnum.READY and run.status.name != StatusEnum.SAVED:
         return run, Response({'error': f'Calibration Run {calibration_run_id} is not saved or ready.  Status: {run.status.name}'},
-                                 status=status.HTTP_400_BAD_REQUEST)
+                             status=status.HTTP_400_BAD_REQUEST)
     return run, None
 
 
@@ -28,14 +28,15 @@ def get_running(calibration_run_id, user):
     run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
     if not run:
         return run, Response({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user}'},
-                                 status=status.HTTP_400_BAD_REQUEST)
+                             status=status.HTTP_400_BAD_REQUEST)
     if run.status.name != StatusEnum.RUNNING:
         return run, Response({'error': f'Calibration Run {calibration_run_id} is not running.  Status: {run.status.name}'},
-                                 status=status.HTTP_400_BAD_REQUEST)
+                             status=status.HTTP_400_BAD_REQUEST)
     return run, None
 
 
 def ResponseError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
-    serializer = ErrorResponseSerializer(error)
+    response = {'error': error}
+    serializer = ErrorResponseSerializer(response)
     logger.error(serializer.data)
-    return Response({'error': serializer.data}, status=httpStatus)
+    return Response(serializer.data, status=httpStatus)

@@ -4,13 +4,14 @@ from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers, status
-from rest_framework.authtoken import serializers
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.models import Iteration
-from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer, ErrorResponseSerializer
+from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer, ErrorResponseSerializer, \
+    ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views.common import get_running
 
 logger = logging.getLogger(__name__)
@@ -54,11 +55,17 @@ def report_iteration(request):
 
             return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

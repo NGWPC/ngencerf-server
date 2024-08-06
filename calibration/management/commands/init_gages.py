@@ -18,7 +18,7 @@ puerto_rico_domain = next(item for item in domains if item['name'] == DomainEnum
 conus_domain = next(item for item in domains if item['name'] == DomainEnum.CONUS.value)
 
 
-rfc_dict = {rfc['name']: rfc['id'] for rfc in  list(Rfc.objects.only('id', 'name').values('id', 'name'))}
+rfc_dict = {rfc['name']: rfc['id'] for rfc in list(Rfc.objects.only('id', 'name').values('id', 'name'))}
 
 
 class Command(BaseCommand):

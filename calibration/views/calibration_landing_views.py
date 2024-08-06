@@ -8,13 +8,14 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +55,10 @@ def create_calibration_run(request):
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @extend_schema(
@@ -95,14 +98,20 @@ def get_jobs(request):
         logger.debug(f'Returning to {request.user} from get_jobs()() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
         logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @extend_schema(
@@ -122,5 +131,7 @@ def get_footer(request):
         logger.debug(f'Returning to {request.user} from get_footer() - {serializer.data}')
         return Response(serializer.data)
     except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
-        return Response({'exception': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
