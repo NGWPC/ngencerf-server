@@ -9,15 +9,19 @@ from json.decoder import JSONDecodeError
 
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.http import JsonResponse
-from rest_framework import serializers
+from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningValidator, ModuleDataHydrofabricListValidator
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestValidator, ModuleDataHydrofabricListValidator, \
+    LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
+    ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, JsonException, JsonError, JsonValidationError
+from calibration.views.common import get_run, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +74,26 @@ module_sample_data = {"modules_data": [
 }
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: LoadTuningResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Load tuning tab data"
+)
 @api_view(['GET', 'POST'])
 # @login_required
 def load_tuning_tab(request):
@@ -151,13 +175,27 @@ def load_tuning_tab(request):
                     'validation_times': validation_times, 'automatic_validation': automatic_validation,
                     'time_range': {'start_time': run.time_range_start, 'end_time': run.time_range_end},
                     'output_variable_to_calibrate': output_variable_to_calibrate}
-        logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        return JsonResponse(response, safe=False)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        serializer = LoadTuningResponseSerializer(response)
+        logger.debug(f'load_tuning_tab() request from {request.user} - {serializer.data}')
+
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # @login_required()
@@ -203,7 +241,23 @@ def get_module_data_from_hydrofabric(run, modules):
     return
 
 
-# TODO Not done yet
+@extend_schema(
+    request=SaveTuningRequestValidator,
+    responses={
+        200: GenericResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Save tuning tab data"
+)
 @api_view(['POST'])
 # @login_required
 def save_tuning_tab(request):
@@ -212,7 +266,7 @@ def save_tuning_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_tuning_tab() request from {request.user} - {body}')
 
-        validator = SaveTuningValidator(data=body)
+        validator = SaveTuningRequestValidator(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -243,22 +297,22 @@ def save_tuning_tab(request):
 
         if parameters:
             if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-                return JsonError('CalibrationTuneParameters have not been loaded from Hydrofabric')
+                return ResponseError('CalibrationTuneParameters have not been loaded from Hydrofabric')
             # Make sure the parameters we are trying to save exist
             for p in parameters:
                 if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
-                    return JsonError("Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module']))
+                    return ResponseError("Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module']))
 
         # Validate the output_variable_to_calibrate
         if output_variable_to_calibrate:
             module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
                                                                                 calibration_run=run).first()
             if not module_with_output_variable:
-                return JsonError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id))
+                return ResponseError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id))
             module_output_variable = module_with_output_variable.output_variables.all().filter(
                 name=output_variable_to_calibrate['name']).first()
             if not module_output_variable:
-                return JsonError("Module output variable '{}' not found in module '{}' for this run".format(
+                return ResponseError("Module output variable '{}' not found in module '{}' for this run".format(
                     output_variable_to_calibrate['name'], output_variable_to_calibrate['module']))
 
             logger.debug(f'module_output_variable {module_output_variable}')
@@ -274,13 +328,25 @@ def save_tuning_tab(request):
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
-        logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response}')
-        return JsonResponse(response)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+        serializer = GenericResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from save_tuning_tab() - {serializer.data}')
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
@@ -289,7 +355,7 @@ def get_csv_daterange(file):
     min_time = MIN_TIME
     with open(file, 'r') as f:
         csv_reader = csv.reader(f, delimiter=',')
-        # skip the neader
+        # skip the header
         next(csv_reader, None)
         for row in csv_reader:
             timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)

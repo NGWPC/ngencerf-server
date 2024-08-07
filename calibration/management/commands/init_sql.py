@@ -6,6 +6,7 @@ from django.core.management.base import BaseCommand
 from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput
 from calibration.models.forcing_source import ForcingSource
+from calibration.models.rfc import Rfc
 from calibration.models.status import Status
 
 
@@ -31,6 +32,7 @@ class Command(BaseCommand):
         self.stdout.write('Initializing static tables')
 
         self.define_domains()
+        self.define_rfc()
         self.define_forcing_source()
         self.define_observational_source()
         self.define_optimization()
@@ -52,6 +54,32 @@ class Command(BaseCommand):
             Domain.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
                                                                    "description": v['description'],
                                                                    "created_by": self.user})
+
+    def define_rfc(self):
+        if self.DELETE_FLAG:
+            Rfc.objects.all().delete()
+
+        values = [{"name": "NWRFC", "description": "Northwest River Forecast Center"},
+                  {"name": "CNRFC", "description": "California/Nevada River Forecast Center"},
+                  {"name": "CBRFC", "description": "Colorado Basin River Forecast Center"},
+                  {"name": "MBRFC", "description": "Missouri Basin River Forecast Center"},
+                  {"name": "ABRFC", "description": "Arkansas Red-Basin River Forecast Center"},
+                  {"name": "WGRFC", "description": "West Gulf River Forecast Center"},
+                  {"name": "NCRFC", "description": "North Central River Forecast Center"},
+                  {"name": "LMRFC", "description": "Lower Mississippi River Forecast Center"},
+                  {"name": "OHRFC", "description": "Ohio River Forecast Center"},
+                  {"name": "SERFC", "description": "Southeast River Forecast Center"},
+                  {"name": "MARFC", "description": "Mid-Atlantic River Forecast Center"},
+                  {"name": "NERFC", "description": "Northeast River Forecast Center"},
+                  {"name": "ARFC", "description": "Alaska River Forecast Center"},
+                  {"name": "APRFC", "description": "Alaska Pacific River Forecast Center"},
+                  {"name": "Canada", "description": "Canada River Forecast Center"}
+                  ]
+
+        for v in values:
+            Rfc.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                "description": v['description'],
+                                                                "created_by": self.user})
 
     def define_forcing_source(self):
         if self.DELETE_FLAG:

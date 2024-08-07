@@ -3,15 +3,19 @@ import logging
 from json.decoder import JSONDecodeError
 
 from django.db import transaction
-from django.http import JsonResponse
-from rest_framework import serializers
+from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import SaveFormulationValidator, CalibrationRunValidator, ModuleHydrofabricListValidator
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
+from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
+    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
+    ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, JsonError, JsonException, JsonValidationError
+from calibration.views.common import get_run, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +209,26 @@ module_sample_data = {"modules_data": [
 }
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: LoadFormulationResponseSerializer,
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    parameters=[
+        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
+    ],
+    description="Load formulation tab data"
+)
 @api_view(['GET', 'POST'])
 # @login_required()
 def load_formulation_tab(request):
@@ -261,13 +285,27 @@ def load_formulation_tab(request):
                     "modules": module_list,
                     'use_sloth': use_sloth,
                     "sloth_parameters": list(sloth_parameters)}
-        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response}')
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        return JsonResponse(response, safe=False)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        serializer = LoadFormulationResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
+
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def get_modules_from_hydrofabric(run):
@@ -311,6 +349,23 @@ def get_modules_from_hydrofabric(run):
         return
 
 
+@extend_schema(
+    request=SaveFormulationRequestValidator,
+    responses={
+        200: GenericResponseSerializer,
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Save formulation tab data"
+)
 @api_view(['POST'])
 # @login_required
 def save_formulation_tab(request):
@@ -319,7 +374,7 @@ def save_formulation_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
 
-        validator = SaveFormulationValidator(data=body)
+        validator = SaveFormulationRequestValidator(data=body)
         validator.is_valid(raise_exception=True)
 
         new_module_names = set(validator.data.get('modules'))
@@ -342,22 +397,22 @@ def save_formulation_tab(request):
                 run.ngen_formulation_name = valid_formulation['name']
                 break
         if not valid:
-            return JsonError("Invalid formulation-  '{}'".format(new_module_names))
+            return ResponseError("Invalid formulation-  '{}'".format(new_module_names))
 
         run.user_formulation_name = user_formulation_name
 
         if use_sloth:
             new_module_names.add(SLOTH)
             if not sloth_parameters:
-                return JsonError("Invalid formulation -  You must enter SLoTH parameters")
+                return ResponseError("Invalid formulation -  You must enter SLoTH parameters")
 
         else:
             if sloth_parameters:
-                return JsonError('You must check the box to allow Sloth parameters to be specified')
+                return ResponseError('You must check the box to allow Sloth parameters to be specified')
 
         # Did we get the names from Hydrofabric
         if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
-            return JsonError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+            return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
 
         run.use_sloth = use_sloth
 
@@ -390,7 +445,7 @@ def save_formulation_tab(request):
                 # Check that the module is valid
                 if not CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id,
                                                              used_by_calibration_run=True).exists():
-                    return JsonError(
+                    return ResponseError(
                         "Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
 
             run.save()
@@ -405,10 +460,22 @@ def save_formulation_tab(request):
 
             ngen_cal_input.ready_to_run(run)
 
-            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_key': run.id, 'status': run.status.name}
-            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response}')
-            return JsonResponse(response)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+            serializer = GenericResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
+            return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

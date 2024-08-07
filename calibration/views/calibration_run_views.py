@@ -2,17 +2,37 @@ import json
 import logging
 from json.decoder import JSONDecodeError
 
-from django.http import JsonResponse
-from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
+from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
-from calibration.util.calibration_validators import CalibrationRunValidator
+from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, JsonException, JsonValidationError
+from calibration.views.common import get_run
 
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: IsReadyResponseSerializer,
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Check if a job is ready to run"
+)
 @api_view(['GET', 'POST'])
 # @login_required()
 def is_ready(request):
@@ -39,14 +59,43 @@ def is_ready(request):
         if messages:
             response['errors'] = messages
 
-        logger.debug(f'Returning to {request.user} from is_ready() - {response}')
-        return JsonResponse(response)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        serializer = IsReadyResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from is_ready() - {serializer.data}')
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@extend_schema(
+    request=None,
+    responses={
+        200: GenericResponseSerializer,
+        400: PolymorphicProxySerializer(
+           component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Run a calibration"
+)
 @api_view(['POST'])
 def run_calibration(request):
     try:
@@ -71,11 +120,21 @@ def run_calibration(request):
         #     return JsonError(f'Calibration Run {calibration_run_id} is not ready')
 
         response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id, 'status': run.status.name}
-        logger.debug(f'Returning to {request.user} from run_calibration() - {response}')
-        return JsonResponse(response)
-    except (serializers.ValidationError, JSONDecodeError) as v:
-        return JsonValidationError(v)
+        serializer = GenericResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
-        return JsonException(e)
-
-
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

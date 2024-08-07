@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django_dbconn_retry',
     'django.contrib.staticfiles',
+    'drf_spectacular',
     'calibration.apps.CalibrationConfig',
     "rest_framework",
     "rest_framework.authtoken",
@@ -62,6 +63,14 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
         "rest_framework.authentication.TokenAuthentication",
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'NgenCerf',
+    'DESCRIPTION': 'Backend server for ngenCerf',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 MIDDLEWARE = [

@@ -8,6 +8,7 @@ class CalibrationFormulation(BaseModel):
     name = models.TextField(null=False)
     groups = models.TextField(null=False)
     used_by_calibration_run = models.BooleanField(default=False)
+    version = models.TextField(null=True)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.CASCADE)
 
     class Meta:

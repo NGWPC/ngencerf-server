@@ -2,14 +2,18 @@ from enum import StrEnum
 
 
 class StatusEnum(StrEnum):
-    SAVED = 'Saved',
-    READY = 'Ready',
-    RUNNING = 'Running',
-    DONE = 'Done',
-    CANCELLED = 'Cancelled',
-    FAILED = 'Failed',
-    RESUMED = 'Resumed',
+    SAVED = 'Saved'
+    READY = 'Ready'
+    RUNNING = 'Running'
+    DONE = 'Done'
+    CANCELLED = 'Cancelled'
+    FAILED = 'Failed'
+    RESUMED = 'Resumed'
     SERVER_ERROR = 'Server error'
+
+    @classmethod
+    def values(cls):
+        return [e.value for e in cls]
 
 
 class CalibrationRunType(StrEnum):
@@ -22,7 +26,7 @@ class DomainEnum(StrEnum):
     ALASKA = 'Alaska'
     HAWAII = 'Hawaii'
     CONUS = 'CONUS'
-    PUERTO_RICO = 'Puerto Rico, including US Virgin Islands'
+    PUERTO_RICO = 'Puerto Rico'
 
     @classmethod
     def values(cls):
@@ -81,4 +85,3 @@ class ObservationalSourceEnum(StrEnum):
     @classmethod
     def values(cls):
         return [e.value for e in cls]
-
