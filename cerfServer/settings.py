@@ -16,10 +16,9 @@ import re
 
 from dotenv import load_dotenv
 
-DEBUG = True
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.validators.Is666"}]
+AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.validators.IsPwdValid"}]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,8 +47,8 @@ INSTALLED_APPS = [
     'calibration.apps.CalibrationConfig',
     "rest_framework",
     "rest_framework.authtoken",
-    "djoser",
     "social_django",
+    "djoser",
     "rest_framework_simplejwt",
 ]
 
@@ -102,23 +101,12 @@ AUTHENTICATION_BACKENDS = [
     "social_core.backends.steam.SteamOpenId",
 ]
 
-SOCIAL_AUTH_FACEBOOK_KEY = os.environ.get("FACEBOOK_KEY", "")
-SOCIAL_AUTH_FACEBOOK_SECRET = os.environ.get("FACEBOOK_SECRET", "")
-
-SOCIAL_AUTH_FACEBOOK_SCOPE = ["email"]
-SOCIAL_AUTH_FACEBOOK_PROFILE_EXTRA_PARAMS = {"fields": "id, name, email"}
-
-SOCIAL_AUTH_STEAM_API_KEY = os.environ.get("STEAM_API_KEY", "")
-SOCIAL_AUTH_OPENID_TRUST_ROOT = "http://test.localhost/"
-
 DJOSER = {
     "SEND_CONFIRMATION_EMAIL" : False,
     "SEND_ACTIVATION_EMAIL": False,
     "SET_PASSWORD_RETYPE" : True,
-    "PASSWORD_RESET_CONFIRM_URL": "#/password/reset/confirm/{uid}/{token}",
-    "USERNAME_RESET_CONFIRM_URL": "#/username/reset/confirm/{uid}/{token}",
-    "ACTIVATION_URL": "#/activation/{uid}/{token}",
     "SOCIAL_AUTH_ALLOWED_REDIRECT_URIS": ["http://test.localhost/"],
+    "UPDATE_LAST_LOGIN": True,
 }
 
 from datetime import timedelta
@@ -127,7 +115,6 @@ from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-    #'AUTH_HEADER_TYPES': ('JWT',),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
