@@ -225,14 +225,12 @@ def dms_to_dd(lat_long_str):
     return dd
 
 
-bounding_boxes = [{'name': 'Alaska', 'upper_right': {'lat': 51.229087747767466, 'long': -179.13657211802118},
-                   'lower_left': {'lat': 71.352561, 'long': 179.77488070600702}},
-                  {'name': 'Hawaii', 'upper_right': {'lat': 18.91727560534605, 'long': -130.0},
+bounding_boxes = [{'name': 'Alaska', 'upper_right': {'lat': 51.229087747767466, 'long': -157.68842},
+                   'lower_left': {'lat': 71.352561, 'long': -139.55319}},
+                  {'name': 'Hawaii', 'upper_right': {'lat': 18.91727560534605, 'long': -160.33116},
                    'lower_left': {'lat': 22.23238695135951, 'long': -154.80833743387433}},
-                  {'name': 'Virgin Islands', 'upper_right': {'lat': 17.679370591195905, 'long': -65.08316619836198},
-                   'lower_left': {'lat': 18.38465859717597, 'long': -64.57707574535745}},
-                  {'name': 'Puerto Rico', 'upper_right': {'lat': 17.91217576734767, 'long': -67.94024421674217},
-                   'lower_left': {'lat': 18.51609472983729, 'long': -65.22314866408664}},
+                  {'name': 'Puerto Rico', 'upper_right': {'lat': 17.91217576734767, 'long': -67.33337},
+                   'lower_left': {'lat': 18.51609472983729, 'long': -64.48663}},
                   ]
 
 # Normalize the longitude, so we don't have to worry about negatives
@@ -249,11 +247,6 @@ def calculate_domain(lat, long):
     puerto_rico = next(item for item in bounding_boxes if item['name'] == 'Puerto Rico')
     if (puerto_rico['lower_left']['lat'] < lat < puerto_rico['upper_right']['lat']
             and puerto_rico['lower_left']['long'] < lat < puerto_rico['upper_right']['long']):
-        return puerto_rico_domain
-
-    virgin_islands = next(item for item in bounding_boxes if item['name'] == 'Virgin Islands')
-    if (virgin_islands['lower_left']['lat'] < lat < virgin_islands['upper_right']['lat']
-            and virgin_islands['lower_left']['long'] < lat < virgin_islands['upper_right']['long']):
         return puerto_rico_domain
 
     hawaii = next(item for item in bounding_boxes if item['name'] == 'Hawaii')

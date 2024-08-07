@@ -130,7 +130,6 @@ def run_calibration(request):
             sys.path.insert(0, parent_dir)
         spec = importlib.util.spec_from_file_location('createInput.create_input', os.path.join(create_input_dir, create_input_py))
 
-        create_input = None
         if spec is None:
             raise Exception(f"Cannot find 'create_input.py' in {create_input_dir}")
         else:
@@ -140,7 +139,7 @@ def run_calibration(request):
             spec.loader.exec_module(create_input)
             print('create_input imported successfully')
 
-            sys.argv = [create_input_py, 'foo']
+            sys.argv = [create_input_py, config_file]
             create_input.main()
 
             response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,

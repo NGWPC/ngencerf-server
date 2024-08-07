@@ -14,6 +14,9 @@ $ source $cerfServer/.venv-cerf/bin/activate
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
+**_Note:_**
+Due to a compatibility issue with ngen-cal's create_input, make sure you are running numpy 1.26.4 and not 2.x
+
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
 The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
@@ -85,14 +88,20 @@ aws_session_token = <token>
 
 # Installing ngen and ngen-cal
 
-Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab
-* Create the ngen-cal virtual environment.  This directory goes into `settings.py` as `NGEN_CAL_VENV`
-* Clone ngen-cal from Gitlab.  This directory goes into `settings.py` as `NGEN_CAL_REPO_ROOT`
+Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
+
+Use these recommended directory names to avoid having to change your settings.
+* It is recommended that you create a directory called `~/ngen-cal-work`
+* It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~.noaa-owp/ngen-cal`
+
+
+* Create the ngen-cal virtual environment.  This directory goes into `settings.py` as `NGEN_CAL_VENV`.   Suggested location is `~/ngen-cal-work/venv`
+* Clone ngen-cal from Gitlab.  This directory goes into `settings.py` as `NGEN_CAL_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen`
 * Follow instructions for installing ngen-cal
-* Clone ngen from Gitlab.  This directory goes into `settings.py` as `NGEN_REPO_ROOT`
+* Clone ngen from Gitlab.  This directory goes into `settings.py` as `NGEN_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen-cal`
 * Follow instructions for installing ngen
 * It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
-* Define a directory in `settings.py` where all the ngen-cal runs will live called `NGEN_CAL_RUN_DIR`
+* Define a directory in `settings.py` where all the ngen-cal runs will live called `NGEN_CAL_RUN_DIR`.  Suggested location is `~/ngen-cal-work/run_calib`
 
 
 

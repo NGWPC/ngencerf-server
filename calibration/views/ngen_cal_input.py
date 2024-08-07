@@ -1,4 +1,5 @@
 import os
+import re
 
 import toml
 from django.conf import settings
@@ -47,7 +48,7 @@ config_template = {
         "save_output_iter": 0,
         "save_plot_iter": 0,
         "save_plot_iter_freq": 0,
-        "streamflow_threshold": "",
+        "streamflow_threshold": 0,
         "station_name": "",
         "user_email": "",
     },
@@ -186,7 +187,7 @@ def ready_to_run(run, build=None):
         if not run.hydrofabric_gpkg_path:
             messages.append('Error getting geopackage from Hydrofabric')
         else:
-            datafile['hydrofab_dir'] = run.hydrofabric_gpkg_path
+            datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
@@ -338,7 +339,12 @@ def build_config(config, dir):
     config_file = os.path.join(dir, 'input.config')
     os.makedirs(dir, exist_ok=True)
     print('saving config to', config_file)
+    toml_string = toml.dumps(config)
+
+    # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
+    modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
+
     with open(config_file, 'w') as file:
-        toml.dump(config, file)
+        file.write(modified_toml_string)
 
     return config_file
