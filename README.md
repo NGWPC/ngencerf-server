@@ -66,6 +66,22 @@ in order to clean up any  Calibrations or Validations that were running at the t
 You will get warnings about `ngen` and `ngen-cal` files that don't exist.  That is fine if you haven't installed them yet.
 The server will still run.  You just won't be able to actually run a Calibration.
 
+# Access to AWS
+Some endpoints require access to AWS and therefore you must update your credentials.
+The credentials only last a few hours, so no need to get them until you're ready.
+Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI, 
+to get your credentials.
+Add them to your `~/.aws/credentials` file (create the file if it doesn't exist)
+You should manually add the region.  The file will look something like this
+
+```
+[default]
+region=us-east-1
+
+aws_access_key_id = <key_id>
+aws_secret_access_key = <access_key>
+aws_session_token = <token>
+```
 
 # Installing ngen and ngen-cal
 

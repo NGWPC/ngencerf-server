@@ -4,6 +4,7 @@ import logging
 import os
 from json.decoder import JSONDecodeError
 
+from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
@@ -20,6 +21,8 @@ from calibration.util.calibration_validators import SaveGageRequestValidator, Ga
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
+from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -198,8 +201,7 @@ def get_geopackage_from_hydrofabric(gage_id):
         raise Exception(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
     uri = geopackage_data['uri']
-    save_dir = '/home/peter.a.kronenberg/temp/'
-    file_path = download_s3(uri, save_dir)
+    file_path = download_s3(uri, geopackage_dir)
 
     return file_path
 
@@ -221,8 +223,7 @@ def get_observational_data_from_hydrofabric(observation_source):
     # This is a path to a single file, which we just need to download
     # bucket, key = parse_s3_uri(s3_uri)
     # filename = key.split('/')[-1]
-    save_dir = f'/home/peter.a.kronenberg/temp/'
-    download_s3(s3_uri, save_dir)
+    download_s3(s3_uri, observation_dir)
 
 
 def get_forcing_data_from_hydrofabric(forcing_source):
@@ -243,8 +244,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     # bucket, key = parse_s3_uri(s3_uri)
     # subdir = key.split('/')[-1]
 
-    save_dir = f'/home/peter.a.kronenberg/temp/'
-    download_all_s3(s3_uri, save_dir)
+    download_all_s3(s3_uri, forcing_dir)
 
 
 @extend_schema(
@@ -291,36 +291,42 @@ def save_gage_tab(request):
                 return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
             else:
                 run.gage = gage
-                geopackage_path = get_geopackage_from_hydrofabric(gage_id)
+                try:
+                    geopackage_path = get_geopackage_from_hydrofabric(gage_id)
+                except ClientError as e:
+                    return Response('Error downloading from AWS.  Check your credentials - {e}')
+
                 run.hydrofabric_gpkg_path = geopackage_path
 
-                # geopackage_png = convert_to_png(geopackage_path)
-                geopackage_png = geopackage_path
+                geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
                 # Convert to base64 so we can return to the front-end
-                with open(geopackage_png, 'rb') as geopackage_data:
-                    base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
-                extension = geopackage_path.split('.')[-1]
-                geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
+                # with open(geopackage_png, 'rb') as geopackage_data:
+                #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
+                # extension = geopackage_path.split('.')[-1]
+                # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
 
-                # Assuming we return a ByteIO object
-                # base64.b64encode(buffer.get.value()).decode('utf-8')
+                # Convert ByteIO image to base64
+                base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+                geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
                 # Get observational data
                 run.forcing_source = forcing_source
                 run.observational_source = observational_source
-                if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
-                    run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+                try:
+                    if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
+                        run.observational_path = get_observational_data_from_hydrofabric(observational_source)
 
-                if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
-                    run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+                    if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
+                        run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+                except ClientError as e:
+                    return Response('Error downloading from AWS.  Check your credentials - {e}')
 
         with transaction.atomic():
             run.save()
 
         ngen_cal_input.ready_to_run(run)
 
-        # TODO Need to return the actual geopackage file, not just the name
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                     'geopackage_image': geopackage_image_url}
 
