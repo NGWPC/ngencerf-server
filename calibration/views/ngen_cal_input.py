@@ -231,7 +231,7 @@ def ready_to_run(run, build=None):
                     f"name, count, units, location, value, module and maps_to_variable_name must be specified for sloth parameter '{s['param_name']}'")
 
         if not sloth_error and build:
-            sloth_parameter_file = f'{run.id}_sloth_parameters.txt'
+            sloth_parameter_file = os.path.join(main_dir, 'sloth_parameters.txt')
             print('sloth_parameter file', sloth_parameter_file)
             with open(sloth_parameter_file, 'w') as file:
                 file.write(
@@ -254,7 +254,7 @@ def ready_to_run(run, build=None):
             messages.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
     if not param_error and build:
-        parameter_file = f'{run.id}_parameters.txt'
+        parameter_file = os.path.join(main_dir, 'parameters.txt')
         print('parameter file', parameter_file)
         with open(parameter_file, 'w') as file:
             file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
