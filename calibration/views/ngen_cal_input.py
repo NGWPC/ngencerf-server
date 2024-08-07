@@ -28,6 +28,7 @@ config_template = {
         "c1": 0,
         "c2": 0,
         "w": 0,
+        "r": 0,
         "objective_function": "",
         "start_iteration": 0,
         "number_iteration": 0,
@@ -59,6 +60,7 @@ config_template = {
         "hydrofab_dir": "",
         "cfe_dir": "",
         "topmd_dir": "",
+        # Need another dir for every model
         "noah_parameter_dir": noah_parameter_dir,
         "attributes_file": "",
         "calib_parameter_file": "",
@@ -78,67 +80,9 @@ config_template = {
 }
 
 
-class NgenConfigGeneralValidator(serializers.Serializer):
-    basin = serializers.CharField(required=True)
-    model = serializers.CharField(min_length=2, required=True)
-    # enum
-    run_type = serializers.CharField(required=True)
-    main_dir = serializers.CharField(min_length=2, required=True)
 
 
-class NgenConfigCalibrationValidator(serializers.Serializer):
-    optimization_algorithm = serializers.CharField(required=True)
-    swarm_size = serializers.CharField(min_length=2, required=True)
-    c1 = serializers.IntegerField(required=False)
-    c2 = serializers.IntegerField(required=False)
-    w = serializers.FloatField(required=False)
-    objective_function = serializers.CharField(required=True)
-    start_iteration = serializers.IntegerField(required=True)
-    number_iteration = serializers.IntegerField(required=True)
-    restart = serializers.IntegerField(required=True)
-    calib_start_period = serializers.DateTimeField(required=True)
-    calib_end_period = serializers.DateTimeField(required=True)
-    calib_eval_start_period = serializers.DateTimeField(required=True)
-    calib_eval_end_period = serializers.DateTimeField(required=True)
-    valid_start_period = serializers.DateTimeField(required=True)
-    valid_end_period = serializers.DateTimeField(required=True)
-    valid_eval_start_period = serializers.DateTimeField(required=True)
-    valid_eval_end_period = serializers.DateTimeField(required=True)
-    full_eval_start_period = serializers.DateTimeField(required=True)
-    full_eval_end_period = serializers.DateTimeField(required=True)
-    save_output_iter = serializers.IntegerField(required=True)
-    save_plot_iter = serializers.IntegerField(required=True)
-    save_plot_iter_freq = serializers.IntegerField(required=True)
-    streamflow_threshold = serializers.CharField(required=True, allow_blank=True)
-    station_name = serializers.CharField(required=True, allow_blank=True)
-    user_email = serializers.CharField(required=True, allow_blank=True)
 
-
-class NgenConfigDatafileValidator(serializers.Serializer):
-    forcing_dir = serializers.CharField(required=True)
-    obs_dir = serializers.CharField(required=True)
-    hydrofab_dir = serializers.CharField(required=True)
-    cfe_dir = serializers.CharField(required=True, allow_blank=True)
-    topmd_dir = serializers.CharField(required=True, allow_blank=True)
-    noah_parameter_dir = serializers.CharField(required=True, allow_blank=True)
-    attributes_file = serializers.CharField(required=True, allow_blank=True)
-    calib_parameter_file = serializers.CharField(required=True, allow_blank=True)
-    lasam_soil_parameter_file = serializers.CharField(required=True, allow_blank=True)
-    lasam_soil_class_file = serializers.CharField(required=True, allow_blank=True)
-    ngen_exe_file = serializers.CharField(required=True)
-    cfe_lib = serializers.CharField(required=True, allow_blank=True)
-    sloth_lib = serializers.CharField(required=True, allow_blank=True)
-    topmd_lib = serializers.CharField(required=True, allow_blank=True)
-    noah_lib = serializers.CharField(required=True, allow_blank=True)
-    sft_lib = serializers.CharField(required=True, allow_blank=True)
-    smp_lib = serializers.CharField(required=True, allow_blank=True)
-    lasam_lib = serializers.CharField(required=True, allow_blank=True)
-
-
-class NgenConfigValidator(serializers.Serializer):
-    General = NgenConfigGeneralValidator(required=True)
-    Calibration = NgenConfigCalibrationValidator(required=True)
-    DataFile = NgenConfigDatafileValidator(required=True)
 
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -322,10 +266,7 @@ def ready_to_run(run, build=None):
 
     print('validation messages', messages)
 
-    # TODO This validation isn't really doing anything
-    validator = NgenConfigValidator(data=config)
-
-    run.status = Status.objects.filter(name=(StatusEnum.READY if validator.is_valid() else StatusEnum.SAVED)).first()
+    run.status = Status.objects.filter(name=(StatusEnum.SAVED if messages else StatusEnum.READY)).first()
     run.save()
 
     # TODO Only build if no messages
