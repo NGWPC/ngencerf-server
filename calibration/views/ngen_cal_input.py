@@ -1,3 +1,5 @@
+import os
+
 import toml
 from django.conf import settings
 from django.db.models import F
@@ -199,7 +201,8 @@ def ready_to_run(run, build=None):
     else:
         general['run_type'] = run.run_type
 
-    general['main_dir'] = settings.NGEN_CAL_RUN_DIR
+    main_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
+    general['main_dir'] = main_dir
 
     # TODO output variable to calibrate
     # TODO set run_date when we actually run it
@@ -325,12 +328,17 @@ def ready_to_run(run, build=None):
     run.save()
 
     # TODO Only build if no messages
-    if build:
-        build_config(config)
+    # config_file = build_config(config, main_dir) if build and not messages else None
+    config_file = build_config(config, main_dir) if build else None
 
-    return messages
+    return messages, config_file
 
 
-def build_config(config):
-    with open('input.config', 'w') as file:
+def build_config(config, dir):
+    config_file = os.path.join(dir, 'input.config')
+    os.makedirs(dir, exist_ok=True)
+    print('saving config to', config_file)
+    with open(config_file, 'w') as file:
         toml.dump(config, file)
+
+    return config_file
