@@ -6,6 +6,7 @@ import sys
 from json.decoder import JSONDecodeError
 
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
+from git import Repo
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
@@ -16,6 +17,7 @@ from calibration.util.calibration_validators import CalibrationRunValidator, IsR
 from calibration.util.ngen_locations import create_input_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +126,12 @@ def run_calibration(request):
         # if messages:
         #     return JsonError(f'Calibration Run {calibration_run_id} is not ready')
 
+        # Save the latest git hash or ngen and ngen-cal
+        run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
+        run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+        run.save()
+
+        # Get access to create_input.py 
         parent_dir = os.path.dirname(create_input_dir)
         create_input_py = 'create_input.py'
         if parent_dir not in sys.path:
