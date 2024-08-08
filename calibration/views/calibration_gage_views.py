@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
     description="Load gage tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def load_gage_tab(request):
     try:
         print('user', request.user)
@@ -155,7 +155,7 @@ def load_gage_tab(request):
     description="Get details for a specific gage"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])
 def get_gage(request):
     try:
         if request.method == 'POST':
@@ -275,7 +275,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     description="Save gage tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_gage_tab(request):
     try:
         print('user', request.user)
@@ -394,7 +394,7 @@ def save_geopackage_path(run, gage_id):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def upload_observational_data(request):
     try:
         print('user', request.user)
@@ -491,7 +491,7 @@ def upload_observational_data(request):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def upload_forcing_data(request):
     try:
         print('user', request.user)

@@ -15,8 +15,7 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, GenericResponseSerializer, \
-    CreateCalibrationRunValidator
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunValidator
 from calibration.views.common import ResponseError
 
 logger = logging.getLogger(__name__)
@@ -46,7 +45,7 @@ class DateToChar(Func):
     description="Create a new calibration"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def create_calibration_run(request):
     try:
         print('user', request.user)
@@ -94,9 +93,8 @@ def create_calibration_run(request):
 
     description="Get all jobs"
 )
-# noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
-# @login_required
+# @permission_classes([AllowAny])
 def get_jobs(request):
     try:
         logger.debug(f'get_jobs() request from {request.user}')
@@ -149,9 +147,7 @@ def get_jobs(request):
     },
     description="Load gage tab data"
 )
-# noinspection PyUnusedLocal
 @api_view(['POST', 'GET'])
-# @login_required
 def get_footer(request):
     try:
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}

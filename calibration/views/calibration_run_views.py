@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
     description="Check if a job is ready to run"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])()
 def is_ready(request):
     try:
         print('user', request.user)

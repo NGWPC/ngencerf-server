@@ -230,7 +230,7 @@ module_sample_data = {"modules_data": [
     description="Load formulation tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])()
 def load_formulation_tab(request):
     try:
         print('user', request.user)
@@ -375,7 +375,7 @@ def get_modules_from_hydrofabric(run):
     description="Save formulation tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_formulation_tab(request):
     try:
         print('user', request.user)

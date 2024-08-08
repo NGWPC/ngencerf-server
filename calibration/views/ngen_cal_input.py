@@ -4,7 +4,6 @@ import re
 import toml
 from django.conf import settings
 from django.db.models import F
-from rest_framework import serializers
 
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
@@ -79,12 +78,6 @@ config_template = {
     }
 }
 
-
-
-
-
-
-
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
@@ -121,7 +114,8 @@ def ready_to_run(run, build=None):
         if not run.observational_source:
             messages.append('observational source must be specified')
         else:
-            if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (not run.observational_file_path or not run.observational_user_filename):
+            if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (
+                    not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
             elif run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
                 messages.append('Error getting observational path from Hydrofabric')
@@ -184,11 +178,13 @@ def ready_to_run(run, build=None):
     else:
         calibration['optimization_algorithm'] = run.optimization.name
 
-        all_input_names = set(OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list('name', flat=True))
+        all_input_names = set(
+            OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list(
+                'name', flat=True))
         # See if we have values for all the inputs
         CalibrationOptimizationInput.objects.filter()
-        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F('optimization_input__name'))
-        print('inputs', inputs)
+        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F(
+            'optimization_input__name'))
         for opt_input in inputs:
             calibration[opt_input['name']] = opt_input['value']
             all_input_names.remove(opt_input['name'])
@@ -276,9 +272,9 @@ def ready_to_run(run, build=None):
     return messages, config_file
 
 
-def build_config(config, dir):
-    config_file = os.path.join(dir, 'input.config')
-    os.makedirs(dir, exist_ok=True)
+def build_config(config, directory):
+    config_file = os.path.join(directory, 'input.config')
+    os.makedirs(directory, exist_ok=True)
     print('saving config to', config_file)
     toml_string = toml.dumps(config)
 

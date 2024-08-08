@@ -29,9 +29,9 @@ MIN_TIME = datetime(MAXYEAR, 12, 31, 11, 59, 59).replace(tzinfo=timezone.utc)
 MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 
 # For testing
-module_sample_data = {"modules_data": [
+module_sample_data = {"modules": [
     {
-        "name": "Noah-OWP-Modular",
+        "module_name": "Noah-OWP-Modular",
         "module_output_variables": [
             {
                 "name": "QINSUR",
@@ -99,7 +99,7 @@ module_sample_data = {"modules_data": [
     description="Load tuning tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def load_tuning_tab(request):
     try:
         print('user', request.user)
@@ -231,7 +231,7 @@ def get_times(run, automatic_validation):
     return calibration_times, validation_times
 
 
-# @login_required()
+# @permission_classes([AllowAny])()
 def get_module_data_from_hydrofabric(run, modules):
     # Get this from hydrofabric
     # modules_request = {"modules":modules}
@@ -293,7 +293,7 @@ def get_module_data_from_hydrofabric(run, modules):
     description="Save tuning tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_tuning_tab(request):
     try:
         print('user', request.user)

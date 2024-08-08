@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 )
 # Called by ngen_cal
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def report_iteration(request):
     try:
         print('user', request.user)
