@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.validators.IsPwdValid"}]
+AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.password_validator.IsPwdValid"}]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
