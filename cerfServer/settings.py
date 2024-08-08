@@ -16,6 +16,10 @@ import re
 
 from dotenv import load_dotenv
 
+
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.validators.IsPwdValid"}]
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -42,9 +46,23 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'drf_spectacular',
     'calibration.apps.CalibrationConfig',
+    "rest_framework",
+    "rest_framework.authtoken",
+    "social_django",
+    "djoser",
+    "rest_framework_simplejwt",
 ]
 
+# Points to which token model should be used for authentication. In case if only stateless 
+# tokens (e.g. JWT) are used in project it should be set to None.
+TOKEN_MODEL = None
+
 REST_FRAMEWORK = {
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
+    ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
@@ -84,6 +102,32 @@ TEMPLATES = [
         },
     },
 ]
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "djoser.social.backends.facebook.FacebookOAuth2Override",
+    "social_core.backends.google.GoogleOAuth2",
+    "social_core.backends.steam.SteamOpenId",
+]
+
+DJOSER = {
+    "SEND_CONFIRMATION_EMAIL" : False,
+    "SEND_ACTIVATION_EMAIL": False,
+    "SET_PASSWORD_RETYPE" : True,
+    "SOCIAL_AUTH_ALLOWED_REDIRECT_URIS": ["http://test.localhost/"],
+    "UPDATE_LAST_LOGIN": True,
+}
+
+from datetime import timedelta
+
+# https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html#settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
 
