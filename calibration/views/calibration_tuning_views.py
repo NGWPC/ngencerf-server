@@ -51,21 +51,25 @@ module_sample_data = {"modules_data": [
                 "name": "parameter1",
                 "data_type": "double",
                 "description": "description of variable",
+                "minimum": 0.0,
+                "maximum": 0.0
             },
 
             {
                 "name": "parameter2",
                 "data_type": "double",
                 "description": "description of variable",
+                "minimum": 0.0,
+                "maximum": 0.0
             },
             {
                 "name": "parameter3",
                 "data_type": "double",
                 "description": "description of variable",
-                "units": "m/s",
-                "initial_value": 0.0,
-                "min": 0.0,
-                "max": 0.0
+                # "units": "m/s",
+                # "initial_value": 0.0,
+                "minimum": 0.0,
+                "maximum": 0.0
             }
 
         ]
@@ -149,8 +153,11 @@ def load_tuning_tab(request):
                     'output_variable_to_calibrate': output_variable_to_calibrate}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadTuningResponseSerializer(response)
-        logger.debug(f'load_tuning_tab() request from {request.user} - {serializer.data}')
+        serializer = LoadTuningResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_tuning_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.debug(f'Returning to {request.user} from load_tuning_tab() - {serializer.data}')
 
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -178,15 +185,16 @@ def get_parameters_and_output_variables(modules, all_data=True):
         calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m)
                                      .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
 
+        print('all_data', all_data)
         if all_data:
-            parameters = list(calibrationTuneParameters
-                              .values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+            parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+
         else:
             parameters = list(calibrationTuneParameters.values('name', 'initial_value'))
 
         module_entry = {'name': m.name, 'parameters': parameters}
         if all_data:
-            module_entry['output_variables'] = list(m.output_variables.all().only('name', 'description'))
+            module_entry['output_variables'] = list(m.output_variables.all().only('name', 'description').values('name', 'description'))
 
         module_list.append(module_entry)
         return module_list
@@ -256,9 +264,10 @@ def get_module_data_from_hydrofabric(run, modules):
             parameters = m['module_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
-                CalibrationTuneParameter.objects.get_or_create(name=p['name'], calibration_formulation=module,
-                                                               defaults={'data_type': p['data_type'],
-                                                                         'description': p['description']})
+                CalibrationTuneParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
+                                                                  defaults={'data_type': p['data_type'],
+                                                                            'description': p['description'], 'minimum': p['minimum'],
+                                                                            'maximum': p['maximum']})
 
         run.got_module_data_from_hydrofabric = True
         run.save()
@@ -313,44 +322,22 @@ def save_tuning_tab(request):
         message = validate_parameters(run, parameters)
         if message is not None:
             return ResponseError(message)
-        # if parameters:
-        #     if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-        #         return ResponseError('CalibrationTuneParameters have not been loaded from Hydrofabric')
-        #     # Make sure the parameters we are trying to save exist
-        #     for p in parameters:
-        #         if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
-        #             return ResponseError("Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module']))
 
         message = save_output_variable(run, output_variable_to_calibrate)
         if message is not None:
             return ResponseError(message)
-        # # Validate the output_variable_to_calibrate
-        # if output_variable_to_calibrate:
-        #     module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
-        #                                                                         calibration_run=run).first()
-        #     if not module_with_output_variable:
-        #         return ResponseError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id))
-        #     module_output_variable = module_with_output_variable.output_variables.all().filter(
-        #         name=output_variable_to_calibrate['name']).first()
-        #     if not module_output_variable:
-        #         return ResponseError("Module output variable '{}' not found in module '{}' for this run".format(
-        #             output_variable_to_calibrate['name'], output_variable_to_calibrate['module']))
-        #
-        #     run.module_output_variable = module_output_variable
 
         with transaction.atomic():
             run.save()
             save_parameters(run, parameters)
-            # if parameters:
-            #     for p in parameters:
-            #         (CalibrationTuneParameter.objects
-            #          .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
-            #          .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
 
         ngen_cal_input.ready_to_run(run)
 
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-        serializer = GenericResponseSerializer(response)
+        serializer = GenericResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from save_tuning_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from save_tuning_tab() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:

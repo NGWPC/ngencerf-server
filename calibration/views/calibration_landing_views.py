@@ -15,7 +15,9 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, GenericResponseSerializer, \
+    CreateCalibrationRunValidator
+from calibration.views.common import ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,10 @@ def create_calibration_run(request):
             run = CalibrationRun.objects.create(is_active=True, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
-            serializer = GenericMessageResponseSerializer(response)
+            serializer = CreateCalibrationRunValidator(data=response)
+            if not serializer.is_valid():
+                return ResponseError(f'Data format error returning from create_calibration_run() - {serializer.errors}',
+                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from create_calibration_run() - {serializer.data}')
             return Response(serializer.data, status=status.HTTP_201_CREATED)
     except JSONDecodeError as e:
@@ -101,21 +106,23 @@ def get_jobs(request):
         runs = list(CalibrationRun.objects
                     .only('id', 'user_formulation_name', 'gage', 'run_date',
                           'calibration_start_period', 'calibration_end_period', 'status')
-                    .annotate(formatted_calibration_start_period=DateToChar('calibration_start_period'),
-                              formatted_calibration_end_period=DateToChar('calibration_end_period'))
-                    .values('id', 'gage__gage_id', 'run_date', 'formatted_calibration_start_period', 'formatted_calibration_end_period',
+                    .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
                             'status__name', formulation_name=F('user_formulation_name')))
         for r in runs:
             r['calibration_run_id'] = r.pop('id')
             r['gage_id'] = r.pop('gage__gage_id')
             r['status'] = r.pop('status__name')
-            r['calibration_start_period'] = r.pop('formatted_calibration_start_period')
-            r['calibration_end_period'] = r.pop('formatted_calibration_end_period')
 
         response = {'jobs': runs}
-        serializer = GetJobsResponseSerializer(response)
+        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+        print('response', response)
 
-        logger.debug(f'Returning to {request.user} from get_jobs()() - {serializer.data}')
+        serializer = GetJobsResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from get_jobs() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        logger.debug(f'Returning to {request.user} from get_jobs() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
         response = {'validation_error': 'JSON parsing error - ' + str(e)}
@@ -148,7 +155,10 @@ def get_jobs(request):
 def get_footer(request):
     try:
         response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
-        serializer = FooterResponseSerializer(response)
+        serializer = FooterResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from get_footer() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from get_footer() - {serializer.data}')
         return Response(serializer.data)
     except Exception as e:

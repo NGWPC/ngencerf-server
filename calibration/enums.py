@@ -64,7 +64,7 @@ class UnitsEnum(StrEnum):
 
 class ForcingSourceEnum(StrEnum):
     AORC = 'AORC'
-    UPLOAD = 'upload'
+    UPLOAD = 'Upload'
 
     @classmethod
     def values(cls):
@@ -80,7 +80,7 @@ class ObservationalSourceEnum(StrEnum):
     TX_DOT = 'TX DoT'
     RFC = 'RFC'
     SNOTEL = 'SNOTEL'
-    UPLOAD = 'upload'
+    UPLOAD = 'Upload'
 
     @classmethod
     def values(cls):

@@ -96,7 +96,8 @@ def load_gage_tab(request):
 
         gages = list(Gage.objects.filter(is_active=True)
                      .only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain')
-                     .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain'))
+                     .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
+        [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
 
         ngen_cal_input.ready_to_run(run)
 
@@ -109,7 +110,10 @@ def load_gage_tab(request):
                     'gages': gages}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadGageResponseSerializer(response)
+        serializer = LoadGageResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_gage_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
         return Response(serializer.data)
@@ -170,7 +174,10 @@ def get_gage(request):
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-        serializer = GageValidator(gage)
+        serializer = GageValidator(data=gage)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from get_gage() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
         return Response(serializer.data)
@@ -332,7 +339,10 @@ def save_gage_tab(request):
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                     'geopackage_image': geopackage_image_url}
 
-        serializer = SaveGageResponseSerializer(response)
+        serializer = SaveGageResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from save_gage_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -364,7 +374,6 @@ def save_geopackage_path(run, gage_id):
     geopackage_path = get_geopackage_from_hydrofabric(gage_id)
     run.hydrofabric_gpkg_path = geopackage_path
     return geopackage_path
-
 
 
 @extend_schema(
@@ -445,7 +454,10 @@ def upload_observational_data(request):
         response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                     'status': run.status.name}
 
-        serializer = GenericResponseSerializer(response)
+        serializer = GenericResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from upload_observational_data() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -549,7 +561,10 @@ def upload_forcing_data(request):
         response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
 
-        serializer = GenericResponseSerializer(response)
+        serializer = GenericResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from upload_forcing_data() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:

@@ -273,7 +273,10 @@ def load_formulation_tab(request):
                     "sloth_parameters": list(sloth_parameters)}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadFormulationResponseSerializer(response)
+        serializer = LoadFormulationResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_formulation_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
 
         return Response(serializer.data)
@@ -457,7 +460,10 @@ def save_formulation_tab(request):
             ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-            serializer = GenericResponseSerializer(response)
+            serializer = GenericResponseSerializer(data=response)
+            if not serializer.is_valid():
+                return ResponseError(f'Data format error returning from save_formulation_tab() - {serializer.errors}',
+                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
             return Response(serializer.data)
     except JSONDecodeError as e:

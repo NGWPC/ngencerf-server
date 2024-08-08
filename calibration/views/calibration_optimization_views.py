@@ -63,24 +63,11 @@ def load_optimization_tab(request):
 
         objective_function = run.objective_function.name if run.objective_function else None
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
-        if run.optimization:
-            optimization = run.optimization.name
-            optimization_inputs = list(
-                CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
-                .only('optimization_input__name', 'value')
-                .values('value', name=F('optimization_input__name')))
-        else:
-            optimization = None
-            optimization_inputs = []
+        optimization, optimization_inputs = get_user_optimization(run)
 
-        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical').values('name', 'description',
-                                                                                                                       'is_active', 'categorical')
+        metrics = get_metrics()
 
-        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
-        optimization_list = []
-        for o in optimizations:
-            inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
-            optimization_list.append({'name': o.name, 'description': o.description, 'is_active': o.is_active, 'inputs': inputs})
+        optimization_list = get_static_optimizations()
 
         plot_generation_frequency = run.plot_frequency if run.plot_frequency else None
 
@@ -90,7 +77,7 @@ def load_optimization_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name,
-                    'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
+                    'streamflow_threshold': streamflow_threshold, 'metrics': metrics,
                     'optimization': optimization,
                     'optimization_inputs': optimization_inputs,
                     'objective_function': objective_function,
@@ -100,7 +87,9 @@ def load_optimization_tab(request):
                     }
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadOptimizationResponseSerializer(response)
+        serializer = LoadOptimizationResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_optimization_tab() - {serializer.errors}', httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
 
         return Response(serializer.data)
@@ -121,9 +110,34 @@ def load_optimization_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def get_user_optimization(run):
+    if run.optimization:
+        optimization = run.optimization.name
+        optimization_inputs = list(
+            CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
+            .only('optimization_input__name', 'value')
+            .values('value', name=F('optimization_input__name')))
+    else:
+        optimization = None
+        optimization_inputs = []
+
+    return optimization, optimization_inputs
+
+def get_static_optimizations():
+    optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
+    optimization_list = []
+    for o in optimizations:
+        inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
+        optimization_list.append({'name': o.name, 'description': o.description, 'is_active': o.is_active, 'inputs': inputs})
+    return optimization_list
+
+def get_metrics():
+    return list(Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical')
+                .only('name', 'description', 'is_active', 'categorical')
+                .values('name', 'description', 'is_active', 'categorical'))
+
+
 # noinspection PyUnusedLocal
-
-
 @extend_schema(
     request=SaveOptimizationRequestValidator,
     responses={
@@ -210,7 +224,10 @@ def save_optimization_tab(request):
             ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-            serializer = SaveOptimizationResponseSerializer(response)
+            serializer = SaveOptimizationResponseSerializer(data=response)
+            if not serializer.is_valid():
+                return ResponseError(f'Data format error returning from save_optimization_tab() - {serializer.errors}',
+                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
             return Response(serializer.data)
     except JSONDecodeError as e:
