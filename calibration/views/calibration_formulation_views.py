@@ -214,7 +214,7 @@ module_sample_data = {"modules_data": [
     responses={
         200: LoadFormulationResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -254,11 +254,8 @@ def load_formulation_tab(request):
 
         get_modules_from_hydrofabric(run)
 
-        modules = (
-            CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
-            .only('name', 'groups', 'used_by_calibration_run')
-            .values('name', 'groups', 'used_by_calibration_run')
-        )
+        modules = load_modules(run)
+
         # Unwrap the groups
         for m in modules:
             m['groups'] = json.loads(m['groups'])
@@ -266,18 +263,7 @@ def load_formulation_tab(request):
 
         use_sloth = run.use_sloth
 
-        if use_sloth:
-            # Get sloth parameters
-            sloth_parameters = (
-                CalibrationSlothParam.objects.filter(calibration_run=run)
-                .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                      'maps_to_variable_name')
-                .values(
-                    'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                    'maps_to_variable_name')
-            )
-        else:
-            sloth_parameters = {}
+        sloth_parameters = load_sloth_parameters(run) if use_sloth else None
 
         ngen_cal_input.ready_to_run(run)
 
@@ -306,6 +292,25 @@ def load_formulation_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def load_modules(run):
+    return (
+        CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
+        .only('name', 'groups', 'used_by_calibration_run')
+        .values('name', 'groups', 'used_by_calibration_run')
+    )
+
+
+def load_sloth_parameters(run):
+    return (
+        CalibrationSlothParam.objects.filter(calibration_run=run)
+        .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+              'maps_to_variable_name')
+        .values(
+            'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+            'maps_to_variable_name')
+    )
 
 
 def get_modules_from_hydrofabric(run):
@@ -354,7 +359,7 @@ def get_modules_from_hydrofabric(run):
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -387,16 +392,7 @@ def save_formulation_tab(request):
         if errorReturn:
             return errorReturn
 
-        # Make sure the formulation is valid
-        valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
-        valid = False
-        for valid_formulation in valid_formulations:
-            valid_module_set = set(json.loads(valid_formulation['modules']))
-            if valid_module_set == new_module_names:
-                valid = True
-                run.ngen_formulation_name = valid_formulation['name']
-                break
-        if not valid:
+        if not validate_formulation(run, new_module_names):
             return ResponseError("Invalid formulation-  '{}'".format(new_module_names))
 
         run.user_formulation_name = user_formulation_name
@@ -479,3 +475,17 @@ def save_formulation_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def validate_formulation(run, module_names):
+    valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
+    valid = False
+    for valid_formulation in valid_formulations:
+        valid_module_set = set(json.loads(valid_formulation['modules']))
+        if valid_module_set == module_names:
+            valid = True
+            run.ngen_formulation_name = valid_formulation['name']
+            break
+    return valid
+    # if not valid:
+    #     return ResponseError("Invalid formulation-  '{}'".format(module_names))

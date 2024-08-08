@@ -289,41 +289,40 @@ def save_gage_tab(request):
 
         geopackage_image_url = None
         if gage_id:
-            gage = Gage.objects.filter(gage_id=gage_id).first()
+            gage = save_gage(run, gage_id)
             if not gage:
                 return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-            else:
-                run.gage = gage
-                try:
-                    geopackage_path = get_geopackage_from_hydrofabric(gage_id)
-                except ClientError as e:
-                    return Response('Error downloading from AWS.  Check your credentials - {e}')
 
-                run.hydrofabric_gpkg_path = geopackage_path
+            print('gage_id', gage_id)
+            try:
+                geopackage_path = save_geopackage_path(run, gage_id)
+            except ClientError as e:
+                # TODO Check for other errors
+                return Response(f'Error downloading geopackage from AWS.  Check your credentials - {e}')
 
-                geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
-                # Convert to base64 so we can return to the front-end
-                # with open(geopackage_png, 'rb') as geopackage_data:
-                #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
-                # extension = geopackage_path.split('.')[-1]
-                # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
+            # Convert to base64 so we can return to the front-end
+            # with open(geopackage_png, 'rb') as geopackage_data:
+            #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
+            # extension = geopackage_path.split('.')[-1]
+            # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
 
-                # Convert ByteIO image to base64
-                base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-                geopackage_image_url = f'data:image/png;base64,{base64_str}'
+            # Convert ByteIO image to base64
+            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+            geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
-                # Get observational data
-                run.forcing_source = forcing_source
-                run.observational_source = observational_source
-                try:
-                    if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
-                        run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+            # Get observational data
+            run.forcing_source = forcing_source
+            run.observational_source = observational_source
+            try:
+                if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
+                    run.observational_path = get_observational_data_from_hydrofabric(observational_source)
 
-                    if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
-                        run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
-                except ClientError as e:
-                    return Response('Error downloading from AWS.  Check your credentials - {e}')
+                if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
+                    run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+            except ClientError as e:
+                return Response(f'Error downloading forcing or observational data from AWS.  Check your credentials - {e}')
 
         with transaction.atomic():
             run.save()
@@ -351,6 +350,21 @@ def save_gage_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Function to be used for saving a config file to allow CLI
+def save_gage(run, gage_id):
+    gage = Gage.objects.filter(gage_id=gage_id).first()
+    if gage:
+        run.gage = gage
+    return gage
+
+
+def save_geopackage_path(run, gage_id):
+    geopackage_path = get_geopackage_from_hydrofabric(gage_id)
+    run.hydrofabric_gpkg_path = geopackage_path
+    return geopackage_path
+
 
 
 @extend_schema(

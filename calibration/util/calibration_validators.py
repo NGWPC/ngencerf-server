@@ -268,7 +268,6 @@ class ModuleHydrofabricListValidator(BaseSerializer):
 
 class TuningParametersValidator(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
-    module = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=True)
     maximum = serializers.FloatField(required=True)
     initial_value = serializers.FloatField(required=True)
@@ -328,8 +327,8 @@ class ValidationTimeControls(BaseSerializer):
 
 
 class OutputVariableValidator(BaseSerializer):
-    module = serializers.CharField(required=True, allow_blank=False)
     name = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
 
 
 class SaveTuningRequestValidator(BaseSerializer):
@@ -357,8 +356,8 @@ class TimeRangeValidator(BaseSerializer):
 
 class ModuleMetadataStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
-    parameters = TuningParametersValidator()
-    output_variable = OutputVariableValidator(required=True)
+    parameters = TuningParametersValidator(required=True, many=True)
+    output_variables = OutputVariableValidator(required=True, many=True)
 
 
 class LoadTuningResponseSerializer(BaseSerializer):
@@ -368,7 +367,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     automatic_validation = serializers.BooleanField(required=True)
     output_variable_to_calibrate = OutputVariableValidator(required=False)
     time_range = TimeRangeValidator(required=False)
-    modules = ModuleMetadataStaticSerializer(required=False)
+    modules = ModuleMetadataStaticSerializer(many=True, required=False)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
