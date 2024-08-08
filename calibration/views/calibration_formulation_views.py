@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 SLOTH = 'SLoTH'
 
 # For testing
-module_sample_data = {"modules_data": [
+module_sample_data = {"modules": [
     {
-        "name": "GC2D",
+        "module_name": "GC2D",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -36,11 +36,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "Noah-OWP-Modular",
+        "module_name": "Noah-OWP-Modular",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -49,11 +49,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "Snow-17",
+        "module_name": "Snow-17",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -61,11 +61,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "UEB",
+        "module_name": "UEB",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -74,11 +74,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "CFE-S",
+        "module_name": "CFE-S",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -86,11 +86,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "CFE-X",
+        "module_name": "CFE-X",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -98,11 +98,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "PET",
+        "module_name": "PET",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -110,11 +110,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "TopModel",
+        "module_name": "TopModel",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -122,11 +122,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "Sac-SMA",
+        "module_name": "Sac-SMA",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -134,11 +134,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "LASAM",
+        "module_name": "LASAM",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -146,11 +146,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "SMP",
+        "module_name": "SMP",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -158,11 +158,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "SFT",
+        "module_name": "SFT",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -170,11 +170,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "T-Route",
+        "module_name": "T-Route",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -182,11 +182,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "SCHISM",
+        "module_name": "SCHISM",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -194,11 +194,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "SFINCS",
+        "module_name": "SFINCS",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [

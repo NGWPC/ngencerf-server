@@ -271,20 +271,20 @@ class ModuleDataHydrofabricListValidator(BaseSerializer):
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
 class ModuleHydrofabricVersionValidator(serializers.Serializer):
-    version = serializers.CharField(required=True, allow_blank=False)
+    commit_hash = serializers.CharField(required=True, allow_blank=False)
 
 
 # Module objects from Hydrofabric contain group names and version
 class ModuleHydrofabricValidator(BaseSerializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    module_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     description = serializers.CharField(min_length=2, required=True, allow_blank=False)
     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True, allow_blank=False))
-    version = ModuleHydrofabricVersionValidator(required=True)
+    module_version = ModuleHydrofabricVersionValidator(required=True)
 
 
 # List of module objects from Hydrofabric containing group names and version
 class ModuleHydrofabricListValidator(BaseSerializer):
-    modules_data = ModuleHydrofabricValidator(many=True, min_length=1, required=True)
+    modules = ModuleHydrofabricValidator(many=True, min_length=1, required=True)
 
 
 # Used by SaveTuningRequestValidator
