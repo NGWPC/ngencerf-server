@@ -41,7 +41,8 @@ class CalibrationRun(BaseModel):
     ngen_formulation_name = models.TextField(null=True, blank=False)
     plot_frequency = models.IntegerField(null=True)
     run_type = models.TextField(null=True, blank=False)
-    ngen_commit_hash = models.BinaryField(null=True)
+    ngen_commit_hash = models.TextField(null=True)
+    ngen_cal_commit_hash = models.TextField(null=True)
 
     class Meta:
         db_table = 'calibration_run'

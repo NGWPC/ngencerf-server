@@ -4,6 +4,7 @@ import logging
 import os
 from json.decoder import JSONDecodeError
 
+from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
@@ -20,6 +21,8 @@ from calibration.util.calibration_validators import SaveGageRequestValidator, Ga
     UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
+from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -60,7 +63,7 @@ logger = logging.getLogger(__name__)
     description="Load gage tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def load_gage_tab(request):
     try:
         print('user', request.user)
@@ -84,13 +87,17 @@ def load_gage_tab(request):
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
         forcing_source_values = list(ForcingSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
-        observational_source_values = list(
-            ObservationalSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
-        domain_values = list(Domain.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
+        observational_source_values = list(ObservationalSource.objects
+                                           .only('name', 'description', 'is_active')
+                                           .values('name', 'description', 'is_active'))
+        domain_values = list(Domain.objects
+                             .only('name', 'description', 'is_active')
+                             .values('name', 'description', 'is_active'))
 
-        gages = list(Gage.objects.filter(is_active=True).only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain').values('gage_id', 'nws_id',
-                                                                                                                         'nwm_v3_calibrated',
-                                                                                                                         'domain'))
+        gages = list(Gage.objects.filter(is_active=True)
+                     .only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain')
+                     .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
+        [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
 
         ngen_cal_input.ready_to_run(run)
 
@@ -103,7 +110,10 @@ def load_gage_tab(request):
                     'gages': gages}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadGageResponseSerializer(response)
+        serializer = LoadGageResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_gage_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
         return Response(serializer.data)
@@ -145,7 +155,7 @@ def load_gage_tab(request):
     description="Get details for a specific gage"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])
 def get_gage(request):
     try:
         if request.method == 'POST':
@@ -164,7 +174,10 @@ def get_gage(request):
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-        serializer = GageValidator(gage)
+        serializer = GageValidator(data=gage)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from get_gage() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
         return Response(serializer.data)
@@ -198,8 +211,7 @@ def get_geopackage_from_hydrofabric(gage_id):
         raise Exception(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
     uri = geopackage_data['uri']
-    save_dir = '/home/peter.a.kronenberg/temp/'
-    file_path = download_s3(uri, save_dir)
+    file_path = download_s3(uri, geopackage_dir)
 
     return file_path
 
@@ -221,8 +233,7 @@ def get_observational_data_from_hydrofabric(observation_source):
     # This is a path to a single file, which we just need to download
     # bucket, key = parse_s3_uri(s3_uri)
     # filename = key.split('/')[-1]
-    save_dir = f'/home/peter.a.kronenberg/temp/'
-    download_s3(s3_uri, save_dir)
+    download_s3(s3_uri, observation_dir)
 
 
 def get_forcing_data_from_hydrofabric(forcing_source):
@@ -243,8 +254,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     # bucket, key = parse_s3_uri(s3_uri)
     # subdir = key.split('/')[-1]
 
-    save_dir = f'/home/peter.a.kronenberg/temp/'
-    download_all_s3(s3_uri, save_dir)
+    download_all_s3(s3_uri, forcing_dir)
 
 
 @extend_schema(
@@ -265,7 +275,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     description="Save gage tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_gage_tab(request):
     try:
         print('user', request.user)
@@ -286,45 +296,53 @@ def save_gage_tab(request):
 
         geopackage_image_url = None
         if gage_id:
-            gage = Gage.objects.filter(gage_id=gage_id).first()
+            gage = save_gage(run, gage_id)
             if not gage:
                 return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-            else:
-                run.gage = gage
-                geopackage_path = get_geopackage_from_hydrofabric(gage_id)
-                run.hydrofabric_gpkg_path = geopackage_path
 
-                # geopackage_png = convert_to_png(geopackage_path)
-                geopackage_png = geopackage_path
+            print('gage_id', gage_id)
+            try:
+                geopackage_path = save_geopackage_path(run, gage_id)
+            except ClientError as e:
+                # TODO Check for other errors
+                return Response(f'Error downloading geopackage from AWS.  Check your credentials - {e}')
 
-                # Convert to base64 so we can return to the front-end
-                with open(geopackage_png, 'rb') as geopackage_data:
-                    base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
-                extension = geopackage_path.split('.')[-1]
-                geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
+            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
-                # Assuming we return a ByteIO object
-                # base64.b64encode(buffer.get.value()).decode('utf-8')
+            # Convert to base64 so we can return to the front-end
+            # with open(geopackage_png, 'rb') as geopackage_data:
+            #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
+            # extension = geopackage_path.split('.')[-1]
+            # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
 
-                # Get observational data
-                run.forcing_source = forcing_source
-                run.observational_source = observational_source
+            # Convert ByteIO image to base64
+            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+            geopackage_image_url = f'data:image/png;base64,{base64_str}'
+
+            # Get observational data
+            run.forcing_source = forcing_source
+            run.observational_source = observational_source
+            try:
                 if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
                     run.observational_path = get_observational_data_from_hydrofabric(observational_source)
 
                 if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
                     run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+            except ClientError as e:
+                return Response(f'Error downloading forcing or observational data from AWS.  Check your credentials - {e}')
 
         with transaction.atomic():
             run.save()
 
         ngen_cal_input.ready_to_run(run)
 
-        # TODO Need to return the actual geopackage file, not just the name
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                     'geopackage_image': geopackage_image_url}
 
-        serializer = SaveGageResponseSerializer(response)
+        serializer = SaveGageResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from save_gage_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -342,6 +360,20 @@ def save_gage_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Function to be used for saving a config file to allow CLI
+def save_gage(run, gage_id):
+    gage = Gage.objects.filter(gage_id=gage_id).first()
+    if gage:
+        run.gage = gage
+    return gage
+
+
+def save_geopackage_path(run, gage_id):
+    geopackage_path = get_geopackage_from_hydrofabric(gage_id)
+    run.hydrofabric_gpkg_path = geopackage_path
+    return geopackage_path
 
 
 @extend_schema(
@@ -362,7 +394,7 @@ def save_gage_tab(request):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def upload_observational_data(request):
     try:
         print('user', request.user)
@@ -422,7 +454,10 @@ def upload_observational_data(request):
         response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                     'status': run.status.name}
 
-        serializer = GenericResponseSerializer(response)
+        serializer = GenericResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from upload_observational_data() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -456,7 +491,7 @@ def upload_observational_data(request):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def upload_forcing_data(request):
     try:
         print('user', request.user)
@@ -526,7 +561,10 @@ def upload_forcing_data(request):
         response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
 
-        serializer = GenericResponseSerializer(response)
+        serializer = GenericResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from upload_forcing_data() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:

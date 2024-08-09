@@ -3,15 +3,18 @@ import logging
 from json.decoder import JSONDecodeError
 
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
+from git import Repo
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from calibration.createInput import create_input
 from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run
+from calibration.views.common import get_run, ResponseError
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,7 @@ logger = logging.getLogger(__name__)
     responses={
         200: IsReadyResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -34,7 +37,7 @@ logger = logging.getLogger(__name__)
     description="Check if a job is ready to run"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])()
 def is_ready(request):
     try:
         print('user', request.user)
@@ -51,7 +54,7 @@ def is_ready(request):
         if errorReturn:
             return errorReturn
 
-        messages = ngen_cal_input.ready_to_run(run)
+        messages, _ = ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name}
         ready_not_ready = 'not ready' if messages else 'ready'
@@ -84,7 +87,7 @@ def is_ready(request):
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -113,13 +116,24 @@ def run_calibration(request):
         if errorReturn:
             return errorReturn
 
-        messages = ngen_cal_input.ready_to_run(run, build=True)
+        messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
+        print('config file', config_file)
 
         # TODO Normally, we return if not ready, but for testing, we'll skip this test
         # if messages:
         #     return JsonError(f'Calibration Run {calibration_run_id} is not ready')
 
-        response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id, 'status': run.status.name}
+        # Save the latest git hash or ngen and ngen-cal
+        run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
+        run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+        run.save()
+
+        message = create_input.create_input(config_file)
+        if message:
+            return ResponseError(f'Error from create_input - {message}')
+
+        response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+                    'status': run.status.name}
         serializer = GenericResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
         return Response(serializer.data)

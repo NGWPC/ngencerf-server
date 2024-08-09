@@ -22,13 +22,13 @@ logger = logging.getLogger(__name__)
 SLOTH = 'SLoTH'
 
 # For testing
-module_sample_data = {"modules_data": [
+module_sample_data = {"modules": [
     {
-        "name": "GC2D",
+        "module_name": "GC2D",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -36,11 +36,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "Noah-OWP-Modular",
+        "module_name": "Noah-OWP-Modular",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -49,11 +49,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "Snow-17",
+        "module_name": "Snow-17",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -61,11 +61,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "UEB",
+        "module_name": "UEB",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -74,11 +74,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "CFE-S",
+        "module_name": "CFE-S",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -86,11 +86,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "CFE-X",
+        "module_name": "CFE-X",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -98,11 +98,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "PET",
+        "module_name": "PET",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -110,11 +110,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "TopModel",
+        "module_name": "TopModel",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -122,11 +122,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "Sac-SMA",
+        "module_name": "Sac-SMA",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -134,11 +134,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "LASAM",
+        "module_name": "LASAM",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -146,11 +146,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "SMP",
+        "module_name": "SMP",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -158,11 +158,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "SFT",
+        "module_name": "SFT",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -170,11 +170,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "T-Route",
+        "module_name": "T-Route",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -182,11 +182,11 @@ module_sample_data = {"modules_data": [
         ],
     },
     {
-        "name": "SCHISM",
+        "module_name": "SCHISM",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -194,11 +194,11 @@ module_sample_data = {"modules_data": [
         ]
     },
     {
-        "name": "SFINCS",
+        "module_name": "SFINCS",
         "description": "description of module",
-        "version": {
-            "version": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "module_home_page": "https://www.acme-corp.com",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
@@ -214,7 +214,7 @@ module_sample_data = {"modules_data": [
     responses={
         200: LoadFormulationResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -230,7 +230,7 @@ module_sample_data = {"modules_data": [
     description="Load formulation tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])()
 def load_formulation_tab(request):
     try:
         print('user', request.user)
@@ -254,11 +254,8 @@ def load_formulation_tab(request):
 
         get_modules_from_hydrofabric(run)
 
-        modules = (
-            CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
-            .only('name', 'groups', 'used_by_calibration_run')
-            .values('name', 'groups', 'used_by_calibration_run')
-        )
+        modules = get_all_modules(run)
+
         # Unwrap the groups
         for m in modules:
             m['groups'] = json.loads(m['groups'])
@@ -266,28 +263,20 @@ def load_formulation_tab(request):
 
         use_sloth = run.use_sloth
 
-        if use_sloth:
-            # Get sloth parameters
-            sloth_parameters = (
-                CalibrationSlothParam.objects.filter(calibration_run=run)
-                .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                      'maps_to_variable_name')
-                .values(
-                    'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-                    'maps_to_variable_name')
-            )
-        else:
-            sloth_parameters = {}
+        sloth_parameters = get_sloth_parameters(run) if use_sloth else []
 
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
                     "modules": module_list,
                     'use_sloth': use_sloth,
-                    "sloth_parameters": list(sloth_parameters)}
+                    "sloth_parameters": sloth_parameters}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadFormulationResponseSerializer(response)
+        serializer = LoadFormulationResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_formulation_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
 
         return Response(serializer.data)
@@ -306,6 +295,35 @@ def load_formulation_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def get_all_modules(run):
+    return list(
+        CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
+        .only('name', 'groups', 'used_by_calibration_run')
+        .values('name', 'groups', 'used_by_calibration_run')
+    )
+
+
+def get_my_modules(run):
+    return list(
+        CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exclude(name=SLOTH)
+        .only('name')
+        .values_list('name', flat=True)
+    )
+
+
+def get_sloth_parameters(run):
+    sloth_parameters = list(
+        CalibrationSlothParam.objects.filter(calibration_run=run)
+        .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+              'maps_to_variable_name')
+        .values(
+            'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
+            'maps_to_variable_name')
+    )
+    [sloth_param.update({'maps_to_module': sloth_param.pop('maps_to_module__name')}) for sloth_param in sloth_parameters]
+    return sloth_parameters
 
 
 def get_modules_from_hydrofabric(run):
@@ -329,8 +347,8 @@ def get_modules_from_hydrofabric(run):
         logger.debug(validator.errors)
         raise Exception(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    module_data = validator.data.get('modules_data')
-    new_modules_names = set(map(lambda mod: mod['name'], module_data))
+    module_data = validator.data.get('modules')
+    new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
     print('new_modules_names', new_modules_names)
 
     with transaction.atomic():
@@ -342,7 +360,7 @@ def get_modules_from_hydrofabric(run):
 
             # Create the new ones, if they don't already exist
             for m in module_data:
-                CalibrationFormulation.objects.get_or_create(name=m['name'], calibration_run=run,
+                CalibrationFormulation.objects.get_or_create(name=m['module_name'], calibration_run=run,
                                                              defaults={'groups': json.dumps(m['groups']),
                                                                        'description': m['description']})
 
@@ -354,7 +372,7 @@ def get_modules_from_hydrofabric(run):
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
-           component_name='MultipleErrorResponse',
+            component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
                 ValidationErrorSerializer,
@@ -367,7 +385,7 @@ def get_modules_from_hydrofabric(run):
     description="Save formulation tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_formulation_tab(request):
     try:
         print('user', request.user)
@@ -387,16 +405,7 @@ def save_formulation_tab(request):
         if errorReturn:
             return errorReturn
 
-        # Make sure the formulation is valid
-        valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
-        valid = False
-        for valid_formulation in valid_formulations:
-            valid_module_set = set(json.loads(valid_formulation['modules']))
-            if valid_module_set == new_module_names:
-                valid = True
-                run.ngen_formulation_name = valid_formulation['name']
-                break
-        if not valid:
+        if not validate_formulation(run, new_module_names):
             return ResponseError("Invalid formulation-  '{}'".format(new_module_names))
 
         run.user_formulation_name = user_formulation_name
@@ -461,7 +470,10 @@ def save_formulation_tab(request):
             ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-            serializer = GenericResponseSerializer(response)
+            serializer = GenericResponseSerializer(data=response)
+            if not serializer.is_valid():
+                return ResponseError(f'Data format error returning from save_formulation_tab() - {serializer.errors}',
+                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
             return Response(serializer.data)
     except JSONDecodeError as e:
@@ -479,3 +491,17 @@ def save_formulation_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def validate_formulation(run, module_names):
+    valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
+    valid = False
+    for valid_formulation in valid_formulations:
+        valid_module_set = set(json.loads(valid_formulation['modules']))
+        if valid_module_set == module_names:
+            valid = True
+            run.ngen_formulation_name = valid_formulation['name']
+            break
+    return valid
+    # if not valid:
+    #     return ResponseError("Invalid formulation-  '{}'".format(module_names))

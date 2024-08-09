@@ -196,7 +196,7 @@ class Command(BaseCommand):
              "description": "CFE-S, Noah-OWP-Modular, SFT, SMP, T-Route"},
             {"name": "cfe_xaj_noah", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "T-Route"]),
              "description": "CFE-X, Noah-OWP-Modular, T-Route"},
-            {"name": "cfe_xaj_noah-sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP", "T-Route"]),
+            {"name": "cfe_xaj_noah_sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP", "T-Route"]),
              "description": "CFE-X, Noah-OWP-Modular, SFT, SMP, T-Route"},
             {"name": "lasam_noah_sft", "modules": json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP", "T-Route"]),
              "description": "LASAM, Noah-OWP-Modular, SFT, SMP, T-Route"},

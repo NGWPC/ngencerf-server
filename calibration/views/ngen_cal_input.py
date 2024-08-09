@@ -1,7 +1,9 @@
+import os
+import re
+
 import toml
 from django.conf import settings
 from django.db.models import F
-from rest_framework import serializers
 
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
@@ -25,6 +27,7 @@ config_template = {
         "c1": 0,
         "c2": 0,
         "w": 0,
+        "r": 0,
         "objective_function": "",
         "start_iteration": 0,
         "number_iteration": 0,
@@ -45,7 +48,7 @@ config_template = {
         "save_output_iter": 0,
         "save_plot_iter": 0,
         "save_plot_iter_freq": 0,
-        "streamflow_threshold": "",
+        "streamflow_threshold": 0,
         "station_name": "",
         "user_email": "",
     },
@@ -56,6 +59,7 @@ config_template = {
         "hydrofab_dir": "",
         "cfe_dir": "",
         "topmd_dir": "",
+        # Need another dir for every model
         "noah_parameter_dir": noah_parameter_dir,
         "attributes_file": "",
         "calib_parameter_file": "",
@@ -73,70 +77,6 @@ config_template = {
         "lasam_lib": lasam_lib
     }
 }
-
-
-class NgenConfigGeneralValidator(serializers.Serializer):
-    basin = serializers.CharField(required=True)
-    model = serializers.CharField(min_length=2, required=True)
-    # enum
-    run_type = serializers.CharField(required=True)
-    main_dir = serializers.CharField(min_length=2, required=True)
-
-
-class NgenConfigCalibrationValidator(serializers.Serializer):
-    optimization_algorithm = serializers.CharField(required=True)
-    swarm_size = serializers.CharField(min_length=2, required=True)
-    c1 = serializers.IntegerField(required=False)
-    c2 = serializers.IntegerField(required=False)
-    w = serializers.FloatField(required=False)
-    objective_function = serializers.CharField(required=True)
-    start_iteration = serializers.IntegerField(required=True)
-    number_iteration = serializers.IntegerField(required=True)
-    restart = serializers.IntegerField(required=True)
-    calib_start_period = serializers.DateTimeField(required=True)
-    calib_end_period = serializers.DateTimeField(required=True)
-    calib_eval_start_period = serializers.DateTimeField(required=True)
-    calib_eval_end_period = serializers.DateTimeField(required=True)
-    valid_start_period = serializers.DateTimeField(required=True)
-    valid_end_period = serializers.DateTimeField(required=True)
-    valid_eval_start_period = serializers.DateTimeField(required=True)
-    valid_eval_end_period = serializers.DateTimeField(required=True)
-    full_eval_start_period = serializers.DateTimeField(required=True)
-    full_eval_end_period = serializers.DateTimeField(required=True)
-    save_output_iter = serializers.IntegerField(required=True)
-    save_plot_iter = serializers.IntegerField(required=True)
-    save_plot_iter_freq = serializers.IntegerField(required=True)
-    streamflow_threshold = serializers.CharField(required=True, allow_blank=True)
-    station_name = serializers.CharField(required=True, allow_blank=True)
-    user_email = serializers.CharField(required=True, allow_blank=True)
-
-
-class NgenConfigDatafileValidator(serializers.Serializer):
-    forcing_dir = serializers.CharField(required=True)
-    obs_dir = serializers.CharField(required=True)
-    hydrofab_dir = serializers.CharField(required=True)
-    cfe_dir = serializers.CharField(required=True, allow_blank=True)
-    topmd_dir = serializers.CharField(required=True, allow_blank=True)
-    noah_parameter_dir = serializers.CharField(required=True, allow_blank=True)
-    attributes_file = serializers.CharField(required=True, allow_blank=True)
-    calib_parameter_file = serializers.CharField(required=True, allow_blank=True)
-    lasam_soil_parameter_file = serializers.CharField(required=True, allow_blank=True)
-    lasam_soil_class_file = serializers.CharField(required=True, allow_blank=True)
-    ngen_exe_file = serializers.CharField(required=True)
-    cfe_lib = serializers.CharField(required=True, allow_blank=True)
-    sloth_lib = serializers.CharField(required=True, allow_blank=True)
-    topmd_lib = serializers.CharField(required=True, allow_blank=True)
-    noah_lib = serializers.CharField(required=True, allow_blank=True)
-    sft_lib = serializers.CharField(required=True, allow_blank=True)
-    smp_lib = serializers.CharField(required=True, allow_blank=True)
-    lasam_lib = serializers.CharField(required=True, allow_blank=True)
-
-
-class NgenConfigValidator(serializers.Serializer):
-    General = NgenConfigGeneralValidator(required=True)
-    Calibration = NgenConfigCalibrationValidator(required=True)
-    DataFile = NgenConfigDatafileValidator(required=True)
-
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -174,7 +114,8 @@ def ready_to_run(run, build=None):
         if not run.observational_source:
             messages.append('observational source must be specified')
         else:
-            if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (not run.observational_file_path or not run.observational_user_filename):
+            if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (
+                    not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
             elif run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
                 messages.append('Error getting observational path from Hydrofabric')
@@ -184,7 +125,7 @@ def ready_to_run(run, build=None):
         if not run.hydrofabric_gpkg_path:
             messages.append('Error getting geopackage from Hydrofabric')
         else:
-            datafile['hydrofab_dir'] = run.hydrofabric_gpkg_path
+            datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
@@ -199,7 +140,11 @@ def ready_to_run(run, build=None):
     else:
         general['run_type'] = run.run_type
 
-    general['main_dir'] = settings.NGEN_CAL_RUN_DIR
+    main_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
+    general['main_dir'] = main_dir
+
+    if build:
+        os.makedirs(main_dir, exist_ok=True)
 
     # TODO output variable to calibrate
     # TODO set run_date when we actually run it
@@ -236,11 +181,13 @@ def ready_to_run(run, build=None):
     else:
         calibration['optimization_algorithm'] = run.optimization.name
 
-        all_input_names = set(OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list('name', flat=True))
+        all_input_names = set(
+            OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list(
+                'name', flat=True))
         # See if we have values for all the inputs
         CalibrationOptimizationInput.objects.filter()
-        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F('optimization_input__name'))
-        print('inputs', inputs)
+        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F(
+            'optimization_input__name'))
         for opt_input in inputs:
             calibration[opt_input['name']] = opt_input['value']
             all_input_names.remove(opt_input['name'])
@@ -283,7 +230,7 @@ def ready_to_run(run, build=None):
                     f"name, count, units, location, value, module and maps_to_variable_name must be specified for sloth parameter '{s['param_name']}'")
 
         if not sloth_error and build:
-            sloth_parameter_file = f'{run.id}_sloth_parameters.txt'
+            sloth_parameter_file = os.path.join(main_dir, 'sloth_parameters.txt')
             print('sloth_parameter file', sloth_parameter_file)
             with open(sloth_parameter_file, 'w') as file:
                 file.write(
@@ -306,7 +253,7 @@ def ready_to_run(run, build=None):
             messages.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
     if not param_error and build:
-        parameter_file = f'{run.id}_parameters.txt'
+        parameter_file = os.path.join(main_dir, 'parameters.txt')
         print('parameter file', parameter_file)
         with open(parameter_file, 'w') as file:
             file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
@@ -318,19 +265,26 @@ def ready_to_run(run, build=None):
 
     print('validation messages', messages)
 
-    # TODO This validation isn't really doing anything
-    validator = NgenConfigValidator(data=config)
-
-    run.status = Status.objects.filter(name=(StatusEnum.READY if validator.is_valid() else StatusEnum.SAVED)).first()
+    run.status = Status.objects.filter(name=(StatusEnum.SAVED if messages else StatusEnum.READY)).first()
     run.save()
 
     # TODO Only build if no messages
-    if build:
-        build_config(config)
+    # config_file = build_config(config, main_dir) if build and not messages else None
+    config_file = build_config(config, main_dir) if build else None
 
-    return messages
+    return messages, config_file
 
 
-def build_config(config):
-    with open('input.config', 'w') as file:
-        toml.dump(config, file)
+def build_config(config, directory):
+    config_file = os.path.join(directory, 'input.config')
+
+    print('saving config to', config_file)
+    toml_string = toml.dumps(config)
+
+    # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
+    modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
+
+    with open(config_file, 'w') as file:
+        file.write(modified_toml_string)
+
+    return config_file

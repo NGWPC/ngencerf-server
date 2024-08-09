@@ -29,9 +29,9 @@ MIN_TIME = datetime(MAXYEAR, 12, 31, 11, 59, 59).replace(tzinfo=timezone.utc)
 MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 
 # For testing
-module_sample_data = {"modules_data": [
+module_sample_data = {"modules": [
     {
-        "name": "Noah-OWP-Modular",
+        "module_name": "Noah-OWP-Modular",
         "module_output_variables": [
             {
                 "name": "QINSUR",
@@ -51,21 +51,25 @@ module_sample_data = {"modules_data": [
                 "name": "parameter1",
                 "data_type": "double",
                 "description": "description of variable",
+                "minimum": 0.0,
+                "maximum": 0.0
             },
 
             {
                 "name": "parameter2",
                 "data_type": "double",
                 "description": "description of variable",
+                "minimum": 0.0,
+                "maximum": 0.0
             },
             {
                 "name": "parameter3",
                 "data_type": "double",
                 "description": "description of variable",
-                "units": "m/s",
-                "initial_value": 0.0,
-                "min": 0.0,
-                "max": 0.0
+                # "units": "m/s",
+                # "initial_value": 0.0,
+                "minimum": 0.0,
+                "maximum": 0.0
             }
 
         ]
@@ -95,7 +99,7 @@ module_sample_data = {"modules_data": [
     description="Load tuning tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def load_tuning_tab(request):
     try:
         print('user', request.user)
@@ -116,25 +120,10 @@ def load_tuning_tab(request):
             return errorReturn
 
         automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
-        validation_times = {}
-        calibration_times = {}
 
-        # These are all or nothing.  So if this first one exists, we'll assume they all do
-        if run.calibration_start_period:
-            calibration_times['simulation_start_time'] = run.calibration_start_period
-            calibration_times['simulation_end_time'] = run.calibration_end_period
-            calibration_times['calibration_start_time'] = run.calibration_eval_start_period
-            calibration_times['calibration_end_time'] = run.calibration_eval_end_period
-        if automatic_validation and run.validation_start_period:
-            validation_times['simulation_start_time'] = run.validation_start_period
-            validation_times['simulation_end_time'] = run.validation_end_period
-            validation_times['validation_start_time'] = run.validation_eval_start_period
-            validation_times['validation_end_time'] = run.validation_eval_end_period
+        calibration_times, validation_times = get_times(run, automatic_validation)
 
-        output_variable_to_calibrate = {
-            'module': run.module_output_variable.calibration_formulation.name,
-            'name': run.module_output_variable.name
-        } if run.module_output_variable else {}
+        output_variable_to_calibrate = get_output_variable_to_calibrate(run)
 
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
@@ -147,38 +136,25 @@ def load_tuning_tab(request):
             get_module_data_from_hydrofabric(run, modules)
 
             # For each module, get the Parameters and Output Variables
-            for m in modules:
-                parameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                  .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description')
-                                  .values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+            module_list = get_parameters_and_output_variables(modules)
 
-                # parameter_list.extend(parameters)
+        time_range = get_time_range(run)
 
-                module_entry = {'name': m.name,
-                                'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description')),
-                                'parameters': parameters}
-                module_list.append(module_entry)
-
-        # Get data range intersection of observational and forcing data if we don't already have it
-        if (run.observational_file_path and run.forcing_dir_path
-                and (not run.time_range_start or not run.time_range_end)):
-            daterange = get_date_range_intersection(run.observational_file_path, run.forcing_dir_path)
-            run.time_range_start = daterange.start_datetime
-            run.time_range_end = daterange.end_datetime
-            run.save()
-
-            ngen_cal_input.ready_to_run(run)
+        ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name,
                     'modules': module_list,
                     'calibration_times': calibration_times,
                     'validation_times': validation_times, 'automatic_validation': automatic_validation,
-                    'time_range': {'start_time': run.time_range_start, 'end_time': run.time_range_end},
+                    'time_range': time_range,
                     'output_variable_to_calibrate': output_variable_to_calibrate}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadTuningResponseSerializer(response)
-        logger.debug(f'load_tuning_tab() request from {request.user} - {serializer.data}')
+        serializer = LoadTuningResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_tuning_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.debug(f'Returning to {request.user} from load_tuning_tab() - {serializer.data}')
 
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -198,7 +174,75 @@ def load_tuning_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# @login_required()
+def get_output_variable_to_calibrate(run):
+    return {
+        'module': run.module_output_variable.calibration_formulation.name,
+        'name': run.module_output_variable.name
+    } if run.module_output_variable else None
+
+
+# For load_tuning_tab, we get all data.
+# The other option is for exporting
+def get_parameters_and_output_variables(modules):
+    module_list = []
+    for m in modules:
+        calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m)
+                                     .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+
+        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+        module_entry = {'name': m.name, 'parameters': parameters,
+                        'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
+
+        module_list.append(module_entry)
+        return module_list
+
+
+def get_parameters_for_export(modules):
+    parameter_list = []
+    for m in modules:
+        calibrationTuneParameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
+                                         .only('name', 'minimum', 'maximum', 'initial_value')
+                                         .values('name', 'minimum', 'maximum', 'initial_value'))
+
+        for p in calibrationTuneParameters:
+            p['module'] = m.name
+            parameter_list.append(p)
+
+    return parameter_list
+
+
+def get_time_range(run):
+    # Get data range intersection of observational and forcing data if we don't already have it
+    time_range = None
+    if (run.observational_file_path and run.forcing_dir_path
+            and (not run.time_range_start or not run.time_range_end)):
+        daterange = get_date_range_intersection(run.observational_file_path, run.forcing_dir_path)
+        run.time_range_start = daterange.start_datetime
+        run.time_range_end = daterange.end_datetime
+        time_range = {'start_time': run.time_range_start, 'end_time': run.time_range_end}
+        run.save()
+
+    return time_range
+
+
+def get_times(run, automatic_validation):
+    calibration_times = {}
+    validation_times = {}
+    # These are all or nothing.  So if this first one exists, we'll assume they all do
+    if run.calibration_start_period:
+        calibration_times['simulation_start_time'] = run.calibration_start_period
+        calibration_times['simulation_end_time'] = run.calibration_end_period
+        calibration_times['calibration_start_time'] = run.calibration_eval_start_period
+        calibration_times['calibration_end_time'] = run.calibration_eval_end_period
+    if automatic_validation and run.validation_start_period:
+        validation_times['simulation_start_time'] = run.validation_start_period
+        validation_times['simulation_end_time'] = run.validation_end_period
+        validation_times['validation_start_time'] = run.validation_eval_start_period
+        validation_times['validation_end_time'] = run.validation_eval_end_period
+    return calibration_times, validation_times
+
+
+# @permission_classes([AllowAny])()
 def get_module_data_from_hydrofabric(run, modules):
     # Get this from hydrofabric
     # modules_request = {"modules":modules}
@@ -208,16 +252,16 @@ def get_module_data_from_hydrofabric(run, modules):
     validator = ModuleDataHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
         logger.error(validator.errors)
-        raise Exception('Module metadata from Hydrofabric is not in the expected format')
+        raise Exception(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
-    module_data = module_sample_data.get("modules_data")
+    module_data = module_sample_data.get("modules")
 
     # Save the output variables and parameters for each module
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
     with transaction.atomic():
         for m in module_data:
             # Get the modules object from our list
-            module = modules.filter(name=m['name']).first()
+            module = modules.filter(name=m['module_name']).first()
             # print('module', module)
 
             # Save output variables
@@ -231,9 +275,10 @@ def get_module_data_from_hydrofabric(run, modules):
             parameters = m['module_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
-                CalibrationTuneParameter.objects.get_or_create(name=p['name'], calibration_formulation=module,
-                                                               defaults={'data_type': p['data_type'],
-                                                                         'description': p['description']})
+                CalibrationTuneParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
+                                                                  defaults={'data_type': p['data_type'],
+                                                                            'description': p['description'], 'minimum': p['minimum'],
+                                                                            'maximum': p['maximum']})
 
         run.got_module_data_from_hydrofabric = True
         run.save()
@@ -259,7 +304,7 @@ def get_module_data_from_hydrofabric(run, modules):
     description="Save tuning tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_tuning_tab(request):
     try:
         print('user', request.user)
@@ -281,55 +326,29 @@ def save_tuning_tab(request):
         if errorReturn:
             return errorReturn
 
-        run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times else None
-        run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times else None
-        run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times else None
-        run.calibration_eval_end_period = datetime.fromisoformat(calibration_times['calibration_end_time']) if calibration_times else None
+        save_times(run, automatic_validation, calibration_times, validation_times)
 
-        if automatic_validation:
-            run.validation_start_period = datetime.fromisoformat(validation_times['simulation_start_time']) if validation_times else None
-            run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times else None
-            run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times else None
-            run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times else None
-
-        # Set the type
         run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
 
-        if parameters:
-            if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-                return ResponseError('CalibrationTuneParameters have not been loaded from Hydrofabric')
-            # Make sure the parameters we are trying to save exist
-            for p in parameters:
-                if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
-                    return ResponseError("Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module']))
+        message = validate_parameters(run, parameters)
+        if message is not None:
+            return ResponseError(message)
 
-        # Validate the output_variable_to_calibrate
-        if output_variable_to_calibrate:
-            module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
-                                                                                calibration_run=run).first()
-            if not module_with_output_variable:
-                return ResponseError("Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id))
-            module_output_variable = module_with_output_variable.output_variables.all().filter(
-                name=output_variable_to_calibrate['name']).first()
-            if not module_output_variable:
-                return ResponseError("Module output variable '{}' not found in module '{}' for this run".format(
-                    output_variable_to_calibrate['name'], output_variable_to_calibrate['module']))
-
-            logger.debug(f'module_output_variable {module_output_variable}')
-            run.module_output_variable = module_output_variable
+        message = save_output_variable(run, output_variable_to_calibrate)
+        if message is not None:
+            return ResponseError(message)
 
         with transaction.atomic():
             run.save()
-            if parameters:
-                for p in parameters:
-                    (CalibrationTuneParameter.objects
-                     .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
-                     .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
+            save_parameters(run, parameters)
 
         ngen_cal_input.ready_to_run(run)
 
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-        serializer = GenericResponseSerializer(response)
+        serializer = GenericResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from save_tuning_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from save_tuning_tab() - {serializer.data}')
         return Response(serializer.data)
     except JSONDecodeError as e:
@@ -347,6 +366,54 @@ def save_tuning_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def save_times(run, automatic_validation, calibration_times, validation_times):
+    run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times else None
+    run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times else None
+    run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times else None
+    run.calibration_eval_end_period = datetime.fromisoformat(calibration_times['calibration_end_time']) if calibration_times else None
+
+    if automatic_validation:
+        run.validation_start_period = datetime.fromisoformat(validation_times['simulation_start_time']) if validation_times else None
+        run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times else None
+        run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times else None
+        run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times else None
+
+
+def validate_parameters(run, parameters):
+    if parameters:
+        if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
+            return 'CalibrationTuneParameters have not been loaded from Hydrofabric'
+        # Make sure the parameters we are trying to save exist
+        for p in parameters:
+            if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
+                return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
+    return None
+
+
+def save_output_variable(run, output_variable_to_calibrate):
+    if output_variable_to_calibrate:
+        module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
+                                                                            calibration_run=run).first()
+        if not module_with_output_variable:
+            return "Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id)
+        module_output_variable = module_with_output_variable.output_variables.all().filter(
+            name=output_variable_to_calibrate['name']).first()
+        if not module_output_variable:
+            return "Module output variable '{}' not found in module '{}' for this run".format(
+                output_variable_to_calibrate['name'], output_variable_to_calibrate['module'])
+
+        run.module_output_variable = module_output_variable
+        return None
+
+
+def save_parameters(run, parameters):
+    if parameters:
+        for p in parameters:
+            (CalibrationTuneParameter.objects
+             .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
+             .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
 
 
 # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
