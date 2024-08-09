@@ -21,7 +21,6 @@ class Gage(BaseModel):
     altitude_datum = models.TextField(null=True)
     huc = models.TextField(null=False, blank=False)
     drainage_area = models.FloatField(null=True)
-    contrib_drainage_area = models.FloatField(null=True)
     domain = models.ForeignKey('Domain', null=True, on_delete=models.SET_NULL)
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.CASCADE)
 
