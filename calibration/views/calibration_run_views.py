@@ -1,8 +1,5 @@
-import importlib.util
 import json
 import logging
-import os
-import sys
 from json.decoder import JSONDecodeError
 
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
@@ -15,7 +12,6 @@ from rest_framework.response import Response
 from calibration.createInput import create_input
 from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
-from calibration.util.ngen_locations import create_input_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT

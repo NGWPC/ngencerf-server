@@ -123,10 +123,7 @@ def load_tuning_tab(request):
 
         calibration_times, validation_times = get_times(run, automatic_validation)
 
-        output_variable_to_calibrate = {
-            'module': run.module_output_variable.calibration_formulation.name,
-            'name': run.module_output_variable.name
-        } if run.module_output_variable else {}
+        output_variable_to_calibrate = get_output_variable_to_calibrate(run)
 
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
@@ -177,27 +174,41 @@ def load_tuning_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def get_output_variable_to_calibrate(run):
+    return {
+        'module': run.module_output_variable.calibration_formulation.name,
+        'name': run.module_output_variable.name
+    } if run.module_output_variable else None
+
+
 # For load_tuning_tab, we get all data.
 # The other option is for exporting
-def get_parameters_and_output_variables(modules, all_data=True):
+def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules:
         calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m)
                                      .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
 
-        print('all_data', all_data)
-        if all_data:
-            parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
-
-        else:
-            parameters = list(calibrationTuneParameters.values('name', 'initial_value'))
-
-        module_entry = {'name': m.name, 'parameters': parameters}
-        if all_data:
-            module_entry['output_variables'] = list(m.output_variables.all().only('name', 'description').values('name', 'description'))
+        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+        module_entry = {'name': m.name, 'parameters': parameters,
+                        'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
 
         module_list.append(module_entry)
         return module_list
+
+
+def get_parameters_for_export(modules):
+    parameter_list = []
+    for m in modules:
+        calibrationTuneParameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
+                                         .only('name', 'minimum', 'maximum', 'initial_value')
+                                         .values('name', 'minimum', 'maximum', 'initial_value'))
+
+        for p in calibrationTuneParameters:
+            p['module'] = m.name
+            parameter_list.append(p)
+
+    return parameter_list
 
 
 def get_time_range(run):
@@ -241,7 +252,7 @@ def get_module_data_from_hydrofabric(run, modules):
     validator = ModuleDataHydrofabricListValidator(data=module_sample_data)
     if not validator.is_valid():
         logger.error(validator.errors)
-        raise Exception('Module metadata from Hydrofabric is not in the expected format')
+        raise Exception(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
     module_data = module_sample_data.get("modules")
 

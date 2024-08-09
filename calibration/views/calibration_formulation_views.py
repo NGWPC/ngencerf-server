@@ -254,7 +254,7 @@ def load_formulation_tab(request):
 
         get_modules_from_hydrofabric(run)
 
-        modules = load_modules(run)
+        modules = get_all_modules(run)
 
         # Unwrap the groups
         for m in modules:
@@ -263,7 +263,7 @@ def load_formulation_tab(request):
 
         use_sloth = run.use_sloth
 
-        sloth_parameters = load_sloth_parameters(run) if use_sloth else []
+        sloth_parameters = get_sloth_parameters(run) if use_sloth else []
 
         ngen_cal_input.ready_to_run(run)
 
@@ -297,23 +297,33 @@ def load_formulation_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-def load_modules(run):
-    return (
+def get_all_modules(run):
+    return list(
         CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
         .only('name', 'groups', 'used_by_calibration_run')
         .values('name', 'groups', 'used_by_calibration_run')
     )
 
 
-def load_sloth_parameters(run):
+def get_my_modules(run):
     return list(
+        CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exclude(name=SLOTH)
+        .only('name')
+        .values_list('name', flat=True)
+    )
+
+
+def get_sloth_parameters(run):
+    sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
         .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
               'maps_to_variable_name')
         .values(
-            'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
+            'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
             'maps_to_variable_name')
     )
+    [sloth_param.update({'maps_to_module': sloth_param.pop('maps_to_module__name')}) for sloth_param in sloth_parameters]
+    return sloth_parameters
 
 
 def get_modules_from_hydrofabric(run):

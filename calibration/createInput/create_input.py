@@ -155,11 +155,10 @@ def create_input(filename):
     os.makedirs(forcing_path, exist_ok=True)
     for catID in catids:
         ffile = os.path.join(forcing_dir, catID + '.csv')
-        basename = os.path.basename(ffile)
         if not os.path.exists(os.path.join(forcing_path, os.path.basename(ffile))):
             os.symlink(ffile, os.path.join(forcing_path, os.path.basename(ffile)))
 
-    # Extract streamflow observtion
+    # Extract streamflow observation
     if obsflow_dir:
         obs = pd.read_csv(os.path.join(obsflow_dir, basin + '_hourly_discharge.csv'))[['dateTime', 'q_cms']]
         obs = obs.rename(columns={'dateTime': 'value_date', 'q_cms': 'obs_flow'})

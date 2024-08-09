@@ -260,14 +260,14 @@ class ModuleParametersValidator(serializers.Serializer):
 
 # Module object from Hydrofabric containing module parameters and output variables
 class ModuleMetadataHydrofabricValidator(BaseSerializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    module_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
     module_parameters = ModuleParametersValidator(many=True)
     module_output_variables = ModuleOutputVariablesValidator(many=True)
 
 
 # List of module objects from Hydrofabric containing module parameters and output variables
 class ModuleDataHydrofabricListValidator(BaseSerializer):
-    modules_data = ModuleMetadataHydrofabricValidator(many=True, min_length=1, required=True)
+    modules = ModuleMetadataHydrofabricValidator(many=True, min_length=1, required=True)
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
@@ -506,11 +506,21 @@ class IsReadyResponseSerializer(BaseSerializer):
 ##################################
 # Import/Export
 ##################################
-# TODO Change to use BaseSerializer
-class ExportValidator(serializers.Serializer):
-    gage_id = serializers.CharField(required=False)
-    formulation_name = serializers.CharField(required=False)
-    geopackage_name = serializers.CharField(required=False)
+class ExportValidator(BaseSerializer):
+    gage_id = serializers.CharField(required=True, allow_null=True)
+    modules = serializers.ListField(child=serializers.CharField(required=True), required=True)
+    formulation_name = serializers.CharField(required=True, allow_null=True)
+    use_sloth = serializers.BooleanField(required=True, allow_null=False)
+    sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
+    automatic_validation = serializers.BooleanField(required=True, allow_null=False)
+    output_variable_to_calibrate = OutputVariableValidator(required=True, allow_null=False)
+    calibration_times = CalibrationTimeControls(required=True)
+    validation_times = ValidationTimeControls(required=True)
+    streamflow_threshold = serializers.FloatField(required=True)
+    parameters = TuningParametersValidator(many=True, required=False)
+    objective_function = serializers.CharField(required=True, allow_null=True)
+    optimization_inputs = OptimizationInputsValidator(many=True, required=False)
+    optimization = serializers.CharField(required=True, allow_null=True)
 
 
 ##################################
