@@ -263,14 +263,14 @@ def load_formulation_tab(request):
 
         use_sloth = run.use_sloth
 
-        sloth_parameters = load_sloth_parameters(run) if use_sloth else None
+        sloth_parameters = load_sloth_parameters(run) if use_sloth else []
 
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
                     "modules": module_list,
                     'use_sloth': use_sloth,
-                    "sloth_parameters": list(sloth_parameters)}
+                    "sloth_parameters": sloth_parameters}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
         serializer = LoadFormulationResponseSerializer(data=response)
@@ -306,7 +306,7 @@ def load_modules(run):
 
 
 def load_sloth_parameters(run):
-    return (
+    return list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
         .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
               'maps_to_variable_name')
@@ -337,8 +337,8 @@ def get_modules_from_hydrofabric(run):
         logger.debug(validator.errors)
         raise Exception(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    module_data = validator.data.get('modules_data')
-    new_modules_names = set(map(lambda mod: mod['name'], module_data))
+    module_data = validator.data.get('modules')
+    new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
     print('new_modules_names', new_modules_names)
 
     with transaction.atomic():
@@ -350,7 +350,7 @@ def get_modules_from_hydrofabric(run):
 
             # Create the new ones, if they don't already exist
             for m in module_data:
-                CalibrationFormulation.objects.get_or_create(name=m['name'], calibration_run=run,
+                CalibrationFormulation.objects.get_or_create(name=m['module_name'], calibration_run=run,
                                                              defaults={'groups': json.dumps(m['groups']),
                                                                        'description': m['description']})
 

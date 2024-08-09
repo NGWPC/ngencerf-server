@@ -46,7 +46,6 @@ INSTALLED_APPS = [
     'calibration.apps.CalibrationConfig',
     "rest_framework",
     "rest_framework.authtoken",
-    "social_django",
     "djoser",
     "rest_framework_simplejwt",
 ]
@@ -103,16 +102,12 @@ TEMPLATES = [
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
-    "djoser.social.backends.facebook.FacebookOAuth2Override",
-    "social_core.backends.google.GoogleOAuth2",
-    "social_core.backends.steam.SteamOpenId",
 ]
 
 DJOSER = {
     "SEND_CONFIRMATION_EMAIL": False,
     "SEND_ACTIVATION_EMAIL": False,
     "SET_PASSWORD_RETYPE": True,
-    # "SOCIAL_AUTH_ALLOWED_REDIRECT_URIS": ["http://test.localhost/"],
     "UPDATE_LAST_LOGIN": True,
 }
 
@@ -122,7 +117,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
-    'USER_ID_FIELD': 'email',
+    'UPDATE_LAST_LOGIN': True,
+    'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
 

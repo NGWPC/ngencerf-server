@@ -10,9 +10,9 @@ from calibration.util.calibration_validators import ErrorResponseSerializer
 logger = logging.getLogger(__name__)
 
 
+# Get an instance of a run by id, but only if owned by the user
 def get_run(calibration_run_id, user):
-    # TODO Need to filter jobs by user
-    run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
+    run = CalibrationRun.objects.filter(id=calibration_run_id, owner=user).select_related('status', 'gage').first()
     if not run:
         return run, Response({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user}'},
                              status=status.HTTP_400_BAD_REQUEST)
@@ -24,8 +24,7 @@ def get_run(calibration_run_id, user):
 
 # This method is only used by report_iteration for now
 def get_running(calibration_run_id, user):
-    # TODO Need to filter jobs by user
-    run = CalibrationRun.objects.filter(id=calibration_run_id).select_related('status', 'gage').first()
+    run = CalibrationRun.objects.filter(id=calibration_run_id, owner=user).select_related('status', 'gage').first()
     if not run:
         return run, Response({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user}'},
                              status=status.HTTP_400_BAD_REQUEST)

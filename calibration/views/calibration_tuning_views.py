@@ -243,14 +243,14 @@ def get_module_data_from_hydrofabric(run, modules):
         logger.error(validator.errors)
         raise Exception('Module metadata from Hydrofabric is not in the expected format')
 
-    module_data = module_sample_data.get("modules_data")
+    module_data = module_sample_data.get("modules")
 
     # Save the output variables and parameters for each module
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
     with transaction.atomic():
         for m in module_data:
             # Get the modules object from our list
-            module = modules.filter(name=m['name']).first()
+            module = modules.filter(name=m['module_name']).first()
             # print('module', module)
 
             # Save output variables

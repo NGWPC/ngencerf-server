@@ -52,8 +52,7 @@ def create_calibration_run(request):
         logger.debug(f'create_calibration_run() request from {request.user}')
 
         with transaction.atomic():
-            # Need to add request.user to the Run object
-            run = CalibrationRun.objects.create(is_active=True, status=Status.objects.get(name=StatusEnum.SAVED.value))
+            run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
             serializer = CreateCalibrationRunValidator(data=response)
@@ -101,15 +100,16 @@ def get_jobs(request):
 
         # Get all jobs for this user
         # TODO Need to filter jobs by user
-        runs = list(CalibrationRun.objects
+        runs = list(CalibrationRun.objects.filter(owner=request.user)
                     .only('id', 'user_formulation_name', 'gage', 'run_date',
-                          'calibration_start_period', 'calibration_end_period', 'status')
+                          'calibration_start_period', 'calibration_end_period', 'status', 'owner')
                     .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-                            'status__name', formulation_name=F('user_formulation_name')))
+                            'status__name',  'owner__username', formulation_name=F('user_formulation_name')))
         for r in runs:
             r['calibration_run_id'] = r.pop('id')
             r['gage_id'] = r.pop('gage__gage_id')
             r['status'] = r.pop('status__name')
+            r['owner'] = r.pop('owner__username')
 
         response = {'jobs': runs}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}

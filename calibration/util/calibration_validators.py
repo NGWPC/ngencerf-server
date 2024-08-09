@@ -90,6 +90,7 @@ class JobsResponseSerializer(BaseSerializer):
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
+    owner = serializers.CharField(required=True, allow_null=True)
 
 
 class GetJobsResponseSerializer(BaseSerializer):
