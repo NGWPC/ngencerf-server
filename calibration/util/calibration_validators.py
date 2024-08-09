@@ -503,6 +503,16 @@ class IsReadyResponseSerializer(BaseSerializer):
 
 
 ##################################
+# Import/Export
+##################################
+# TODO Change to use BaseSerializer
+class ExportValidator(serializers.Serializer):
+    gage_id = serializers.CharField(required=False)
+    formulation_name = serializers.CharField(required=False)
+    geopackage_name = serializers.CharField(required=False)
+
+
+##################################
 # Misc
 ##################################
 class ReportIterationValidator(BaseSerializer):
