@@ -143,6 +143,9 @@ def ready_to_run(run, build=None):
     main_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
     general['main_dir'] = main_dir
 
+    if build:
+        os.makedirs(main_dir, exist_ok=True)
+
     # TODO output variable to calibrate
     # TODO set run_date when we actually run it
 
@@ -274,7 +277,7 @@ def ready_to_run(run, build=None):
 
 def build_config(config, directory):
     config_file = os.path.join(directory, 'input.config')
-    os.makedirs(directory, exist_ok=True)
+
     print('saving config to', config_file)
     toml_string = toml.dumps(config)
 

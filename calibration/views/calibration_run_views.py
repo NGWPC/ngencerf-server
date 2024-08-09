@@ -12,11 +12,12 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from calibration.createInput import create_input
 from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.util.ngen_locations import create_input_dir
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run
+from calibration.views.common import get_run, ResponseError
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
@@ -131,30 +132,15 @@ def run_calibration(request):
         run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
         run.save()
 
-        # Get access to create_input.py 
-        parent_dir = os.path.dirname(create_input_dir)
-        create_input_py = 'create_input.py'
-        if parent_dir not in sys.path:
-            sys.path.insert(0, parent_dir)
-        spec = importlib.util.spec_from_file_location('createInput.create_input', os.path.join(create_input_dir, create_input_py))
+        message = create_input.create_input(config_file)
+        if message:
+            return ResponseError(f'Error from create_input - {message}')
 
-        if spec is None:
-            raise Exception(f"Cannot find 'create_input.py' in {create_input_dir}")
-        else:
-            # Create module from the spec
-            create_input = importlib.util.module_from_spec(spec)
-
-            spec.loader.exec_module(create_input)
-            print('create_input imported successfully')
-
-            sys.argv = [create_input_py, config_file]
-            create_input.main()
-
-            response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                        'status': run.status.name}
-            serializer = GenericResponseSerializer(response)
-            logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
-            return Response(serializer.data)
+        response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+                    'status': run.status.name}
+        serializer = GenericResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
+        return Response(serializer.data)
     except JSONDecodeError as e:
         response = {'validation_error': 'JSON parsing error - ' + str(e)}
         serializer = ValidationErrorSerializer(response)
