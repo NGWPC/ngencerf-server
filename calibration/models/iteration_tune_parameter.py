@@ -7,7 +7,7 @@ from calibration.models.iteration import Iteration
 class IterationTuneParameter(BaseModel):
     iteration = models.ForeignKey(Iteration, null=False, on_delete=models.CASCADE)
     calibration_tune_parameter = models.ForeignKey('CalibrationTuneParameter', null=False, on_delete=models.CASCADE)
-    data_type = models.TextField(null=False, blank=False)
+    data_type = models.TextField(null=False)
     tuned_value = models.FloatField(null=False)
 
     class Meta:

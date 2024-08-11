@@ -6,7 +6,7 @@ from calibration.models.status import Status
 
 
 class ValidationRun(BaseModel):
-    description = models.TextField(null=False, blank=False)
+    description = models.TextField(null=False)
     is_active = models.BooleanField(null=False, default=True)
     calibration_run = models.ForeignKey('CalibrationRun', null=True, related_name="validations", on_delete=models.SET_NULL)
     iteration = models.IntegerField(null=True)

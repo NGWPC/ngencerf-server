@@ -6,8 +6,8 @@ from calibration.models.base_model import BaseModel
 class CalibrationTuneParameter(BaseModel):
     calibration_formulation = models.ForeignKey('CalibrationFormulation', null=False, on_delete=models.CASCADE)
     name = models.TextField(null=False)
-    description = models.TextField(null=False, blank=False)
-    data_type = models.TextField(null=False, blank=False)
+    description = models.TextField(null=False)
+    data_type = models.TextField(null=False)
     initial_value = models.FloatField(null=True)
     minimum = models.FloatField(null=True)
     maximum = models.FloatField(null=True)

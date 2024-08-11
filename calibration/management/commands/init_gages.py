@@ -40,7 +40,7 @@ class Command(BaseCommand):
             print(f'{data_dir} must be a directory containing the data files')
             return
 
-        # Gage.objects.all().delete()
+        Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin
         user = get_user_model().objects.get(username='admin')
@@ -51,175 +51,57 @@ class Command(BaseCommand):
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_HI.csv'), hawaii_domain)
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_PR.csv'), puerto_rico_domain)
 
-        with open(os.path.join(data_dir, 'NWMv3_calibration_basins_PR.csv')) as file:
-            # "ID,link_id,longitd,latitud,rfc,snowy,dailyGg,bsnTypN,basnTyp"
-            reader = csv.reader(file, delimiter=',')
-            row_num = 0
-            new_count = 0
-            existing_count = 0
-            gage_count = 0
-            for row in reader:
-                row_num += 1
-                # Skip the first line
-                if row_num <= 1:
-                    continue
-
-                gage_count += 1
-                gage_id = row[0]
-                gage = gages.get(gage_id)
-                if not gage:
-                    new_count += 1
-                    longitude = None if row[2] == 'NA' else float(row[2])
-                    latitude = None if row[3] == 'NA' else float(row[3])
-                    gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
-                            'domain_id': puerto_rico_domain['id']}
-                    gages[gage_id] = gage
-                else:
-                    existing_count += 1
-                    # print(f'Gage {gage_id} from NWM PR already exists')
-
-                gage['rfc_id'] = rfc_dict[row[4]]
-                gages[gage_id] = gage
-        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
-
-        with open(os.path.join(data_dir, 'NWMv3_calibration_basins_HI.csv')) as file:
-            # "ID,link_id"
-            reader = csv.reader(file, delimiter=',')
-            row_num = 0
-            new_count = 0
-            existing_count = 0
-            gage_count = 0
-            for row in reader:
-                row_num += 1
-                # Skip the first line
-                if row_num <= 1:
-                    continue
-
-                gage_count += 1
-                gage_id = row[0]
-                gage = gages.get(gage_id)
-                if not gage:
-                    new_count += 1
-                    gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True,
-                            'domain_id': hawaii_domain['id']}
-                    gages[gage_id] = gage
-                else:
-                    existing_count += 1
-                    # print(f'Gage {gage_id} from NWM HI already exists')
-
-                gages[gage_id] = gage
-        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
-
-        with open(os.path.join(data_dir, 'NWMv3_calibration_basins_AK.csv')) as file:
-            # "ID,link_id,longitd,latitud,snowy,dailyGg,bsnTypN,basnTyp,rfc"
-            reader = csv.reader(file, delimiter=',')
-            row_num = 0
-            new_count = 0
-            existing_count = 0
-            gage_count = 0
-            for row in reader:
-                row_num += 1
-                # Skip the first line
-                if row_num <= 1:
-                    continue
-
-                gage_count += 1
-                gage_id = row[0]
-                gage = gages.get(gage_id)
-                if not gage:
-                    new_count += 1
-                    longitude = None if row[2] == 'NA' else float(row[2])
-                    latitude = None if row[3] == 'NA' else float(row[3])
-                    gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
-                            'domain_id': alaska_domain['id']}
-                    gages[gage_id] = gage
-                else:
-                    existing_count += 1
-                    # print(f'Gage {gage_id}from NWM AK already exists')
-
-                gage['rfc_id'] = rfc_dict[row[8]]
-                gages[gage_id] = gage
-        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
-
-        with open(os.path.join(data_dir, 'NWMv3_calibration_basins_CONUS.csv')) as file:
-            # "ID,link_id,rfc,longitd,latitud,snowy,dailyGg,bsnTypN,basnTyp"
-            reader = csv.reader(file, delimiter=',')
-            row_num = 0
-            new_count = 0
-            existing_count = 0
-            gage_count = 0
-            for row in reader:
-                row_num += 1
-                # Skip the first line
-                if row_num <= 1:
-                    continue
-
-                gage_count += 1
-                gage_id = row[0]
-                gage = gages.get(gage_id)
-                if not gage:
-                    new_count += 1
-                    longitude = None if row[3] == 'NA' else float(row[3])
-                    latitude = None if row[4] == 'NA' else float(row[4])
-                    gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
-                            'domain_id': conus_domain['id']}
-                    gages[gage_id] = gage
-                else:
-                    existing_count += 1
-                    # print(f'Gage {gage_id} from NWM CONUS already exists')
-
-                gage['rfc_id'] = rfc_dict[row[2]]
-                gages[row[0]] = gage
-        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
+        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_CONUS.csv'), conus_domain)
+        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_AK.csv'), alaska_domain)
+        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_HI.csv'), hawaii_domain)
+        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_PR.csv'), puerto_rico_domain)
 
         # Some extra manually added gages
         with open(os.path.join(data_dir, 'Supplemental - AK.csv')) as file:
-            # "gage_id,nws_id,lat,long"
-            reader = csv.reader(file, delimiter=',')
-            row_num = 0
+            # Skip the first 2 lines before header
+            for i in range(2):
+                next(file)
+            reader = csv.DictReader(file, delimiter=',')
             gage_count = 0
             for row in reader:
-                row_num += 1
-                # Skip the first 3 lines
-                if row_num <= 3:
-                    continue
-
                 gage_count += 1
-                gage = {'gage_id': row[0], 'nws_id': row[1], 'longitude': row[3], 'latitude': row[2], 'station_name': row[4], 'is_active': True,
+                gage_id = row.get('gage_id')
+                gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
+                        'station_name': row.get('station_name'), 'is_active': True,
                         'nwm_v3_calibrated': False, 'domain_id': alaska_domain['id']}
-                gages[row[0]] = gage
+                gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
 
         # This file maps NWS id with USGS id
         with open(os.path.join(data_dir, 'ALL_USGS-HADS_SITES.txt')) as file:
-            reader = csv.reader(file, delimiter='|')
-            row_num = 0
+            # Skip the first 4 lines
+            for i in range(4):
+                next(file)
+            reader = csv.DictReader(file, delimiter='|',
+                                    fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
             gage_count = 0
+            skip_count = 0
             for row in reader:
-                row_num += 1
-                # Skip the first 4 lines
-                if row_num <= 4:
-                    continue
-
-                nws_id = row[0].strip()
-                gage_id = row[1].strip()
+                nws_id = row.get('nws_id').strip()
+                gage_id = row.get('gage_id').strip()
                 gage = gages.get(gage_id)
                 if not gage:
-                    # print(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt, line {row_num}")
+                    # print(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt")
                     # According to Yuqiong, there are reservoir gage and not streamflow gages, so we can ignore them
+                    skip_count += 1
                     continue
                 gage_count += 1
 
                 if 'latitude' not in gage or gage['latitude'] is None:
                     print(f'Adding lat/long for gage {gage_id}')
                     # The ALL_USGS-HADS_SITES.txt file has all longitude values as positive, even though they are in the Western hemisphere.  So we'll switch it.
-                    gage['latitude'] = dms_to_dd(row[4].strip())
-                    gage['longitude'] = dms_to_dd('-' + row[5].strip())
+                    gage['latitude'] = dms_to_dd(row.get('latitude').strip())
+                    gage['longitude'] = dms_to_dd('-' + row.get('longitude').strip())
                 if 'station_name' not in gage or gage['station_name'] is None:
-                    gage['station_name'] = row[6]
+                    gage['station_name'] = row.get('station_name')
 
                 gage['nws_id'] = nws_id
-        print(f'Processed {gage_count} gages from {file.name}.')
+        print(f'Processed {gage_count} gages from {file.name}.  Skipped {skip_count} gages which are assumed to be non-streamflow gages')
 
         add_additional_gages(os.path.join(data_dir, 'RFC Additional NextGen Calibration Basin List - AK.csv'), alaska_domain)
         add_additional_gages(os.path.join(data_dir, 'RFC Additional NextGen Calibration Basin List - CONUS.csv'), conus_domain)
@@ -264,36 +146,35 @@ def add_additional_gages(gage_file, domain):
 def add_usgs_gages(usgs_file, domain):
     # Read the main file and supplement with info from the previous file, if available for that gage
     with open(usgs_file, 'r') as file:
-        reader = csv.reader(file, delimiter='\t')
-        row_num = 0
+        # Skip the first 34 lines, including the header
+        for i in range(34):
+            next(file)
+        reader = csv.DictReader(file, delimiter='\t',
+                                fieldnames=['agency_name', 'gage_id', 'station_name', 'site_type', 'latitude', 'longitude', 'lat_long_accuracy',
+                                            'lat_Long_datum', 'altitude', 'altitude_accuracy', 'altitude_datum', 'huc', 'drainage_area'])
+
         gage_count = 0
         for row in reader:
-            row_num += 1
-            # Skip the first 34 lines
-            if row_num <= 34:
-                continue
-
             gage_count += 1
-            gage_id = row[1]
+            gage_id = row.get('gage_id')
             # There shouldn't be any overlap in the USGS files, so we should always be creating a new entry.
             gage = gages.get(gage_id)
             if not gage:
                 gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': False}
                 gages[gage_id] = gage
 
-            agency = row[0]
-
-            station_name = row[2]
-            site_type = row[3]
-            latitude = float(row[4])
-            longitude = float(row[5])
-            lat_long_accuracy = row[6]
-            lat_long_datum = row[7]
-            altitude = float(row[8]) if len(row) > 9 and row[8] else None
-            altitude_accuracy = row[9] if len(row) > 10 and row[9] else None
-            altitude_datum = row[10] if len(row) > 11 and row[10] else None
-            huc = row[11] if len(row) > 12 else ''
-            drainage_area = float(row[12]) if len(row) >= 13 and row[12] else None
+            agency = row.get('agency_name')
+            station_name = row.get('station_name')
+            site_type = row.get('site_type')
+            latitude = float(row.get('latitude'))
+            longitude = float(row.get('longitude'))
+            lat_long_accuracy = row.get('lat_long_accuracy', '')
+            lat_long_datum = row.get('lat_long_datum', '')
+            altitude = float(row.get('altitude')) if row.get('altitude') else None
+            altitude_accuracy = row.get('altitude_accuracy', '')
+            altitude_datum = row.get('altitude_datum', '')
+            huc = row.get('huc')
+            drainage_area = float(row.get('drainage_area')) if row.get('drainage_area') else None
 
             gage.update({'agency': agency, 'station_name': station_name, 'site_type': site_type,
                          'lat_long_accuracy': lat_long_accuracy, 'lat_long_datum': lat_long_datum,
@@ -301,6 +182,32 @@ def add_usgs_gages(usgs_file, domain):
                          'drainage_area': drainage_area, 'latitude': latitude, 'longitude': longitude, 'domain_id': domain['id']})
 
     print(f'Processed {gage_count} gages from {file.name}.')
+
+
+def add_nwm_v3(nwm_v3_file, domain):
+    with open(nwm_v3_file) as file:
+        reader = csv.DictReader(file, delimiter=',')
+        new_count = 0
+        existing_count = 0
+        gage_count = 0
+        for row in reader:
+            gage_count += 1
+            gage_id = row.get('ID')
+            gage = gages.get(gage_id)
+            if not gage:
+                new_count += 1
+                longitude = None if row.get('longitd') == 'NA' else float(row.get('longitd'))
+                latitude = None if row.get('latitud') == 'NA' else float(row.get('latitud'))
+                gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
+                        'domain_id': domain['id']}
+                gages[gage_id] = gage
+            else:
+                existing_count += 1
+
+            rfc = row.get('rfc')
+            gage['rfc_id'] = rfc_dict[rfc] if rfc else None
+            gages[gage_id] = gage
+    print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
 
 def dms_to_dd(lat_long_str):

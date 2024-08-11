@@ -51,6 +51,22 @@ Run `init_sql` and `init_gages` to initialize the static tables
 (.venv-cerf) $ python manage.py init_gages
 ```
 
+**_Important:_**
+During development, there might be times when the entire database needs to be initialized.  
+In that case, drop all existing tables in the database and run these initialize steps again.
+
+To drop all tables, you can use this script:
+```
+do $$ declare
+    r record;
+begin
+    for r in (select tablename from pg_tables where schemaname = 'public') loop
+        execute 'drop table if exists ' || quote_ident(r.tablename) || ' cascade';
+    end loop;
+end $$;
+```
+where `public` is the name of you schema.
+
 # Updating
 After pulling the latest updates from the repo, you should run `migrate` 
 in case there have been any database changes
