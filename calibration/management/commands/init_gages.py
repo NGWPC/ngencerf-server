@@ -66,7 +66,8 @@ class Command(BaseCommand):
             for row in reader:
                 gage_count += 1
                 gage_id = row.get('gage_id')
-                gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'), 'station_name': row.get('station_name'), 'is_active': True,
+                gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
+                        'station_name': row.get('station_name'), 'is_active': True,
                         'nwm_v3_calibrated': False, 'domain_id': alaska_domain['id']}
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
@@ -76,7 +77,8 @@ class Command(BaseCommand):
             # Skip the first 4 lines
             for i in range(4):
                 next(file)
-            reader = csv.DictReader(file, delimiter='|', fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
+            reader = csv.DictReader(file, delimiter='|',
+                                    fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
             gage_count = 0
             skip_count = 0
             for row in reader:
@@ -84,7 +86,7 @@ class Command(BaseCommand):
                 gage_id = row.get('gage_id').strip()
                 gage = gages.get(gage_id)
                 if not gage:
-                    # print(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt, line {row_num}")
+                    # print(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt")
                     # According to Yuqiong, there are reservoir gage and not streamflow gages, so we can ignore them
                     skip_count += 1
                     continue
@@ -144,36 +146,35 @@ def add_additional_gages(gage_file, domain):
 def add_usgs_gages(usgs_file, domain):
     # Read the main file and supplement with info from the previous file, if available for that gage
     with open(usgs_file, 'r') as file:
-        reader = csv.reader(file, delimiter='\t')
-        row_num = 0
+        # Skip the first 34 lines, including the header
+        for i in range(34):
+            next(file)
+        reader = csv.DictReader(file, delimiter='\t',
+                                fieldnames=['agency_name', 'gage_id', 'station_name', 'site_type', 'latitude', 'longitude', 'lat_long_accuracy',
+                                            'lat_Long_datum', 'altitude', 'altitude_accuracy', 'altitude_datum', 'huc', 'drainage_area'])
+
         gage_count = 0
         for row in reader:
-            row_num += 1
-            # Skip the first 34 lines
-            if row_num <= 34:
-                continue
-
             gage_count += 1
-            gage_id = row[1]
+            gage_id = row.get('gage_id')
             # There shouldn't be any overlap in the USGS files, so we should always be creating a new entry.
             gage = gages.get(gage_id)
             if not gage:
                 gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': False}
                 gages[gage_id] = gage
 
-            agency = row[0]
-
-            station_name = row[2]
-            site_type = row[3]
-            latitude = float(row[4])
-            longitude = float(row[5])
-            lat_long_accuracy = row[6]
-            lat_long_datum = row[7]
-            altitude = float(row[8]) if len(row) > 9 and row[8] else None
-            altitude_accuracy = row[9] if len(row) > 10 and row[9] else None
-            altitude_datum = row[10] if len(row) > 11 and row[10] else None
-            huc = row[11] if len(row) > 12 else ''
-            drainage_area = float(row[12]) if len(row) >= 13 and row[12] else None
+            agency = row.get('agency_name')
+            station_name = row.get('station_name')
+            site_type = row.get('site_type')
+            latitude = float(row.get('latitude'))
+            longitude = float(row.get('longitude'))
+            lat_long_accuracy = row.get('lat_long_accuracy', '')
+            lat_long_datum = row.get('lat_long_datum', '')
+            altitude = float(row.get('altitude')) if row.get('altitude') else None
+            altitude_accuracy = row.get('altitude_accuracy', '')
+            altitude_datum = row.get('altitude_datum', '')
+            huc = row.get('huc')
+            drainage_area = float(row.get('drainage_area')) if row.get('drainage_area') else None
 
             gage.update({'agency': agency, 'station_name': station_name, 'site_type': site_type,
                          'lat_long_accuracy': lat_long_accuracy, 'lat_long_datum': lat_long_datum,
@@ -186,13 +187,10 @@ def add_usgs_gages(usgs_file, domain):
 def add_nwm_v3(nwm_v3_file, domain):
     with open(nwm_v3_file) as file:
         reader = csv.DictReader(file, delimiter=',')
-        row_num = 0
         new_count = 0
         existing_count = 0
         gage_count = 0
         for row in reader:
-            row_num += 1
-
             gage_count += 1
             gage_id = row.get('ID')
             gage = gages.get(gage_id)
@@ -200,8 +198,6 @@ def add_nwm_v3(nwm_v3_file, domain):
                 new_count += 1
                 longitude = None if row.get('longitd') == 'NA' else float(row.get('longitd'))
                 latitude = None if row.get('latitud') == 'NA' else float(row.get('latitud'))
-                # print('row:', row_num, row)
-                # print('domain, rfc:', row_num, domain['name'], row.get('rfc'))
                 gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
                         'domain_id': domain['id']}
                 gages[gage_id] = gage
