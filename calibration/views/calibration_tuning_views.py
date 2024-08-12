@@ -254,6 +254,7 @@ def get_module_data_from_hydrofabric(run, modules):
         logger.error(validator.errors)
         raise Exception(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
+    # print('getting metadata from hydrofabric')
     module_data = module_sample_data.get("modules")
 
     # Save the output variables and parameters for each module
@@ -330,6 +331,7 @@ def save_tuning_tab(request):
 
         run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
 
+        print('parameters', parameters)
         message = validate_parameters(run, parameters)
         if message is not None:
             return ResponseError(message)
@@ -384,7 +386,7 @@ def save_times(run, automatic_validation, calibration_times, validation_times):
 def validate_parameters(run, parameters):
     if parameters:
         if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-            return 'CalibrationTuneParameters have not been loaded from Hydrofabric'
+            return 'CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
             if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():

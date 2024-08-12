@@ -437,8 +437,6 @@ def upload_observational_data(request):
         observational_file = files[0]
         run.observational_file_path = os.path.join(observational_dir, observational_file.name)
         run.observational_user_filename = observational_file.name
-        if fs.exists(observational_file.name):
-            return ResponseError(f"File {observational_file.name} already exists")
 
         fs.save(observational_file.name, observational_file)
 
@@ -525,26 +523,14 @@ def upload_forcing_data(request):
         if len(keys) > 0:
             return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # TODO Need to generate a subdirectory based on the gage name
         subdir = 'gage_id'
         run.forcing_dir_path = os.path.join('/home/peter.a.kronenberg/temp/forcing', subdir)
         run.forcing_user_dir = forcing_user_dir
 
         fs = FileSystemStorage(location=run.forcing_dir_path)
-        errors = []
 
-        # Make sure they don't exist
+        # Note that this will replace files that already exist
         files = request.FILES.getlist(key)
-        count = len(files)
-        for forcing_file in files:
-            print('forcing file', forcing_file)
-
-            if fs.exists(forcing_file.name):
-                errors.append(f"File {forcing_file.name} already exists")
-
-        if errors:
-            return ResponseError(errors)
-
         for forcing_file in files:
             fs.save(forcing_file.name, forcing_file)
 
