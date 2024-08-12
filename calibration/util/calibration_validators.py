@@ -78,6 +78,8 @@ def s3DirectoryValidator(value):
 class CalibrationRunValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
+class CalibrationPlotNameValidator(BaseSerializer):
+    cal_plot_name = serializers.CharField(required=True)
 
 ##################################
 # Landing page
@@ -201,7 +203,21 @@ class GeopackageValidator(BaseSerializer):
     uri = serializers.CharField(required=True, allow_blank=False)
     creation_date = serializers.DateTimeField(required=True)
 
+##################################
+# Plot Definitions Tab
+##################################
 
+class PlotListStaticSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+    filename = serializers.CharField(required=True, allow_blank=False)
+
+class LoadPlotDefinitionsResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    plot_list = PlotListStaticSerializer(many=True)
+
+#class LoadPlotResponseSerializer(BaseSerializer):
+    
 ##################################
 # Formulation Tab
 ##################################

@@ -114,7 +114,7 @@ DJOSER = {
 
 # https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html#settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=1000), #temporary setting to large lifetime. @TODO change to 15 minutes in official builds.
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'UPDATE_LAST_LOGIN': True,
@@ -227,7 +227,10 @@ NGEN_CAL_WORK_DIR = os.path.join(Path.home(), 'ngen-cal-work')
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 # Directory containing the ngen-cal virtual environment
-NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
+NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv')
+
+# directory containing the calibration plots - @TODO note: this is a temporary location for testing only
+CAL_PLOTS_DIR = os.path.join(Path.home(), 'cal_plots')
 
 # This needs to be at the end of settings.py
 try:
