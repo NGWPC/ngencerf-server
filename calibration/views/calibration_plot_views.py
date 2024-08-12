@@ -1,24 +1,23 @@
-from django.http import HttpResponse
-from importlib.metadata import files
 import json
 import logging
 import mimetypes
 import os
 from json.decoder import JSONDecodeError
-from wsgiref.types import FileWrapper
-from calibration.enums import CalibrationRunType
-from calibration.models import PlotDefinitions
-from calibration.views.common import get_run
-from cerfServer import settings
+
+from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunValidator, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameValidator
+from calibration.util.ngen_locations import CAL_PLOTS_DIR
+from calibration.views.common import get_run
+from cerfServer import settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,9 +41,9 @@ logger = logging.getLogger(__name__)
     ],
     description="Get a list of plot names"
 )
-
 @api_view(['GET', 'POST'])
 def get_plot_names(request):
+    # TODO need to clean this up with final directory names, etc
     try:
         print('user', request.user)
         if request.method == 'POST':
@@ -60,7 +59,7 @@ def get_plot_names(request):
         calibration_run_id = validator.data.get('calibration_run_id')
 
         if calibration_run_id == 0:
-            gage_id = "0011130" # @TODO this case is for testing only. replace with 'return errorReturn' in the release code.
+            gage_id = "0011130"  # @TODO this case is for testing only. replace with 'return errorReturn' in the release code.
         else:
             run, errorReturn = get_run(calibration_run_id, request.user)
             if errorReturn:
@@ -73,7 +72,7 @@ def get_plot_names(request):
 
         plot_list = []
         for m in plots:
-            plot_list_entry = {'name': m.name, 'description': m.description, 'filename' : gage_id + m.filename_mask}
+            plot_list_entry = {'name': m.name, 'description': m.description, 'filename': gage_id + m.filename_mask}
             plot_list.append(plot_list_entry)
 
         response = {'calibration_run_id': calibration_run_id, 'plot_list': list(plot_list)}
@@ -100,23 +99,25 @@ def get_plot_names(request):
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 def download_plot(filename):
     # @TODO - once decided, replace settings.CAL_PLOTS_DIR with the final location for the plots 
-    file_path = settings.CAL_PLOTS_DIR +'/'+ filename
+    file_path = CAL_PLOTS_DIR + '/' + filename
 
-    fileData = open(file_path,"r") 
+    fileData = open(file_path, "r")
     file_mimetype = mimetypes.guess_type(file_path)
     response = HttpResponse(fileData, content_type=file_mimetype)
     response['X-Sendfile'] = file_path
     response['Content-Length'] = os.stat(file_path).st_size
-    response['Content-Disposition'] = 'attachment; filename=%s' % str(filename) 
+    response['Content-Disposition'] = 'attachment; filename=%s' % str(filename)
 
     return response
+
 
 @extend_schema(
     request=CalibrationPlotNameValidator,
     responses={
-        #200: ,
+        # 200: ,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
@@ -133,7 +134,6 @@ def download_plot(filename):
     ],
     description="Get a list of plot names"
 )
-
 @api_view(['GET', 'POST'])
 def get_plot(request):
     try:
