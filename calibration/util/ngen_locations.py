@@ -23,13 +23,12 @@ noah_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/noah-owp-modular/cmake_
 sft_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so')
 smp_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so')
 lasam_lib = os.path.join(settings.NGEN_REPO_ROOT, 'extern/LASAM/cmake_build/liblasambmi.so')
-
+noah_parameter_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'bmi_config/Noah-OWP')
+parquet_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'parquet')
 
 calibration_py = os.path.join(calib_valid_dir, 'calibration.py')
 validation_py = os.path.join(calib_valid_dir, 'validation.py')
 # create_input_dir = os.path.join(NGEN_CAL_VENV, 'lib/python3.11/site-packages/createInput')
 
 files = [ngen_exe, cfe_lib, sloth_lib, topmd_lib, noah_lib, sft_lib, smp_lib, lasam_lib, calibration_py, validation_py]
-
-# directory containing the calibration plots - @TODO note: this is a temporary location for testing only
 
