@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.enums import StatusEnum, DataTypeEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinitions
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
@@ -39,6 +39,7 @@ class Command(BaseCommand):
         self.define_metric()
         self.define_status()
         self.define_ngen_formulations()
+        self.define_plot_definitions()
 
     def define_domains(self):
         if self.DELETE_FLAG:
@@ -208,3 +209,47 @@ class Command(BaseCommand):
             NgenCalFormulation.objects.get_or_create(name=v['name'], defaults={"modules": v['modules'],
                                                                                "description": v['description'],
                                                                                "created_by": self.user})
+    def define_plot_definitions(self):
+        if self.DELETE_FLAG:
+            PlotDefinitions.objects.all().delete()
+
+        values = [{ "name": "Stream Flow Time Series", 
+                    "description": "Time series plot comparing streamflow simulations from the first iteration (control), the best iteration, and the last iteration with the observed streamflow",
+                    "filename_mask": "_hydrograph_iteration.png"
+                    },
+                  { "name": "Evolution of Objective Function", 
+                    "description": "The evolution of objective function during all iterations, with the best iteration highlighted in red",
+                    "filename_mask": "_objfun_iteration.png"
+                    },
+                  { "name": "Evolution of All Metrics", 
+                    "description": "The evolution of objective function and all other metrics during all iterations, with the best iteration highlighted in red; note the subplots for the four categorical metrics (POD, FAR, CSI, FBIAS) are blank, because we did not specify a threshold for calculating these metrics in input.config_01123000.sh",
+                    "filename_mask": "_metric_iteration.png"
+                    },
+                  { "name": "Evolution of Calibration Params", 
+                    "description": "The evolution of each calibration parameter during all iterations, with the best iteration highlighted in red",
+                    "filename_mask": "_param_iteration.png"
+                    },
+                  { "name": "Scatter plot of streamflow", 
+                    "description": "Scatter plot of streamflow simulations from the first iteration (control), the best iteration, and the last iteration vs the observed streamflow",
+                    "filename_mask": "_scatterplot_streamflow_iteration.png"
+                    },
+                  { "name": "Metrics vs Objective Functions", 
+                    "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to exam tradeoffs between the objective function and other metrics)",
+                    "filename_mask": "_metric_objfun.png"
+                    },
+                  { "name": "Stream Flow/Precipitation Time Series", 
+                    "description": "Same as the first plot but with the precipitation time series added",
+                    "filename_mask": "_streamflow_precip_iteration.png"
+                    },
+                  { "name": "Flow Duration Curves", 
+                    "description": "Comparison of the flow duration curves for the streamflow simulations from the first iteration (control), the best iteration, and the last iteration, and the observed streamflow",
+                    "filename_mask": "_fdc_iteration.png"
+                    },
+                  ]
+
+        for v in values:
+            PlotDefinitions.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                "description": v['description'],
+                                                                "filename_mask": v['filename_mask'],
+                                                                "created_by": self.user})
+
