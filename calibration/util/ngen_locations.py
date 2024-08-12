@@ -2,6 +2,7 @@ import os
 
 from django.conf import settings
 
+from cerfServer.settings import NGEN_CAL_VENV
 
 forcing_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing')
 observation_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation')
@@ -22,5 +23,6 @@ noah_parameter_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'bme_config/Noah-O
 
 calibration_py = os.path.join(calib_valid_dir, 'calibration.py')
 validation_py = os.path.join(calib_valid_dir, 'validation.py')
+create_input_dir = os.path.join(NGEN_CAL_VENV, 'lib/python3.11/site-packages/createInput')
 
-libs = [ngen_exe, cfe_lib, sloth_lib, topmd_lib, noah_lib, sft_lib, smp_lib, lasam_lib, calibration_py, validation_py]
+files = [ngen_exe, cfe_lib, sloth_lib, topmd_lib, noah_lib, sft_lib, smp_lib, lasam_lib, calibration_py, validation_py, create_input_dir]

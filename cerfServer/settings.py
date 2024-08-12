@@ -11,14 +11,13 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import logging
 import os
+from datetime import timedelta
 from pathlib import Path
 import re
 
 from dotenv import load_dotenv
 
-
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-AUTH_PASSWORD_VALIDATORS = [{"NAME": "calibration.util.validators.IsPwdValid"}]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,7 +31,6 @@ load_dotenv(dotenv_path)
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY")
-
 
 # Application definition
 
@@ -48,7 +46,6 @@ INSTALLED_APPS = [
     'calibration.apps.CalibrationConfig',
     "rest_framework",
     "rest_framework.authtoken",
-    "social_django",
     "djoser",
     "rest_framework_simplejwt",
 ]
@@ -105,26 +102,22 @@ TEMPLATES = [
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
-    "djoser.social.backends.facebook.FacebookOAuth2Override",
-    "social_core.backends.google.GoogleOAuth2",
-    "social_core.backends.steam.SteamOpenId",
 ]
 
 DJOSER = {
-    "SEND_CONFIRMATION_EMAIL" : False,
+    "SEND_CONFIRMATION_EMAIL": False,
     "SEND_ACTIVATION_EMAIL": False,
-    "SET_PASSWORD_RETYPE" : True,
-    "SOCIAL_AUTH_ALLOWED_REDIRECT_URIS": ["http://test.localhost/"],
+    "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
 }
 
-from datetime import timedelta
 
 # https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html#settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=1000), #temporary setting to large lifetime. @TODO change to 15 minutes in official builds.
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'UPDATE_LAST_LOGIN': True,
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
 }
@@ -134,19 +127,14 @@ WSGI_APPLICATION = 'cerfServer.wsgi.application'
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
+
+# Note from Peter - Do we need all these?  The first 4 were there by default, I believe.
+# Areg added the last one, so we can have our own customization.
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
 # Internationalization

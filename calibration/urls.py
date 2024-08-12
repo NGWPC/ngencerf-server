@@ -2,7 +2,7 @@ from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
-    calibration_gage_views, calibration_optimization_views, calibration_run_views, calibration_plot_views
+    calibration_gage_views, calibration_optimization_views, calibration_run_views, calibration_plot_views, import_export_views
 
 urlpatterns = [
     ##################################
@@ -55,6 +55,11 @@ urlpatterns = [
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
+
+    ##################################
+    # Import/Export
+    ##################################
+    path('calibration/export/', import_export_views.export, name="export"),
 
     ##################################
     # Swagger - drf_spectacular

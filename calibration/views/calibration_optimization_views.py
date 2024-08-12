@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
     description="Load optimization tab data"
 )
 @api_view(['GET', 'POST'])
-# @login_required()
+# @permission_classes([AllowAny])()
 def load_optimization_tab(request):
     try:
         print('user', request.user)
@@ -63,24 +63,11 @@ def load_optimization_tab(request):
 
         objective_function = run.objective_function.name if run.objective_function else None
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
-        if run.optimization:
-            optimization = run.optimization.name
-            optimization_inputs = list(
-                CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
-                .only('optimization_input__name', 'value')
-                .values('value', name=F('optimization_input__name')))
-        else:
-            optimization = None
-            optimization_inputs = []
+        optimization, optimization_inputs = get_user_optimization(run)
 
-        metrics = Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical').values('name', 'description',
-                                                                                                                       'is_active', 'categorical')
+        metrics = get_metrics()
 
-        optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
-        optimization_list = []
-        for o in optimizations:
-            inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
-            optimization_list.append({'name': o.name, 'description': o.description, 'is_active': o.is_active, 'inputs': inputs})
+        optimization_list = get_static_optimizations()
 
         plot_generation_frequency = run.plot_frequency if run.plot_frequency else None
 
@@ -90,7 +77,7 @@ def load_optimization_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         response = {'calibration_run_id': run.id, 'status': run.status.name,
-                    'streamflow_threshold': streamflow_threshold, 'metrics': list(metrics),
+                    'streamflow_threshold': streamflow_threshold, 'metrics': metrics,
                     'optimization': optimization,
                     'optimization_inputs': optimization_inputs,
                     'objective_function': objective_function,
@@ -100,7 +87,10 @@ def load_optimization_tab(request):
                     }
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadOptimizationResponseSerializer(response)
+        serializer = LoadOptimizationResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from load_optimization_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
 
         return Response(serializer.data)
@@ -121,9 +111,36 @@ def load_optimization_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def get_user_optimization(run):
+    if run.optimization:
+        optimization = run.optimization.name
+        optimization_inputs = list(
+            CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
+            .only('optimization_input__name', 'value')
+            .values('value', name=F('optimization_input__name')))
+    else:
+        optimization = None
+        optimization_inputs = []
+
+    return optimization, optimization_inputs
+
+
+def get_static_optimizations():
+    optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
+    optimization_list = []
+    for o in optimizations:
+        inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
+        optimization_list.append({'name': o.name, 'description': o.description, 'is_active': o.is_active, 'inputs': inputs})
+    return optimization_list
+
+
+def get_metrics():
+    return list(Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical')
+                .only('name', 'description', 'is_active', 'categorical')
+                .values('name', 'description', 'is_active', 'categorical'))
+
+
 # noinspection PyUnusedLocal
-
-
 @extend_schema(
     request=SaveOptimizationRequestValidator,
     responses={
@@ -142,7 +159,7 @@ def load_optimization_tab(request):
     description="Save optimization tab data"
 )
 @api_view(['POST'])
-# @login_required
+# @permission_classes([AllowAny])
 def save_optimization_tab(request):
     try:
         print('user', request.user)
@@ -167,30 +184,13 @@ def save_optimization_tab(request):
         if optimization_inputs and not optimization_name:
             return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
-        optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
-        if not optimization:
-            return ResponseError("Invalid optimization - '{}'".format(optimization_name))
-        run.optimization = optimization
+        optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
+        if message:
+            return ResponseError(message)
 
-        if optimization_inputs:
-            for o in optimization_inputs:
-                name = o['name']
-                # See if parameter is valid for this optimization
-                optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
-                if not optimization_input:
-                    return ResponseError("'{}' is not a valid parameter input for '{}'".format(name, optimization_name))
-
-        if objective_function_name:
-            objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
-            if not objective_function:
-                return ResponseError("Invalid metric specified for objective function - '{}'".format(objective_function_name))
-
-            run.objective_function = objective_function
-
-            if objective_function.categorical:
-                if not streamflow_threshold:
-                    return ResponseError("Streamflow threshold must be specified for a categorical function'")
-                run.streamflow_threshold = streamflow_threshold
+        message = validate_objective_function(run, objective_function_name, streamflow_threshold)
+        if message:
+            return ResponseError(message)
 
         run.plot_frequency = plot_generation_frequency
 
@@ -198,19 +198,17 @@ def save_optimization_tab(request):
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
-            # Delete existing optimization inputs
-            CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
-            if optimization_inputs:
-                for o in optimization_inputs:
-                    optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=o['name'], is_active=True).first()
-                    CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o['value'])
+            write_optimization_inputs(run, optimization, optimization_inputs)
 
             run.save()
 
             ngen_cal_input.ready_to_run(run)
 
             response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-            serializer = SaveOptimizationResponseSerializer(response)
+            serializer = SaveOptimizationResponseSerializer(data=response)
+            if not serializer.is_valid():
+                return ResponseError(f'Data format error returning from save_optimization_tab() - {serializer.errors}',
+                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
             return Response(serializer.data)
     except JSONDecodeError as e:
@@ -228,3 +226,43 @@ def save_optimization_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def validate_optimizations(run, optimization_name, optimization_inputs):
+    optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
+    if not optimization:
+        return None, "Invalid optimization - '{}'".format(optimization_name)
+    run.optimization = optimization
+
+    if optimization_inputs:
+        for o in optimization_inputs:
+            name = o['name']
+            # See if parameter is valid for this optimization
+            optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
+            if not optimization_input:
+                return None, "'{}' is not a valid parameter input for '{}'".format(name, optimization_name)
+    return optimization, None
+
+
+def validate_objective_function(run, objective_function_name, streamflow_threshold):
+    if objective_function_name:
+        objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
+        if not objective_function:
+            return "Invalid metric specified for objective function - '{}'".format(objective_function_name)
+
+        run.objective_function = objective_function
+
+        if objective_function.categorical:
+            if not streamflow_threshold:
+                return "Streamflow threshold must be specified for a categorical function'"
+            run.streamflow_threshold = streamflow_threshold
+    return None
+
+
+def write_optimization_inputs(run, optimization, optimization_inputs):
+    # Delete existing optimization inputs first
+    CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
+    if optimization_inputs:
+        for o in optimization_inputs:
+            optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=o['name'], is_active=True).first()
+            CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o['value'])
