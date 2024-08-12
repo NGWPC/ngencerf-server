@@ -12,7 +12,6 @@ from git import Repo
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.createInput import create_input
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration, IterationTuneParameter, \
     CalibrationTuneParameter
@@ -21,6 +20,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
+from createInput import create_input
+
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def submit_job(run):
     run.run_date = datetime.now()
     run.save()
 
-    message = create_input.create_input(config_file)
+    message = create_input(config_file)
     if message:
         return message
 
