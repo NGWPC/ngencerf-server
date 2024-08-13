@@ -4,9 +4,8 @@ import mimetypes
 import os
 from json.decoder import JSONDecodeError
 
-from django.db.models import F, Value, Func
-from django.db.models.functions import Concat, Cast
-from django.forms import CharField
+from django.db.models import Value, CharField
+from django.db.models.functions import Concat
 from django.http import HttpResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
 from rest_framework import status
@@ -14,12 +13,12 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunValidator, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameValidator
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
 from calibration.views.common import get_run
-from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,38 +60,19 @@ def get_plot_names(request):
 
         calibration_run_id = validator.data.get('calibration_run_id')
 
-        # TODO Should this only be for RUNNING or DONE?
-        run, errorReturn = get_run(calibration_run_id, request.user)
+        run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING, StatusEnum.DONE])
         if errorReturn:
             return errorReturn
 
         gage_id = run.gage.gage_id
 
-        # Get the list of plots for this Run
-        plots = PlotDefinitions.objects.filter(is_active=True)
-
-        plot_list = []
-        for m in plots:
-            plot_list_entry = {'name': m.name, 'description': m.description, 'filename': gage_id + m.filename_mask}
-            plot_list.append(plot_list_entry)
-        print('plots', plots)
-
-        # class Cast(Func):
-        #     function = 'CAST'
-        #     template = '%(function)s(%(expressions)s AS %(db_type)s)'
-
-
-        plots2 = (
+        plots = (
             PlotDefinitions.objects.filter(is_active=True)
-            .annotate(
-                filename=Concat(Value(gage_id), 'filename_mask', output_field=CharField())
-            )
+            .annotate(filename=Concat(Value(gage_id), 'filename_mask', output_field=CharField()))
             .values('name', 'description', 'filename')
         )
 
-        print('plots2', plots2)
-
-        response = {'calibration_run_id': calibration_run_id, 'plot_list': list(plot_list)}
+        response = {'calibration_run_id': calibration_run_id, 'plot_list': list(plots)}
 
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 

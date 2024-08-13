@@ -176,10 +176,10 @@ class LoadGageResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
     observational_source = serializers.CharField(required=False, validators=[ObservationalSourceValidator])
-    forcing_user_Dir = serializers.CharField(required=False)
+    forcing_user_dir = serializers.CharField(required=False)
     forcing_source_values = ForcingSourceValidator(many=True)
     observational_source_values = ObservationalSourceValidator(many=True)
-    observational_user_Filename = serializers.CharField(required=False)
+    observational_user_filename = serializers.CharField(required=False)
     gages = GagesSerializer(required=True, many=True)
     gage = GageValidator(required=False)
     domain_values = DomainSerializer(many=True)
@@ -221,7 +221,10 @@ class LoadPlotDefinitionsResponseSerializer(BaseSerializer):
     plot_list = PlotListStaticSerializer(many=True)
 
 
-#class LoadPlotResponseSerializer(BaseSerializer):
+class LoadPlotResponseSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+    filename = serializers.CharField(required=True, allow_blank=False)
 
 ##################################
 # Formulation Tab

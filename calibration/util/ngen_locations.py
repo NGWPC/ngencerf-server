@@ -2,8 +2,6 @@ import os
 
 from django.conf import settings
 
-from cerfServer.settings import NGEN_CAL_VENV
-
 forcing_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing')
 observation_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation')
 geopackage_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')

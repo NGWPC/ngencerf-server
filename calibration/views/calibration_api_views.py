@@ -9,10 +9,11 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import Iteration
 from calibration.util.calibration_validators import ReportIterationValidator, GenericResponseSerializer, ErrorResponseSerializer, \
     ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
-from calibration.views.common import get_running
+from calibration.views.common import get_run
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ def report_iteration(request):
         calibration_run_id = validator.data.get('calibration_run_id')
         iteration_number = validator.data.get('iteration')
 
-        run, errorReturn = get_running(calibration_run_id, request.user)
+        run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING])
         if errorReturn:
             return errorReturn
 
