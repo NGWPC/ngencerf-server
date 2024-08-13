@@ -125,7 +125,7 @@ class UploadForcingValidator(BaseSerializer):
 
 class SaveGageRequestValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    gage_id = serializers.CharField(min_length=2, required=False, allow_blank=False)
+    gage_id = serializers.CharField(required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
 
@@ -231,7 +231,7 @@ class LoadPlotResponseSerializer(BaseSerializer):
 ##################################
 
 class SlothParameters(BaseSerializer):
-    param_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    param_name = serializers.CharField(required=True, allow_blank=False)
     param_count = serializers.IntegerField(required=True)
     param_type = serializers.CharField(required=True, validators=[dataTypeValidator])
     param_units = serializers.CharField(required=True, validators=[unitsValidator])
@@ -243,8 +243,8 @@ class SlothParameters(BaseSerializer):
 
 class SaveFormulationRequestValidator(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(min_length=2, required=False, allow_blank=False)
-    modules = serializers.ListField(child=serializers.CharField(min_length=2, required=True), min_length=2)
+    formulation_name = serializers.CharField(required=False, allow_blank=False)
+    modules = serializers.ListField(child=serializers.CharField(required=True), min_length=2)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
 
@@ -270,21 +270,24 @@ class LoadFormulationResponseSerializer(BaseSerializer):
 
 # Output variables from Hydrofabric
 class ModuleOutputVariablesValidator(BaseSerializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    name = serializers.CharField(required=True, allow_blank=False)
     description = serializers.CharField(required=True, allow_blank=False)
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
 # Parameters from Hydrofabric
 class ModuleParametersValidator(serializers.Serializer):
-    name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    name = serializers.CharField(required=True, allow_blank=False)
     data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
     description = serializers.CharField(required=True, allow_blank=False)
+    minimum = serializers.FloatField(required=False)
+    maximum = serializers.FloatField(required=False)
+    initial_value = serializers.FloatField(required=True)
 
 
 # Module object from Hydrofabric containing module parameters and output variables
 class ModuleMetadataHydrofabricValidator(BaseSerializer):
-    module_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
+    module_name = serializers.CharField(required=True, allow_blank=False)
     module_parameters = ModuleParametersValidator(many=True)
     module_output_variables = ModuleOutputVariablesValidator(many=True)
 
@@ -301,9 +304,9 @@ class ModuleHydrofabricVersionValidator(serializers.Serializer):
 
 # Module objects from Hydrofabric contain group names and version
 class ModuleHydrofabricValidator(BaseSerializer):
-    module_name = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    description = serializers.CharField(min_length=2, required=True, allow_blank=False)
-    groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(min_length=2, required=True, allow_blank=False))
+    module_name = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+    groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(required=True, allow_blank=False))
     module_version = ModuleHydrofabricVersionValidator(required=True)
 
 
@@ -319,25 +322,6 @@ class TuningParametersValidator(BaseSerializer):
     maximum = serializers.FloatField(required=True)
     initial_value = serializers.FloatField(required=True, allow_null=True)
     module = serializers.CharField(required=True, allow_blank=False)
-
-    def validate(self, data):
-        if data['minimum'] > data['maximum']:
-            raise serializers.ValidationError(
-                f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}")
-        if data['initial_value'] is not None and (data['initial_value'] < data['minimum'] or data['initial_value'] > data['maximum']):
-            raise serializers.ValidationError(
-                f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}")
-        return data
-
-
-# This is the version that comes from Hydrofabric
-class TuningParametersMetadataValidator(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=True)
-    maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True, allow_null=True)
-    data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
 
     def validate(self, data):
         if data['minimum'] > data['maximum']:
@@ -430,7 +414,7 @@ class TimeRangeValidator(BaseSerializer):
 
 class ModuleMetadataStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
-    parameters = TuningParametersMetadataValidator(required=True, many=True)
+    parameters = ModuleParametersValidator(required=True, many=True)
     output_variables = OutputVariableMetadataValidator(required=True, many=True)
 
 
