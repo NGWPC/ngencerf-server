@@ -29,6 +29,7 @@ class CalibrationRun(BaseModel):
     owner = models.ForeignKey(get_user_model(), null=True, on_delete=models.RESTRICT)
     use_sloth = models.BooleanField(null=False, default=False)
     streamflow_threshold = models.FloatField(null=True)
+    peak_flow_threshold = models.FloatField(null=True)
     hydrofabric_gpkg_path = models.TextField(null=True)
     forcing_dir_path = models.TextField(null=True)
     forcing_user_dir = models.TextField(null=True)

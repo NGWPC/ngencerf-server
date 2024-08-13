@@ -461,6 +461,7 @@ class SaveOptimizationRequestValidator(BaseSerializer):
     optimization = serializers.CharField(allow_blank=False, required=False)
     objective_function = serializers.CharField(allow_blank=False, required=False)
     streamflow_threshold = serializers.FloatField(required=False)
+    peak_flow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False)
     plot_generation_frequency = serializers.IntegerField(required=False)
 
@@ -488,6 +489,7 @@ class MetricSerializer(serializers.Serializer):
     description = serializers.CharField()
     is_active = serializers.BooleanField()
     categorical = serializers.BooleanField()
+    event_based = serializers.BooleanField()
 
 
 class OptimizationStaticSerializer(serializers.Serializer):
@@ -501,6 +503,7 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
     streamflow_threshold = serializers.FloatField(required=False)
+    peak_flow_threshold = serializers.FloatField(required=False)
     metrics = MetricSerializer(many=True)
     optimization = serializers.CharField(required=False)
     optimization_inputs = OptimizationInputsUserSerializer(many=True, required=False)
@@ -541,6 +544,7 @@ class ExportValidator(BaseSerializer):
     calibration_times = CalibrationTimeControls(required=True)
     validation_times = ValidationTimeControls(required=True)
     streamflow_threshold = serializers.FloatField(required=True)
+    peak_flow_threshold = serializers.FloatField(required=True)
     parameters = TuningParametersValidator(many=True, required=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsValidator(many=True, required=False)

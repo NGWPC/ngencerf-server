@@ -50,6 +50,7 @@ config_template = {
         "save_plot_iter": 0,
         "save_plot_iter_freq": 0,
         "streamflow_threshold": 0,
+        "peak_flow_threshold": 0,
         "station_name": "",
         "user_email": "",
     },
@@ -219,6 +220,8 @@ def ready_to_run(run, build=None):
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
 
+    if run.peak_flow_threshold:
+        calibration['peak_flow_threshold'] = run.peak_flow_threshold
     if run.use_sloth:
         sloth_params = (CalibrationSlothParam.objects.filter(calibration_run=run)
                         .only('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name')
