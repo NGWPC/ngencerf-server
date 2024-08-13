@@ -52,9 +52,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Domain.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                   "description": v['description'],
-                                                                   "created_by": self.user})
+            Domain.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                      "description": v['description'],
+                                                                      "created_by": self.user})
 
     def define_rfc(self):
         if self.DELETE_FLAG:
@@ -78,9 +78,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Rfc.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                "description": v['description'],
-                                                                "created_by": self.user})
+            Rfc.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                   "description": v['description'],
+                                                                   "created_by": self.user})
 
     def define_forcing_source(self):
         if self.DELETE_FLAG:
@@ -91,9 +91,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ForcingSource.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                          "description": v['description'],
-                                                                          "created_by": self.user})
+            ForcingSource.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                             "description": v['description'],
+                                                                             "created_by": self.user})
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
@@ -111,10 +111,10 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ObservationalSource.objects.get_or_create(name=v['name'],
-                                                      defaults={"is_active": v.get('is_active', True),
-                                                                "description": v['description'],
-                                                                "created_by": self.user})
+            ObservationalSource.objects.update_or_create(name=v['name'],
+                                                         defaults={"is_active": v.get('is_active', True),
+                                                                   "description": v['description'],
+                                                                   "created_by": self.user})
 
     def define_optimization(self):
         if self.DELETE_FLAG:
@@ -134,19 +134,19 @@ class Command(BaseCommand):
 
         # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
         for v in values:
-            optimization, created = Optimization.objects.get_or_create(name=v['name'],
-                                                                       defaults={"is_active": v.get('is_active', True),
-                                                                                 "description": v['description'],
-                                                                                 "stop_criteria_name": "iterations",
-                                                                                 "stop_criteria_data_type": DataTypeEnum.INTEGER,
-                                                                                 "created_by": self.user})
+            optimization, created = Optimization.objects.update_or_create(name=v['name'],
+                                                                          defaults={"is_active": v.get('is_active', True),
+                                                                                    "description": v['description'],
+                                                                                    "stop_criteria_name": "iterations",
+                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER,
+                                                                                    "created_by": self.user})
 
             for i in v['inputs']:
-                OptimizationInput.objects.get_or_create(name=i['name'], defaults={"is_active": i.get('is_active', True),
-                                                                                  "description": i['description'],
-                                                                                  "data_type": i['data_type'],
-                                                                                  "optimization": optimization,
-                                                                                  "created_by": self.user})
+                OptimizationInput.objects.update_or_create(name=i['name'], defaults={"is_active": i.get('is_active', True),
+                                                                                     "description": i['description'],
+                                                                                     "data_type": i['data_type'],
+                                                                                     "optimization": optimization,
+                                                                                     "created_by": self.user})
 
     def define_metric(self):
         if self.DELETE_FLAG:
@@ -166,17 +166,19 @@ class Command(BaseCommand):
                   {"name": "FAR", "description": "False Alarm Ratio", "categorical": True},
                   {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve"},
                   {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve"},
-                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "is_active": False},
-                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "is_active": False},
-                  {"name": "PKTE", "description": "Peak Flow Timing Error", "is_active": False},
-                  {"name": "EVBIAS", "description": "Event Volume Bias", "is_active": False},
+                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
+                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "event_based": True},
+                  {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
+                  {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
                   ]
 
         for v in values:
-            Metric.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                   "description": v['description'],
-                                                                   "categorical": v.get('categorical', False),
-                                                                   "created_by": self.user})
+            foo, bar = Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                                 "description": v['description'],
+                                                                                 "categorical": v.get('categorical', False),
+                                                                                 "event_based": v.get('event_based', False),
+                                                                                 "created_by": self.user})
+            print(foo, bar)
 
     def define_status(self):
         if self.DELETE_FLAG:
@@ -184,7 +186,7 @@ class Command(BaseCommand):
 
         e: StatusEnum
         for e in StatusEnum:
-            Status.objects.get_or_create(name=e.value, defaults={"created_by": self.user})
+            Status.objects.update_or_create(name=e.value, defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
         if self.DELETE_FLAG:
@@ -206,9 +208,9 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            NgenCalFormulation.objects.get_or_create(name=v['name'], defaults={"modules": v['modules'],
-                                                                               "description": v['description'],
-                                                                               "created_by": self.user})
+            NgenCalFormulation.objects.update_or_create(name=v['name'], defaults={"modules": v['modules'],
+                                                                                  "description": v['description'],
+                                                                                  "created_by": self.user})
 
     def define_plot_definitions(self):
         if self.DELETE_FLAG:
@@ -249,7 +251,7 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            PlotDefinitions.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                            "description": v['description'],
-                                                                            "filename_mask": v['filename_mask'],
-                                                                            "created_by": self.user})
+            PlotDefinitions.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                               "description": v['description'],
+                                                                               "filename_mask": v['filename_mask'],
+                                                                               "created_by": self.user})

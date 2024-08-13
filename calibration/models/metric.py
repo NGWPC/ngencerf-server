@@ -8,6 +8,7 @@ class Metric(BaseModel):
     is_active = models.BooleanField(null=False, default=True)
     name = models.TextField(unique=True, null=False)
     categorical = models.BooleanField(null=False, default=False)
+    event_based = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'metric'
