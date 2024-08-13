@@ -107,7 +107,7 @@ class Command(BaseCommand):
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": False},
+                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:

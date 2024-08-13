@@ -155,6 +155,8 @@ def create_input(filename):
     os.makedirs(forcing_path, exist_ok=True)
     for catID in catids:
         ffile = os.path.join(forcing_dir, catID + '.csv')
+        if not os.path.exists(ffile):
+            return 'Cannot find required forcing file - ', ffile
         if not os.path.exists(os.path.join(forcing_path, os.path.basename(ffile))):
             os.symlink(ffile, os.path.join(forcing_path, os.path.basename(ffile)))
 

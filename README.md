@@ -119,5 +119,25 @@ Use these recommended directory names to avoid having to change your settings.
 * It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
 * Define a directory in `settings.py` where all the ngen-cal runs will live called `NGEN_CAL_RUN_DIR`.  Suggested location is `~/ngen-cal-work/run_calib`
 
+# User Authentication
+
+All endpoints require a user to be authenticated.  Unless we have a front-end, this authentication needs to be done manually -- 
+preferably with a tool like Postman.
+
+To create a user, send the username/password to the endpoint `/auth/users/`
+```
+{
+   "username": <username>,
+   "password": <password>
+ }
+```
+
+User creation only needs to be done once.
+
+To simulate a login, send the request payload to the endpoint `auth/awt/create`
+
+Extract the access token.  For all subsequent requests, you need to include an `Authorization` header of 
+type `Bearer token` that includes the access token.
+
 
 

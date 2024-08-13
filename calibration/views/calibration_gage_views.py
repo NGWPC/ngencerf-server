@@ -25,6 +25,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
+from calibration.views.ngen_cal_input import get_main_dir
 
 geopackage_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
@@ -425,7 +426,9 @@ def upload_observational_data(request):
         if len(keys) > 0:
             return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
-        observational_dir = '/home/peter.a.kronenberg/temp/obs'
+        # Need to upload to the run-specific observational directory, as opposed to the global directory
+        main_dir = get_main_dir(run)
+        observational_dir = os.path.join(main_dir, 'observation')
         fs = FileSystemStorage(location=observational_dir)
 
         # Make sure file doesn't exist
@@ -437,8 +440,6 @@ def upload_observational_data(request):
         observational_file = files[0]
         run.observational_file_path = os.path.join(observational_dir, observational_file.name)
         run.observational_user_filename = observational_file.name
-        if fs.exists(observational_file.name):
-            return ResponseError(f"File {observational_file.name} already exists")
 
         fs.save(observational_file.name, observational_file)
 
@@ -512,8 +513,7 @@ def upload_forcing_data(request):
             return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
         # Validate the file keys and how many there are
-        count = len(request.FILES)
-        if count == 0:
+        if len(request.FILES) == 0:
             return ResponseError('Forcing data must be uploaded')
 
         keys = set(request.FILES.keys())
@@ -523,28 +523,18 @@ def upload_forcing_data(request):
 
         keys.remove(key)
         if len(keys) > 0:
-            return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'validation_error': f"Unexpected keys {keys}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # TODO Need to generate a subdirectory based on the gage name
+        # Need to upload to the run-specific observational directory, as opposed to the global directory
+        main_dir = get_main_dir(run)
         subdir = 'gage_id'
-        run.forcing_dir_path = os.path.join('/home/peter.a.kronenberg/temp/forcing', subdir)
+        run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
         run.forcing_user_dir = forcing_user_dir
 
         fs = FileSystemStorage(location=run.forcing_dir_path)
-        errors = []
 
-        # Make sure they don't exist
+        # Note that this will replace files that already exist
         files = request.FILES.getlist(key)
-        count = len(files)
-        for forcing_file in files:
-            print('forcing file', forcing_file)
-
-            if fs.exists(forcing_file.name):
-                errors.append(f"File {forcing_file.name} already exists")
-
-        if errors:
-            return ResponseError(errors)
-
         for forcing_file in files:
             fs.save(forcing_file.name, forcing_file)
 
@@ -557,8 +547,8 @@ def upload_forcing_data(request):
 
         ngen_cal_input.ready_to_run(run)
 
-        file_or_files = 'file' if count == 1 else 'files'
-        response = {'message': f'{count} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
+        file_or_files = 'file' if len(files) == 1 else 'files'
+        response = {'message': f'{len(files)} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
 
         serializer = GenericResponseSerializer(data=response)

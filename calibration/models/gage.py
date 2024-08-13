@@ -22,7 +22,6 @@ class Gage(BaseModel):
     huc = models.TextField(null=False)
     drainage_area = models.FloatField(null=True)
     domain = models.ForeignKey('Domain', null=False, on_delete=models.CASCADE)
-    observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'gage'

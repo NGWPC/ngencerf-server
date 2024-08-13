@@ -8,7 +8,8 @@ from django.db.models import F
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationTuneParameter, OptimizationInput
-from calibration.util.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir
+from calibration.util.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir, \
+    parquet_dir
 
 config_template = {
 
@@ -120,12 +121,16 @@ def ready_to_run(run, build=None):
             elif run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
                 messages.append('Error getting observational path from Hydrofabric')
             else:
-                datafile['obs_dir'] = run.observational_file_path
+                datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
 
         if not run.hydrofabric_gpkg_path:
             messages.append('Error getting geopackage from Hydrofabric')
         else:
             datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
+
+        # Need to set parquet file based on domain
+        datafile['attributes_file'] = os.path.join(parquet_dir, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
+        print('attributes_file', datafile['attributes_file'])
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
@@ -140,7 +145,7 @@ def ready_to_run(run, build=None):
     else:
         general['run_type'] = run.run_type
 
-    main_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
+    main_dir = get_main_dir(run)
     general['main_dir'] = main_dir
 
     if build:
@@ -288,3 +293,7 @@ def build_config(config, directory):
         file.write(modified_toml_string)
 
     return config_file
+
+
+def get_main_dir(run):
+    return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
