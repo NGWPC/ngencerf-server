@@ -25,8 +25,7 @@ class CalibrationRun(BaseModel):
     validation_end_period = models.DateTimeField(null=True)
     validation_eval_start_period = models.DateTimeField(null=True)
     validation_eval_end_period = models.DateTimeField(null=True)
-    # This should be a required field (null=FALSE), but we'll leave it as optional for now
-    owner = models.ForeignKey(get_user_model(), null=True, on_delete=models.RESTRICT)
+    owner = models.ForeignKey(get_user_model(), null=False, on_delete=models.RESTRICT)
     use_sloth = models.BooleanField(null=False, default=False)
     streamflow_threshold = models.FloatField(null=True)
     peak_flow_threshold = models.FloatField(null=True)

@@ -327,7 +327,7 @@ class TuningParametersValidator(BaseSerializer):
         if data['minimum'] > data['maximum']:
             raise serializers.ValidationError(
                 f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}")
-        if data['initial_value'] is not None and (data['initial_value'] < data['minimum'] or data['initial_value'] > data['maximum']):
+        if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
             raise serializers.ValidationError(
                 f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}")
         return data

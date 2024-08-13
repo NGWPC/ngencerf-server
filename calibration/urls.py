@@ -56,6 +56,9 @@ urlpatterns = [
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
 
+    # Testing
+    path('calibration/read_output/', calibration_run_views.test_read_output, name="readOutput"),
+
     ##################################
     # Import/Export
     ##################################
