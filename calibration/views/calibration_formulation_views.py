@@ -405,8 +405,13 @@ def save_formulation_tab(request):
         if errorReturn:
             return errorReturn
 
+        message = validate_modules(run, new_module_names)
+        if message:
+            return ResponseError(message)
+
+
         if not validate_formulation(run, new_module_names):
-            return ResponseError("Invalid formulation-  '{}'".format(new_module_names))
+            return ResponseError(f'Invalid formulation -  {new_module_names}')
 
         run.user_formulation_name = user_formulation_name
 
@@ -491,6 +496,15 @@ def save_formulation_tab(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def validate_modules(run, module_names):
+    # Check that all the module names are valid
+    valid_names = set(CalibrationFormulation.objects.filter(calibration_run_id=run.id, name__in=module_names).values_list('name', flat=True))
+    print('valid_names', valid_names)
+    if module_names - valid_names:
+        return f'Invalid modules - {module_names - valid_names}'
+    return None
 
 
 def validate_formulation(run, module_names):
