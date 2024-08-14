@@ -223,10 +223,9 @@ def read_output(gage_dir, run):
     objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
+    run.save()  # TODO Need to save this in a transaction with all the other objects
 
-    find_worker_directories(run, os.path.join(run, gage_dir, 'Output/Calibration_Run'), metrics_iteration_filename, objective_log_best_filename)
-
-    # TODO Don't forget to save to the db
+    find_worker_directories(run, os.path.join(gage_dir, 'Output/Calibration_Run'), metrics_iteration_filename, objective_log_best_filename)
 
 
 def find_worker_directories(run, gage_dir, metrics_iteration_filename, objective_log_best_filename):
@@ -262,7 +261,7 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
             # Iteration table has objective value function -- need realization filename
             iteration = int(row_dict['iteration'])
             best = iteration == best_iteration
-            iteration = Iteration.objects.create(calibration_run=run,iteration_num=iteration, calibration_output_variable_value=row_dict['objFunVal'], best=best)
+            iteration = Iteration.objects.create(calibration_run=run,iteration_num=iteration, worker=worker_name, calibration_output_variable_value=row_dict['objFunVal'], best=best)
             for metric_name in row_dict:
                 if metric_name == 'iteration' or metric_name == 'objFunVal':
                     continue
