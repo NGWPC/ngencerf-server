@@ -152,24 +152,26 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Metric.objects.all().delete()
 
-        values = [{"name": "Cor", "description": "Pearson Correlation"},
+        values = [{"name": "Corr", "description": "Pearson Correlation"},
                   {"name": "MAE", "description": "Mean Absolute Error"},
                   {"name": "RMSE", "description": "Root Mean Square Error"},
                   {"name": "RSR", "description": "Ratio of RMSE to standard deviation of observation"},
                   {"name": "PBIAS", "description": "Percent Bias"},
                   {"name": "KGE", "description": "Kling-Gupta Efficiency"},
                   {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency"},
-                  {"name": "LogNSE", "description": "NSE of Logarithmic values"},
+                  {"name": "NSELog", "description": "NSE of Logarithmic values"},
                   {"name": "NNSE", "description": "Normalized NSE"},
                   {"name": "POD", "description": "Probability of Detection", "categorical": True},
                   {"name": "CSI", "description": "Critical Success Index", "categorical": True},
                   {"name": "FAR", "description": "False Alarm Ratio", "categorical": True},
-                  {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve"},
-                  {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve"},
+                  {"name": "HSEG_FDC", "description": "Percent bias of high flow segment of flow duration curve"},
+                  {"name": "LSEG_FDC", "description": "Percent bias of low flow segment of flow duration curve"},
                   {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
-                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "event_based": True},
                   {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
                   {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
+                  {"name": "FBIAS", "description": ""},
+                  {"name": "MSEG_FDC", "description": ""},
+                  {"name": "NSEWt", "description": ""},
                   ]
 
         for v in values:
@@ -178,7 +180,6 @@ class Command(BaseCommand):
                                                                                  "categorical": v.get('categorical', False),
                                                                                  "event_based": v.get('event_based', False),
                                                                                  "created_by": self.user})
-            print(foo, bar)
 
     def define_status(self):
         if self.DELETE_FLAG:

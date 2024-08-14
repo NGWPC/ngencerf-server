@@ -221,8 +221,12 @@ def read_output(gage_dir, run):
 
     metrics_iteration_filename = f'{run.gage.gage_id}_metrics_iteration.csv'
     objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
+    realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
+    run.realization_filename = realization_filename
 
-    find_worker_directories(os.path.join(run, gage_dir, 'Output/Calibration_Run'), metrics_iteration_filename, objective_log_best_filename)
+    find_worker_directories(run, os.path.join(run, gage_dir, 'Output/Calibration_Run'), metrics_iteration_filename, objective_log_best_filename)
+
+    # TODO Don't forget to save to the db
 
 
 def find_worker_directories(run, gage_dir, metrics_iteration_filename, objective_log_best_filename):
@@ -268,8 +272,7 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
                     continue
                 # print('metric_name:', metric_name)
                 value = float(row_dict[metric_name])
-                # TODO Is there a value field?
-                IterationMetric.objects.create(iteration=iteration, metric=metric) #, value=value)
+                IterationMetric.objects.create(iteration=iteration, metric=metric, metric_value=value)
 
 
 # Read backwards from the end of the file until we find linefeed.  Then read the line
