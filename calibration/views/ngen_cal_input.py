@@ -131,7 +131,6 @@ def ready_to_run(run, build=None):
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(parquet_dir, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
-        print('attributes_file', datafile['attributes_file'])
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')

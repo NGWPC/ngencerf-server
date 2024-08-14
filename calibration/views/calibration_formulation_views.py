@@ -504,12 +504,9 @@ def validate_formulation(run, module_names):
 def add_sloth_parameters(run, sloth_parameters):
 
     for s in sloth_parameters:
-        print('s', s)
         # Get the module referenced by the sloth parameter
         module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run=run, used_by_calibration_run=True).first()
-        print('module', module)
         if not module:
-            print("returning error")
             return f"Sloth parameter \'{s['param_name']}\' contain an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
 
         CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],

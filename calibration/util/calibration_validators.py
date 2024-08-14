@@ -17,7 +17,7 @@ from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSour
 
 class BaseSerializer(serializers.Serializer):
     def run_validation(self, data=None):
-        if data != empty:
+        if data is not None and data != empty:
             unknown = set(data) - set(self.fields)
             if unknown:
                 errors = ["Unknown field: {}".format(f) for f in unknown]
@@ -282,7 +282,8 @@ class ModuleParametersValidator(serializers.Serializer):
     description = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=False)
     maximum = serializers.FloatField(required=False)
-    initial_value = serializers.FloatField(required=True)
+    # TODO I think this should be required and not null
+    initial_value = serializers.FloatField(required=False, allow_null=True)
 
 
 # Module object from Hydrofabric containing module parameters and output variables
@@ -447,7 +448,7 @@ class SaveOptimizationRequestValidator(BaseSerializer):
     streamflow_threshold = serializers.FloatField(required=False)
     peak_flow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False)
-    plot_generation_frequency = serializers.IntegerField(required=False)
+    plot_frequency = serializers.IntegerField(required=False)
 
 
 class SaveOptimizationResponseSerializer(serializers.Serializer):
@@ -493,7 +494,7 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     optimization_inputs = OptimizationInputsUserSerializer(many=True, required=False)
     objective_function = serializers.CharField(required=False)
     optimizations = OptimizationStaticSerializer(many=True)
-    plot_generation_frequency = serializers.IntegerField(required=False)
+    plot_frequency = serializers.IntegerField(required=False)
     stop_criteria = serializers.CharField(required=False)
 
 
@@ -517,12 +518,42 @@ class IsReadyResponseSerializer(BaseSerializer):
 ##################################
 # Import/Export
 ##################################
-class ExportValidator(BaseSerializer):
+class ExportResponseValidator(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_null=True)
+    forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
+    forcing_user_dir = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
+    observational_user_filename = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=True), required=True)
     formulation_name = serializers.CharField(required=True, allow_null=True)
     use_sloth = serializers.BooleanField(required=True, allow_null=False)
-    sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
+    sloth_parameters = SlothParameters(required=False, many=True, allow_empty=False)
+    automatic_validation = serializers.BooleanField(required=True, allow_null=False)
+    output_variable_to_calibrate = OutputVariableValidator(required=True, allow_null=False)
+    calibration_times = CalibrationTimeControls(required=True)
+    validation_times = ValidationTimeControls(required=True)
+    time_range = TimeRangeValidator(required=False)
+    streamflow_threshold = serializers.FloatField(required=True)
+    peak_flow_threshold = serializers.FloatField(required=True)
+    parameters = TuningParametersValidator(many=True, required=False)
+    objective_function = serializers.CharField(required=True, allow_null=True)
+    optimization_inputs = OptimizationInputsValidator(many=True, required=False)
+    optimization = serializers.CharField(required=True, allow_null=True)
+    plot_frequency = serializers.IntegerField(required=True, allow_null=False)
+    stop_criteria = serializers.IntegerField(required=True, allow_null=False)
+
+
+
+class ImportValidator(serializers.Serializer):
+    gage_id = serializers.CharField(required=True, allow_null=False)
+    forcing_source = serializers.CharField(required=True, validators=[forcingSourceValidator])
+    forcing_user_dir = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    observational_source = serializers.CharField(required=True, validators=[observationSourceValidator])
+    observational_user_filename = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    modules = serializers.ListField(child=serializers.CharField(required=True), required=True, allow_empty=False)
+    sloth_parameters = SlothParameters(required=False, many=True, allow_empty=False)
+    formulation_name = serializers.CharField(required=True, allow_null=True)
+    use_sloth = serializers.BooleanField(required=True, allow_null=False)
     automatic_validation = serializers.BooleanField(required=True, allow_null=False)
     output_variable_to_calibrate = OutputVariableValidator(required=True, allow_null=False)
     calibration_times = CalibrationTimeControls(required=True)
@@ -533,6 +564,12 @@ class ExportValidator(BaseSerializer):
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsValidator(many=True, required=False)
     optimization = serializers.CharField(required=True, allow_null=True)
+    plot_frequency = serializers.IntegerField(required=True, allow_null=False)
+    stop_criteria = serializers.IntegerField(required=True, allow_null=False)
+
+
+
+
 
 
 ##################################

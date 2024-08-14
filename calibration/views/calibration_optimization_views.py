@@ -70,7 +70,7 @@ def load_optimization_tab(request):
 
         optimization_list = get_static_optimizations()
 
-        plot_generation_frequency = run.plot_frequency if run.plot_frequency else None
+        plot_frequency = run.plot_frequency if run.plot_frequency else None
 
         calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
         stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
@@ -84,7 +84,7 @@ def load_optimization_tab(request):
                     'optimization_inputs': optimization_inputs,
                     'objective_function': objective_function,
                     'optimizations': optimization_list,
-                    'plot_generation_frequency': plot_generation_frequency,
+                    'plot_frequency': plot_frequency,
                     'stop_criteria': stop_criteria
                     }
 
@@ -119,7 +119,6 @@ def get_user_optimization(run):
         optimization = run.optimization.name
         optimization_inputs = list(
             CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
-            .only('optimization_input__name', 'value')
             .values('value', name=F('optimization_input__name')))
     else:
         optimization = None
@@ -129,7 +128,7 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
+    optimizations = Optimization.objects.filter(is_active=True)
     optimization_list = []
     for o in optimizations:
         inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
@@ -138,8 +137,7 @@ def get_static_optimizations():
 
 
 def get_metrics():
-    return list(Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical', 'event_based')
-                .values('name', 'description', 'is_active', 'categorical', 'event_based'))
+    return list(Metric.objects.filter(is_active=True).values('name', 'description', 'is_active', 'categorical', 'event_based'))
 
 
 # noinspection PyUnusedLocal
@@ -178,7 +176,7 @@ def save_optimization_tab(request):
         peak_flow_threshold = validator.data.get('peak_flow_threshold')
         optimization_inputs = validator.data.get('optimization_inputs')
         stop_criteria = validator.data.get('stop_criteria')
-        plot_generation_frequency = validator.data.get('plot_generation_frequency')
+        plot_frequency = validator.data.get('plot_frequency')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -195,7 +193,7 @@ def save_optimization_tab(request):
         if message:
             return ResponseError(message)
 
-        run.plot_frequency = plot_generation_frequency
+        run.plot_frequency = plot_frequency
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 

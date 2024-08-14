@@ -62,7 +62,8 @@ urlpatterns = [
     ##################################
     # Import/Export
     ##################################
-    path('calibration/export/', import_export_views.export, name="export"),
+    path('calibration/export/', import_export_views.export_job, name="export"),
+    path('calibration/import/', import_export_views.import_job, name="export"),
 
     ##################################
     # Swagger - drf_spectacular
