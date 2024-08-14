@@ -8,7 +8,7 @@ from django.db.models import F
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationTuneParameter, OptimizationInput
-from calibration.util.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir, \
+from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     parquet_dir
 
 config_template = {
@@ -62,21 +62,21 @@ config_template = {
         "cfe_dir": "",
         "topmd_dir": "",
         # Need another dir for every model
-        "noah_parameter_dir": noah_parameter_dir,
+        "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
         # Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
-        "ngen_exe_file": ngen_exe,
-        "cfe_lib": cfe_lib,
-        "sloth_lib": sloth_lib,
-        "topmd_lib": topmd_lib,
-        "noah_lib": noah_lib,
-        "sft_lib": sft_lib,
-        "smp_lib": smp_lib,
-        "lasam_lib": lasam_lib
+        "ngen_exe_file": NGEN_EXE,
+        "cfe_lib": CFE_LIB,
+        "sloth_lib": SLOTH_LIB,
+        "topmd_lib": TOPMD_LIB,
+        "noah_lib": NOAH_LIB,
+        "sft_lib": SFT_LIB,
+        "smp_lib": SMP_LIB,
+        "lasam_lib": LASAM_LIB
     }
 }
 
