@@ -233,7 +233,10 @@ def read_output(gage_dir, run):
         print(f'Directory {gage_dir} does not exist or is not a directory')
 
     metrics_iteration_filename = f'{run.gage.gage_id}_metrics_iteration.csv'
+    # Contains the best for a single worker
     objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
+    # Contains the best across all workers -- Only for GWO and PSO
+    cost_hist_filename = f'{run.gage.gage_id}_cost_hist.csv'
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
     run.save()  # TODO Need to save this in a transaction with all the other objects
@@ -254,6 +257,7 @@ def find_worker_directories(run, gage_dir, metrics_iteration_filename, objective
 def process_metrics_iteration(run, worker_path, metrics_iteration_file, objective_log_best_filename):
     metrics_iteration_file = os.path.join(worker_path, metrics_iteration_file)
     objective_log_best_file = os.path.join(worker_path, objective_log_best_filename)
+    cost_hist_file = os.path.join(worker_path, objective_log_best_filename)
     if not os.path.exists(metrics_iteration_file):
         raise Exception(f'{metrics_iteration_file} does not exist')
     if not os.path.exists(objective_log_best_file):
@@ -261,7 +265,7 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
 
     # Get the best iteration number
     last_line = read_last_line(objective_log_best_file)
-    best_iteration = int(last_line.split(',')[2])
+    best_iteration_for_worker = int(last_line.split(',')[2])
 
     worker_name = os.path.basename(worker_path)
 
@@ -273,9 +277,9 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
             # print(row_dict)
             # Iteration table has objective value function -- need realization filename
             iteration = int(row_dict['iteration'])
-            best = iteration == best_iteration
+            best = iteration == best_iteration_for_worker
             iteration = Iteration.objects.create(calibration_run=run, iteration_num=iteration, worker=worker_name,
-                                                 calibration_output_variable_value=row_dict['objFunVal'], best=best)
+                                                 calibration_output_variable_value=row_dict['objFunVal'], best_for_worker=best)
             for metric_name in row_dict:
                 if metric_name == 'iteration' or metric_name == 'objFunVal':
                     continue

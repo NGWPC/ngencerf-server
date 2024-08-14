@@ -18,7 +18,7 @@ def download_s3(uri, save_dir):
         os.mkdir(save_dir)
 
     bucket, key = parse_s3_uri(uri)
-    logger.info('download_s3: downloading', bucket, key, 'to', save_dir)
+    logger.info(f'download_s3: downloading {bucket} {key} to {save_dir}')
     filename = key.split('/')[-1]
     local_file_path = os.path.join(save_dir, filename)
     if os.path.exists(local_file_path):
@@ -40,14 +40,14 @@ def download_all_s3(uri, save_dir):
         raise Exception('uri must be a directory and end with a slash (/)')
 
     bucket, key = parse_s3_uri(uri)
-    logger.info('download_all_s3: downloading', bucket, key, 'to', save_dir)
+    logger.info(f'download_all_s3: downloading {bucket} {key} to {save_dir}')
 
     # Get the directory name portion of the url
     subdir = key.split('/')[-2]
     save_dir = str(os.path.join(save_dir, subdir))
 
     if not os.path.exists(save_dir):
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
     s3_client = boto3.client('s3')
     response = s3_client.list_objects_v2(Bucket=bucket, Prefix=key)
     s3_objects = [obj["Key"] for obj in response["Contents"]]
