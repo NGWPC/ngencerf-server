@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import re
+from datetime import datetime
 from json.decoder import JSONDecodeError
 from typing import Dict
 
@@ -123,21 +124,9 @@ def run_calibration(request):
         if errorReturn:
             return errorReturn
 
-        messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
-        print('config file', config_file)
-
-        # TODO Normally, we return if not ready, but for testing, we'll skip this test
-        # if messages:
-        #     return JsonError(f'Calibration Run {calibration_run_id} is not ready')
-
-        # Save the latest git hash or ngen and ngen-cal
-        run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
-        run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
-        run.save()
-
-        message = create_input.create_input(config_file)
+        message = submit_job(run)
         if message:
-            return ResponseError(f'Error from create_input - {message}')
+            return ResponseError(message)
 
         response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                     'status': run.status.name}
@@ -159,6 +148,30 @@ def run_calibration(request):
         serializer = ExceptionResponseSerializer(response)
         logger.exception(e)
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+def submit_job(run):
+    messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
+    print('config file', config_file)
+
+    # TODO Normally, we return if not ready, but for testing, we'll skip this test
+    # if messages:
+    #     return f'Calibration Run {calibration_run_id} is not ready'
+
+    # Save the latest git hash or ngen and ngen-cal
+    run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
+    run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+    run.run_date = datetime.now()
+    run.save()
+
+    message = create_input.create_input(config_file)
+    if message:
+        return message
+
+    # TODO Do something here to kick it off
+
+
+    return None
 
 
 # This is just a test endpoint to trigger read_output()
@@ -261,7 +274,8 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
             # Iteration table has objective value function -- need realization filename
             iteration = int(row_dict['iteration'])
             best = iteration == best_iteration
-            iteration = Iteration.objects.create(calibration_run=run,iteration_num=iteration, worker=worker_name, calibration_output_variable_value=row_dict['objFunVal'], best=best)
+            iteration = Iteration.objects.create(calibration_run=run, iteration_num=iteration, worker=worker_name,
+                                                 calibration_output_variable_value=row_dict['objFunVal'], best=best)
             for metric_name in row_dict:
                 if metric_name == 'iteration' or metric_name == 'objFunVal':
                     continue

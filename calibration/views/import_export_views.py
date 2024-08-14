@@ -17,6 +17,7 @@ from calibration.views.calibration_formulation_views import get_my_modules, get_
 from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
+from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
 from calibration.views.common import get_run, ResponseError
@@ -155,7 +156,9 @@ def import_job(request):
             # TODO Need another flag to determine if we submit right away.
             # When we submit is when we'll set the run_date and commit hashes
 
-            response = {'message': f'Calibration Run {run.id} submitted'}
+            submit_job(run)
+
+            response = {'message': f'Calibration Run {run.id} imported'}
             serializer = GenericMessageResponseSerializer(data=response)
             if not serializer.is_valid():
                 return ResponseError(f'Data format error returning from import_job() - {serializer.errors}',
