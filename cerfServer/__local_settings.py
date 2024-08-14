@@ -37,6 +37,15 @@ DATABASES = {
         'USER': 'postgres',
         'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
         'HOST': 'localhost',
-        'PORT': 5432
+        'PORT': 5432,
+        'OPTIONS': {
+            'connect_timeout': 10,
+            'options': '-c statement_timeout=10000ms'
+        }
     }
 }
+
+# url of the front-end
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
