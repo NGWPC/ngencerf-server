@@ -51,6 +51,7 @@ module_sample_data = {"modules": [
                 "name": "parameter1",
                 "data_type": "double",
                 "description": "description of variable",
+                "initial_value": 0.0,
                 "minimum": 0.0,
                 "maximum": 0.0
             },
@@ -59,6 +60,7 @@ module_sample_data = {"modules": [
                 "name": "parameter2",
                 "data_type": "double",
                 "description": "description of variable",
+                "initial_value": 0.0,
                 "minimum": 0.0,
                 "maximum": 0.0
             },
@@ -67,7 +69,7 @@ module_sample_data = {"modules": [
                 "data_type": "double",
                 "description": "description of variable",
                 # "units": "m/s",
-                # "initial_value": 0.0,
+                "initial_value": 0.0,
                 "minimum": 0.0,
                 "maximum": 0.0
             }
@@ -186,8 +188,7 @@ def get_output_variable_to_calibrate(run):
 def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules:
-        calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                     .only('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+        calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m))
 
         parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
         module_entry = {'name': m.name, 'parameters': parameters,
@@ -281,7 +282,7 @@ def get_module_data_from_hydrofabric(run, modules):
                                                                             'description': p['description'], 'minimum': p['minimum'],
                                                                             'maximum': p['maximum']})
 
-        run.got_module_data_from_hydrofabric = True
+        # run.got_module_data_from_hydrofabric = True
         run.save()
 
     return
@@ -329,6 +330,7 @@ def save_tuning_tab(request):
 
         save_times(run, automatic_validation, calibration_times, validation_times)
 
+        # I don't think we need this field.  Need to save automatic_validation instead
         run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
 
         print('parameters', parameters)

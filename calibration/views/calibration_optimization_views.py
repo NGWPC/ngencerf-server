@@ -63,28 +63,31 @@ def load_optimization_tab(request):
 
         objective_function = run.objective_function.name if run.objective_function else None
         streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
+        peak_flow_threshold = run.peak_flow_threshold if (run.objective_function and run.objective_function.event_based) else None
         optimization, optimization_inputs = get_user_optimization(run)
 
         metrics = get_metrics()
 
         optimization_list = get_static_optimizations()
 
-        plot_generation_frequency = run.plot_frequency if run.plot_frequency else None
+        plot_frequency = run.plot_frequency if run.plot_frequency else None
 
         calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
         stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
 
         ngen_cal_input.ready_to_run(run)
-
         response = {'calibration_run_id': run.id, 'status': run.status.name,
-                    'streamflow_threshold': streamflow_threshold, 'metrics': metrics,
+                    'streamflow_threshold': streamflow_threshold,
+                    'peak_flow_threshold': peak_flow_threshold,
+                    'metrics': metrics,
                     'optimization': optimization,
                     'optimization_inputs': optimization_inputs,
                     'objective_function': objective_function,
                     'optimizations': optimization_list,
-                    'plot_generation_frequency': plot_generation_frequency,
+                    'plot_frequency': plot_frequency,
                     'stop_criteria': stop_criteria
                     }
+
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
         serializer = LoadOptimizationResponseSerializer(data=response)
@@ -116,7 +119,6 @@ def get_user_optimization(run):
         optimization = run.optimization.name
         optimization_inputs = list(
             CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
-            .only('optimization_input__name', 'value')
             .values('value', name=F('optimization_input__name')))
     else:
         optimization = None
@@ -126,7 +128,7 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    optimizations = Optimization.objects.filter(is_active=True).only('name', 'description', 'is_active')
+    optimizations = Optimization.objects.filter(is_active=True)
     optimization_list = []
     for o in optimizations:
         inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
@@ -135,9 +137,7 @@ def get_static_optimizations():
 
 
 def get_metrics():
-    return list(Metric.objects.filter(is_active=True).only('name', 'description', 'is_active', 'categorical')
-                .only('name', 'description', 'is_active', 'categorical')
-                .values('name', 'description', 'is_active', 'categorical'))
+    return list(Metric.objects.filter(is_active=True).values('name', 'description', 'is_active', 'categorical', 'event_based'))
 
 
 # noinspection PyUnusedLocal
@@ -173,9 +173,10 @@ def save_optimization_tab(request):
         optimization_name = validator.data.get('optimization')
         objective_function_name = validator.data.get('objective_function')
         streamflow_threshold = validator.data.get('streamflow_threshold')
+        peak_flow_threshold = validator.data.get('peak_flow_threshold')
         optimization_inputs = validator.data.get('optimization_inputs')
         stop_criteria = validator.data.get('stop_criteria')
-        plot_generation_frequency = validator.data.get('plot_generation_frequency')
+        plot_frequency = validator.data.get('plot_frequency')
 
         run, errorReturn = get_run(calibration_run_id, request.user)
         if errorReturn:
@@ -188,11 +189,13 @@ def save_optimization_tab(request):
         if message:
             return ResponseError(message)
 
-        message = validate_objective_function(run, objective_function_name, streamflow_threshold)
+        message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
         if message:
             return ResponseError(message)
 
-        run.plot_frequency = plot_generation_frequency
+        run.plot_frequency = plot_frequency
+        run.streamflow_threshold = streamflow_threshold
+        run.peak_flow_threshold = peak_flow_threshold
 
         with transaction.atomic():
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
@@ -244,7 +247,7 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
     return optimization, None
 
 
-def validate_objective_function(run, objective_function_name, streamflow_threshold):
+def validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold):
     if objective_function_name:
         objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
         if not objective_function:
@@ -256,6 +259,11 @@ def validate_objective_function(run, objective_function_name, streamflow_thresho
             if not streamflow_threshold:
                 return "Streamflow threshold must be specified for a categorical function'"
             run.streamflow_threshold = streamflow_threshold
+
+        if objective_function.event_based:
+            if not streamflow_threshold:
+                return "Peak flow threshold must be specified for an event_based function'"
+            run.peak_flow_threshold = peak_flow_threshold
     return None
 
 

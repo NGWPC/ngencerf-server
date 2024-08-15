@@ -87,16 +87,13 @@ def load_gage_tab(request):
         gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
                 'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
-        forcing_source_values = list(ForcingSource.objects.only('name', 'description', 'is_active').values('name', 'description', 'is_active'))
+        forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
         observational_source_values = list(ObservationalSource.objects
-                                           .only('name', 'description', 'is_active')
                                            .values('name', 'description', 'is_active'))
         domain_values = list(Domain.objects
-                             .only('name', 'description', 'is_active')
                              .values('name', 'description', 'is_active'))
 
         gages = list(Gage.objects.filter(is_active=True)
-                     .only('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain')
                      .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
         [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
 
@@ -171,8 +168,7 @@ def get_gage(request):
 
         gage_id = validator.data.get('gage_id')
 
-        gage = Gage.objects.filter(gage_id=gage_id).only('gage_id', 'agency', 'station_name').values(
-            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
+        gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
         serializer = GageValidator(data=gage)
@@ -527,7 +523,7 @@ def upload_forcing_data(request):
 
         # Need to upload to the run-specific observational directory, as opposed to the global directory
         main_dir = get_main_dir(run)
-        subdir = 'gage_id'
+        subdir = run.gage.gage_id
         run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
         run.forcing_user_dir = forcing_user_dir
 

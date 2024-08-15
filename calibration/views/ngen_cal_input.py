@@ -8,7 +8,7 @@ from django.db.models import F
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationTuneParameter, OptimizationInput
-from calibration.util.ngen_locations import cfe_lib, topmd_lib, sft_lib, sloth_lib, smp_lib, lasam_lib, noah_lib, ngen_exe, noah_parameter_dir, \
+from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     parquet_dir
 
 config_template = {
@@ -50,6 +50,7 @@ config_template = {
         "save_plot_iter": 0,
         "save_plot_iter_freq": 0,
         "streamflow_threshold": 0,
+        "peak_flow_threshold": 0,
         "station_name": "",
         "user_email": "",
     },
@@ -61,21 +62,21 @@ config_template = {
         "cfe_dir": "",
         "topmd_dir": "",
         # Need another dir for every model
-        "noah_parameter_dir": noah_parameter_dir,
+        "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
         # Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
-        "ngen_exe_file": ngen_exe,
-        "cfe_lib": cfe_lib,
-        "sloth_lib": sloth_lib,
-        "topmd_lib": topmd_lib,
-        "noah_lib": noah_lib,
-        "sft_lib": sft_lib,
-        "smp_lib": smp_lib,
-        "lasam_lib": lasam_lib
+        "ngen_exe_file": NGEN_EXE,
+        "cfe_lib": CFE_LIB,
+        "sloth_lib": SLOTH_LIB,
+        "topmd_lib": TOPMD_LIB,
+        "noah_lib": NOAH_LIB,
+        "sft_lib": SFT_LIB,
+        "smp_lib": SMP_LIB,
+        "lasam_lib": LASAM_LIB
     }
 }
 
@@ -107,7 +108,7 @@ def ready_to_run(run, build=None):
         else:
             if run.forcing_source == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
                 messages.append('forcing data must be uploaded')
-            elif run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_dir_path:
+            elif run.forcing_source != ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path:
                 messages.append('Error getting forcing path from Hydrofabric')
             else:
                 datafile['forcing_dir'] = run.forcing_dir_path
@@ -118,7 +119,7 @@ def ready_to_run(run, build=None):
             if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (
                     not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
-            elif run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
+            elif run.observational_source != ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path:
                 messages.append('Error getting observational path from Hydrofabric')
             else:
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
@@ -130,7 +131,6 @@ def ready_to_run(run, build=None):
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(parquet_dir, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
-        print('attributes_file', datafile['attributes_file'])
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
@@ -219,6 +219,8 @@ def ready_to_run(run, build=None):
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
 
+    if run.peak_flow_threshold:
+        calibration['peak_flow_threshold'] = run.peak_flow_threshold
     if run.use_sloth:
         sloth_params = (CalibrationSlothParam.objects.filter(calibration_run=run)
                         .only('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name')
@@ -236,7 +238,6 @@ def ready_to_run(run, build=None):
 
         if not sloth_error and build:
             sloth_parameter_file = os.path.join(main_dir, 'sloth_parameters.txt')
-            print('sloth_parameter file', sloth_parameter_file)
             with open(sloth_parameter_file, 'w') as file:
                 file.write(
                     '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
@@ -259,7 +260,6 @@ def ready_to_run(run, build=None):
 
     if not param_error and build:
         parameter_file = os.path.join(main_dir, 'parameters.txt')
-        print('parameter file', parameter_file)
         with open(parameter_file, 'w') as file:
             file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
             for p in params:
@@ -273,6 +273,8 @@ def ready_to_run(run, build=None):
     run.status = Status.objects.filter(name=(StatusEnum.SAVED if messages else StatusEnum.READY)).first()
     run.save()
 
+    if messages:
+        print('There are validation errors. Normally, we would stop here and not try to build the config')
     # TODO Only build if no messages
     # config_file = build_config(config, main_dir) if build and not messages else None
     config_file = build_config(config, main_dir) if build else None

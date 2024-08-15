@@ -52,9 +52,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Domain.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                   "description": v['description'],
-                                                                   "created_by": self.user})
+            Domain.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                      "description": v['description'],
+                                                                      "created_by": self.user})
 
     def define_rfc(self):
         if self.DELETE_FLAG:
@@ -78,9 +78,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            Rfc.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                "description": v['description'],
-                                                                "created_by": self.user})
+            Rfc.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                   "description": v['description'],
+                                                                   "created_by": self.user})
 
     def define_forcing_source(self):
         if self.DELETE_FLAG:
@@ -91,9 +91,9 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ForcingSource.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                          "description": v['description'],
-                                                                          "created_by": self.user})
+            ForcingSource.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                             "description": v['description'],
+                                                                             "created_by": self.user})
 
     def define_observational_source(self):
         if self.DELETE_FLAG:
@@ -111,10 +111,10 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            ObservationalSource.objects.get_or_create(name=v['name'],
-                                                      defaults={"is_active": v.get('is_active', True),
-                                                                "description": v['description'],
-                                                                "created_by": self.user})
+            ObservationalSource.objects.update_or_create(name=v['name'],
+                                                         defaults={"is_active": v.get('is_active', True),
+                                                                   "description": v['description'],
+                                                                   "created_by": self.user})
 
     def define_optimization(self):
         if self.DELETE_FLAG:
@@ -134,49 +134,52 @@ class Command(BaseCommand):
 
         # stop_criteria_name and stop_criteria_data_type are not used at this time.  Setting to these values for now, but we never look at it
         for v in values:
-            optimization, created = Optimization.objects.get_or_create(name=v['name'],
-                                                                       defaults={"is_active": v.get('is_active', True),
-                                                                                 "description": v['description'],
-                                                                                 "stop_criteria_name": "iterations",
-                                                                                 "stop_criteria_data_type": DataTypeEnum.INTEGER,
-                                                                                 "created_by": self.user})
+            optimization, created = Optimization.objects.update_or_create(name=v['name'],
+                                                                          defaults={"is_active": v.get('is_active', True),
+                                                                                    "description": v['description'],
+                                                                                    "stop_criteria_name": "iterations",
+                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER,
+                                                                                    "created_by": self.user})
 
             for i in v['inputs']:
-                OptimizationInput.objects.get_or_create(name=i['name'], defaults={"is_active": i.get('is_active', True),
-                                                                                  "description": i['description'],
-                                                                                  "data_type": i['data_type'],
-                                                                                  "optimization": optimization,
-                                                                                  "created_by": self.user})
+                OptimizationInput.objects.update_or_create(name=i['name'], defaults={"is_active": i.get('is_active', True),
+                                                                                     "description": i['description'],
+                                                                                     "data_type": i['data_type'],
+                                                                                     "optimization": optimization,
+                                                                                     "created_by": self.user})
 
     def define_metric(self):
         if self.DELETE_FLAG:
             Metric.objects.all().delete()
 
-        values = [{"name": "Cor", "description": "Pearson Correlation"},
+        values = [{"name": "Corr", "description": "Pearson Correlation"},
                   {"name": "MAE", "description": "Mean Absolute Error"},
                   {"name": "RMSE", "description": "Root Mean Square Error"},
                   {"name": "RSR", "description": "Ratio of RMSE to standard deviation of observation"},
                   {"name": "PBIAS", "description": "Percent Bias"},
                   {"name": "KGE", "description": "Kling-Gupta Efficiency"},
                   {"name": "NSE", "description": "Nash-Sutcliffe-Efficiency"},
-                  {"name": "LogNSE", "description": "NSE of Logarithmic values"},
+                  {"name": "NSELog", "description": "NSE of Logarithmic values"},
                   {"name": "NNSE", "description": "Normalized NSE"},
                   {"name": "POD", "description": "Probability of Detection", "categorical": True},
                   {"name": "CSI", "description": "Critical Success Index", "categorical": True},
                   {"name": "FAR", "description": "False Alarm Ratio", "categorical": True},
-                  {"name": "HFDC", "description": "Percent bias of high flow segment of flow duration curve"},
-                  {"name": "LFDC", "description": "Percent bias of low flow segment of flow duration curve"},
-                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "is_active": False},
-                  {"name": "pPKBIAS", "description": "Percent Peak Flow Bias", "is_active": False},
-                  {"name": "PKTE", "description": "Peak Flow Timing Error", "is_active": False},
-                  {"name": "EVBIAS", "description": "Event Volume Bias", "is_active": False},
+                  {"name": "HSEG_FDC", "description": "Percent bias of high flow segment of flow duration curve"},
+                  {"name": "LSEG_FDC", "description": "Percent bias of low flow segment of flow duration curve"},
+                  {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
+                  {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
+                  {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
+                  {"name": "FBIAS", "description": ""},
+                  {"name": "MSEG_FDC", "description": ""},
+                  {"name": "NSEWt", "description": ""},
                   ]
 
         for v in values:
-            Metric.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                   "description": v['description'],
-                                                                   "categorical": v.get('categorical', False),
-                                                                   "created_by": self.user})
+            foo, bar = Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                                 "description": v['description'],
+                                                                                 "categorical": v.get('categorical', False),
+                                                                                 "event_based": v.get('event_based', False),
+                                                                                 "created_by": self.user})
 
     def define_status(self):
         if self.DELETE_FLAG:
@@ -184,7 +187,7 @@ class Command(BaseCommand):
 
         e: StatusEnum
         for e in StatusEnum:
-            Status.objects.get_or_create(name=e.value, defaults={"created_by": self.user})
+            Status.objects.update_or_create(name=e.value, defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
         if self.DELETE_FLAG:
@@ -206,50 +209,50 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            NgenCalFormulation.objects.get_or_create(name=v['name'], defaults={"modules": v['modules'],
-                                                                               "description": v['description'],
-                                                                               "created_by": self.user})
+            NgenCalFormulation.objects.update_or_create(name=v['name'], defaults={"modules": v['modules'],
+                                                                                  "description": v['description'],
+                                                                                  "created_by": self.user})
+
     def define_plot_definitions(self):
         if self.DELETE_FLAG:
             PlotDefinitions.objects.all().delete()
 
-        values = [{ "name": "Stream Flow Time Series", 
-                    "description": "Time series plot comparing streamflow simulations from the first iteration (control), the best iteration, and the last iteration with the observed streamflow",
-                    "filename_mask": "_hydrograph_iteration.png"
-                    },
-                  { "name": "Evolution of Objective Function", 
-                    "description": "The evolution of objective function during all iterations, with the best iteration highlighted in red",
-                    "filename_mask": "_objfun_iteration.png"
-                    },
-                  { "name": "Evolution of All Metrics", 
-                    "description": "The evolution of objective function and all other metrics during all iterations, with the best iteration highlighted in red; note the subplots for the four categorical metrics (POD, FAR, CSI, FBIAS) are blank, because we did not specify a threshold for calculating these metrics in input.config_01123000.sh",
-                    "filename_mask": "_metric_iteration.png"
-                    },
-                  { "name": "Evolution of Calibration Params", 
-                    "description": "The evolution of each calibration parameter during all iterations, with the best iteration highlighted in red",
-                    "filename_mask": "_param_iteration.png"
-                    },
-                  { "name": "Scatter plot of streamflow", 
-                    "description": "Scatter plot of streamflow simulations from the first iteration (control), the best iteration, and the last iteration vs the observed streamflow",
-                    "filename_mask": "_scatterplot_streamflow_iteration.png"
-                    },
-                  { "name": "Metrics vs Objective Functions", 
-                    "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to exam tradeoffs between the objective function and other metrics)",
-                    "filename_mask": "_metric_objfun.png"
-                    },
-                  { "name": "Stream Flow/Precipitation Time Series", 
-                    "description": "Same as the first plot but with the precipitation time series added",
-                    "filename_mask": "_streamflow_precip_iteration.png"
-                    },
-                  { "name": "Flow Duration Curves", 
-                    "description": "Comparison of the flow duration curves for the streamflow simulations from the first iteration (control), the best iteration, and the last iteration, and the observed streamflow",
-                    "filename_mask": "_fdc_iteration.png"
-                    },
+        values = [{"name": "Stream Flow Time Series",
+                   "description": "Time series plot comparing streamflow simulations from the first iteration (control), the best iteration, and the last iteration with the observed streamflow",
+                   "filename_mask": "_hydrograph_iteration.png"
+                   },
+                  {"name": "Evolution of Objective Function",
+                   "description": "The evolution of objective function during all iterations, with the best iteration highlighted in red",
+                   "filename_mask": "_objfun_iteration.png"
+                   },
+                  {"name": "Evolution of All Metrics",
+                   "description": "The evolution of objective function and all other metrics during all iterations, with the best iteration highlighted in red; note the subplots for the four categorical metrics (POD, FAR, CSI, FBIAS) are blank, because we did not specify a threshold for calculating these metrics in input.config_01123000.sh",
+                   "filename_mask": "_metric_iteration.png"
+                   },
+                  {"name": "Evolution of Calibration Params",
+                   "description": "The evolution of each calibration parameter during all iterations, with the best iteration highlighted in red",
+                   "filename_mask": "_param_iteration.png"
+                   },
+                  {"name": "Scatter plot of streamflow",
+                   "description": "Scatter plot of streamflow simulations from the first iteration (control), the best iteration, and the last iteration vs the observed streamflow",
+                   "filename_mask": "_scatterplot_streamflow_iteration.png"
+                   },
+                  {"name": "Metrics vs Objective Functions",
+                   "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to exam tradeoffs between the objective function and other metrics)",
+                   "filename_mask": "_metric_objfun.png"
+                   },
+                  {"name": "Stream Flow/Precipitation Time Series",
+                   "description": "Same as the first plot but with the precipitation time series added",
+                   "filename_mask": "_streamflow_precip_iteration.png"
+                   },
+                  {"name": "Flow Duration Curves",
+                   "description": "Comparison of the flow duration curves for the streamflow simulations from the first iteration (control), the best iteration, and the last iteration, and the observed streamflow",
+                   "filename_mask": "_fdc_iteration.png"
+                   },
                   ]
 
         for v in values:
-            PlotDefinitions.objects.get_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                "description": v['description'],
-                                                                "filename_mask": v['filename_mask'],
-                                                                "created_by": self.user})
-
+            PlotDefinitions.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                               "description": v['description'],
+                                                                               "filename_mask": v['filename_mask'],
+                                                                               "created_by": self.user})

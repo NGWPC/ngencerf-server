@@ -300,7 +300,6 @@ def load_formulation_tab(request):
 def get_all_modules(run):
     return list(
         CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
-        .only('name', 'groups', 'used_by_calibration_run')
         .values('name', 'groups', 'used_by_calibration_run')
     )
 
@@ -308,7 +307,6 @@ def get_all_modules(run):
 def get_my_modules(run):
     return list(
         CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exclude(name=SLOTH)
-        .only('name')
         .values_list('name', flat=True)
     )
 
@@ -316,8 +314,6 @@ def get_my_modules(run):
 def get_sloth_parameters(run):
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
-        .only('param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module',
-              'maps_to_variable_name')
         .values(
             'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
             'maps_to_variable_name')
@@ -336,7 +332,6 @@ def get_modules_from_hydrofabric(run):
 
     current_module_names = set(
         CalibrationFormulation.objects.filter(calibration_run=run)
-        .only('name')
         .values_list('name', flat=True)
     )
 
@@ -405,19 +400,22 @@ def save_formulation_tab(request):
         if errorReturn:
             return errorReturn
 
+        message = validate_modules(run, new_module_names)
+        if message:
+            return ResponseError(message)
+
         if not validate_formulation(run, new_module_names):
-            return ResponseError("Invalid formulation-  '{}'".format(new_module_names))
+            return ResponseError(f'Invalid formulation -  {new_module_names}')
 
         run.user_formulation_name = user_formulation_name
 
         if use_sloth:
             new_module_names.add(SLOTH)
             if not sloth_parameters:
-                return ResponseError("Invalid formulation -  You must enter SLoTH parameters")
-
+                return ResponseError(f"If 'use_sloth' is checked, you must enter {SLOTH} parameters")
         else:
             if sloth_parameters:
-                return ResponseError('You must check the box to allow Sloth parameters to be specified')
+                return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
 
         # Did we get the names from Hydrofabric
         if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
@@ -450,22 +448,11 @@ def save_formulation_tab(request):
 
             # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-            for s in sloth_parameters:
-                # Check that the module is valid
-                if not CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id,
-                                                             used_by_calibration_run=True).exists():
-                    return ResponseError(
-                        "Sloth parameters contain an invalid module - '{}'.  This module has not been added to this run".format(s['apps_to_modules']))
+            message = add_sloth_parameters(run, sloth_parameters)
+            if message:
+                return ResponseError(message)
 
             run.save()
-            for s in sloth_parameters:
-                # Get the new_module_names, so we can set it
-                module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run_id=run.id).first()
-                CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
-                                                     param_type=s['param_type'],
-                                                     param_units=s['param_units'], param_location=s['param_location'],
-                                                     param_value=s['param_value'], maps_to_module=module,
-                                                     maps_to_variable_name=s['maps_to_variable_name'])
 
             ngen_cal_input.ready_to_run(run)
 
@@ -493,8 +480,16 @@ def save_formulation_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+def validate_modules(run, module_names):
+    # Check that all the module names are valid
+    valid_names = set(CalibrationFormulation.objects.filter(calibration_run_id=run.id, name__in=module_names).values_list('name', flat=True))
+    if module_names - valid_names:
+        return f'Invalid modules - {module_names - valid_names}'
+    return None
+
+
 def validate_formulation(run, module_names):
-    valid_formulations = NgenCalFormulation.objects.all().only('name', 'modules').values('name', 'modules')
+    valid_formulations = NgenCalFormulation.objects.all().values('name', 'modules')
     valid = False
     for valid_formulation in valid_formulations:
         valid_module_set = set(json.loads(valid_formulation['modules']))
@@ -503,5 +498,20 @@ def validate_formulation(run, module_names):
             run.ngen_formulation_name = valid_formulation['name']
             break
     return valid
-    # if not valid:
-    #     return ResponseError("Invalid formulation-  '{}'".format(module_names))
+
+
+def add_sloth_parameters(run, sloth_parameters):
+
+    for s in sloth_parameters:
+        # Get the module referenced by the sloth parameter
+        module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run=run, used_by_calibration_run=True).first()
+        if not module:
+            return f"Sloth parameter \'{s['param_name']}\' contain an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
+
+        CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                                             param_type=s['param_type'],
+                                             param_units=s['param_units'], param_location=s['param_location'],
+                                             param_value=s['param_value'], maps_to_module=module,
+                                             maps_to_variable_name=s['maps_to_variable_name'])
+
+    return None

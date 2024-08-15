@@ -229,7 +229,10 @@ NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
 
-NGEN_CAL_WORK_DIR = os.path.join(Path.home(), 'ngen-cal-work')
+# This is the mount point for docker containers
+NGEN_CAL_MOUNT_POINT = os.path.join(Path.home(), 'ngwpc/data')
+
+NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 # Directory containing the ngen-cal virtual environment
