@@ -1,16 +1,10 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_landing_views, \
     calibration_gage_views, calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views
 
 urlpatterns = [
-    ##################################
-    # Api page
-    ##################################
-    path('calibration/report_iteration/', calibration_api_views.report_iteration, name="reportIteration"),
-    path('calibration/get_iteration/', calibration_api_views.get_iteration, name="getIteration"),
-
     ##################################
     # Landing page
     ##################################
@@ -56,6 +50,9 @@ urlpatterns = [
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
+
+    path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
+    path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
 
     # Testing
     path('calibration/read_output/', calibration_run_views.test_read_output, name="readOutput"),
