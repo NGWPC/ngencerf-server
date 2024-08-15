@@ -226,6 +226,7 @@ class LoadPlotResponseSerializer(BaseSerializer):
     description = serializers.CharField(required=True, allow_blank=False)
     filename = serializers.CharField(required=True, allow_blank=False)
 
+
 ##################################
 # Formulation Tab
 ##################################
@@ -547,8 +548,8 @@ class ExportResponseValidator(BaseSerializer):
     stop_criteria = serializers.IntegerField(required=True, allow_null=False)
 
 
-
 class ImportValidator(serializers.Serializer):
+    run_after_import = serializers.BooleanField(required=False, default=False)
     metadata = serializers.DictField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=False)
     forcing_source = serializers.CharField(required=True, validators=[forcingSourceValidator])
@@ -574,10 +575,6 @@ class ImportValidator(serializers.Serializer):
     optimization = serializers.CharField(required=True, allow_null=True)
     plot_frequency = serializers.IntegerField(required=True, allow_null=False)
     stop_criteria = serializers.IntegerField(required=True, allow_null=False)
-
-
-
-
 
 
 ##################################

@@ -43,6 +43,8 @@ def import_job(request):
         with transaction.atomic():
             run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
+            run_after_import = validator.data.get('run_after_import', False)
+
             #############################
             # Gage
             #############################
@@ -167,12 +169,13 @@ def import_job(request):
 
             run.save()
 
-            # TODO Need another flag to determine if we submit right away.
-            # When we submit is when we'll set the run_date and commit hashes
+            imported_and_submitted = 'imported'
 
-            submit_job(run)
+            if run_after_import:
+                submit_job(run)
+                imported_and_submitted = 'imported and submitted'
 
-            response = {'message': f'Calibration Run {run.id} imported'}
+            response = {'message': f'Calibration Run {run.id} {imported_and_submitted}'}
             serializer = GenericMessageResponseSerializer(data=response)
             if not serializer.is_valid():
                 return ResponseError(f'Data format error returning from import_job() - {serializer.errors}',
