@@ -216,7 +216,7 @@ def get_time_range(run):
     # Get data range intersection of observational and forcing data if we don't already have it
     time_range = None
     if (run.observational_file_path and run.forcing_dir_path
-            and (not run.time_range_start or not run.time_range_end)):
+            and run.time_range_start and run.time_range_end):
         daterange = get_date_range_intersection(run.observational_file_path, run.forcing_dir_path)
         run.time_range_start = daterange.start_datetime
         run.time_range_end = daterange.end_datetime
