@@ -139,5 +139,62 @@ To simulate a login, send the request payload to the endpoint `auth/awt/create`
 Extract the access token.  For all subsequent requests, you need to include an `Authorization` header of 
 type `Bearer token` that includes the access token.
 
+# Directory structure
+
+By convention with the Docker images, the mount point is at `~/ngwpc/data`.  Under there, we have our work directory, `ngen-cal-work`
+
+There are some static files that need to be put in place before running ngen-cal.  `ngen-cal-work/bmi_config/Noah-OWP` should be created and the 3 TBL files copied there.
+The `parquet` files should be copied to `ngen-cal-work/parquet`
+
+`ngen-cal-work/forcing` and `ngen-cal-work/observation` are used for the forcing and observation files download from Hydrofabric.  
+This is a shared location, since forcing files and observation files can be re-used for the same gage.
+
+If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
+where `id` is the id of the calibration run and `user` is the owner of the run.
+
+In the example below, `20_peter/forcing` and `20_peter/observation` contain user-uploaded forcing and observation files.
+
+The `ngen-cal-work/geopackage` directory is also shared, as geopackage files can also be re-used.
+
+```
+peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
+.
+└── ngen-cal-work
+    ├── bmi_config
+    │   └── Noah-OWP
+    │       ├── GENPARM.TBL
+    │       ├── MPTABLE.TBL
+    │       └── SOILPARM.TBL
+    ├── forcing
+    │   └── Gage_01123000
+    │       ├── cat-10617.csv
+    │       ├── cat-10618.csv
+    │       ├── cat-10619.csv
+    │       ├── cat-10620.csv
+    │       ├── cat-10625.csv
+    │       └── cat-10626.csv
+    ├── geopackage
+    │   ├── gauge_01073000.gpkg
+    │   └── gauge_01123000.gpkg
+    ├── observation
+    │   └── 01123000_hourly_discharge.csv
+    ├── parquet
+    │   └── conus_model_attributes.parquet
+    └── run_calib
+        ├── 19_peter
+        │   └── forcing
+        ├── 1_peter
+        │   ├── forcing
+        │   └── observation
+        └── 20_peter
+            ├── forcing
+            ├── input.config
+            ├── KGE_DDS
+            ├── observation
+            ├── parameters.txt
+            └── sloth_parameters.txt
+```
+
+
 
 

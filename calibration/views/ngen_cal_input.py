@@ -108,7 +108,7 @@ def ready_to_run(run, build=None):
         else:
             if run.forcing_source == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
                 messages.append('forcing data must be uploaded')
-            elif run.forcing_source != ForcingSourceEnum.UPLOAD.name and not run.forcing_dir_path:
+            elif run.forcing_source != ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path:
                 messages.append('Error getting forcing path from Hydrofabric')
             else:
                 datafile['forcing_dir'] = run.forcing_dir_path
@@ -119,7 +119,7 @@ def ready_to_run(run, build=None):
             if run.observational_source == ObservationalSourceEnum.UPLOAD.value and (
                     not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
-            elif run.observational_source != ObservationalSourceEnum.UPLOAD.name and not run.observational_file_path:
+            elif run.observational_source != ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path:
                 messages.append('Error getting observational path from Hydrofabric')
             else:
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
@@ -238,7 +238,6 @@ def ready_to_run(run, build=None):
 
         if not sloth_error and build:
             sloth_parameter_file = os.path.join(main_dir, 'sloth_parameters.txt')
-            print('sloth_parameter file', sloth_parameter_file)
             with open(sloth_parameter_file, 'w') as file:
                 file.write(
                     '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
@@ -261,7 +260,6 @@ def ready_to_run(run, build=None):
 
     if not param_error and build:
         parameter_file = os.path.join(main_dir, 'parameters.txt')
-        print('parameter file', parameter_file)
         with open(parameter_file, 'w') as file:
             file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
             for p in params:
@@ -275,6 +273,8 @@ def ready_to_run(run, build=None):
     run.status = Status.objects.filter(name=(StatusEnum.SAVED if messages else StatusEnum.READY)).first()
     run.save()
 
+    if messages:
+        print('There are validation errors. Normally, we would stop here and not try to build the config')
     # TODO Only build if no messages
     # config_file = build_config(config, main_dir) if build and not messages else None
     config_file = build_config(config, main_dir) if build else None

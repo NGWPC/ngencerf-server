@@ -483,7 +483,6 @@ def save_formulation_tab(request):
 def validate_modules(run, module_names):
     # Check that all the module names are valid
     valid_names = set(CalibrationFormulation.objects.filter(calibration_run_id=run.id, name__in=module_names).values_list('name', flat=True))
-    print('valid_names', valid_names)
     if module_names - valid_names:
         return f'Invalid modules - {module_names - valid_names}'
     return None
