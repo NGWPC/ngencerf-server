@@ -241,16 +241,17 @@ def read_output(gage_dir, run):
     # Contains the best across all workers -- Only for GWO and PSO
     cost_hist_filename = f'{run.gage.gage_id}_cost_hist.csv'
     cost_hist_file = os.path.join(output_calibration_run_dir, cost_hist_filename)
-    # Get the best iteration number accross all works
+    # Get the best iteration number across all works
     # TODO This is not right
     # last_line = read_last_line(cost_hist_file)
     # best_iteration_for_all = int(last_line.split(',')[2])
 
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
-    run.save()  # TODO Need to save this in a transaction with all the other objects
 
-    find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
+    with transaction.atomic:
+        find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
+        run.save()
 
 
 def find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename):
@@ -278,27 +279,53 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
 
     worker_name = os.path.basename(worker_path)
 
+    iterations_to_create = []
+    metrics_to_create = []
+
     with open(metrics_iteration_file) as file:
         reader = csv.DictReader(file)
         # iteration,objFunVal,Corr,MAE,RMSE,RSR,PBIAS,NSE,NSELog,NSEWt,KGE,POD,FAR,CSI,FBIAS,HSEG_FDC,MSEG_FDC,LSEG_FDC
         row_dict: Dict[str, str]
         for row_dict in reader:
-            # print(row_dict)
-            # Iteration table has objective value function -- need realization filename
-            iteration = int(row_dict['iteration'])
+            iteration_num = int(row_dict['iteration'])
             best = iteration == best_iteration_for_worker
-            iteration = Iteration.objects.create(calibration_run=run, iteration_num=iteration, worker=worker_name,
-                                                 calibration_output_variable_value=row_dict['objFunVal'], best_for_worker=best)
-            for metric_name in row_dict:
-                if metric_name == 'iteration' or metric_name == 'objFunVal':
+
+            iteration = Iteration(
+                calibration_run=run,
+                iteration_num=iteration_num,
+                worker=worker_name,
+                calibration_output_variable_value=row_dict['objFunVal'],
+                best_for_worker=best
+            )
+            iterations_to_create.append(iteration)
+
+        # Bulk create Iteration objects
+        created_iterations = Iteration.objects.bulk_create(iterations_to_create)
+
+        # Rewind the reader to the beginning of the CSV to pair up with the created iterations
+        file.seek(0)
+        reader = csv.DictReader(file)
+
+        for iteration, row_dict in zip(created_iterations, reader):
+            for metric_name, value in row_dict.items():
+                if metric_name in ['iteration', 'objFunVal']:
                     continue
-                metric = Metric.objects.filter(name=metric_name).first()
+                # Do a case-insensitive match
+                metric = Metric.objects.filter(name__iexact=metric_name).first()
                 if not metric:
                     print("Could not find metric", metric_name)
                     continue
-                # print('metric_name:', metric_name)
-                value = float(row_dict[metric_name])
-                IterationMetric.objects.create(iteration=iteration, metric=metric, metric_value=value)
+
+                metric_value = float(value)
+                metric_obj = IterationMetric(
+                    iteration=iteration,
+                    metric=metric,
+                    metric_value = metric_value
+                )
+                metrics_to_create.append(metric_obj)
+
+        # Bulk create IterationMetric objects
+        IterationMetric.objects.bulk_create(metrics_to_create)
 
 
 # Read backwards from the end of the file until we find linefeed.  Then read the line
