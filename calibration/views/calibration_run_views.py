@@ -232,23 +232,32 @@ def read_output(gage_dir, run):
     if not os.path.isdir(gage_dir):
         print(f'Directory {gage_dir} does not exist or is not a directory')
 
+    output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
+
     metrics_iteration_filename = f'{run.gage.gage_id}_metrics_iteration.csv'
     # Contains the best for a single worker
     objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
+
     # Contains the best across all workers -- Only for GWO and PSO
     cost_hist_filename = f'{run.gage.gage_id}_cost_hist.csv'
+    cost_hist_file = os.path.join(output_calibration_run_dir, cost_hist_filename)
+    # Get the best iteration number accross all works
+    # TODO This is not right
+    # last_line = read_last_line(cost_hist_file)
+    # best_iteration_for_all = int(last_line.split(',')[2])
+
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
     run.save()  # TODO Need to save this in a transaction with all the other objects
 
-    find_worker_directories(run, os.path.join(gage_dir, 'Output/Calibration_Run'), metrics_iteration_filename, objective_log_best_filename)
+    find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
 
 
-def find_worker_directories(run, gage_dir, metrics_iteration_filename, objective_log_best_filename):
+def find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename):
     pattern = re.compile(r'^ngen_\w*_worker$')
 
-    for worker_name in os.listdir(gage_dir):
-        worker_path = os.path.join(gage_dir, worker_name)
+    for worker_name in os.listdir(output_calibration_run_dir):
+        worker_path = os.path.join(output_calibration_run_dir, worker_name)
         # Check if it's a directory and matches the pattern
         if os.path.isdir(worker_path) and pattern.match(worker_name):
             process_metrics_iteration(run, worker_path, metrics_iteration_filename, objective_log_best_filename)
