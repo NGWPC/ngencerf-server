@@ -9,6 +9,7 @@ urlpatterns = [
     # Api page
     ##################################
     path('calibration/report_iteration/', calibration_api_views.report_iteration, name="reportIteration"),
+    path('calibration/get_iteration/', calibration_api_views.get_iteration, name="getIteration"),
 
     ##################################
     # Landing page

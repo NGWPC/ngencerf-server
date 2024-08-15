@@ -21,13 +21,6 @@ from calibration.views.common import ResponseError
 logger = logging.getLogger(__name__)
 
 
-class DateToChar(Func):
-    arity = 1
-    function = 'to_char'
-    output_field = CharField()
-    template = "%(function)s(%(expressions)s, 'dd-MM-yyyy HH:MI:SS')"
-
-
 @extend_schema(
     request=None,
     responses={

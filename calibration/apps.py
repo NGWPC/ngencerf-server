@@ -3,7 +3,7 @@ import os
 
 from django.apps import AppConfig
 
-from calibration.util.ngen_locations import files, dirs, parquet_dir, NOAH_PARAMETER_DIR
+from calibration.util.ngen_locations import files, dirs, PARQUET_DIR, NOAH_PARAMETER_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,11 @@ class CalibrationConfig(AppConfig):
                 logger.warning(f'{directory} does not exist')
 
         # Make sure we have files in these directories
-        if len(os.listdir(parquet_dir)) == 0:
-            logger.warning('No parquet files found')
+        if os.path.exists(PARQUET_DIR):
+            if len(os.listdir(PARQUET_DIR)) == 0:
+                logger.warning('No parquet files found')
 
-        if len(os.listdir(NOAH_PARAMETER_DIR)) == 0:
-            logger.warning('No Noah Parameter files found')
+        if os.path.exists(NOAH_PARAMETER_DIR):
+            if len(os.listdir(NOAH_PARAMETER_DIR)) == 0:
+                logger.warning('No Noah Parameter files found')
 
