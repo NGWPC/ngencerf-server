@@ -519,11 +519,14 @@ class IsReadyResponseSerializer(BaseSerializer):
 # Import/Export
 ##################################
 class ExportResponseValidator(BaseSerializer):
+    metadata = serializers.DictField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    forcing_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    observational_file_path = serializers.CharField(required=False, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=True), required=True)
     formulation_name = serializers.CharField(required=True, allow_null=True)
     use_sloth = serializers.BooleanField(required=True, allow_null=False)
@@ -545,11 +548,14 @@ class ExportResponseValidator(BaseSerializer):
 
 
 class ImportValidator(serializers.Serializer):
+    metadata = serializers.DictField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=False)
     forcing_source = serializers.CharField(required=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    observational_file_path = serializers.CharField(required=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=True), required=True, allow_empty=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=False)
     formulation_name = serializers.CharField(required=True, allow_null=True)

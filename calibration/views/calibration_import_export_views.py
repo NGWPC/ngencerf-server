@@ -203,11 +203,15 @@ def export_job(request):
         if errorReturn:
             return errorReturn
 
+        metadata = {'calibration_run_id': run.id, 'run_date': run.run_date}
+        export_file['metadata'] = metadata
         export_file['gage_id'] = run.gage.gage_id if run.gage else None
         export_file['forcing_source'] = run.forcing_source if run.forcing_source else None
         export_file['forcing_user_dir'] = run.forcing_user_dir
+        export_file['forcing_dir_path'] = run.forcing_dir_path
         export_file['observational_source'] = run.observational_source
         export_file['observational_user_filename'] = run.observational_user_filename
+        export_file['observational_file_path'] = run.observational_file_path
         export_file['realization_filename'] = run.realization_filename
         # TODO Figure out how to get forcing and obs
         export_file['formulation_name'] = run.user_formulation_name

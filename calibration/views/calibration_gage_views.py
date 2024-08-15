@@ -523,7 +523,7 @@ def upload_forcing_data(request):
 
         # Need to upload to the run-specific observational directory, as opposed to the global directory
         main_dir = get_main_dir(run)
-        subdir = 'gage_id'
+        subdir = run.gage.gage_id
         run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
         run.forcing_user_dir = forcing_user_dir
 
