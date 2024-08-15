@@ -121,9 +121,7 @@ def load_tuning_tab(request):
         if errorReturn:
             return errorReturn
 
-        automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
-
-        calibration_times, validation_times = get_times(run, automatic_validation)
+        calibration_times, validation_times = get_times(run)
 
         output_variable_to_calibrate = get_output_variable_to_calibrate(run)
 
@@ -147,7 +145,7 @@ def load_tuning_tab(request):
         response = {'calibration_run_id': run.id, 'status': run.status.name,
                     'modules': module_list,
                     'calibration_times': calibration_times,
-                    'validation_times': validation_times, 'automatic_validation': automatic_validation,
+                    'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
                     'time_range': time_range,
                     'output_variable_to_calibrate': output_variable_to_calibrate}
         response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
@@ -226,7 +224,7 @@ def get_time_range(run):
     return time_range
 
 
-def get_times(run, automatic_validation):
+def get_times(run):
     calibration_times = {}
     validation_times = {}
     # These are all or nothing.  So if this first one exists, we'll assume they all do
@@ -235,7 +233,7 @@ def get_times(run, automatic_validation):
         calibration_times['simulation_end_time'] = run.calibration_end_period
         calibration_times['calibration_start_time'] = run.calibration_eval_start_period
         calibration_times['calibration_end_time'] = run.calibration_eval_end_period
-    if automatic_validation and run.validation_start_period:
+    if run.automatic_validation and run.validation_start_period:
         validation_times['simulation_start_time'] = run.validation_start_period
         validation_times['simulation_end_time'] = run.validation_end_period
         validation_times['validation_start_time'] = run.validation_eval_start_period
@@ -328,10 +326,9 @@ def save_tuning_tab(request):
         if errorReturn:
             return errorReturn
 
-        save_times(run, automatic_validation, calibration_times, validation_times)
+        run.automatic_validation = automatic_validation
 
-        # I don't think we need this field.  Need to save automatic_validation instead
-        run.run_type = CalibrationRunType.VALID_BEST if automatic_validation else CalibrationRunType.CALIB
+        save_times(run, calibration_times, validation_times)
 
         print('parameters', parameters)
         message = validate_parameters(run, parameters)
@@ -372,13 +369,13 @@ def save_tuning_tab(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-def save_times(run, automatic_validation, calibration_times, validation_times):
+def save_times(run, calibration_times, validation_times):
     run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times else None
     run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times else None
     run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times else None
     run.calibration_eval_end_period = datetime.fromisoformat(calibration_times['calibration_end_time']) if calibration_times else None
 
-    if automatic_validation:
+    if run.automatic_validation:
         run.validation_start_period = datetime.fromisoformat(validation_times['simulation_start_time']) if validation_times else None
         run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times else None
         run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times else None

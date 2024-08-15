@@ -41,7 +41,7 @@ class CalibrationRun(BaseModel):
     user_formulation_name = models.TextField(null=True)
     ngen_formulation_name = models.TextField(null=True)
     plot_frequency = models.IntegerField(null=True)
-    run_type = models.TextField(null=True)
+    automatic_validation = models.BooleanField(null=False, default=False)
     ngen_commit_hash = models.TextField(null=True)
     ngen_cal_commit_hash = models.TextField(null=True)
 

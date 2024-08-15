@@ -123,8 +123,7 @@ def import_job(request):
 
             save_times(run, automatic_validation, calibration_times, validation_times)
 
-            # TODO Change logic for run_type - I don't think we need this field at all
-            run.run_type = 'calib'
+            run.automatic_validation = validator.data.get('automatic_validation')
 
             message = validate_parameters(run, parameters)
             if message is not None:
@@ -236,9 +235,8 @@ def export_job(request):
         export_file['use_sloth'] = run.use_sloth
         if run.use_sloth:
             export_file['sloth_parameters'] = get_sloth_parameters(run)
-        automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
-        export_file['automatic_validation'] = automatic_validation
-        calibration_times, validation_times = get_times(run, automatic_validation)
+        export_file['automatic_validation'] = run.automatic_validation
+        calibration_times, validation_times = get_times(run, run.automatic_validation)
         export_file['calibration_times'] = calibration_times
         export_file['validation_times'] = validation_times
         output_variable_to_calibrate = {
