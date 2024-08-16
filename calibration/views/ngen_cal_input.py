@@ -18,7 +18,7 @@ config_template = {
         "user": "",
         "basin": "",
         "model": "",
-        "run_type": "",
+        "run_type": "calib",
         "main_dir": ""
     },
 
@@ -140,11 +140,6 @@ def ready_to_run(run, build=None):
         else:
             general['model'] = run.ngen_formulation_name
 
-    if not run.run_type:
-        messages.append(f'run_type must be specified - {CalibrationRunType.CALIB} or {CalibrationRunType.VALID_BEST}')
-    else:
-        general['run_type'] = run.run_type
-
     main_dir = get_main_dir(run)
     general['main_dir'] = main_dir
 
@@ -163,11 +158,11 @@ def ready_to_run(run, build=None):
         calibration['calib_eval_start_period'] = run.calibration_eval_start_period.strftime(DATE_FORMAT)
         calibration['calib_eval_end_period'] = run.calibration_eval_end_period.strftime(DATE_FORMAT)
 
-    if run.run_type == CalibrationRunType.VALID_BEST.value and (
-            not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period):
-        messages.append(
-            'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
-    elif run.run_type == CalibrationRunType.VALID_BEST.value:
+    if run.automatic_validation:
+        if not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period:
+            messages.append(
+                'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+
         calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
         calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
         calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)

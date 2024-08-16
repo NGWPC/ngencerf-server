@@ -175,7 +175,7 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            foo, bar = Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+            Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
                                                                                  "description": v['description'],
                                                                                  "categorical": v.get('categorical', False),
                                                                                  "event_based": v.get('event_based', False),

@@ -114,7 +114,8 @@ def get_iteration(request):
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
-        iteration_number = validator.data.get('iteration')
+
+        # TODO read output file
 
         run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
         if errorReturn:

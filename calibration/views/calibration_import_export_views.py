@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import shutil
 from json import JSONDecodeError
 
 from django.db import transaction
@@ -14,6 +13,7 @@ from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum,
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
 from calibration.util.calibration_validators import ValidationErrorSerializer, ValidationExceptionSerializer, ExceptionResponseSerializer, \
     CalibrationRunValidator, ExportResponseValidator, ImportValidator, GenericMessageResponseSerializer
+from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
 from calibration.views.calibration_gage_views import save_gage
@@ -123,8 +123,7 @@ def import_job(request):
 
             save_times(run, automatic_validation, calibration_times, validation_times)
 
-            # TODO Change logic for run_type - I don't think we need this field at all
-            run.run_type = 'calib'
+            run.automatic_validation = validator.data.get('automatic_validation')
 
             message = validate_parameters(run, parameters)
             if message is not None:
@@ -200,53 +199,6 @@ def import_job(request):
         return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-def copy_directory(source_dir, destination_dir):
-    """
-    Copy the contents of source_dir to destination_dir. If destination_dir
-    does not exist, it will be created.
-
-    :param source_dir: Path to the source directory to be copied
-    :param destination_dir: Path to the destination directory
-    """
-    # Check if the source directory exists
-    if not os.path.exists(source_dir):
-        raise FileNotFoundError(f"Source directory {source_dir} does not exist.")
-
-    # Check if the destination directory exists, if not, create it
-    if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
-
-    # Copy the contents of the source directory to the destination directory
-    shutil.copytree(source_dir, destination_dir, dirs_exist_ok=True)
-
-    print(f"Directory copied from {source_dir} to {destination_dir} successfully.")
-
-
-def copy_file_to_directory(source_file, destination_dir):
-    """
-    Copy a file to a directory. The file will be copied with the same name
-    into the destination directory.
-
-    :param source_file: Path to the source file to be copied
-    :param destination_dir: Path to the destination directory
-    """
-    # Check if the source file exists
-    if not os.path.exists(source_file):
-        raise FileNotFoundError(f"Source file {source_file} does not exist.")
-
-    # Ensure the destination directory exists, if not, create it
-    if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
-
-    # Construct the full path for the destination file
-    destination_file = os.path.join(destination_dir, os.path.basename(source_file))
-
-    # Copy the source file to the destination directory
-    shutil.copy2(source_file, destination_file)
-
-    print(f"File copied from {source_file} to {destination_dir} successfully.")
-
-
 @api_view(['POST'])
 # @permission_classes([AllowAny])
 def export_job(request):
@@ -283,9 +235,8 @@ def export_job(request):
         export_file['use_sloth'] = run.use_sloth
         if run.use_sloth:
             export_file['sloth_parameters'] = get_sloth_parameters(run)
-        automatic_validation = run.run_type == CalibrationRunType.VALID_BEST.value
-        export_file['automatic_validation'] = automatic_validation
-        calibration_times, validation_times = get_times(run, automatic_validation)
+        export_file['automatic_validation'] = run.automatic_validation
+        calibration_times, validation_times = get_times(run, run.automatic_validation)
         export_file['calibration_times'] = calibration_times
         export_file['validation_times'] = validation_times
         output_variable_to_calibrate = {
