@@ -182,7 +182,10 @@ def test_read_output(request):
     optimization_name = data.get('optimization')
     username = data.get('user')
 
-    run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+    # TODO This should only be for DONE jobs
+    # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+    run, errorReturn = get_run(calibration_run_id, request.user)
+
     # if errorReturn:
     #     return errorReturn
     if not run:
@@ -249,9 +252,9 @@ def read_output(gage_dir, run):
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
 
-    with transaction.atomic:
-        find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
+    with transaction.atomic():
         run.save()
+        find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
 
 
 def find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename):
@@ -288,7 +291,7 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
         row_dict: Dict[str, str]
         for row_dict in reader:
             iteration_num = int(row_dict['iteration'])
-            best = iteration == best_iteration_for_worker
+            best = iteration_num == best_iteration_for_worker
 
             iteration = Iteration(
                 calibration_run=run,
@@ -298,6 +301,13 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
                 best_for_worker=best
             )
             iterations_to_create.append(iteration)
+
+        #########
+        # TODO For dev only, we will delete entries first
+        #########
+        IterationMetric.objects.filter(iteration__calibration_run=run).delete()
+        Iteration.objects.filter(calibration_run=run).delete()
+        #####
 
         # Bulk create Iteration objects
         created_iterations = Iteration.objects.bulk_create(iterations_to_create)
@@ -316,11 +326,11 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
                     print("Could not find metric", metric_name)
                     continue
 
-                metric_value = float(value)
+                metric_value = float(value) if value else None
                 metric_obj = IterationMetric(
                     iteration=iteration,
                     metric=metric,
-                    metric_value = metric_value
+                    metric_value=metric_value
                 )
                 metrics_to_create.append(metric_obj)
 
