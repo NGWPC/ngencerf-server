@@ -12,7 +12,7 @@ from rest_framework.response import Response
 
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunValidator, LoadOptimizationResponseSerializer, \
-    SaveOptimizationRequestValidator, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
+    SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
@@ -142,7 +142,7 @@ def get_metrics():
 
 # noinspection PyUnusedLocal
 @extend_schema(
-    request=SaveOptimizationRequestValidator,
+    request=SaveOptimizationRequestSerializer,
     responses={
         200: SaveOptimizationResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -166,7 +166,7 @@ def save_optimization_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_optimization_tab() request from {request.user} - {body}')
 
-        validator = SaveOptimizationRequestValidator(data=body)
+        validator = SaveOptimizationRequestSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

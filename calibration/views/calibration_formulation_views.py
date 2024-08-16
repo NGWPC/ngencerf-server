@@ -11,7 +11,7 @@ from rest_framework.response import Response
 
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
-from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
+from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunValidator, ModuleHydrofabricListSerializer, \
     GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
@@ -337,7 +337,7 @@ def get_modules_from_hydrofabric(run):
 
     print('current_module_names', current_module_names)
 
-    validator = ModuleHydrofabricListValidator(data=module_sample_data)
+    validator = ModuleHydrofabricListSerializer(data=module_sample_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
         raise Exception(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
@@ -363,7 +363,7 @@ def get_modules_from_hydrofabric(run):
 
 
 @extend_schema(
-    request=SaveFormulationRequestValidator,
+    request=SaveFormulationRequestSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -387,7 +387,7 @@ def save_formulation_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
 
-        validator = SaveFormulationRequestValidator(data=body)
+        validator = SaveFormulationRequestSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         new_module_names = set(validator.data.get('modules'))

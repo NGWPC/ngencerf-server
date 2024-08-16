@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
-from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestValidator, ModuleDataHydrofabricListValidator, \
+from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
@@ -248,7 +248,7 @@ def get_module_data_from_hydrofabric(run, modules):
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
     # module_data = response.json()
 
-    validator = ModuleDataHydrofabricListValidator(data=module_sample_data)
+    validator = ModuleDataHydrofabricListSerializer(data=module_sample_data)
     if not validator.is_valid():
         logger.error(validator.errors)
         raise Exception(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
@@ -287,7 +287,7 @@ def get_module_data_from_hydrofabric(run, modules):
 
 
 @extend_schema(
-    request=SaveTuningRequestValidator,
+    request=SaveTuningRequestSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -311,7 +311,7 @@ def save_tuning_tab(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'save_tuning_tab() request from {request.user} - {body}')
 
-        validator = SaveTuningRequestValidator(data=body)
+        validator = SaveTuningRequestSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

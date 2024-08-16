@@ -15,7 +15,7 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunValidator
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer
 from calibration.views.common import ResponseError
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ def create_calibration_run(request):
             run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
             response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
-            serializer = CreateCalibrationRunValidator(data=response)
+            serializer = CreateCalibrationRunSerializer(data=response)
             if not serializer.is_valid():
                 return ResponseError(f'Data format error returning from create_calibration_run() - {serializer.errors}',
                                      httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -17,9 +17,9 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.aws_util import download_s3, download_all_s3
-from calibration.util.calibration_validators import SaveGageRequestValidator, GageIdValidator, CalibrationRunValidator, GeopackageValidator, \
-    UploadForcingValidator, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageValidator, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
+from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunValidator, GeopackageSerializer, \
+    UploadForcingSerializer, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, SaveGageResponseSerializer, \
+    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
@@ -133,9 +133,9 @@ def load_gage_tab(request):
 
 
 @extend_schema(
-    request=GageIdValidator,
+    request=GageIdSerializer,
     responses={
-        200: GageValidator,
+        200: GageSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
@@ -163,7 +163,7 @@ def get_gage(request):
 
         logger.debug(f'get_gage() request from {request.user} - {data}')
 
-        validator = GageIdValidator(data=data)
+        validator = GageIdSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         gage_id = validator.data.get('gage_id')
@@ -171,7 +171,7 @@ def get_gage(request):
         gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-        serializer = GageValidator(data=gage)
+        serializer = GageSerializer(data=gage)
         if not serializer.is_valid():
             return ResponseError(f'Data format error returning from get_gage() - {serializer.errors}',
                                  httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -202,7 +202,7 @@ def get_geopackage_from_hydrofabric(gage_id):
     # module_data = response.json()
     geopackage_data = geopackage_sample_data
 
-    validator = GeopackageValidator(data=geopackage_data)
+    validator = GeopackageSerializer(data=geopackage_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
         raise Exception(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
@@ -255,7 +255,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
 
 
 @extend_schema(
-    request=SaveGageRequestValidator,
+    request=SaveGageRequestSerializer,
     responses={
         200: SaveGageResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -279,7 +279,7 @@ def save_gage_tab(request):
 
         body = json.loads(request.body or '{}')
         logger.debug(f'save_gage_tab() request from {request.user} - {body}')
-        validator = SaveGageRequestValidator(data=body)
+        validator = SaveGageRequestSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -471,7 +471,7 @@ def upload_observational_data(request):
 
 
 @extend_schema(
-    request=UploadForcingValidator,
+    request=UploadForcingSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -495,7 +495,7 @@ def upload_forcing_data(request):
 
         body = request.POST
         logger.debug(f'upload_forcing_data() request from {request.user} - {body}')
-        validator = UploadForcingValidator(data=body)
+        validator = UploadForcingSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
