@@ -1,5 +1,4 @@
 import csv
-import json
 import logging
 import os
 import re
@@ -51,10 +50,10 @@ def is_ready(request):
     try:
         print('user', request.user)
 
-        body = json.loads(request.body or '{}')
-        logger.debug(f'is_ready() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'is_ready() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=body)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -113,10 +112,10 @@ def run_calibration(request):
     try:
         print('user', request.user)
 
-        body = json.loads(request.body or '{}')
-        logger.debug(f'run_calibration() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'run_calibration() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=body)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -177,7 +176,7 @@ def submit_job(run):
 # This is just a test endpoint to trigger read_output()
 @api_view(['GET', 'POST'])
 def test_read_output(request):
-    data = json.loads(request.body or '{}')
+    data = request.data if request.method == 'POST' else request.query_params
     calibration_run_id = data.get('calibration_run_id')
     optimization_name = data.get('optimization')
     username = data.get('user')
@@ -372,10 +371,10 @@ def read_last_line(filename):
 def report_iteration(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'report_iteration() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'report_iteration() request from {request.user} - {data}')
 
-        validator = ReportIterationSerializer(data=body)
+        validator = ReportIterationSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -435,10 +434,7 @@ def report_iteration(request):
 def get_iteration(request):
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
         logger.debug(f'get_iteration() request from {request.user} - {data}')
 
         validator = CalibrationRunSerializer(data=data)
@@ -448,7 +444,7 @@ def get_iteration(request):
 
         # TODO read output file
 
-        run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+        run, errorReturn = get_run(calibration_run_id, request.user)  # run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
         if errorReturn:
             return errorReturn
 

@@ -1,4 +1,3 @@
-import json
 import logging
 from json.decoder import JSONDecodeError
 
@@ -45,10 +44,7 @@ logger = logging.getLogger(__name__)
 def load_optimization_tab(request):
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 
@@ -163,10 +159,10 @@ def get_metrics():
 def save_optimization_tab(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'save_optimization_tab() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'save_optimization_tab() request from {request.user} - {data}')
 
-        validator = SaveOptimizationRequestSerializer(data=body)
+        validator = SaveOptimizationRequestSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

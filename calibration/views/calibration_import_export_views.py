@@ -1,4 +1,4 @@
-import json
+import logging
 import logging
 import os
 from json import JSONDecodeError
@@ -33,11 +33,10 @@ logger = logging.getLogger(__name__)
 def import_job(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'export() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'export() request from {request.user} - {data}')
 
-        validator = ImportSerializer(data=body)
-        print('body', body)
+        validator = ImportSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         with transaction.atomic():
@@ -203,10 +202,10 @@ def import_job(request):
 def export_job(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'export() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'export() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=body)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

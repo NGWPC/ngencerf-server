@@ -1,4 +1,4 @@
-import json
+import logging
 import logging
 import mimetypes
 import os
@@ -48,10 +48,7 @@ def get_plot_names(request):
     # TODO need to clean this up with final directory names, etc
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'get_plot_names() request from {request.user} - {data}')
 
@@ -135,10 +132,7 @@ def download_plot(filename):
 def get_plot(request):
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'get_plot() request from {request.user} - {data}')
 

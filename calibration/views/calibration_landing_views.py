@@ -1,4 +1,3 @@
-import json
 import logging
 from json.decoder import JSONDecodeError
 
@@ -91,23 +90,20 @@ def create_calibration_run(request):
 # @permission_classes([AllowAny])
 def get_jobs(request):
     try:
+        data = request.data if request.method == 'POST' else request.query_params
 
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
-
-        logger.debug(f'get_jobs() request from {request.user}')
+        logger.debug(f'get_jobs() request from {request.user} - {data}')
 
         validator = GageIdOptionalSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         gage_id = validator.data.get('gage_id')
 
-        jobs = CalibrationRun.objects.filter(
-            Q(owner=request.user) &
-            Q(gage__gage_id=gage_id) if gage_id else Q()
-        )
+        query = Q(owner=request.user)
+        if gage_id:
+            query &= Q(gage__gage_id=gage_id) & Q(status__name__in=[StatusEnum.DONE, StatusEnum.FAILED])
+
+        jobs = CalibrationRun.objects.filter(query)
 
         # Get all jobs for this user
         runs = list(jobs

@@ -1,5 +1,4 @@
 import csv
-import json
 import logging
 import os
 from datetime import MAXYEAR as MAXYEAR
@@ -104,10 +103,7 @@ module_sample_data = {"modules": [
 def load_tuning_tab(request):
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
@@ -307,10 +303,10 @@ def get_module_data_from_hydrofabric(run, modules):
 def save_tuning_tab(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'save_tuning_tab() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'save_tuning_tab() request from {request.user} - {data}')
 
-        validator = SaveTuningRequestSerializer(data=body)
+        validator = SaveTuningRequestSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

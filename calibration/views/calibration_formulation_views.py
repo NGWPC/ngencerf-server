@@ -234,10 +234,8 @@ module_sample_data = {"modules": [
 def load_formulation_tab(request):
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
@@ -384,10 +382,10 @@ def get_modules_from_hydrofabric(run):
 def save_formulation_tab(request):
     try:
         print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
+        data = request.data
+        logger.debug(f'save_formulation_tab() request from {request.user} - {data}')
 
-        validator = SaveFormulationRequestSerializer(data=body)
+        validator = SaveFormulationRequestSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         new_module_names = set(validator.data.get('modules'))

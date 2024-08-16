@@ -1,5 +1,4 @@
 import base64
-import json
 import logging
 import os
 from json.decoder import JSONDecodeError
@@ -68,10 +67,7 @@ logger = logging.getLogger(__name__)
 def load_gage_tab(request):
     try:
         print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
@@ -156,10 +152,7 @@ def load_gage_tab(request):
 # @permission_classes([AllowAny])
 def get_gage(request):
     try:
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+        data = request.data if request.method == 'POST' else request.query_params
 
         logger.debug(f'get_gage() request from {request.user} - {data}')
 
@@ -277,9 +270,9 @@ def save_gage_tab(request):
     try:
         print('user', request.user)
 
-        body = json.loads(request.body or '{}')
-        logger.debug(f'save_gage_tab() request from {request.user} - {body}')
-        validator = SaveGageRequestSerializer(data=body)
+        data = request.data
+        logger.debug(f'save_gage_tab() request from {request.user} - {data}')
+        validator = SaveGageRequestSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -396,9 +389,9 @@ def upload_observational_data(request):
     try:
         print('user', request.user)
 
-        body = request.POST
-        logger.debug(f'upload_observational_data() request from {request.user} - {body}')
-        validator = CalibrationRunSerializer(data=body)
+        data = request.data
+        logger.debug(f'upload_observational_data() request from {request.user} - {data}')
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -493,9 +486,9 @@ def upload_forcing_data(request):
     try:
         print('user', request.user)
 
-        body = request.POST
-        logger.debug(f'upload_forcing_data() request from {request.user} - {body}')
-        validator = UploadForcingSerializer(data=body)
+        data = request.data
+        logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
+        validator = UploadForcingSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
