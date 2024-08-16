@@ -14,7 +14,8 @@ from rest_framework.response import Response
 
 from calibration.createInput import create_input
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration
+from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration, IterationTuneParameter, \
+    CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
@@ -143,56 +144,61 @@ def submit_job(run):
 
 
 # This is just a test endpoint to trigger read_output()
+# @handle_exceptions
 @api_view(['GET', 'POST'])
 def test_read_output(request):
-    data = request.data if request.method == 'POST' else request.query_params
-    calibration_run_id = data.get('calibration_run_id')
-    optimization_name = data.get('optimization')
-    username = data.get('user')
+    try:
+        data = request.data if request.method == 'POST' else request.query_params
+        calibration_run_id = data.get('calibration_run_id')
+        optimization_name = data.get('optimization')
+        username = data.get('user')
 
-    # TODO This should only be for DONE jobs
-    # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
-    run, errorReturn = get_run(calibration_run_id, request.user)
+        # TODO This should only be for DONE jobs
+        # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+        run, errorReturn = get_run(calibration_run_id, request.user)
+        print('run', run)
 
-    # if errorReturn:
-    #     return errorReturn
-    if not run:
-        # create some dummies
-        gage = Gage(gage_id='01123000')
-        optimization = Optimization(name=optimization_name)
-        owner = get_user_model()(username=username)
-        objective_function = Metric(name='kge')
-        run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
-                             objective_function=objective_function, owner=owner)
+        # if errorReturn:
+        #     return errorReturn
+        if not run:
+            # create some dummies
+            gage = Gage(gage_id='01123000')
+            optimization = Optimization(name=optimization_name)
+            owner = get_user_model()(username=username)
+            objective_function = Metric(name='kge')
+            run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
+                                 objective_function=objective_function, owner=owner)
 
-        # .
-        # └── ngen-cal-work
-        #     ├── bmi_config
-        #     │   └── Noah-OWP
-        #     ├── parquet
-        #     └── run_calib                      NGEN_CAL_RUN_DIR
-        #         ├── 100_peterx
-        #         │   └── kge_dds
-        #         │       └── cfe_noah
-        #         │           └── 01123000
-        #         ├── 101_peterx
-        #         │   └── kge_gwo
-        #         │       └── cfe_noah
-        #         │           └── 01123000
-        #         └── 102_peterx
-        #             └── kge_pso
-        #                 └── cfe_noah
-        #                     └── 01123000
+            # .
+            # └── ngen-cal-work
+            #     ├── bmi_config
+            #     │   └── Noah-OWP
+            #     ├── parquet
+            #     └── run_calib                      NGEN_CAL_RUN_DIR
+            #         ├── 100_peterx
+            #         │   └── kge_dds
+            #         │       └── cfe_noah
+            #         │           └── 01123000
+            #         ├── 101_peterx
+            #         │   └── kge_gwo
+            #         │       └── cfe_noah
+            #         │           └── 01123000
+            #         └── 102_peterx
+            #             └── kge_pso
+            #                 └── cfe_noah
+            #                     └── 01123000
 
-    formulation_name = run.ngen_formulation_name
-    gage_id = run.gage.gage_id
-    gage_dir = os.path.join(NGEN_CAL_RUN_DIR, f'{calibration_run_id}_{run.owner.username}',
-                            f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}', formulation_name, gage_id)
-    print("gage_dir", gage_dir)
+        formulation_name = run.ngen_formulation_name
+        gage_id = run.gage.gage_id
+        gage_dir = os.path.join(NGEN_CAL_RUN_DIR, f'{calibration_run_id}_{run.owner.username}',
+                                f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}', formulation_name, gage_id)
+        print("gage_dir", gage_dir)
 
-    read_output(gage_dir, run)
+        read_output(gage_dir, run)
 
-    return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
+        return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
+    except Exception as e:
+        return Response('got an exception')
 
 
 # This is not an endpoint, but will be automatically called
@@ -205,13 +211,7 @@ def read_output(gage_dir, run):
 
     output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
 
-    metrics_iteration_filename = f'{run.gage.gage_id}_metrics_iteration.csv'
-    # Contains the best for a single worker
-    objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
-
-    # Contains the best across all workers -- Only for GWO and PSO
-    cost_hist_filename = f'{run.gage.gage_id}_cost_hist.csv'
-    cost_hist_file = os.path.join(output_calibration_run_dir, cost_hist_filename)
+    cost_hist_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_cost_hist.csv')
     # Get the best iteration number across all works
     # TODO This is not right
     # last_line = read_last_line(cost_hist_file)
@@ -222,25 +222,29 @@ def read_output(gage_dir, run):
 
     with transaction.atomic():
         run.save()
-        find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
+        find_worker_directories(run, output_calibration_run_dir)
 
 
-def find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename):
+def find_worker_directories(run, output_calibration_run_dir):
     pattern = re.compile(r'^ngen_\w*_worker$')
 
     for worker_name in os.listdir(output_calibration_run_dir):
         worker_path = os.path.join(output_calibration_run_dir, worker_name)
         # Check if it's a directory and matches the pattern
         if os.path.isdir(worker_path) and pattern.match(worker_name):
-            process_metrics_iteration(run, worker_path, metrics_iteration_filename, objective_log_best_filename)
+            process_metrics_iteration(run, worker_path)
 
 
-def process_metrics_iteration(run, worker_path, metrics_iteration_file, objective_log_best_filename):
-    metrics_iteration_file = os.path.join(worker_path, metrics_iteration_file)
-    objective_log_best_file = os.path.join(worker_path, objective_log_best_filename)
-    cost_hist_file = os.path.join(worker_path, objective_log_best_filename)
+def process_metrics_iteration(run, worker_path,):
+    metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
+    params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv' )
+    # Contains the best for a single worker
+    objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
+
     if not os.path.exists(metrics_iteration_file):
         raise Exception(f'{metrics_iteration_file} does not exist')
+    if not os.path.exists(params_iteration_file):
+        raise Exception(f'{params_iteration_file} does not exist')
     if not os.path.exists(objective_log_best_file):
         raise Exception(f'{objective_log_best_file} does not exist')
 
@@ -250,9 +254,21 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
 
     worker_name = os.path.basename(worker_path)
 
+    #########
+    # TODO For dev only, we will delete entries first
+    #########
+    deleted, _ = IterationMetric.objects.filter(iteration__calibration_run=run).delete()
+    logger.debug(f"Deleted {deleted} Iteration records for calibration_run {run.id}")
+    IterationTuneParameter.objects.filter(iteration__calibration_run=run).delete()
+    Iteration.objects.filter(calibration_run=run).delete()
+    #####
+
     iterations_to_create = []
     metrics_to_create = []
+    params_to_create = []
 
+    # Create the Iteration objects
+    # We read the metrics_iteration_file to get the output variable value, as well as count the iterations
     with open(metrics_iteration_file) as file:
         reader = csv.DictReader(file)
         # iteration,objFunVal,Corr,MAE,RMSE,RSR,PBIAS,NSE,NSELog,NSEWt,KGE,POD,FAR,CSI,FBIAS,HSEG_FDC,MSEG_FDC,LSEG_FDC
@@ -270,29 +286,22 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
             )
             iterations_to_create.append(iteration)
 
-        #########
-        # TODO For dev only, we will delete entries first
-        #########
-        IterationMetric.objects.filter(iteration__calibration_run=run).delete()
-        Iteration.objects.filter(calibration_run=run).delete()
-        #####
-
         # Bulk create Iteration objects
         created_iterations = Iteration.objects.bulk_create(iterations_to_create)
 
-        # Rewind the reader to the beginning of the CSV to pair up with the created iterations
-        file.seek(0)
-        reader = csv.DictReader(file)
+    with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
+        metrics_reader = csv.DictReader(metrics_file)
+        params_reader = csv.DictReader(params_file)
 
-        for iteration, row_dict in zip(created_iterations, reader):
-            for metric_name, value in row_dict.items():
+        # Read the metrics file again, this time getting all the metrics values
+        for iteration, metrics_row, params_row in zip(created_iterations, metrics_reader, params_reader):
+            for metric_name, value in metrics_row.items():
                 if metric_name in ['iteration', 'objFunVal']:
                     continue
                 # Do a case-insensitive match
                 metric = Metric.objects.filter(name__iexact=metric_name).first()
                 if not metric:
-                    print("Could not find metric", metric_name)
-                    continue
+                    raise Exception(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
 
                 metric_value = float(value) if value else None
                 metric_obj = IterationMetric(
@@ -302,8 +311,26 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
                 )
                 metrics_to_create.append(metric_obj)
 
-        # Bulk create IterationMetric objects
-        IterationMetric.objects.bulk_create(metrics_to_create)
+            # Process the parameters
+            for param_name, value in params_row.items():
+                if param_name in ['iteration']:
+                    continue
+                # Do a case-insensitive match
+                parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
+                if not parameter:
+                    raise Exception(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
+
+                param_value = float(value) if value else None
+                param_obj = IterationTuneParameter(
+                    iteration=iteration,
+                    parameter=parameter,
+                    param_value=param_value
+                )
+                params_to_create.append(param_obj)
+
+# Bulk create IterationMetric and IterationTuneParameter objects
+    IterationMetric.objects.bulk_create(metrics_to_create)
+    IterationTuneParameter.objects.bulk_create(params_to_create)
 
 
 # Read backwards from the end of the file until we find linefeed.  Then read the line

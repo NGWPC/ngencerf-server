@@ -381,15 +381,7 @@ def save_formulation_tab(request):
 
     run.user_formulation_name = user_formulation_name
 
-    if use_sloth:
-        new_module_names.add(SLOTH)
-        if not sloth_parameters:
-            return ResponseError(f"If 'use_sloth' is checked, you must enter {SLOTH} parameters")
-    else:
-        if sloth_parameters:
-            return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
-
-    # Did we get the names from Hydrofabric
+    # Did we get the names from Hydrofabric?
     if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
         return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
 
@@ -399,6 +391,14 @@ def save_formulation_tab(request):
 
     if not validate_formulation(run, new_module_names):
         return ResponseError(f'Invalid formulation -  {new_module_names}')
+
+    if use_sloth:
+        new_module_names.add(SLOTH)
+        if not sloth_parameters:
+            return ResponseError(f"If 'use_sloth' is checked, you must enter {SLOTH} parameters")
+    else:
+        if sloth_parameters:
+            return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
 
     run.use_sloth = use_sloth
 
@@ -442,7 +442,6 @@ def save_formulation_tab(request):
                                  httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
         return Response(serializer.data)
-
 
 
 def validate_modules(run, module_names):
