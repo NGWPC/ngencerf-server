@@ -611,7 +611,7 @@ class ErrorDetailListField(serializers.ListField):
 class ValidationExceptionSerializer(BaseSerializer):
     # validation_error = serializers.DictField(child=ErrorDetailListField(), required=True)
     validation_error = serializers.JSONField(required=True)
-    
+
 
 class ExceptionResponseSerializer(BaseSerializer):
     exception = serializers.CharField(required=True)

@@ -5,7 +5,6 @@ from django.db.models import F
 from drf_spectacular.utils import extend_schema, OpenApiParameter, PolymorphicProxySerializer
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
@@ -13,7 +12,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Lo
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError
+from calibration.views.common import get_run, ResponseError, handle_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -39,68 +38,58 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])()
+@handle_exceptions
 def load_optimization_tab(request):
-    try:
-        print('user', request.user)
-        data = request.data if request.method == 'POST' else request.query_params
+    print('user', request.user)
+    data = request.data if request.method == 'POST' else request.query_params
 
-        logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
+    logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = CalibrationRunSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        objective_function = run.objective_function.name if run.objective_function else None
-        streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
-        peak_flow_threshold = run.peak_flow_threshold if (run.objective_function and run.objective_function.event_based) else None
-        optimization, optimization_inputs = get_user_optimization(run)
+    objective_function = run.objective_function.name if run.objective_function else None
+    streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
+    peak_flow_threshold = run.peak_flow_threshold if (run.objective_function and run.objective_function.event_based) else None
+    optimization, optimization_inputs = get_user_optimization(run)
 
-        metrics = get_metrics()
+    metrics = get_metrics()
 
-        optimization_list = get_static_optimizations()
+    optimization_list = get_static_optimizations()
 
-        plot_frequency = run.plot_frequency if run.plot_frequency else None
+    plot_frequency = run.plot_frequency if run.plot_frequency else None
 
-        calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-        stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
+    calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
+    stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
 
-        ngen_cal_input.ready_to_run(run)
-        response = {'calibration_run_id': run.id, 'status': run.status.name,
-                    'streamflow_threshold': streamflow_threshold,
-                    'peak_flow_threshold': peak_flow_threshold,
-                    'metrics': metrics,
-                    'optimization': optimization,
-                    'optimization_inputs': optimization_inputs,
-                    'objective_function': objective_function,
-                    'optimizations': optimization_list,
-                    'plot_frequency': plot_frequency,
-                    'stop_criteria': stop_criteria
-                    }
+    ngen_cal_input.ready_to_run(run)
+    response = {'calibration_run_id': run.id, 'status': run.status.name,
+                'streamflow_threshold': streamflow_threshold,
+                'peak_flow_threshold': peak_flow_threshold,
+                'metrics': metrics,
+                'optimization': optimization,
+                'optimization_inputs': optimization_inputs,
+                'objective_function': objective_function,
+                'optimizations': optimization_list,
+                'plot_frequency': plot_frequency,
+                'stop_criteria': stop_criteria
+                }
 
-        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadOptimizationResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from load_optimization_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
+    serializer = LoadOptimizationResponseSerializer(data=response)
+    if not serializer.is_valid():
+        return ResponseError(f'Data format error returning from load_optimization_tab() - {serializer.errors}',
+                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
 
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(serializer.data)
 
 
 def get_user_optimization(run):
@@ -148,70 +137,60 @@ def get_metrics():
 )
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def save_optimization_tab(request):
-    try:
-        print('user', request.user)
-        data = request.data
-        logger.debug(f'save_optimization_tab() request from {request.user} - {data}')
+    print('user', request.user)
+    data = request.data
+    logger.debug(f'save_optimization_tab() request from {request.user} - {data}')
 
-        validator = SaveOptimizationRequestSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = SaveOptimizationRequestSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
-        optimization_name = validator.data.get('optimization')
-        objective_function_name = validator.data.get('objective_function')
-        streamflow_threshold = validator.data.get('streamflow_threshold')
-        peak_flow_threshold = validator.data.get('peak_flow_threshold')
-        optimization_inputs = validator.data.get('optimization_inputs')
-        stop_criteria = validator.data.get('stop_criteria')
-        plot_frequency = validator.data.get('plot_frequency')
+    calibration_run_id = validator.data.get('calibration_run_id')
+    optimization_name = validator.data.get('optimization')
+    objective_function_name = validator.data.get('objective_function')
+    streamflow_threshold = validator.data.get('streamflow_threshold')
+    peak_flow_threshold = validator.data.get('peak_flow_threshold')
+    optimization_inputs = validator.data.get('optimization_inputs')
+    stop_criteria = validator.data.get('stop_criteria')
+    plot_frequency = validator.data.get('plot_frequency')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        if optimization_inputs and not optimization_name:
-            return ResponseError('Optimization inputs cannot be specified without an optimization name')
+    if optimization_inputs and not optimization_name:
+        return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
-        optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
-        if message:
-            return ResponseError(message)
+    optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
+    if message:
+        return ResponseError(message)
 
-        message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
-        if message:
-            return ResponseError(message)
+    message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
+    if message:
+        return ResponseError(message)
 
-        run.plot_frequency = plot_frequency
-        run.streamflow_threshold = streamflow_threshold
-        run.peak_flow_threshold = peak_flow_threshold
+    run.plot_frequency = plot_frequency
+    run.streamflow_threshold = streamflow_threshold
+    run.peak_flow_threshold = peak_flow_threshold
 
-        with transaction.atomic():
-            # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
-            CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
+    with transaction.atomic():
+        # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
+        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
-            write_optimization_inputs(run, optimization, optimization_inputs)
+        write_optimization_inputs(run, optimization, optimization_inputs)
 
-            run.save()
+        run.save()
 
-            ngen_cal_input.ready_to_run(run)
+        ngen_cal_input.ready_to_run(run)
 
-            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-            serializer = SaveOptimizationResponseSerializer(data=response)
-            if not serializer.is_valid():
-                return ResponseError(f'Data format error returning from save_optimization_tab() - {serializer.errors}',
-                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
-            return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+        serializer = SaveOptimizationResponseSerializer(data=response)
+        if not serializer.is_valid():
+            return ResponseError(f'Data format error returning from save_optimization_tab() - {serializer.errors}',
+                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
+        return Response(serializer.data)
 
 
 def validate_optimizations(run, optimization_name, optimization_inputs):

@@ -6,10 +6,8 @@ from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
@@ -22,7 +20,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError
+from calibration.views.common import get_run, ResponseError, handle_exceptions
 from calibration.views.ngen_cal_input import get_main_dir
 
 geopackage_sample_data = {
@@ -62,63 +60,55 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def load_gage_tab(request):
-    try:
-        print('user', request.user)
-        data = request.data if request.method == 'POST' else request.query_params
+    print('user', request.user)
+    data = request.data if request.method == 'POST' else request.query_params
 
-        logger.debug(f'load_gage_tab() request from {request.user} - {data}')
+    logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = CalibrationRunSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
-                'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
+    gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
+            'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
-        forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
-        observational_source_values = list(ObservationalSource.objects
-                                           .values('name', 'description', 'is_active'))
-        domain_values = list(Domain.objects
-                             .values('name', 'description', 'is_active'))
+    forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
+    observational_source_values = list(ObservationalSource.objects
+                                       .values('name', 'description', 'is_active'))
+    domain_values = list(Domain.objects
+                         .values('name', 'description', 'is_active'))
 
-        gages = list(Gage.objects.filter(is_active=True)
-                     .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
-        [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
+    gages = list(Gage.objects.filter(is_active=True)
+                 .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
+    [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
-                    'forcing_source': run.forcing_source, 'forcing_user_dir': run.forcing_user_dir,
-                    'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
-                    'domain_values': domain_values,
-                    'forcing_source_values': forcing_source_values,
-                    'observational_source_values': observational_source_values,
-                    'gages': gages}
-        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
+                'forcing_source': run.forcing_source, 'forcing_user_dir': run.forcing_user_dir,
+                'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
+                'domain_values': domain_values,
+                'forcing_source_values': forcing_source_values,
+                'observational_source_values': observational_source_values,
+                'gages': gages}
+    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadGageResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from load_gage_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
+    serializer = LoadGageResponseSerializer(data=response)
+    if not serializer.is_valid():
+        return ResponseError(f'Data format error returning from load_gage_tab() - {serializer.errors}',
+                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(serializer.data)
+
+
 
 
 @extend_schema(
@@ -142,37 +132,29 @@ def load_gage_tab(request):
 )
 @api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def get_gage(request):
-    try:
-        data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params
 
-        logger.debug(f'get_gage() request from {request.user} - {data}')
+    logger.debug(f'get_gage() request from {request.user} - {data}')
 
-        validator = GageIdSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = GageIdSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        gage_id = validator.data.get('gage_id')
+    gage_id = validator.data.get('gage_id')
 
-        gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
-        if not gage:
-            return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-        serializer = GageSerializer(data=gage)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from get_gage() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
+    gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
+    if not gage:
+        return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+    serializer = GageSerializer(data=gage)
+    if not serializer.is_valid():
+        return ResponseError(f'Data format error returning from get_gage() - {serializer.errors}',
+                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(serializer.data)
+
+
 
 
 def get_geopackage_from_hydrofabric(gage_id):
@@ -252,85 +234,76 @@ def get_forcing_data_from_hydrofabric(forcing_source):
 )
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def save_gage_tab(request):
-    try:
-        print('user', request.user)
+    print('user', request.user)
 
-        data = request.data
-        logger.debug(f'save_gage_tab() request from {request.user} - {data}')
-        validator = SaveGageRequestSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    data = request.data
+    logger.debug(f'save_gage_tab() request from {request.user} - {data}')
+    validator = SaveGageRequestSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
-        gage_id = validator.data.get('gage_id')
-        forcing_source = validator.data.get('forcing_source')
-        observational_source = validator.data.get('observational_source')
+    calibration_run_id = validator.data.get('calibration_run_id')
+    gage_id = validator.data.get('gage_id')
+    forcing_source = validator.data.get('forcing_source')
+    observational_source = validator.data.get('observational_source')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        geopackage_image_url = None
-        if gage_id:
-            gage = save_gage(run, gage_id)
-            if not gage:
-                return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+    geopackage_image_url = None
+    if gage_id:
+        gage = save_gage(run, gage_id)
+        if not gage:
+            return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
 
-            print('gage_id', gage_id)
-            try:
-                geopackage_path = save_geopackage_path(run, gage_id)
-            except ClientError as e:
-                # TODO Check for other errors
-                return Response(f'Error downloading geopackage from AWS.  Check your credentials - {e}')
+        print('gage_id', gage_id)
+        try:
+            geopackage_path = save_geopackage_path(run, gage_id)
+        except ClientError as e:
+            # TODO Check for other errors
+            return Response(f'Error downloading geopackage from AWS.  Check your credentials - {e}')
 
-            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+        geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
-            # Convert to base64 so we can return to the front-end
-            # with open(geopackage_png, 'rb') as geopackage_data:
-            #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
-            # extension = geopackage_path.split('.')[-1]
-            # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
+        # Convert to base64 so we can return to the front-end
+        # with open(geopackage_png, 'rb') as geopackage_data:
+        #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
+        # extension = geopackage_path.split('.')[-1]
+        # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
 
-            # Convert ByteIO image to base64
-            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-            geopackage_image_url = f'data:image/png;base64,{base64_str}'
+        # Convert ByteIO image to base64
+        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+        geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
-            # Get observational data
-            run.forcing_source = forcing_source
-            run.observational_source = observational_source
-            try:
-                if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
-                    run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+        # Get observational data
+        run.forcing_source = forcing_source
+        run.observational_source = observational_source
+        try:
+            if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
+                run.observational_path = get_observational_data_from_hydrofabric(observational_source)
 
-                if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
-                    run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
-            except ClientError as e:
-                return Response(f'Error downloading forcing or observational data from AWS.  Check your credentials - {e}')
+            if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
+                run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+        except ClientError as e:
+            return Response(f'Error downloading forcing or observational data from AWS.  Check your credentials - {e}')
 
-        with transaction.atomic():
-            run.save()
+    with transaction.atomic():
+        run.save()
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
-                    'geopackage_image': geopackage_image_url}
+    response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
+                'geopackage_image': geopackage_image_url}
 
-        serializer = SaveGageResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from save_gage_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    serializer = SaveGageResponseSerializer(data=response)
+    if not serializer.is_valid():
+        return ResponseError(f'Data format error returning from save_gage_tab() - {serializer.errors}',
+                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
+    return Response(serializer.data)
+
 
 
 # Function to be used for saving a config file to allow CLI
@@ -365,79 +338,73 @@ def save_geopackage_path(run, gage_id):
 )
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def upload_observational_data(request):
-    try:
-        print('user', request.user)
+    print('user', request.user)
 
-        data = request.data
-        logger.debug(f'upload_observational_data() request from {request.user} - {data}')
-        validator = CalibrationRunSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    data = request.data
+    logger.debug(f'upload_observational_data() request from {request.user} - {data}')
+    validator = CalibrationRunSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
-            return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
+    if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
+        return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
-        if len(request.FILES) == 0:
-            return ResponseError('Observational data must be uploaded')
+    if len(request.FILES) == 0:
+        return ResponseError('Observational data must be uploaded')
 
-        keys = set(request.FILES.keys())
-        key = 'observational_file'
-        if key not in keys:
-            return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
+    keys = set(request.FILES.keys())
+    key = 'observational_file'
+    if key not in keys:
+        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
-        keys.remove(key)
-        if len(keys) > 0:
-            return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
+    keys.remove(key)
+    if len(keys) > 0:
+        return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Need to upload to the run-specific observational directory, as opposed to the global directory
-        main_dir = get_main_dir(run)
-        observational_dir = os.path.join(main_dir, 'observation')
-        fs = FileSystemStorage(location=observational_dir)
+    # Need to upload to the run-specific observational directory, as opposed to the global directory
+    main_dir = get_main_dir(run)
+    observational_dir = os.path.join(main_dir, 'observation')
+    fs = FileSystemStorage(location=observational_dir)
 
-        # Make sure file doesn't exist
-        files = request.FILES.getlist(key)
-        count = len(files)
-        if count > 1:
-            return ResponseError("Only one observational file should be uploaded")
+    # Make sure file doesn't exist
+    files = request.FILES.getlist(key)
+    count = len(files)
+    if count > 1:
+        return ResponseError("Only one observational file should be uploaded")
 
-        observational_file = files[0]
-        run.observational_file_path = os.path.join(observational_dir, observational_file.name)
-        run.observational_user_filename = observational_file.name
+    observational_file = files[0]
+    run.observational_file_path = os.path.join(observational_dir, observational_file.name)
+    run.observational_user_filename = observational_file.name
 
-        fs.save(observational_file.name, observational_file)
+    fs.save(observational_file.name, observational_file)
 
-        # Invalidate the dates, since we'll have to compute the intersection again
-        run.time_range_start = None
-        run.time_range_end = None
+    # Invalidate the dates, since we'll have to compute the intersection again
+    run.time_range_start = None
+    run.time_range_end = None
 
-        with transaction.atomic():
-            run.save()
+    with transaction.atomic():
+        run.save()
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
-                    'status': run.status.name}
+    response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+                'status': run.status.name}
 
-        serializer = GenericResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from upload_observational_data() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
-        return Response(serializer.data)
-    except serializers.ValidationError as e:
-        logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    serializer = GenericResponseSerializer(data=response)
+    if not serializer.is_valid():
+        return ResponseError(f'Data format error returning from upload_observational_data() - {serializer.errors}',
+                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
+    return Response(serializer.data)
+
+
 
 
 @extend_schema(
@@ -457,76 +424,70 @@ def upload_observational_data(request):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
+@handle_exceptions
 # @permission_classes([AllowAny])
 def upload_forcing_data(request):
-    try:
-        print('user', request.user)
+    print('user', request.user)
 
-        data = request.data
-        logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
-        validator = UploadForcingSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    data = request.data
+    logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
+    validator = UploadForcingSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
-        forcing_user_dir = validator.data.get('forcing_user_dir')
+    calibration_run_id = validator.data.get('calibration_run_id')
+    forcing_user_dir = validator.data.get('forcing_user_dir')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
-            return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
+    if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
+        return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
-        # Validate the file keys and how many there are
-        if len(request.FILES) == 0:
-            return ResponseError('Forcing data must be uploaded')
+    # Validate the file keys and how many there are
+    if len(request.FILES) == 0:
+        return ResponseError('Forcing data must be uploaded')
 
-        keys = set(request.FILES.keys())
-        key = 'forcing_files'
-        if key not in keys:
-            return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
+    keys = set(request.FILES.keys())
+    key = 'forcing_files'
+    if key not in keys:
+        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
-        keys.remove(key)
-        if len(keys) > 0:
-            return Response({'validation_error': f"Unexpected keys {keys}"}, status=status.HTTP_400_BAD_REQUEST)
+    keys.remove(key)
+    if len(keys) > 0:
+        return Response({'validation_error': f"Unexpected keys {keys}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Need to upload to the run-specific observational directory, as opposed to the global directory
-        main_dir = get_main_dir(run)
-        subdir = run.gage.gage_id
-        run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
-        run.forcing_user_dir = forcing_user_dir
+    # Need to upload to the run-specific observational directory, as opposed to the global directory
+    main_dir = get_main_dir(run)
+    subdir = run.gage.gage_id
+    run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
+    run.forcing_user_dir = forcing_user_dir
 
-        fs = FileSystemStorage(location=run.forcing_dir_path)
+    fs = FileSystemStorage(location=run.forcing_dir_path)
 
-        # Note that this will replace files that already exist
-        files = request.FILES.getlist(key)
-        for forcing_file in files:
-            fs.save(forcing_file.name, forcing_file)
+    # Note that this will replace files that already exist
+    files = request.FILES.getlist(key)
+    for forcing_file in files:
+        fs.save(forcing_file.name, forcing_file)
 
-        # Invalidate the dates, since we'll have to compute the intersection again
-        run.time_range_start = None
-        run.time_range_end = None
+    # Invalidate the dates, since we'll have to compute the intersection again
+    run.time_range_start = None
+    run.time_range_end = None
 
-        with transaction.atomic():
-            run.save()
+    with transaction.atomic():
+        run.save()
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        file_or_files = 'file' if len(files) == 1 else 'files'
-        response = {'message': f'{len(files)} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                    'status': run.status.name}
+    file_or_files = 'file' if len(files) == 1 else 'files'
+    response = {'message': f'{len(files)} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                'status': run.status.name}
 
-        serializer = GenericResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from upload_forcing_data() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
-        return Response(serializer.data)
-    except serializers.ValidationError as e:
-        logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    serializer = GenericResponseSerializer(data=response)
+    if not serializer.is_valid():
+        return ResponseError(f'Data format error returning from upload_forcing_data() - {serializer.errors}',
+                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
+    return Response(serializer.data)
+
+

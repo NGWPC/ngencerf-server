@@ -9,9 +9,7 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from git import Repo
-from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.createInput import create_input
@@ -20,7 +18,7 @@ from calibration.models import CalibrationRun, Gage, Optimization, Metric, Itera
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run
+from calibration.views.common import ResponseError, get_run, handle_exceptions
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
@@ -44,43 +42,35 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])()
+@handle_exceptions
 def is_ready(request):
-    try:
-        print('user', request.user)
+    print('user', request.user)
 
-        data = request.data
-        logger.debug(f'is_ready() request from {request.user} - {data}')
+    data = request.data
+    logger.debug(f'is_ready() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = CalibrationRunSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        messages, _ = ngen_cal_input.ready_to_run(run)
+    messages, _ = ngen_cal_input.ready_to_run(run)
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name}
-        ready_not_ready = 'not ready' if messages else 'ready'
-        response['message'] = f'Calibration Run {run.id} is {ready_not_ready}'
-        if messages:
-            response['errors'] = messages
+    response = {'calibration_run_id': run.id, 'status': run.status.name}
+    ready_not_ready = 'not ready' if messages else 'ready'
+    response['message'] = f'Calibration Run {run.id} is {ready_not_ready}'
+    if messages:
+        response['errors'] = messages
 
-        serializer = IsReadyResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from is_ready() - {serializer.data}')
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    serializer = IsReadyResponseSerializer(response)
+    logger.debug(f'Returning to {request.user} from is_ready() - {serializer.data}')
+    return Response(serializer.data)
+
+
 
 
 @extend_schema(
@@ -100,41 +90,33 @@ def is_ready(request):
     description="Run a calibration"
 )
 @api_view(['POST'])
+@handle_exceptions
 def run_calibration(request):
-    try:
-        print('user', request.user)
+    print('user', request.user)
 
-        data = request.data
-        logger.debug(f'run_calibration() request from {request.user} - {data}')
+    data = request.data
+    logger.debug(f'run_calibration() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = CalibrationRunSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        message = submit_job(run)
-        if message:
-            return ResponseError(message)
+    message = submit_job(run)
+    if message:
+        return ResponseError(message)
 
-        response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                    'status': run.status.name}
-        serializer = GenericResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+                'status': run.status.name}
+    serializer = GenericResponseSerializer(response)
+    logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
+    return Response(serializer.data)
+
+
 
 
 def submit_job(run):
@@ -354,42 +336,32 @@ def read_last_line(filename):
 # Called by ngen_cal
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def report_iteration(request):
-    try:
-        print('user', request.user)
-        data = request.data
-        logger.debug(f'report_iteration() request from {request.user} - {data}')
+    print('user', request.user)
+    data = request.data
+    logger.debug(f'report_iteration() request from {request.user} - {data}')
 
-        validator = ReportIterationSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = ReportIterationSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
-        iteration_number = validator.data.get('iteration')
+    calibration_run_id = validator.data.get('calibration_run_id')
+    iteration_number = validator.data.get('iteration')
 
-        run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    if errorReturn:
+        return errorReturn
 
-        with transaction.atomic():
-            # TODO Do we always create a new one, or check to see if this iteration number exists?
-            # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
-            Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
-            response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                        'status': run.status.name}
-            serializer = GenericResponseSerializer(response)
-            logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
+    with transaction.atomic():
+        # TODO Do we always create a new one, or check to see if this iteration number exists?
+        # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
+        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
+        response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                    'status': run.status.name}
+        serializer = GenericResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
-            return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response(serializer.data)
 
 
 @extend_schema(
@@ -411,37 +383,29 @@ def report_iteration(request):
 # Called by ngen_cal
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def get_iteration(request):
-    try:
-        print('user', request.user)
-        data = request.data if request.method == 'POST' else request.query_params
-        logger.debug(f'get_iteration() request from {request.user} - {data}')
+    print('user', request.user)
+    data = request.data if request.method == 'POST' else request.query_params
+    logger.debug(f'get_iteration() request from {request.user} - {data}')
 
-        validator = CalibrationRunSerializer(data=data)
-        validator.is_valid(raise_exception=True)
+    validator = CalibrationRunSerializer(data=data)
+    validator.is_valid(raise_exception=True)
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        # TODO read output file
+    # TODO read output file
 
-        run, errorReturn = get_run(calibration_run_id, request.user)  # run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)  # run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    if errorReturn:
+        return errorReturn
 
-        iteration = 1
-        response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
-                    'status': run.status.name, 'iteration': iteration}
-        serializer = GenericResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
+    iteration = 1
+    response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
+                'status': run.status.name, 'iteration': iteration}
+    serializer = GenericResponseSerializer(response)
+    logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
-        return Response(serializer.data)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(serializer.data)
+
+
