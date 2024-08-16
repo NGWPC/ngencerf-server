@@ -98,7 +98,7 @@ class JobsResponseSerializer(BaseSerializer):
 
 
 class GetJobsResponseSerializer(BaseSerializer):
-    jobs = serializers.ListSerializer(child=JobsResponseSerializer(), required=True)
+    jobs = serializers.ListSerializer(child=JobsResponseSerializer(), required=True, allow_empty=True)
 
 
 class FooterResponseSerializer(BaseSerializer):
