@@ -11,7 +11,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
-from calibration.util.calibration_validators import CalibrationRunValidator, LoadOptimizationResponseSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadOptimizationResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -52,7 +52,7 @@ def load_optimization_tab(request):
 
         logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

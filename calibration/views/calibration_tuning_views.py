@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
-from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
@@ -81,7 +81,7 @@ module_sample_data = {"modules": [
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadTuningResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -112,7 +112,7 @@ def load_tuning_tab(request):
 
         logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

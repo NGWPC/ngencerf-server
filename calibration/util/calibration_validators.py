@@ -75,11 +75,11 @@ def s3DirectoryValidator(value):
         raise serializers.ValidationError('This field must be a valid S3 uri to a directory')
 
 
-class CalibrationRunValidator(BaseSerializer):
+class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CalibrationPlotNameValidator(BaseSerializer):
+class CalibrationPlotNameSerializer(BaseSerializer):
     cal_plot_name = serializers.CharField(required=True)
 
 
@@ -499,11 +499,11 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     stop_criteria = serializers.CharField(required=False)
 
 
-class ObservationalHydrofabricValidator(BaseSerializer):
+class ObservationalHydrofabricSerializer(BaseSerializer):
     uri = serializers.CharField(required=True, validators=[s3FileValidator])
 
 
-class ForcingHydrofabricValidator(BaseSerializer):
+class ForcingHydrofabricSerializer(BaseSerializer):
     uri = serializers.CharField(required=True, validators=[s3DirectoryValidator])
 
 
@@ -519,7 +519,7 @@ class IsReadyResponseSerializer(BaseSerializer):
 ##################################
 # Import/Export
 ##################################
-class ExportResponseValidator(BaseSerializer):
+class ExportResponseSerializer(BaseSerializer):
     metadata = serializers.DictField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
@@ -548,7 +548,7 @@ class ExportResponseValidator(BaseSerializer):
     stop_criteria = serializers.IntegerField(required=True, allow_null=False)
 
 
-class ImportValidator(serializers.Serializer):
+class ImportSerializer(serializers.Serializer):
     run_after_import = serializers.BooleanField(required=False, default=False)
     metadata = serializers.DictField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=False)
@@ -580,7 +580,7 @@ class ImportValidator(serializers.Serializer):
 ##################################
 # Misc
 ##################################
-class ReportIterationValidator(BaseSerializer):
+class ReportIterationSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     iteration = serializers.IntegerField(required=True, min_value=1)
 

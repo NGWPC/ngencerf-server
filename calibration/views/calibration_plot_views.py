@@ -15,8 +15,8 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import PlotDefinitions
-from calibration.util.calibration_validators import CalibrationRunValidator, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
-    ValidationErrorSerializer, ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameValidator
+from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
+    ValidationErrorSerializer, ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameSerializer
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
 from calibration.views.common import get_run
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadPlotDefinitionsResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -55,7 +55,7 @@ def get_plot_names(request):
 
         logger.debug(f'get_plot_names() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -112,7 +112,7 @@ def download_plot(filename):
 
 
 @extend_schema(
-    request=CalibrationPlotNameValidator,
+    request=CalibrationPlotNameSerializer,
     responses={
         # 200: ,
         400: PolymorphicProxySerializer(
@@ -142,7 +142,7 @@ def get_plot(request):
 
         logger.debug(f'get_plot() request from {request.user} - {data}')
 
-        validator = CalibrationPlotNameValidator(data=data)
+        validator = CalibrationPlotNameSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         plot_file_name = validator.data.get('cal_plot_name')

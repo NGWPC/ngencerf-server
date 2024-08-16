@@ -17,8 +17,8 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.aws_util import download_s3, download_all_s3
-from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunValidator, GeopackageSerializer, \
-    UploadForcingSerializer, ObservationalHydrofabricValidator, ForcingHydrofabricValidator, SaveGageResponseSerializer, \
+from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, GeopackageSerializer, \
+    UploadForcingSerializer, ObservationalHydrofabricSerializer, ForcingHydrofabricSerializer, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationErrorSerializer, ValidationExceptionSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadGageResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -75,7 +75,7 @@ def load_gage_tab(request):
 
         logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -220,7 +220,7 @@ def get_observational_data_from_hydrofabric(observation_source):
     # response = requests.post(settings.HYDROFABRIC_URL, json=request)
     # response = response.json()
     response = observational_sample_data
-    validator = ObservationalHydrofabricValidator(data=response)
+    validator = ObservationalHydrofabricSerializer(data=response)
     if not validator.is_valid():
         logger.debug(validator.errors)
         raise Exception(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
@@ -240,7 +240,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     # response = requests.post(settings.HYDROFABRIC_URL, json=request)
     # response = response.json()
     response = forcing_sample_data
-    validator = ForcingHydrofabricValidator(data=response)
+    validator = ForcingHydrofabricSerializer(data=response)
     if not validator.is_valid():
         logger.debug(validator.errors)
         raise Exception(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
@@ -374,7 +374,7 @@ def save_geopackage_path(run, gage_id):
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -398,7 +398,7 @@ def upload_observational_data(request):
 
         body = request.POST
         logger.debug(f'upload_observational_data() request from {request.user} - {body}')
-        validator = CalibrationRunValidator(data=body)
+        validator = CalibrationRunSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

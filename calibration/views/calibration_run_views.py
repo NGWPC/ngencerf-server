@@ -19,8 +19,8 @@ from rest_framework.response import Response
 from calibration.createInput import create_input
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration
-from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, ReportIterationValidator
+from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: IsReadyResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -54,7 +54,7 @@ def is_ready(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'is_ready() request from {request.user} - {body}')
 
-        validator = CalibrationRunValidator(data=body)
+        validator = CalibrationRunSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -116,7 +116,7 @@ def run_calibration(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'run_calibration() request from {request.user} - {body}')
 
-        validator = CalibrationRunValidator(data=body)
+        validator = CalibrationRunSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -350,7 +350,7 @@ def read_last_line(filename):
 
 
 @extend_schema(
-    request=ReportIterationValidator,
+    request=ReportIterationSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -375,7 +375,7 @@ def report_iteration(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'report_iteration() request from {request.user} - {body}')
 
-        validator = ReportIterationValidator(data=body)
+        validator = ReportIterationSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -413,7 +413,7 @@ def report_iteration(request):
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -441,7 +441,7 @@ def get_iteration(request):
             data = request.GET
         logger.debug(f'get_iteration() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
+        validator = CalibrationRunSerializer(data=data)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')

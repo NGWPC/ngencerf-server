@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
 from calibration.util.calibration_validators import ValidationErrorSerializer, ValidationExceptionSerializer, ExceptionResponseSerializer, \
-    CalibrationRunValidator, ExportResponseValidator, ImportValidator, GenericMessageResponseSerializer
+    CalibrationRunSerializer, ExportResponseSerializer, ImportSerializer, GenericMessageResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -36,7 +36,7 @@ def import_job(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'export() request from {request.user} - {body}')
 
-        validator = ImportValidator(data=body)
+        validator = ImportSerializer(data=body)
         print('body', body)
         validator.is_valid(raise_exception=True)
 
@@ -207,7 +207,7 @@ def export_job(request):
         body = json.loads(request.body or '{}')
         logger.debug(f'export() request from {request.user} - {body}')
 
-        validator = CalibrationRunValidator(data=body)
+        validator = CalibrationRunSerializer(data=body)
         validator.is_valid(raise_exception=True)
 
         calibration_run_id = validator.data.get('calibration_run_id')
@@ -269,7 +269,7 @@ def export_job(request):
         print('export', export_file)
         export_file = {key: value for key, value in export_file.items() if value not in [None, '', [], {}]}
 
-        serializer = ExportResponseValidator(data=export_file)
+        serializer = ExportResponseSerializer(data=export_file)
         if not serializer.is_valid():
             return ResponseError(f'Data format error returning from export() - {serializer.errors}',
                                  httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
