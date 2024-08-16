@@ -141,20 +141,21 @@ type `Bearer token` that includes the access token.
 
 # Directory structure
 
-By convention with the Docker images, the mount point is at `~/ngwpc/data`.  Under there, we have our work directory, `ngen-cal-work`
+By convention with the Docker images, the mount point is at `~/ngwpc/data`.   This is defined in `settings.py` and should not change without proper coordination. 
 
-There are some static files that need to be put in place before running ngen-cal.  `ngen-cal-work/bmi_config/Noah-OWP` should be created and the 3 TBL files copied there.
-The `parquet` files should be copied to `ngen-cal-work/parquet`
+Under there, we have our work directory, `ngen-cal-work`.  This directory contains files that are common and can be shared with all the calibration runs, such as forcing and observation data that comes from hydrofabric,
+as well as some static files.
 
-`ngen-cal-work/forcing` and `ngen-cal-work/observation` are used for the forcing and observation files download from Hydrofabric.  
-This is a shared location, since forcing files and observation files can be re-used for the same gage.
+The static files are in `ngen-cal-work/bmi_config/Noah-OWP`  and `ngen-cal-work/parquet`.  These directories will be populated automatically at start-up.  Nothing else needs to be done.
+
+`ngen-cal-work/forcing`, `ngen-cal-work/observation` and `ngen-cal-work/geopackage` are used for the forcing, observation and geopackage files that are downloaded from Hydrofabric.  
+This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
-where `id` is the id of the calibration run and `user` is the owner of the run.
+where `id` is the id of the calibration run and `user` is the owner of the run.  
+The instance-specific directory is also where `create-input` creates the directory struction that is used at run-time by ngen and ngen-cal
 
 In the example below, `20_peter/forcing` and `20_peter/observation` contain user-uploaded forcing and observation files.
-
-The `ngen-cal-work/geopackage` directory is also shared, as geopackage files can also be re-used.
 
 ```
 peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
