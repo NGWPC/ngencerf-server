@@ -38,10 +38,10 @@ logger = logging.getLogger(__name__)
 
 
 # Get an instance of a run by id, but only if owned by the user and is one of the passed in Statuses
-def get_run(calibration_run_id, user, status=None):
-    if status is None:
-        status = [StatusEnum.READY, StatusEnum.SAVED]
-    status_names = [s.name.lower() for s in status]
+def get_run(calibration_run_id, user, run_status=None):
+    if run_status is None:
+        run_status = [StatusEnum.READY, StatusEnum.SAVED]
+    status_names = [s.name.lower() for s in run_status]
     run = CalibrationRun.objects.filter(id=calibration_run_id, owner=user).select_related('status', 'gage').first()
     if not run:
         return run, Response({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user}'},

@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
 from calibration.util.calibration_validators import ValidationErrorSerializer, ValidationExceptionSerializer, ExceptionResponseSerializer, \
     CalibrationRunSerializer, ExportResponseSerializer, ImportSerializer, GenericMessageResponseSerializer
@@ -115,13 +115,12 @@ def import_job(request):
 
             get_module_data_from_hydrofabric(run, modules)
 
-            automatic_validation = validator.data.get('automatic_validation')
             calibration_times = validator.data.get('calibration_times')
             validation_times = validator.data.get('validation_times')
             output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
             parameters = validator.data.get('parameters')
 
-            save_times(run, automatic_validation, calibration_times, validation_times)
+            save_times(run, calibration_times, validation_times)
 
             run.automatic_validation = validator.data.get('automatic_validation')
 
@@ -236,7 +235,7 @@ def export_job(request):
         if run.use_sloth:
             export_file['sloth_parameters'] = get_sloth_parameters(run)
         export_file['automatic_validation'] = run.automatic_validation
-        calibration_times, validation_times = get_times(run, run.automatic_validation)
+        calibration_times, validation_times = get_times(run)
         export_file['calibration_times'] = calibration_times
         export_file['validation_times'] = validation_times
         output_variable_to_calibrate = {

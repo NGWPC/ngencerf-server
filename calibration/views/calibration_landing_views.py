@@ -17,7 +17,7 @@ from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
-    GageIdSerializer, GageIdOptionalSerializer
+    GageIdOptionalSerializer
 from calibration.views.common import ResponseError
 
 logger = logging.getLogger(__name__)

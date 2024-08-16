@@ -117,8 +117,10 @@ class DomainSerializer(BaseSerializer):
 class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
+
 class GageIdOptionalSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=False)
+
 
 class UploadForcingSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)

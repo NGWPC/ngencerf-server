@@ -40,7 +40,7 @@ class Command(BaseCommand):
             print(f'{data_dir} must be a directory containing the data files')
             return
 
-        Gage.objects.all().delete()
+        # Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin
         user = get_user_model().objects.get(username='admin')
@@ -63,6 +63,7 @@ class Command(BaseCommand):
                 next(file)
             reader = csv.DictReader(file, delimiter=',')
             gage_count = 0
+            row: dict[str, str]
             for row in reader:
                 gage_count += 1
                 gage_id = row.get('gage_id')
@@ -81,6 +82,7 @@ class Command(BaseCommand):
                                     fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
             gage_count = 0
             skip_count = 0
+            row: dict[str, str]
             for row in reader:
                 nws_id = row.get('nws_id').strip()
                 gage_id = row.get('gage_id').strip()
@@ -123,6 +125,7 @@ def add_additional_gages(gage_file, domain):
         reader = csv.reader(file, delimiter=',')
         row_num = 0
         gage_count = 0
+        row: list[str]
         for row in reader:
             row_num += 1
             # Skip the first lines
@@ -130,6 +133,7 @@ def add_additional_gages(gage_file, domain):
                 continue
 
             rfc = row[0]
+            print('rfc', rfc)
             rfc_id = rfc_dict[rfc]
             for nws_id in row[1:]:
                 # Find this nws_id in our collection
@@ -154,6 +158,7 @@ def add_usgs_gages(usgs_file, domain):
                                             'lat_Long_datum', 'altitude', 'altitude_accuracy', 'altitude_datum', 'huc', 'drainage_area'])
 
         gage_count = 0
+        row: dict[str, str]
         for row in reader:
             gage_count += 1
             gage_id = row.get('gage_id')
@@ -190,6 +195,7 @@ def add_nwm_v3(nwm_v3_file, domain):
         new_count = 0
         existing_count = 0
         gage_count = 0
+        row: dict[str, str]
         for row in reader:
             gage_count += 1
             gage_id = row.get('ID')

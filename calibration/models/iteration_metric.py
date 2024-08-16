@@ -1,7 +1,6 @@
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.iteration import Iteration
 
 
 class IterationMetric(BaseModel):
