@@ -3,7 +3,6 @@ import logging
 import os
 import re
 from datetime import datetime
-from json.decoder import JSONDecodeError
 from typing import Dict
 
 from django.contrib.auth import get_user_model
@@ -19,7 +18,7 @@ from calibration.createInput import create_input
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, ReportIterationSerializer
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
@@ -35,7 +34,6 @@ logger = logging.getLogger(__name__)
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -73,11 +71,6 @@ def is_ready(request):
         serializer = IsReadyResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from is_ready() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -98,7 +91,6 @@ def is_ready(request):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -133,11 +125,6 @@ def run_calibration(request):
         serializer = GenericResponseSerializer(response)
         logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -356,7 +343,6 @@ def read_last_line(filename):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -394,11 +380,6 @@ def report_iteration(request):
             logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
             return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -419,7 +400,6 @@ def report_iteration(request):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -455,11 +435,6 @@ def get_iteration(request):
         logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)

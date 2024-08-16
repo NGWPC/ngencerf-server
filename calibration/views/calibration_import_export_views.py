@@ -1,7 +1,5 @@
 import logging
-import logging
 import os
-from json import JSONDecodeError
 
 from django.db import transaction
 from rest_framework import status
@@ -11,7 +9,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
-from calibration.util.calibration_validators import ValidationErrorSerializer, ValidationExceptionSerializer, ExceptionResponseSerializer, \
+from calibration.util.calibration_validators import ValidationExceptionSerializer, ExceptionResponseSerializer, \
     CalibrationRunSerializer, ExportResponseSerializer, ImportSerializer, GenericMessageResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
@@ -180,11 +178,6 @@ def import_job(request):
 
             logger.debug(f'Returning to {request.user} from import_job() - {serializer.data}')
             return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -274,11 +267,6 @@ def export_job(request):
 
         logger.debug(f'Returning to {request.user} from export() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)

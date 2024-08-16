@@ -1,7 +1,6 @@
 import base64
 import logging
 import os
-from json.decoder import JSONDecodeError
 
 from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
@@ -19,7 +18,7 @@ from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, GeopackageSerializer, \
     UploadForcingSerializer, ObservationalHydrofabricSerializer, ForcingHydrofabricSerializer, SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationErrorSerializer, ValidationExceptionSerializer
+    ValidationExceptionSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
@@ -50,7 +49,6 @@ logger = logging.getLogger(__name__)
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -111,11 +109,6 @@ def load_gage_tab(request):
         logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -136,7 +129,6 @@ def load_gage_tab(request):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -171,11 +163,6 @@ def get_gage(request):
         logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -255,7 +242,6 @@ def get_forcing_data_from_hydrofabric(forcing_source):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -335,11 +321,6 @@ def save_gage_tab(request):
                                  httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -374,7 +355,6 @@ def save_geopackage_path(run, gage_id):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -450,9 +430,6 @@ def upload_observational_data(request):
                                  httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except serializers.ValidationError as e:
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -471,7 +448,6 @@ def upload_observational_data(request):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -546,9 +522,6 @@ def upload_forcing_data(request):
                                  httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
         logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except serializers.ValidationError as e:
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)

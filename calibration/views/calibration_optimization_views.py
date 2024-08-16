@@ -1,5 +1,4 @@
 import logging
-from json.decoder import JSONDecodeError
 
 from django.db import transaction
 from django.db.models import F
@@ -12,7 +11,7 @@ from rest_framework.response import Response
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationErrorSerializer, ValidationExceptionSerializer
+    ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError
 
@@ -27,7 +26,6 @@ logger = logging.getLogger(__name__)
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -93,11 +91,6 @@ def load_optimization_tab(request):
         logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
 
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -145,7 +138,6 @@ def get_metrics():
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -210,11 +202,6 @@ def save_optimization_tab(request):
                                      httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
             return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)

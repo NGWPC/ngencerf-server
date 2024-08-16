@@ -1,5 +1,4 @@
 import logging
-from json.decoder import JSONDecodeError
 
 from django.conf import settings
 from django.db import transaction
@@ -15,7 +14,7 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer
 from calibration.views.common import ResponseError
 
@@ -30,7 +29,6 @@ logger = logging.getLogger(__name__)
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -55,9 +53,6 @@ def create_calibration_run(request):
                                      httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
             logger.debug(f'Returning to {request.user} from create_calibration_run() - {serializer.data}')
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-    except JSONDecodeError as e:
-        logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
     except serializers.ValidationError as e:
         logger.exception(e)
         return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -76,7 +71,6 @@ def create_calibration_run(request):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -125,11 +119,6 @@ def get_jobs(request):
 
         logger.debug(f'Returning to {request.user} from get_jobs() - {serializer.data}')
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)

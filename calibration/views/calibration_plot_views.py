@@ -1,8 +1,6 @@
 import logging
-import logging
 import mimetypes
 import os
-from json.decoder import JSONDecodeError
 
 from django.db.models import Value, CharField
 from django.db.models.functions import Concat
@@ -16,7 +14,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
-    ValidationErrorSerializer, ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameSerializer
+    ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameSerializer
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
 from calibration.views.common import get_run
 
@@ -31,7 +29,6 @@ logger = logging.getLogger(__name__)
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -77,11 +74,6 @@ def get_plot_names(request):
         logger.debug(f'get_plot_names() request from {request.user} - {serializer.data}')
 
         return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
@@ -116,7 +108,6 @@ def download_plot(filename):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -146,11 +137,6 @@ def get_plot(request):
         logger.debug(f'Response to get_plot() request from {request.user} : \n {response}')
 
         return response
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
     except ValidationError as e:
         response = {'validation_error': str(e)}
         serializer = ValidationExceptionSerializer(response)
