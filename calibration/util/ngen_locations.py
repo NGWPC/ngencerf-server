@@ -10,13 +10,13 @@ geopackage_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')
 
 CALIB_VALID_DIR = os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python/runCalibValid')
 NOAH_PARAMETER_DIR = os.path.join(settings.NGEN_CAL_WORK_DIR, 'bmi_config/Noah-OWP')
-parquet_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'parquet')
+PARQUET_DIR = os.path.join(settings.NGEN_CAL_WORK_DIR, 'parquet')
 
 
 # TODO Need to update this
 CAL_PLOTS_DIR = os.path.join(settings.NGEN_CAL_WORK_DIR, 'cal_plots')
 
-dirs = [CALIB_VALID_DIR, NOAH_PARAMETER_DIR, parquet_dir]
+dirs = [CALIB_VALID_DIR, NOAH_PARAMETER_DIR, PARQUET_DIR]
 
 NGEN_EXE = os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen')
 CFE_LIB = os.path.join(settings.NGEN_REPO_ROOT, 'extern/cfe/cmake_build/libcfebmi.so')

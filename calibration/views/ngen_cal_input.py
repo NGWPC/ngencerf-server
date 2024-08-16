@@ -9,7 +9,7 @@ from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum,
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationTuneParameter, OptimizationInput
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    parquet_dir
+    PARQUET_DIR
 
 config_template = {
 
@@ -130,7 +130,7 @@ def ready_to_run(run, build=None):
             datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
 
         # Need to set parquet file based on domain
-        datafile['attributes_file'] = os.path.join(parquet_dir, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
+        datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
