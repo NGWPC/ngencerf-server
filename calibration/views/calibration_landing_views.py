@@ -1,9 +1,10 @@
+import json
 import logging
 from json.decoder import JSONDecodeError
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Func, CharField, F
+from django.db.models import F, Q
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from rest_framework import serializers
 from rest_framework import status
@@ -15,7 +16,8 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
+    GageIdSerializer, GageIdOptionalSerializer
 from calibration.views.common import ResponseError
 
 logger = logging.getLogger(__name__)
@@ -68,7 +70,7 @@ def create_calibration_run(request):
 
 
 @extend_schema(
-    request=None,
+    request=GageIdOptionalSerializer,
     responses={
         200: GetJobsResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -89,13 +91,26 @@ def create_calibration_run(request):
 # @permission_classes([AllowAny])
 def get_jobs(request):
     try:
+
+        if request.method == 'POST':
+            data = json.loads(request.body or '{}')
+        else:
+            data = request.GET
+
         logger.debug(f'get_jobs() request from {request.user}')
 
+        validator = GageIdOptionalSerializer(data=data)
+        validator.is_valid(raise_exception=True)
+
+        gage_id = validator.data.get('gage_id')
+
+        jobs = CalibrationRun.objects.filter(
+            Q(owner=request.user) &
+            Q(gage__gage_id=gage_id) if gage_id else Q()
+        )
+
         # Get all jobs for this user
-        # TODO Need to filter jobs by user
-        runs = list(CalibrationRun.objects.filter(owner=request.user)
-                    .only('id', 'user_formulation_name', 'gage', 'run_date',
-                          'calibration_start_period', 'calibration_end_period', 'status', 'owner')
+        runs = list(jobs
                     .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
                             'status__name',  'owner__username', formulation_name=F('user_formulation_name')))
         for r in runs:
@@ -105,7 +120,6 @@ def get_jobs(request):
             r['owner'] = r.pop('owner__username')
 
         response = {'jobs': runs}
-        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
         print('response', response)
 
         serializer = GetJobsResponseSerializer(data=response)
