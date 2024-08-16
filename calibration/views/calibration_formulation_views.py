@@ -400,13 +400,6 @@ def save_formulation_tab(request):
         if errorReturn:
             return errorReturn
 
-        message = validate_modules(run, new_module_names)
-        if message:
-            return ResponseError(message)
-
-        if not validate_formulation(run, new_module_names):
-            return ResponseError(f'Invalid formulation -  {new_module_names}')
-
         run.user_formulation_name = user_formulation_name
 
         if use_sloth:
@@ -420,6 +413,13 @@ def save_formulation_tab(request):
         # Did we get the names from Hydrofabric
         if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
             return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+
+        message = validate_modules(run, new_module_names)
+        if message:
+            return ResponseError(message)
+
+        if not validate_formulation(run, new_module_names):
+            return ResponseError(f'Invalid formulation -  {new_module_names}')
 
         run.use_sloth = use_sloth
 

@@ -385,7 +385,7 @@ def save_times(run, calibration_times, validation_times):
 def validate_parameters(run, parameters):
     if parameters:
         if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-            return 'CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_tuning_tab.'
+            return 'Modules and/or CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
             if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
