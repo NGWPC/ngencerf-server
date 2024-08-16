@@ -8,6 +8,7 @@ from json.decoder import JSONDecodeError
 from typing import Dict
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from git import Repo
 from rest_framework import status
@@ -17,11 +18,11 @@ from rest_framework.response import Response
 
 from calibration.createInput import create_input
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Gage, Optimization, Metric, Iteration, IterationMetric
+from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration
 from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, ReportIterationValidator
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError
+from calibration.views.common import ResponseError, get_run
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
@@ -170,7 +171,6 @@ def submit_job(run):
 
     # TODO Do something here to kick it off
 
-
     return None
 
 
@@ -232,23 +232,33 @@ def read_output(gage_dir, run):
     if not os.path.isdir(gage_dir):
         print(f'Directory {gage_dir} does not exist or is not a directory')
 
+    output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
+
     metrics_iteration_filename = f'{run.gage.gage_id}_metrics_iteration.csv'
     # Contains the best for a single worker
     objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
+
     # Contains the best across all workers -- Only for GWO and PSO
     cost_hist_filename = f'{run.gage.gage_id}_cost_hist.csv'
+    cost_hist_file = os.path.join(output_calibration_run_dir, cost_hist_filename)
+    # Get the best iteration number across all works
+    # TODO This is not right
+    # last_line = read_last_line(cost_hist_file)
+    # best_iteration_for_all = int(last_line.split(',')[2])
+
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
-    run.save()  # TODO Need to save this in a transaction with all the other objects
 
-    find_worker_directories(run, os.path.join(gage_dir, 'Output/Calibration_Run'), metrics_iteration_filename, objective_log_best_filename)
+    with transaction.atomic:
+        find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
+        run.save()
 
 
-def find_worker_directories(run, gage_dir, metrics_iteration_filename, objective_log_best_filename):
+def find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename):
     pattern = re.compile(r'^ngen_\w*_worker$')
 
-    for worker_name in os.listdir(gage_dir):
-        worker_path = os.path.join(gage_dir, worker_name)
+    for worker_name in os.listdir(output_calibration_run_dir):
+        worker_path = os.path.join(output_calibration_run_dir, worker_name)
         # Check if it's a directory and matches the pattern
         if os.path.isdir(worker_path) and pattern.match(worker_name):
             process_metrics_iteration(run, worker_path, metrics_iteration_filename, objective_log_best_filename)
@@ -269,27 +279,53 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
 
     worker_name = os.path.basename(worker_path)
 
+    iterations_to_create = []
+    metrics_to_create = []
+
     with open(metrics_iteration_file) as file:
         reader = csv.DictReader(file)
         # iteration,objFunVal,Corr,MAE,RMSE,RSR,PBIAS,NSE,NSELog,NSEWt,KGE,POD,FAR,CSI,FBIAS,HSEG_FDC,MSEG_FDC,LSEG_FDC
         row_dict: Dict[str, str]
         for row_dict in reader:
-            # print(row_dict)
-            # Iteration table has objective value function -- need realization filename
-            iteration = int(row_dict['iteration'])
+            iteration_num = int(row_dict['iteration'])
             best = iteration == best_iteration_for_worker
-            iteration = Iteration.objects.create(calibration_run=run, iteration_num=iteration, worker=worker_name,
-                                                 calibration_output_variable_value=row_dict['objFunVal'], best_for_worker=best)
-            for metric_name in row_dict:
-                if metric_name == 'iteration' or metric_name == 'objFunVal':
+
+            iteration = Iteration(
+                calibration_run=run,
+                iteration_num=iteration_num,
+                worker=worker_name,
+                calibration_output_variable_value=row_dict['objFunVal'],
+                best_for_worker=best
+            )
+            iterations_to_create.append(iteration)
+
+        # Bulk create Iteration objects
+        created_iterations = Iteration.objects.bulk_create(iterations_to_create)
+
+        # Rewind the reader to the beginning of the CSV to pair up with the created iterations
+        file.seek(0)
+        reader = csv.DictReader(file)
+
+        for iteration, row_dict in zip(created_iterations, reader):
+            for metric_name, value in row_dict.items():
+                if metric_name in ['iteration', 'objFunVal']:
                     continue
-                metric = Metric.objects.filter(name=metric_name).first()
+                # Do a case-insensitive match
+                metric = Metric.objects.filter(name__iexact=metric_name).first()
                 if not metric:
                     print("Could not find metric", metric_name)
                     continue
-                # print('metric_name:', metric_name)
-                value = float(row_dict[metric_name])
-                IterationMetric.objects.create(iteration=iteration, metric=metric, metric_value=value)
+
+                metric_value = float(value)
+                metric_obj = IterationMetric(
+                    iteration=iteration,
+                    metric=metric,
+                    metric_value = metric_value
+                )
+                metrics_to_create.append(metric_obj)
+
+        # Bulk create IterationMetric objects
+        IterationMetric.objects.bulk_create(metrics_to_create)
 
 
 # Read backwards from the end of the file until we find linefeed.  Then read the line
@@ -301,3 +337,130 @@ def read_last_line(filename):
             file.seek(-2, 1)
         last_line = file.readline().decode()
         return last_line
+
+
+@extend_schema(
+    request=ReportIterationValidator,
+    responses={
+        200: GenericResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Report iteration of a running calibration"
+)
+# Called by ngen_cal
+@api_view(['POST'])
+# @permission_classes([AllowAny])
+def report_iteration(request):
+    try:
+        print('user', request.user)
+        body = json.loads(request.body or '{}')
+        logger.debug(f'report_iteration() request from {request.user} - {body}')
+
+        validator = ReportIterationValidator(data=body)
+        validator.is_valid(raise_exception=True)
+
+        calibration_run_id = validator.data.get('calibration_run_id')
+        iteration_number = validator.data.get('iteration')
+
+        run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING])
+        if errorReturn:
+            return errorReturn
+
+        with transaction.atomic():
+            # TODO Do we always create a new one, or check to see if this iteration number exists?
+            # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
+            Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
+            response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                        'status': run.status.name}
+            serializer = GenericResponseSerializer(response)
+            logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
+
+            return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    request=CalibrationRunValidator,
+    responses={
+        200: GenericResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ValidationErrorSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Report iteration of a running calibration"
+)
+# Called by ngen_cal
+@api_view(['POST'])
+# @permission_classes([AllowAny])
+def get_iteration(request):
+    try:
+        print('user', request.user)
+        if request.method == 'POST':
+            data = json.loads(request.body or '{}')
+        else:
+            data = request.GET
+        logger.debug(f'get_iteration() request from {request.user} - {data}')
+
+        validator = CalibrationRunValidator(data=data)
+        validator.is_valid(raise_exception=True)
+
+        calibration_run_id = validator.data.get('calibration_run_id')
+
+        # TODO read output file
+
+        run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+        if errorReturn:
+            return errorReturn
+
+        iteration = 1
+        response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
+                    'status': run.status.name, 'iteration': iteration}
+        serializer = GenericResponseSerializer(response)
+        logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
+
+        return Response(serializer.data)
+    except JSONDecodeError as e:
+        response = {'validation_error': 'JSON parsing error - ' + str(e)}
+        serializer = ValidationErrorSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except ValidationError as e:
+        response = {'validation_error': str(e)}
+        serializer = ValidationExceptionSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        response = {'exception': str(e)}
+        serializer = ExceptionResponseSerializer(response)
+        logger.exception(e)
+        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
