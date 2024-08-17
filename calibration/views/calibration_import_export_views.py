@@ -9,8 +9,9 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportSerializer, \
-    GenericMessageResponseSerializer, FooterResponseSerializer
+    GenericMessageResponseSerializer, FooterResponseSerializer, ExportResponseSerializer, IsReadyResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
+from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
 from calibration.views.calibration_gage_views import save_gage
@@ -80,8 +81,9 @@ def import_job(request):
         if message:
             return ResponseError(message)
 
-        if not validate_formulation(run, modules):
-            return ResponseError(f'Invalid formulation -  {modules}')
+        if modules:
+            if not validate_formulation(run, modules):
+                return ResponseError(f'Invalid formulation -  {modules}')
 
         run.user_formulation_name = validator.data.get('formulation_name')
 
@@ -109,7 +111,8 @@ def import_job(request):
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
-        get_module_data_from_hydrofabric(run, modules)
+        if modules:
+            get_module_data_from_hydrofabric(run, modules)
 
         calibration_times = validator.data.get('calibration_times')
         validation_times = validator.data.get('validation_times')
@@ -144,9 +147,11 @@ def import_job(request):
         if optimization_inputs and not optimization_name:
             return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
-        optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
-        if message:
-            return ResponseError(message)
+        if optimization_name and optimization_inputs:
+            optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
+            if message:
+                return ResponseError(message)
+            write_optimization_inputs(run, optimization, optimization_inputs)
 
         message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
         if message:
@@ -156,24 +161,30 @@ def import_job(request):
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
-        # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
-        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
-
-        write_optimization_inputs(run, optimization, optimization_inputs)
+        if stop_criteria:
+            # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
+            CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
         run.save()
 
         imported_and_submitted = 'imported'
 
+        errors, _ = ngen_cal_input.ready_to_run(run)
+
         if run_after_import:
-            submit_job(run)
-            imported_and_submitted = 'imported and submitted'
+            if not errors:
+                submit_job(run, validate=False)
+                imported_and_submitted = 'imported and submitted'
 
         response = {'message': f'Calibration Run {run.id} {imported_and_submitted}'}
+        if errors:
+            response['errors'] = errors
 
-        response_validator, error_response = validate_response(GenericMessageResponseSerializer, response)
+        response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
+        if error_response:
+            return error_response
+
         logger.debug(f'Returning to {request.user} from import_job() - {response_validator.data}')
-
         return Response(response_validator.data)
 
 
@@ -198,14 +209,13 @@ def export_job(request):
     if errorReturn:
         return errorReturn
 
-    metadata = {'calibration_run_id': run.id, 'run_date': run.run_date}
+    metadata = {'source_calibration_run_id': run.id, 'run_date': run.run_date, 'status': run.status.name}
     export_file['metadata'] = metadata
     export_file['gage_id'] = run.gage.gage_id if run.gage else None
     export_file['forcing_source'] = run.forcing_source if run.forcing_source else None
     export_file['forcing_user_dir'] = run.forcing_user_dir
     export_file['forcing_dir_path'] = run.forcing_dir_path
     export_file['observational_source'] = run.observational_source
-    export_file['observational_user_filename'] = run.observational_user_filename
     export_file['observational_file_path'] = run.observational_file_path
     export_file['geopackage'] = run.hydrofabric_gpkg_path
     # export_file['realization_filename'] = run.realization_filename
@@ -221,8 +231,9 @@ def export_job(request):
     output_variable_to_calibrate = {
         'module': run.module_output_variable.calibration_formulation.name,
         'name': run.module_output_variable.name
-    } if run.module_output_variable else None
-    export_file['time_range'] = get_time_range(run)
+    } if run.module_output_variable else {}
+    time_range = get_time_range(run)
+    export_file['time_range'] = time_range if time_range else {}
 
     export_file['output_variable_to_calibrate'] = output_variable_to_calibrate
     # Get the list of modules for this Run
@@ -245,10 +256,14 @@ def export_job(request):
 
     export_file['run_date'] = run.run_date
 
+    messages, _ = ngen_cal_input.ready_to_run(run)
+    metadata['messages'] = messages
+
     print('export', export_file)
-    export_file = {key: value for key, value in export_file.items() if value not in [None, '', [], {}]}
 
-    response_validator, error_response = validate_response(FooterResponseSerializer, export_file)
+    response_validator, error_response = validate_response(ExportResponseSerializer, export_file)
+    if error_response:
+        return error_response
+
     logger.debug(f'Returning to {request.user} from export() - {response_validator.data}')
-
     return Response(response_validator.data)

@@ -119,13 +119,14 @@ def run_calibration(request):
     return Response(response_validator.data)
 
 
-def submit_job(run):
-    messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
-    print('config file', config_file)
+def submit_job(run, validate=None):
+    if validate:
+        messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
+        print('config file', config_file)
 
-    # TODO Normally, we return if not ready, but for testing, we'll skip this test
-    # if messages:
-    #     return f'Calibration Run {calibration_run_id} is not ready'
+        # TODO Normally, we return if not ready, but for testing, we'll skip this test
+        # if messages:
+        #     return f'Calibration Run {calibration_run_id} is not ready'
 
     # Save the latest git hash or ngen and ngen-cal
     run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
