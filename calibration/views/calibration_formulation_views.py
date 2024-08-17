@@ -291,6 +291,7 @@ def get_my_modules(run):
 def get_sloth_parameters(run):
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
+        .select_related('maps_to_module')
         .values(
             'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
             'maps_to_variable_name')
@@ -325,18 +326,27 @@ def get_modules_from_hydrofabric(run):
 
     with transaction.atomic():
         if current_module_names != new_modules_names:
-            # Only if the modules names have changed
+            # Delete only if the modules names have changed
             to_be_deleted = current_module_names - new_modules_names
 
-            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
+            if to_be_deleted:
+                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
 
             # Create the new ones, if they don't already exist
+            new_modules = []
             for m in module_data:
-                CalibrationFormulation.objects.get_or_create(name=m['module_name'], calibration_run=run,
-                                                             defaults={'groups': json.dumps(m['groups']),
-                                                                       'description': m['description']})
+                if m['module_name'] not in current_module_names:
+                    new_modules.append(CalibrationFormulation(
+                        name=m['module_name'],
+                        calibration_run=run,
+                        groups=json.dumps(m['groups']),
+                        description=m['description']
+                    ))
+            # Use bulk_create to minimize the number of insert queries
+            if new_modules:
+                CalibrationFormulation.objects.bulk_create(new_modules)
 
-        return
+    return
 
 
 @extend_schema(
@@ -464,16 +474,21 @@ def validate_formulation(run, module_names):
 
 
 def add_sloth_parameters(run, sloth_parameters):
+    sloth_param_objects = []
     for s in sloth_parameters:
         # Get the module referenced by the sloth parameter
         module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run=run, used_by_calibration_run=True).first()
         if not module:
-            return f"Sloth parameter \'{s['param_name']}\' contain an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
+            return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
 
-        CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
-                                             param_type=s['param_type'],
-                                             param_units=s['param_units'], param_location=s['param_location'],
-                                             param_value=s['param_value'], maps_to_module=module,
-                                             maps_to_variable_name=s['maps_to_variable_name'])
+        sloth_param_objects.append(
+            CalibrationSlothParam(
+                calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                param_type=s['param_type'], param_units=s['param_units'], param_location=s['param_location'],
+                param_value=s['param_value'], maps_to_module=module, maps_to_variable_name=s['maps_to_variable_name']
+            )
+        )
+
+    CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
     return None
