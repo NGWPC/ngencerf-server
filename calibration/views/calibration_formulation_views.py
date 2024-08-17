@@ -3,7 +3,6 @@ import logging
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -13,7 +12,7 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 
 logger = logging.getLogger(__name__)
 
@@ -268,6 +267,8 @@ def load_formulation_tab(request):
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
+    if error_response:
+        return error_response
     logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
@@ -316,7 +317,7 @@ def get_modules_from_hydrofabric(run):
     validator = ModuleHydrofabricListSerializer(data=module_sample_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
 
     module_data = validator.data.get('modules')
     new_modules_names = set(map(lambda mod: mod['module_name'], module_data))

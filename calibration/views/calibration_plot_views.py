@@ -74,7 +74,6 @@ def get_plot_names(request):
     return Response(response_validator.data)
 
 
-
 def download_plot(filename):
     # @TODO - once decided, replace settings.CAL_PLOTS_DIR with the final location for the plots 
     file_path = CAL_PLOTS_DIR + '/' + filename
@@ -126,4 +125,3 @@ def get_plot(request):
     logger.debug(f'Response to get_plot() request from {request.user} : \n {response}')
 
     return response
-

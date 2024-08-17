@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -17,7 +16,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +149,6 @@ def load_tuning_tab(request):
     return Response(response_validator.data)
 
 
-
 def get_output_variable_to_calibrate(run):
     return {
         'module': run.module_output_variable.calibration_formulation.name,
@@ -228,7 +226,7 @@ def get_module_data_from_hydrofabric(run, modules):
     validator = ModuleDataHydrofabricListSerializer(data=module_sample_data)
     if not validator.is_valid():
         logger.error(validator.errors)
-        raise Exception(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
     # print('getting metadata from hydrofabric')
     module_data = module_sample_data.get("modules")
@@ -328,8 +326,6 @@ def save_tuning_tab(request):
         return error_response
     logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response_validator.data}')
     return Response(response_validator.data)
-
-
 
 
 def save_times(run, calibration_times, validation_times):

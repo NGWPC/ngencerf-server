@@ -10,6 +10,7 @@ from calibration.models import CalibrationOptimizationInput, Status, Calibration
     CalibrationTuneParameter, OptimizationInput
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR
+from calibration.views.common import CerfException
 
 config_template = {
 
@@ -92,7 +93,7 @@ def ready_to_run(run, build=None):
     messages = []
 
     if not run:
-        raise Exception('Must pass a run instance to validate')
+        raise CerfException('Must pass a run instance to validate')
 
     general['calibration_run_id'] = run.id
     general['user'] = run.owner

@@ -19,7 +19,7 @@ from calibration.models import CalibrationRun, Gage, Optimization, Metric, Itera
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
@@ -236,11 +236,11 @@ def process_metrics_iteration(run, worker_path):
     objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
 
     if not os.path.exists(metrics_iteration_file):
-        raise Exception(f'{metrics_iteration_file} does not exist')
+        raise CerfException(f'{metrics_iteration_file} does not exist')
     if not os.path.exists(params_iteration_file):
-        raise Exception(f'{params_iteration_file} does not exist')
+        raise CerfException(f'{params_iteration_file} does not exist')
     if not os.path.exists(objective_log_best_file):
-        raise Exception(f'{objective_log_best_file} does not exist')
+        raise CerfException(f'{objective_log_best_file} does not exist')
 
     # Get the best iteration number
     last_line = read_last_line(objective_log_best_file)
@@ -251,8 +251,7 @@ def process_metrics_iteration(run, worker_path):
     #########
     # TODO For dev only, we will delete entries first
     #########
-    deleted, _ = IterationMetric.objects.filter(iteration__calibration_run=run).delete()
-    logger.debug(f"Deleted {deleted} Iteration records for calibration_run {run.id}")
+    IterationMetric.objects.filter(iteration__calibration_run=run).delete()
     IterationTuneParameter.objects.filter(iteration__calibration_run=run).delete()
     Iteration.objects.filter(calibration_run=run).delete()
     #####
@@ -295,7 +294,7 @@ def process_metrics_iteration(run, worker_path):
                 # Do a case-insensitive match
                 metric = Metric.objects.filter(name__iexact=metric_name).first()
                 if not metric:
-                    raise Exception(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
+                    raise CerfException(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
 
                 metric_value = float(value) if value else None
                 metric_obj = IterationMetric(
@@ -312,7 +311,7 @@ def process_metrics_iteration(run, worker_path):
                 # Do a case-insensitive match
                 parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
                 if not parameter:
-                    raise Exception(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
+                    raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
 
                 param_value = float(value) if value else None
                 param_obj = IterationTuneParameter(

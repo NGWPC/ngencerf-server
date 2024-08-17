@@ -5,7 +5,6 @@ import os
 from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
-from django.db.migrations.serializer import Serializer
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -21,7 +20,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 from calibration.views.ngen_cal_input import get_main_dir
 
 geopackage_sample_data = {
@@ -164,7 +163,7 @@ def get_geopackage_from_hydrofabric(gage_id):
     validator = GeopackageSerializer(data=geopackage_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
     uri = geopackage_data['uri']
     file_path = download_s3(uri, geopackage_dir)
@@ -182,7 +181,7 @@ def get_observational_data_from_hydrofabric(observation_source):
     validator = ObservationalHydrofabricSerializer(data=response)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
 
     s3_uri = validator.data.get('uri')
 
@@ -202,7 +201,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     validator = ForcingHydrofabricSerializer(data=response)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
 
     s3_uri = validator.data.get('uri')
 

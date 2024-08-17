@@ -3,7 +3,6 @@ import logging
 from django.db import transaction
 from django.db.models import F
 from drf_spectacular.utils import extend_schema, OpenApiParameter, PolymorphicProxySerializer
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
