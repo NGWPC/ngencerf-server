@@ -19,7 +19,7 @@
       <excludePattern pattern=".venv" />
       <excludePattern pattern="cerfServer.log" />
     </content>
-    <orderEntry type="jdk" jdkName="Python 3.11 (cerfServer) (2)" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="Python 3.11 (cerfServer)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="TemplatesService">
