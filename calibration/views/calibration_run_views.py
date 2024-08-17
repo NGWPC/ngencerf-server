@@ -2,7 +2,7 @@ import csv
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 
 from django.contrib.auth import get_user_model
@@ -130,7 +130,7 @@ def submit_job(run):
     # Save the latest git hash or ngen and ngen-cal
     run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
     run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
-    run.run_date = datetime.now()
+    run.run_date = datetime.now(timezone.utc)
     run.save()
 
     message = create_input(config_file)
