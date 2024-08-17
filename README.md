@@ -9,8 +9,9 @@ Once you are in the virtual environment, you can use `python`
 
 ```
 $ cd $cerfServer
-$ python -m venv .venv-cerf
+$ python3.11 -m venv .venv-cerf
 $ source $cerfServer/.venv-cerf/bin/activate
+(.venv-cerf) $ pip install --upgrade pip
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
@@ -23,7 +24,7 @@ The `settings.py` file contains settings that are applicable to all environments
 
 You should make copies of `__locall_settings.py` and `__.env`. 
 ```
-(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_setings.py
+(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
 (.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env
 ```
 The 2 template files are suitable for development and no changes need to be made.
