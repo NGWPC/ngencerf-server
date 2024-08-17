@@ -15,9 +15,6 @@ $ source $cerfServer/.venv-cerf/bin/activate
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
-**_Note:_**
-Due to a compatibility issue with ngen-cal's create_input, make sure you are running numpy 1.26.4 and not 2.x
-
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
 The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
@@ -66,12 +63,13 @@ begin
     end loop;
 end $$;
 ```
-where `public` is the name of you schema.
+where `public` is the name of your schema.
 
 # Updating
-After pulling the latest updates from the repo, you should run `migrate` 
-in case there have been any database changes
+After pulling the latest updates from the repo, you should update any dependencies and  apply any database changes.  
+Both of these commands can be run multiple times without any harm.
 ```
+(.venv-cerf) $ pip install -r requirements.txt
 (.venv-cerf) $ python manage.py migrate
 ```
 
