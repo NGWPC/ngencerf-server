@@ -119,8 +119,9 @@ def run_calibration(request):
     return Response(response_validator.data)
 
 
-def submit_job(run, validate=None):
-    if validate:
+def submit_job(run, config_file=None):
+    # If config is passed, then don't need to validate
+    if not config_file:
         messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
         print('config file', config_file)
 

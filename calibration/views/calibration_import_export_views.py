@@ -116,12 +116,12 @@ def import_job(request):
 
         calibration_times = validator.data.get('calibration_times')
         validation_times = validator.data.get('validation_times')
-        output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
-        parameters = validator.data.get('parameters')
-
-        save_times(run, calibration_times, validation_times)
 
         run.automatic_validation = validator.data.get('automatic_validation')
+        save_times(run, calibration_times, validation_times)
+
+        output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
+        parameters = validator.data.get('parameters')
 
         message = validate_parameters(run, parameters)
         if message is not None:
@@ -169,11 +169,11 @@ def import_job(request):
 
         imported_and_submitted = 'imported'
 
-        errors, _ = ngen_cal_input.ready_to_run(run)
+        errors, config_file = ngen_cal_input.ready_to_run(run)
 
         if run_after_import:
             if not errors:
-                submit_job(run, validate=False)
+                submit_job(run, config_file=config_file)
                 imported_and_submitted = 'imported and submitted'
 
         response = {'message': f'Calibration Run {run.id} {imported_and_submitted}'}
