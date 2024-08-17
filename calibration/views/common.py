@@ -19,7 +19,10 @@ def get_run(calibration_run_id, user, run_status=None):
     if run_status is None:
         run_status = [StatusEnum.READY, StatusEnum.SAVED]
     status_names = [s.name.lower() for s in run_status]
-    run = CalibrationRun.objects.filter(id=calibration_run_id, owner=user).select_related('status', 'gage').first()
+    run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user)
+           .select_related('status', 'gage')
+           .only('id', 'status', 'gage', 'owner')
+           .first())
     if not run:
         return run, Response({'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user}'},
                              status=rest_framework.status.HTTP_400_BAD_REQUEST)

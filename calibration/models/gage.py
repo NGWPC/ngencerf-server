@@ -5,13 +5,13 @@ from calibration.models.base_model import BaseModel
 
 class Gage(BaseModel):
     is_active = models.BooleanField(null=False)
-    gage_id = models.TextField(unique=True, null=False)
-    nws_id = models.TextField(null=True)
+    gage_id = models.CharField(max_length=50, unique=True, null=False, db_index=True)
+    nws_id = models.CharField(max_length=50, null=True)
     rfc = models.ForeignKey('Rfc', null=True, on_delete=models.SET_NULL)
     nwm_v3_calibrated = models.BooleanField(null=False, default=False)
-    agency = models.TextField(null=False)
-    station_name = models.TextField(null=False)
-    site_type = models.TextField(null=False)
+    agency = models.CharField(max_length=50, null=False)
+    station_name = models.CharField(max_length=50, null=False)
+    site_type = models.CharField(max_length=50, null=False)
     latitude = models.FloatField(null=True)
     longitude = models.FloatField(null=True)
     lat_long_accuracy = models.TextField(null=False)
@@ -19,7 +19,7 @@ class Gage(BaseModel):
     altitude = models.FloatField(null=True)
     altitude_accuracy = models.TextField(null=True)
     altitude_datum = models.TextField(null=True)
-    huc = models.TextField(null=False)
+    huc = models.CharField(max_length=50, null=False)
     drainage_area = models.FloatField(null=True)
     domain = models.ForeignKey('Domain', null=False, on_delete=models.CASCADE)
 

@@ -8,15 +8,14 @@ from calibration.models.status import Status
 class ValidationRun(BaseModel):
     description = models.TextField(null=False)
     is_active = models.BooleanField(null=False, default=True)
-    calibration_run = models.ForeignKey('CalibrationRun', null=True, related_name="validations", on_delete=models.SET_NULL)
+    calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="validations", on_delete=models.RESTRICT, db_index=True)
     iteration = models.IntegerField(null=True)
     validation_start_period = models.DateTimeField()
     validation_end_period = models.DateTimeField()
     validation_eval_start_period = models.DateTimeField()
     validation_eval_end_period = models.DateTimeField()
-    # This should be a required field (null=FALSE), but we'll leave it as optional for now
-    owner = models.ForeignKey(get_user_model(), null=True, on_delete=models.SET_NULL)
-    status = models.ForeignKey(Status, null=False, on_delete=models.CASCADE)
+    owner = models.ForeignKey(get_user_model(), null=False, on_delete=models.RESTRICT, db_index=True)
+    status = models.ForeignKey(Status, null=False, on_delete=models.CASCADE, db_index=True)
 
     class Meta:
         db_table = 'validation_run'
