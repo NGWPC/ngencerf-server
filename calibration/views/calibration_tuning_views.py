@@ -17,7 +17,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -99,13 +99,13 @@ module_sample_data = {"modules": [
 @handle_exceptions
 # @permission_classes([AllowAny])
 def load_tuning_tab(request):
-    print('user', request.user)
     data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -142,13 +142,12 @@ def load_tuning_tab(request):
                 'output_variable_to_calibrate': output_variable_to_calibrate}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    serializer = LoadTuningResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from load_tuning_tab() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from load_tuning_tab() - {serializer.data}')
+    response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from load_tuning_tab() - {response_validator.data}')
 
-    return Response(serializer.data)
+    return Response(response_validator.data)
 
 
 
@@ -284,12 +283,12 @@ def get_module_data_from_hydrofabric(run, modules):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def save_tuning_tab(request):
-    print('user', request.user)
     data = request.data
     logger.debug(f'save_tuning_tab() request from {request.user} - {data}')
 
-    validator = SaveTuningRequestSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(SaveTuningRequestSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
     automatic_validation = validator.data.get('automatic_validation')
@@ -323,12 +322,12 @@ def save_tuning_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-    serializer = GenericResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from save_tuning_tab() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from save_tuning_tab() - {serializer.data}')
-    return Response(serializer.data)
+
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 

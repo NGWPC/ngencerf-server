@@ -12,7 +12,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Lo
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +40,13 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])()
 @handle_exceptions
 def load_optimization_tab(request):
-    print('user', request.user)
     data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -83,13 +83,11 @@ def load_optimization_tab(request):
 
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    serializer = LoadOptimizationResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from load_optimization_tab() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from load_optimization_tab() - {serializer.data}')
-
-    return Response(serializer.data)
+    response_validator, error_response = validate_response(LoadOptimizationResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from load_optimization_tab() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 def get_user_optimization(run):
@@ -139,12 +137,13 @@ def get_metrics():
 # @permission_classes([AllowAny])
 @handle_exceptions
 def save_optimization_tab(request):
-    print('user', request.user)
     data = request.data
+
     logger.debug(f'save_optimization_tab() request from {request.user} - {data}')
 
-    validator = SaveOptimizationRequestSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(SaveOptimizationRequestSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
     optimization_name = validator.data.get('optimization')
@@ -185,12 +184,12 @@ def save_optimization_tab(request):
         ngen_cal_input.ready_to_run(run)
 
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-        serializer = SaveOptimizationResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from save_optimization_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from save_optimization_tab() - {serializer.data}')
-        return Response(serializer.data)
+
+        response_validator, error_response = validate_response(SaveOptimizationResponseSerializer, response)
+        if error_response:
+            return error_response
+        logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response_validator.data}')
+        return Response(response_validator.data)
 
 
 def validate_optimizations(run, optimization_name, optimization_inputs):

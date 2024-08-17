@@ -19,7 +19,7 @@ from calibration.models import CalibrationRun, Gage, Optimization, Metric, Itera
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
@@ -45,13 +45,12 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])()
 @handle_exceptions
 def is_ready(request):
-    print('user', request.user)
-
     data = request.data
     logger.debug(f'is_ready() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -67,11 +66,11 @@ def is_ready(request):
     if messages:
         response['errors'] = messages
 
-    serializer = IsReadyResponseSerializer(response)
-    logger.debug(f'Returning to {request.user} from is_ready() - {serializer.data}')
-    return Response(serializer.data)
-
-
+    response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from is_ready() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -93,13 +92,12 @@ def is_ready(request):
 @api_view(['POST'])
 @handle_exceptions
 def run_calibration(request):
-    print('user', request.user)
-
     data = request.data
     logger.debug(f'run_calibration() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -113,11 +111,11 @@ def run_calibration(request):
 
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name}
-    serializer = GenericResponseSerializer(response)
-    logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
-    return Response(serializer.data)
 
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    logger.debug(f'Returning to {request.user} from run_calibration() - {response_validator.data}')
 
+    return Response(response_validator.data)
 
 
 def submit_job(run):
@@ -144,62 +142,58 @@ def submit_job(run):
 
 
 # This is just a test endpoint to trigger read_output()
-# @handle_exceptions
 @api_view(['GET', 'POST'])
+@handle_exceptions
 def test_read_output(request):
-    try:
-        data = request.data if request.method == 'POST' else request.query_params
-        calibration_run_id = data.get('calibration_run_id')
-        optimization_name = data.get('optimization')
-        username = data.get('user')
+    data = request.data if request.method == 'POST' else request.query_params
+    calibration_run_id = data.get('calibration_run_id')
+    optimization_name = data.get('optimization')
+    username = data.get('user')
 
-        # TODO This should only be for DONE jobs
-        # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        print('run', run)
+    # TODO This should only be for DONE jobs
+    # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    print('run', run)
 
-        # if errorReturn:
-        #     return errorReturn
-        if not run:
-            # create some dummies
-            gage = Gage(gage_id='01123000')
-            optimization = Optimization(name=optimization_name)
-            owner = get_user_model()(username=username)
-            objective_function = Metric(name='kge')
-            run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
-                                 objective_function=objective_function, owner=owner)
+    # if errorReturn:
+    #     return errorReturn
+    if not run:
+        # create some dummies
+        gage = Gage(gage_id='01123000')
+        optimization = Optimization(name=optimization_name)
+        owner = get_user_model()(username=username)
+        objective_function = Metric(name='kge')
+        run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
+                             objective_function=objective_function, owner=owner)
 
-            # .
-            # └── ngen-cal-work
-            #     ├── bmi_config
-            #     │   └── Noah-OWP
-            #     ├── parquet
-            #     └── run_calib                      NGEN_CAL_RUN_DIR
-            #         ├── 100_peterx
-            #         │   └── kge_dds
-            #         │       └── cfe_noah
-            #         │           └── 01123000
-            #         ├── 101_peterx
-            #         │   └── kge_gwo
-            #         │       └── cfe_noah
-            #         │           └── 01123000
-            #         └── 102_peterx
-            #             └── kge_pso
-            #                 └── cfe_noah
-            #                     └── 01123000
+        # .
+        # └── ngen-cal-work
+        #     ├── bmi_config
+        #     │   └── Noah-OWP
+        #     ├── parquet
+        #     └── run_calib                      NGEN_CAL_RUN_DIR
+        #         ├── 100_peterx
+        #         │   └── kge_dds
+        #         │       └── cfe_noah
+        #         │           └── 01123000
+        #         ├── 101_peterx
+        #         │   └── kge_gwo
+        #         │       └── cfe_noah
+        #         │           └── 01123000
+        #         └── 102_peterx
+        #             └── kge_pso
+        #                 └── cfe_noah
+        #                     └── 01123000
 
-        formulation_name = run.ngen_formulation_name
-        gage_id = run.gage.gage_id
-        gage_dir = os.path.join(NGEN_CAL_RUN_DIR, f'{calibration_run_id}_{run.owner.username}',
-                                f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}', formulation_name, gage_id)
-        print("gage_dir", gage_dir)
+    formulation_name = run.ngen_formulation_name
+    gage_id = run.gage.gage_id
+    gage_dir = os.path.join(NGEN_CAL_RUN_DIR, f'{calibration_run_id}_{run.owner.username}',
+                            f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}', formulation_name, gage_id)
+    print("gage_dir", gage_dir)
 
-        read_output(gage_dir, run)
+    read_output(gage_dir, run)
 
-        return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
-    except Exception as e:
-        return Response('got an exception')
-
+    return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
 
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
@@ -235,9 +229,9 @@ def find_worker_directories(run, output_calibration_run_dir):
             process_metrics_iteration(run, worker_path)
 
 
-def process_metrics_iteration(run, worker_path,):
+def process_metrics_iteration(run, worker_path):
     metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
-    params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv' )
+    params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
     # Contains the best for a single worker
     objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
 
@@ -328,7 +322,7 @@ def process_metrics_iteration(run, worker_path,):
                 )
                 params_to_create.append(param_obj)
 
-# Bulk create IterationMetric and IterationTuneParameter objects
+    # Bulk create IterationMetric and IterationTuneParameter objects
     IterationMetric.objects.bulk_create(metrics_to_create)
     IterationTuneParameter.objects.bulk_create(params_to_create)
 
@@ -365,12 +359,12 @@ def read_last_line(filename):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def report_iteration(request):
-    print('user', request.user)
     data = request.data
     logger.debug(f'report_iteration() request from {request.user} - {data}')
 
-    validator = ReportIterationSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(ReportIterationSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
     iteration_number = validator.data.get('iteration')
@@ -385,10 +379,13 @@ def report_iteration(request):
         Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
         response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
-        serializer = GenericResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
-        return Response(serializer.data)
+        response_validator, error_response = validate_response(GenericResponseSerializer, response)
+        if error_response:
+            return error_response
+        logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
+
+        return Response(response_validator.data)
 
 
 @extend_schema(
@@ -412,12 +409,12 @@ def report_iteration(request):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def get_iteration(request):
-    print('user', request.user)
     data = request.data if request.method == 'POST' else request.query_params
     logger.debug(f'get_iteration() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -430,9 +427,10 @@ def get_iteration(request):
     iteration = 1
     response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
                 'status': run.status.name, 'iteration': iteration}
-    serializer = GenericResponseSerializer(response)
-    logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
 
-    return Response(serializer.data)
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
 
-
+    return Response(response_validator.data)

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ImportSerializer, \
-    GenericMessageResponseSerializer
+    GenericMessageResponseSerializer, FooterResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -19,7 +19,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
-from calibration.views.common import get_run, ResponseError, handle_exceptions
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.ngen_cal_input import get_main_dir
 
 logger = logging.getLogger(__name__)
@@ -29,12 +29,12 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])
 @handle_exceptions
 def import_job(request):
-    print('user', request.user)
     data = request.data
     logger.debug(f'export() request from {request.user} - {data}')
 
-    validator = ImportSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(ImportSerializer, data)
+    if error_return:
+        return error_return
 
     with transaction.atomic():
         run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
@@ -170,25 +170,24 @@ def import_job(request):
             imported_and_submitted = 'imported and submitted'
 
         response = {'message': f'Calibration Run {run.id} {imported_and_submitted}'}
-        serializer = GenericMessageResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from import_job() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        logger.debug(f'Returning to {request.user} from import_job() - {serializer.data}')
-        return Response(serializer.data)
+        response_validator, error_response = validate_response(GenericMessageResponseSerializer, response)
+        logger.debug(f'Returning to {request.user} from import_job() - {response_validator.data}')
+
+        return Response(response_validator.data)
 
 
 @api_view(['POST'])
 # @permission_classes([AllowAny])
 @handle_exceptions
 def export_job(request):
-    print('user', request.user)
     data = request.data
+
     logger.debug(f'export() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -249,10 +248,7 @@ def export_job(request):
     print('export', export_file)
     export_file = {key: value for key, value in export_file.items() if value not in [None, '', [], {}]}
 
-    serializer = ExportResponseSerializer(data=export_file)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from export() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response_validator, error_response = validate_response(FooterResponseSerializer, export_file)
+    logger.debug(f'Returning to {request.user} from export() - {response_validator.data}')
 
-    logger.debug(f'Returning to {request.user} from export() - {serializer.data}')
-    return Response(serializer.data)
+    return Response(response_validator.data)

@@ -117,7 +117,6 @@ DJOSER = {
     "UPDATE_LAST_LOGIN": True,
 }
 
-
 # https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html#settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),

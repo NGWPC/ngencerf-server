@@ -1,9 +1,11 @@
+import inspect
 import logging
 from functools import wraps
 
 import rest_framework
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
+from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
@@ -44,15 +46,11 @@ def handle_exceptions(view_func):
     def _wrapped_view(request, *args, **kwargs):
         try:
             return view_func(request, *args, **kwargs)
-        except ValidationError as e:
-            response = {'validation_error': str(e)}
-            serializer = ValidationExceptionSerializer(response)
-            logger.exception(e)
-            return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
+
         except Exception as e:
             response = {'exception': str(e)}
             serializer = ExceptionResponseSerializer(response)
-            logger.exception(e)
+            logger.exception(response)
             return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return _wrapped_view
 
@@ -62,3 +60,36 @@ def ResponseError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
     serializer = ErrorResponseSerializer(response)
     logger.error(serializer.data)
     return Response(serializer.data, status=httpStatus)
+
+
+def validate_request(serializer_class, data):
+    try:
+        validator = serializer_class(data=data)
+        validator.is_valid(raise_exception=True)
+        return validator, None
+    except ValidationError as e:
+        calling_function = inspect.stack()[1].function  # Get the name of the calling function
+        response_data = {'validation_error': f"(called from {calling_function} - {str(e)})"}
+        logger.error(response_data)
+        error_serializer = ValidationExceptionSerializer(response_data)
+        return None, Response(error_serializer.data, status=status.HTTP_400_BAD_REQUEST)
+
+
+def validate_response(serializer_class, data):
+    validator = None
+    try:
+        validator = serializer_class(data=data)
+        validator.is_valid(raise_exception=True)
+        return validator, None
+    except ValidationError as e:
+        # Note that an exception here is most likely due to a coding error
+        calling_function = inspect.stack()[1].function  # Get the name of the calling function
+        error_message = f"Data format error in response returning from {calling_function}"
+        if validator is not None:
+            error_message += f" - {validator.errors}"
+        response_data = {'error': error_message}
+        logger.error(response_data)
+        error_serializer = ErrorResponseSerializer(response_data)
+
+        return None, Response(error_serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

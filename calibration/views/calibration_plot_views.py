@@ -14,7 +14,7 @@ from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameSerializer
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
-from calibration.views.common import get_run, handle_exceptions
+from calibration.views.common import get_run, handle_exceptions, validate_request, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -42,13 +42,13 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def get_plot_names(request):
     # TODO need to clean this up with final directory names, etc
-    print('user', request.user)
     data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'get_plot_names() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -68,10 +68,10 @@ def get_plot_names(request):
 
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    serializer = LoadPlotDefinitionsResponseSerializer(response)
-    logger.debug(f'get_plot_names() request from {request.user} - {serializer.data}')
+    response_validator, error_response = validate_response(LoadPlotDefinitionsResponseSerializer, response)
+    logger.debug(f'get_plot_names() request from {request.user} - {response_validator.data}')
 
-    return Response(serializer.data)
+    return Response(response_validator.data)
 
 
 
@@ -111,13 +111,13 @@ def download_plot(filename):
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_plot(request):
-    print('user', request.user)
     data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'get_plot() request from {request.user} - {data}')
 
-    validator = CalibrationPlotNameSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationPlotNameSerializer, data)
+    if error_return:
+        return error_return
 
     plot_file_name = validator.data.get('cal_plot_name')
 

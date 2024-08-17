@@ -5,6 +5,7 @@ import os
 from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
+from django.db.migrations.serializer import Serializer
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -20,7 +21,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.ngen_cal_input import get_main_dir
 
 geopackage_sample_data = {
@@ -62,13 +63,13 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])
 @handle_exceptions
 def load_gage_tab(request):
-    print('user', request.user)
     data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -100,15 +101,13 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    serializer = LoadGageResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from load_gage_tab() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    serializer, error_response = validate_response(LoadGageResponseSerializer, response)
+    if error_response:
+        return error_response
+
     logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
 
     return Response(serializer.data)
-
-
 
 
 @extend_schema(
@@ -138,23 +137,21 @@ def get_gage(request):
 
     logger.debug(f'get_gage() request from {request.user} - {data}')
 
-    validator = GageIdSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(GageIdSerializer, data)
+    if error_return:
+        return error_return
 
     gage_id = validator.data.get('gage_id')
 
     gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
     if not gage:
         return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
-    serializer = GageSerializer(data=gage)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from get_gage() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from get_gage() - {serializer.data}')
 
-    return Response(serializer.data)
-
-
+    response_validator, error_response = validate_response(GageSerializer, gage)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from get_gage() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 def get_geopackage_from_hydrofabric(gage_id):
@@ -236,12 +233,12 @@ def get_forcing_data_from_hydrofabric(forcing_source):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def save_gage_tab(request):
-    print('user', request.user)
-
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user} - {data}')
-    validator = SaveGageRequestSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+
+    validator, error_return = validate_request(SaveGageRequestSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
     gage_id = validator.data.get('gage_id')
@@ -297,13 +294,11 @@ def save_gage_tab(request):
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image': geopackage_image_url}
 
-    serializer = SaveGageResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from save_gage_tab() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from save_gage_tab() - {serializer.data}')
-    return Response(serializer.data)
-
+    response_validator, error_response = validate_response(SaveGageResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from save_gage_tab() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 # Function to be used for saving a config file to allow CLI
@@ -340,12 +335,12 @@ def save_geopackage_path(run, gage_id):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def upload_observational_data(request):
-    print('user', request.user)
-
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user} - {data}')
-    validator = CalibrationRunSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -397,14 +392,11 @@ def upload_observational_data(request):
     response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                 'status': run.status.name}
 
-    serializer = GenericResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from upload_observational_data() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from upload_observational_data() - {serializer.data}')
-    return Response(serializer.data)
-
-
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from upload_observational_data() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -427,12 +419,12 @@ def upload_observational_data(request):
 @handle_exceptions
 # @permission_classes([AllowAny])
 def upload_forcing_data(request):
-    print('user', request.user)
-
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
-    validator = UploadForcingSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+
+    validator, error_return = validate_request(UploadForcingSerializer, data)
+    if error_return:
+        return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
     forcing_user_dir = validator.data.get('forcing_user_dir')
@@ -483,11 +475,8 @@ def upload_forcing_data(request):
     response = {'message': f'{len(files)} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
                 'status': run.status.name}
 
-    serializer = GenericResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from upload_forcing_data() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from upload_forcing_data() - {serializer.data}')
-    return Response(serializer.data)
-
-
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response_validator.data}')
+    return Response(response_validator.data)

@@ -14,7 +14,7 @@ from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer
-from calibration.views.common import ResponseError, handle_exceptions
+from calibration.views.common import ResponseError, handle_exceptions, validate_request, validate_response
 
 logger = logging.getLogger(__name__)
 
@@ -38,20 +38,19 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 # @permission_classes([AllowAny])
 def create_calibration_run(request):
-    print('user', request.user)
     logger.debug(f'create_calibration_run() request from {request.user}')
 
     with transaction.atomic():
         run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
         response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
-        serializer = CreateCalibrationRunSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from create_calibration_run() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from create_calibration_run() - {serializer.data}')
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+        response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
+        if error_response:
+            return error_response
+
+        logger.debug(f'Returning to {request.user} from create_calibration_run() - {response_validator.data}')
+        return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
@@ -79,8 +78,9 @@ def get_jobs(request):
 
     logger.debug(f'get_jobs() request from {request.user} - {data}')
 
-    validator = GageIdOptionalSerializer(data=data)
-    validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(GageIdOptionalSerializer, data)
+    if error_return:
+        return error_return
 
     gage_id = validator.data.get('gage_id')
 
@@ -93,7 +93,7 @@ def get_jobs(request):
     # Get all jobs for this user
     runs = list(jobs
                 .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-                        'status__name',  'owner__username', formulation_name=F('user_formulation_name')))
+                        'status__name', 'owner__username', formulation_name=F('user_formulation_name')))
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
@@ -103,14 +103,12 @@ def get_jobs(request):
     response = {'jobs': runs}
     print('response', response)
 
-    serializer = GetJobsResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from get_jobs() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response_validator, error_response = validate_response(GetJobsResponseSerializer, response)
+    if error_response:
+        return error_response
 
-    logger.debug(f'Returning to {request.user} from get_jobs() - {serializer.data}')
-    return Response(serializer.data)
-
+    logger.debug(f'Returning to {request.user} from get_jobs() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -125,9 +123,10 @@ def get_jobs(request):
 @handle_exceptions
 def get_footer(request):
     response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
-    serializer = FooterResponseSerializer(data=response)
-    if not serializer.is_valid():
-        return ResponseError(f'Data format error returning from get_footer() - {serializer.errors}',
-                             httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    logger.debug(f'Returning to {request.user} from get_footer() - {serializer.data}')
-    return Response(serializer.data)
+
+    response_validator, error_response = validate_response(FooterResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user} from get_footer() - {response_validator.data}')
+    return Response(response_validator.data)
