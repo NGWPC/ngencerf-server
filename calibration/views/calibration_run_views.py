@@ -424,7 +424,7 @@ def get_iteration(request):
 
     # TODO read output file
 
-    run, errorReturn = get_run(calibration_run_id, request.user)  # run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if errorReturn:
         return errorReturn
 
