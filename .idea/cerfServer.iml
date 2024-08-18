@@ -20,6 +20,7 @@
       <excludePattern pattern=".venv-cerf" />
       <excludePattern pattern="cerfServer.log" />
       <excludePattern pattern="migrations" />
+      <excludePattern pattern="createInput" />
     </content>
     <orderEntry type="jdk" jdkName="Python 3.11 (cerfServer)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />

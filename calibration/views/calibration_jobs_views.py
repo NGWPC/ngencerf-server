@@ -9,12 +9,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, CalibrationFormulation
+from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
-    GageIdOptionalSerializer, CalibrationRunSerializer, GetJobResponseSerializer
-from calibration.views.calibration_tuning_views import get_parameters_and_output_variables
+    GageIdOptionalSerializer, CalibrationRunSerializer
 from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
 
 logger = logging.getLogger(__name__)
@@ -113,9 +112,9 @@ def get_jobs(request):
 
 
 @extend_schema(
-    request=GageIdOptionalSerializer,
+    request=CalibrationRunSerializer,
     responses={
-        200: GetJobResponseSerializer,
+        200: GenericMessageResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
@@ -148,15 +147,12 @@ def get_job(request):
     if errorReturn:
         return errorReturn
 
-    # Get the list of modules for this Run
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    # Return metrics and parameters from results
 
-    modules_list = get_parameters_and_output_variables(modules)
-
-    response = {'modules': modules_list}
+    response = {'message': "Not implemented yet", 'calibration_run_id': calibration_run_id, 'status': run.status.name}
     print('response', response)
 
-    response_validator, error_response = validate_response(GetJobResponseSerializer, response)
+    response_validator, error_response = validate_response(GenericMessageResponseSerializer, response)
     if error_response:
         return error_response
 
