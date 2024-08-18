@@ -22,7 +22,6 @@ from calibration.views.common import ResponseError, get_run, handle_exceptions, 
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 from createInput import create_input
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -198,6 +197,7 @@ def test_read_output(request):
 
     return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
 
+
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
 def read_output(gage_dir, run):
@@ -229,10 +229,10 @@ def find_worker_directories(run, output_calibration_run_dir):
         worker_path = os.path.join(output_calibration_run_dir, worker_name)
         # Check if it's a directory and matches the pattern
         if os.path.isdir(worker_path) and pattern.match(worker_name):
-            process_metrics_iteration(run, worker_path)
+            process_iteration(run, worker_path)
 
 
-def process_metrics_iteration(run, worker_path):
+def process_iteration(run, worker_path):
     metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
     params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
     # Contains the best for a single worker
@@ -312,6 +312,8 @@ def process_metrics_iteration(run, worker_path):
                 if param_name in ['iteration']:
                     continue
                 # Do a case-insensitive match
+                # A CalibrationTuneParameter is associated with a module, so theoretically, two different modules can have the same parameter name
+                # But we'll assume there is only one
                 parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
                 if not parameter:
                     raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
