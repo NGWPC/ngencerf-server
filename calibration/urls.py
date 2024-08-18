@@ -1,16 +1,17 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_landing_views, calibration_gage_views, \
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_jobs_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views
 
 urlpatterns = [
     ##################################
     # Landing page
     ##################################
-    path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
-    path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
-    path('calibration/get_jobs/', calibration_landing_views.get_jobs, name="getJobs"),
+    path('calibration/create_calibration_run/', calibration_jobs_views.create_calibration_run, name="createCalibrationRun"),
+    path('calibration/get_footer/', calibration_jobs_views.get_footer, name="getFooter"),
+    path('calibration/get_jobs/', calibration_jobs_views.get_jobs, name="getJobs"),
+    path('calibration/get_job/', calibration_jobs_views.get_job, name="getJob"),
 
     ##################################
     # Gage tab

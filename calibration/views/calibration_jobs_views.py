@@ -9,12 +9,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, CalibrationFormulation
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
-    GageIdOptionalSerializer
-from calibration.views.common import handle_exceptions, validate_request, validate_response
+    GageIdOptionalSerializer, CalibrationRunSerializer, GetJobResponseSerializer
+from calibration.views.calibration_tuning_views import get_parameters_and_output_variables
+from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,58 @@ def get_jobs(request):
     print('response', response)
 
     response_validator, error_response = validate_response(GetJobsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user} from get_jobs() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=GageIdOptionalSerializer,
+    responses={
+        200: GetJobResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+
+    description="Get all jobs"
+)
+@api_view(['POST', 'GET'])
+# @permission_classes([AllowAny])
+@handle_exceptions
+def get_job(request):
+    data = request.data if request.method == 'POST' else request.query_params
+
+    logger.debug(f'get_job() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.data.get('calibration_run_id')
+
+    # Only Done or Failed
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
+
+    # Get the list of modules for this Run
+    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+
+    modules_list = get_parameters_and_output_variables(modules)
+
+    response = {'modules': modules_list}
+    print('response', response)
+
+    response_validator, error_response = validate_response(GetJobResponseSerializer, response)
     if error_response:
         return error_response
 

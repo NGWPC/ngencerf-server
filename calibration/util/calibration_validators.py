@@ -84,8 +84,32 @@ class CalibrationPlotNameSerializer(BaseSerializer):
 
 
 ##################################
-# Landing page
+# Jobs page
 ##################################
+
+# This class extends the original serializers.Serializer, since we want to ignore extra fields
+# Parameters from Hydrofabric
+class ModuleParametersSerializer(serializers.Serializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
+    description = serializers.CharField(required=True, allow_blank=False)
+    minimum = serializers.FloatField(required=False)
+    maximum = serializers.FloatField(required=False)
+    # TODO I think this should be required and not null
+    initial_value = serializers.FloatField(required=False, allow_null=True)
+
+
+# Used for the output from Hydrofabric
+class OutputVariableMetadataSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+
+
+class ModuleMetadataStaticSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    parameters = ModuleParametersSerializer(required=True, many=True)
+    output_variables = OutputVariableMetadataSerializer(required=True, many=True)
+
 class JobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=True, allow_null=True)
@@ -95,6 +119,10 @@ class JobsResponseSerializer(BaseSerializer):
     formulation_name = serializers.CharField(required=False, allow_null=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
     owner = serializers.CharField(required=True, allow_null=True)
+
+class GetJobResponseSerializer(BaseSerializer):
+    # calibration_run_id = serializers.IntegerField(required=True)
+    modules = ModuleMetadataStaticSerializer(many=True, required=False)
 
 
 class GetJobsResponseSerializer(BaseSerializer):
@@ -442,11 +470,6 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
     start_time = serializers.DateTimeField(required=False)
     end_time = serializers.DateTimeField(required=False)
 
-
-class ModuleMetadataStaticSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    parameters = ModuleParametersSerializer(required=True, many=True)
-    output_variables = OutputVariableMetadataSerializer(required=True, many=True)
 
 
 class LoadTuningResponseSerializer(BaseSerializer):

@@ -156,8 +156,6 @@ def get_output_variable_to_calibrate(run):
     } if run.module_output_variable else None
 
 
-# For load_tuning_tab, we get all data.
-# The other option is for exporting
 def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules:
