@@ -45,18 +45,19 @@ def join(items):
 def handle_exceptions(view_func):
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
+        original_logger = logging.getLogger(view_func.__module__)
         try:
             return view_func(request, *args, **kwargs)
 
         except CerfException as e:
-            response = {'error': f"{str(e)} - while running {view_func.__name__}"}
+            response = {'error': f"{str(e)} - while running {view_func.__module__}.{view_func.__name__}"}
             serializer = ErrorResponseSerializer(response)
-            logger.error(response)
+            original_logger.error(response)
             return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
-            response = {'exception': f"{str(e)} - while running {view_func.__name__}"}
+            response = {'exception': f"{str(e)} - while running {view_func.__module__}.{view_func.__name__}"}
             serializer = ExceptionResponseSerializer(response)
-            logger.exception(response)
+            original_logger.exception(response)
             return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return _wrapped_view
