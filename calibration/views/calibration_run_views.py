@@ -420,6 +420,7 @@ def get_iteration(request):
     if error_return:
         return error_return
 
+    # TODO Running jobs (or Done?)
     calibration_run_id = validator.data.get('calibration_run_id')
 
     # TODO read output file
@@ -428,6 +429,7 @@ def get_iteration(request):
     if errorReturn:
         return errorReturn
 
+    # TODO Need to figure out iterations with respect to multiple workers
     iteration = 1
     response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
                 'status': run.status.name, 'iteration': iteration}
