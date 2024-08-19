@@ -103,7 +103,7 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    optimizations = Optimization.objects.filter(is_active=True)
+    optimizations = Optimization.objects.filter(is_active=True).prefect_releate('inputs')
     optimization_list = []
     for o in optimizations:
         inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
@@ -197,6 +197,7 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
         return None, "Invalid optimization - '{}'".format(optimization_name)
     run.optimization = optimization
 
+    optimization_inputs_to_create = []
     if optimization_inputs:
         for o in optimization_inputs:
             name = o['name']
@@ -204,6 +205,11 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
             optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
             if not optimization_input:
                 return None, "'{}' is not a valid parameter input for '{}'".format(name, optimization_name)
+            optimization_inputs_to_create.append(
+                CalibrationOptimizationInput(optimization_input=optimization_input, calibration_run=run, value=o['value'])
+            )
+        CalibrationOptimizationInput.objects.bulk_create(optimization_inputs_to_create)
+
     return optimization, None
 
 

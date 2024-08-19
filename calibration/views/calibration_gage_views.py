@@ -302,7 +302,7 @@ def save_gage_tab(request):
 
 # Function to be used for saving a config file to allow CLI
 def save_gage(run, gage_id):
-    gage = Gage.objects.filter(gage_id=gage_id).first()
+    gage = Gage.objects.only('gage_id').filter(gage_id=gage_id).first()
     if gage:
         run.gage = gage
     return gage

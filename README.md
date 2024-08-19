@@ -15,9 +15,6 @@ $ source $cerfServer/.venv-cerf/bin/activate
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
-**_Note:_**
-Due to a compatibility issue with ngen-cal's create_input, make sure you are running numpy 1.26.4 and not 2.x
-
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
 The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
@@ -41,10 +38,11 @@ Run `manage.py migrate` to create all the tables
 ```
 
 Create a superuser called `admin` that is used for initializing 
-the static tables. 
+the static tables.  Use `createsuperuser_docker` even though you are not creating a docker container.  
+It is a locally modified version of `createsuperuser` that allows you to enter the password on the command line.
 
 ```
-(.venv-cerf) $ python manage.py createsuperuser
+(.venv-cerf) $ python manage.py createsuperuser_docker --username admin --password admin
 ```
 Run `init_sql` and `init_gages` to initialize the static tables
 ```
@@ -66,12 +64,13 @@ begin
     end loop;
 end $$;
 ```
-where `public` is the name of you schema.
+where `public` is the name of your schema.
 
 # Updating
-After pulling the latest updates from the repo, you should run `migrate` 
-in case there have been any database changes
+After pulling the latest updates from the repo, you should update any dependencies and  apply any database changes.  
+Both of these commands can be run multiple times without any harm.
 ```
+(.venv-cerf) $ pip install -r requirements.txt
 (.venv-cerf) $ python manage.py migrate
 ```
 
@@ -197,6 +196,24 @@ peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
             └── sloth_parameters.txt
 ```
 
+# Importing test data
 
+There is an import command that allows you to import data and create a calibration run job without having to go though the UI.  
+This is intended to facilitate testing (and eventually, provide a CLI interface to the user)
+
+In the `Import_test_data` directory, there are several scripts.  First, make sure they are executable.  Then, set environment variables with your username and password
+```
+$ chmod +x *.sh
+$ export NGEN_USERNAME="your_username"
+$ export NGEN_PASSWORD="your_password"
+```
+
+You can then run the `ngen_import.sh` script with one of the sample input files.  Everytime you run `ngen_import.sh`, a new Calibration Run job will be created.  
+The different data files will create jobs will various amounts of data imported.
+The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
+
+Note that the `run_after_import` flag is not yet supported.
+
+The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
 
 

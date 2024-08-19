@@ -5,7 +5,7 @@ from calibration.models.base_model import BaseModel
 
 class CalibrationFormulation(BaseModel):
     description = models.TextField(null=False)
-    name = models.TextField(null=False)
+    name = models.CharField(max_length=50, null=False)
     groups = models.TextField(null=False)
     used_by_calibration_run = models.BooleanField(default=False)
     version = models.TextField(null=True)

@@ -7,7 +7,7 @@ from django.db.models import F
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationTuneParameter, OptimizationInput
+    CalibrationTuneParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR
 from calibration.views.common import CerfException
@@ -133,6 +133,9 @@ def ready_to_run(run, build=None):
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
+    if not CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exists():
+        messages.append('modules must be specified')
+
     if not run.user_formulation_name:
         messages.append('formulation name must be specified')
     else:
@@ -160,17 +163,18 @@ def ready_to_run(run, build=None):
         calibration['calib_eval_end_period'] = run.calibration_eval_end_period.strftime(DATE_FORMAT)
 
     if run.automatic_validation:
-        if not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period:
+        if any(field is None for field in
+               [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
             messages.append(
                 'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+        else:
+            calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
+            calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
+            calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
+            calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
 
-        calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
-        calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
-        calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
-        calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
-
-        calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
-        calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
+            calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
+            calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
     if not run.objective_function:
         messages.append('objective function must be specified')

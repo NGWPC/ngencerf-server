@@ -1,0 +1,70 @@
+{
+    "metadata": {
+        "calibration_run_id": 1,
+        "run_date": null
+    },
+    "run_after_import": false,
+    "gage_id": "01123000",
+    "forcing_source": "Upload",
+    "forcing_user_dir": "/mydir/hello",
+    "forcing_dir_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/1_peter/forcing/01123000",
+    "observational_source": "Upload",
+    "observational_user_filename": "01123000_hourly_discharge.csv",
+    "observational_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/1_peter/observation/01123000_hourly_discharge.csv",
+    "geopackage": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/geopackage/gauge_01073000.gpkg",
+    
+    "modules": [
+        "Noah-OWP-Modular",
+        "CFE-S",
+        "T-Route"
+    ],
+    "formulation_name": "my-cfe-noah",
+    "use_sloth": true,
+    "sloth_parameters": [
+        {
+            "param_name": "sloth_smp",
+            "param_count": 1,
+            "param_type": "double",
+            "param_units": "none",
+            "param_location": "node",
+            "param_value": 0.0,
+            "maps_to_module": "CFE-S",
+            "maps_to_variable_name": "soil_moisture_profile"
+        },
+        {
+            "param_name": "sloth_ice_fraction_xiananjiang",
+            "param_count": 1,
+            "param_type": "double",
+            "param_units": "none",
+            "param_location": "node",
+            "param_value": 0.0,
+            "maps_to_module": "CFE-S",
+            "maps_to_variable_name": "ice_fraction_soil_fraction_xiananjiang"
+        },
+        {
+            "param_name": "sloth_ice_fraction_schaake",
+            "param_count": 1,
+            "param_type": "double",
+            "param_units": "m",
+            "param_location": "node",
+            "param_value": 1.2,
+            "maps_to_module": "CFE-S",
+            "maps_to_variable_name": "ice_fraction_schaake"
+        }
+    ],
+    
+    "automatic_validation": true,
+    "output_variable_to_calibrate": {},
+    "calibration_times": {},
+    "validation_times": {},
+    "time_range": {},
+    
+    "streamflow_threshold": null,
+    "peak_flow_threshold": null,
+    "parameters": [],
+    "objective_function": null,
+    "optimization_inputs": [],
+    "optimization": null,
+    "plot_frequency": null,
+    "stop_criteria": null
+}

@@ -2,17 +2,17 @@ import csv
 import logging
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Max
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from git import Repo
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.createInput import create_input
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration, IterationTuneParameter, \
     CalibrationTuneParameter
@@ -21,6 +21,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
+from createInput import create_input
 
 logger = logging.getLogger(__name__)
 
@@ -118,21 +119,23 @@ def run_calibration(request):
     return Response(response_validator.data)
 
 
-def submit_job(run):
-    messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
-    print('config file', config_file)
+def submit_job(run, config_file=None):
+    # If config is passed, then don't need to validate
+    if not config_file:
+        messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
+        print('config file', config_file)
 
-    # TODO Normally, we return if not ready, but for testing, we'll skip this test
-    # if messages:
-    #     return f'Calibration Run {calibration_run_id} is not ready'
+        # TODO Normally, we return if not ready, but for testing, we'll skip this test
+        # if messages:
+        #     return f'Calibration Run {calibration_run_id} is not ready'
 
     # Save the latest git hash or ngen and ngen-cal
     run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
     run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
-    run.run_date = datetime.now()
+    run.run_date = datetime.now(timezone.utc)
     run.save()
 
-    message = create_input.create_input(config_file)
+    message = create_input(config_file)
     if message:
         return message
 
@@ -195,6 +198,7 @@ def test_read_output(request):
 
     return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
 
+
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
 def read_output(gage_dir, run):
@@ -226,10 +230,10 @@ def find_worker_directories(run, output_calibration_run_dir):
         worker_path = os.path.join(output_calibration_run_dir, worker_name)
         # Check if it's a directory and matches the pattern
         if os.path.isdir(worker_path) and pattern.match(worker_name):
-            process_metrics_iteration(run, worker_path)
+            process_iteration(run, worker_path)
 
 
-def process_metrics_iteration(run, worker_path):
+def process_iteration(run, worker_path):
     metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
     params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
     # Contains the best for a single worker
@@ -309,6 +313,8 @@ def process_metrics_iteration(run, worker_path):
                 if param_name in ['iteration']:
                     continue
                 # Do a case-insensitive match
+                # A CalibrationTuneParameter is associated with a module, so theoretically, two different modules can have the same parameter name
+                # But we'll assume there is only one
                 parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
                 if not parameter:
                     raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
@@ -367,16 +373,29 @@ def report_iteration(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
     iteration_number = validator.data.get('iteration')
+    worker_name = validator.data.get('worker_name')
 
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
+    # run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if errorReturn:
         return errorReturn
 
     with transaction.atomic():
-        # TODO Do we always create a new one, or check to see if this iteration number exists?
-        # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
-        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
-        response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+        if iteration_number == 0:
+            # New worker_name, get a new worker_number
+            max_worker_number = Iteration.objects.filter(calibration_run=run).aggregate(Max('worker_number'))['worker_number__max']
+            worker_number = (max_worker_number or 0) + 1
+        else:
+            # Existing worker, find the worker_number
+            existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').first()
+            if existing_iteration:
+                worker_number = existing_iteration.worker_number
+            else:
+                # Handle case where worker_name does not exist
+                return ResponseError(f"No existing worker_name found for '{worker_name}' in this calibration run.")
+
+        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, worker_number=worker_number )
+        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}", 'calibration_run_id': run.id,
                     'status': run.status.name}
 
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
@@ -415,14 +434,16 @@ def get_iteration(request):
     if error_return:
         return error_return
 
+    # TODO Running jobs (or Done?)
     calibration_run_id = validator.data.get('calibration_run_id')
 
     # TODO read output file
 
-    run, errorReturn = get_run(calibration_run_id, request.user)  # run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if errorReturn:
         return errorReturn
 
+    # TODO Need to figure out iterations with respect to multiple workers
     iteration = 1
     response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
                 'status': run.status.name, 'iteration': iteration}
@@ -430,6 +451,6 @@ def get_iteration(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
 
     return Response(response_validator.data)

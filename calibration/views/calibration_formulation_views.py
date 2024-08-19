@@ -2,6 +2,7 @@ import json
 import logging
 
 from django.db import transaction
+from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -291,7 +292,7 @@ def get_my_modules(run):
 def get_sloth_parameters(run):
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
-        .select_related('maps_to_module')
+        .prefetch_related(Prefetch('maps_to_module', queryset=CalibrationFormulation.objects.only('name')))
         .values(
             'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
             'maps_to_variable_name')

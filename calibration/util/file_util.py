@@ -1,5 +1,8 @@
+import logging
 import os
 import shutil
+
+logger = logging.getLogger(__name__)
 
 
 def copy_directory(source_dir, destination_dir):
@@ -21,7 +24,7 @@ def copy_directory(source_dir, destination_dir):
     # Copy the contents of the source directory to the destination directory
     shutil.copytree(source_dir, destination_dir, dirs_exist_ok=True)
 
-    print(f"Directory copied from {source_dir} to {destination_dir} successfully.")
+    logger.info(f"Directory successfully copied from {source_dir} to {destination_dir}.")
 
 
 def copy_file_to_directory(source_file: str, destination_dir: str):
@@ -46,4 +49,4 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     # Copy the source file to the destination directory
     shutil.copy2(source_file, destination_file)
 
-    print(f"File copied from {source_file} to {destination_dir} successfully.")
+    logger.info(f"File successfully copied from {source_file} to {destination_dir}.")
