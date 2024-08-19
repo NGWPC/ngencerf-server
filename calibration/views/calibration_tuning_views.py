@@ -1,27 +1,22 @@
 import csv
-import json
 import logging
 import os
 from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
-from json.decoder import JSONDecodeError
 
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from calibration.enums import CalibrationRunType
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
-from calibration.util.calibration_validators import CalibrationRunValidator, SaveTuningRequestValidator, ModuleDataHydrofabricListValidator, \
-    LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
+    LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 
 logger = logging.getLogger(__name__)
 
@@ -81,14 +76,13 @@ module_sample_data = {"modules": [
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadTuningResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -101,77 +95,58 @@ module_sample_data = {"modules": [
     description="Load tuning tab data"
 )
 @api_view(['GET', 'POST'])
+@handle_exceptions
 # @permission_classes([AllowAny])
 def load_tuning_tab(request):
-    try:
-        print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+    data = request.data if request.method == 'POST' else request.query_params
 
-        logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
+    logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
-        validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        calibration_times, validation_times = get_times(run)
+    calibration_times, validation_times = get_times(run)
 
-        output_variable_to_calibrate = get_output_variable_to_calibrate(run)
+    output_variable_to_calibrate = get_output_variable_to_calibrate(run)
 
-        # Get the list of modules for this Run
-        modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    # Get the list of modules for this Run
+    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
-        module_list = []
-        if modules:
-            # Only do this if modules have been saved in the formulation tab
+    module_list = []
+    if modules:
+        # Only do this if modules have been saved in the formulation tab
 
-            # print('calling hydrofabric with', modules)
-            get_module_data_from_hydrofabric(run, modules)
+        # print('calling hydrofabric with', modules)
+        get_module_data_from_hydrofabric(run, modules)
 
-            # For each module, get the Parameters and Output Variables
-            module_list = get_parameters_and_output_variables(modules)
+        # For each module, get the Parameters and Output Variables
+        module_list = get_parameters_and_output_variables(modules)
 
-        time_range = get_time_range(run)
+    time_range = get_time_range(run)
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name,
-                    'modules': module_list,
-                    'calibration_times': calibration_times,
-                    'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
-                    'time_range': time_range,
-                    'output_variable_to_calibrate': output_variable_to_calibrate}
-        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+    response = {'calibration_run_id': run.id, 'status': run.status.name,
+                'modules': module_list,
+                'calibration_times': calibration_times,
+                'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
+                'time_range': time_range,
+                'output_variable_to_calibrate': output_variable_to_calibrate}
+    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadTuningResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from load_tuning_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from load_tuning_tab() - {serializer.data}')
+    response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from load_tuning_tab() - {response_validator.data}')
 
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(response_validator.data)
 
 
 def get_output_variable_to_calibrate(run):
@@ -248,10 +223,10 @@ def get_module_data_from_hydrofabric(run, modules):
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
     # module_data = response.json()
 
-    validator = ModuleDataHydrofabricListValidator(data=module_sample_data)
+    validator = ModuleDataHydrofabricListSerializer(data=module_sample_data)
     if not validator.is_valid():
         logger.error(validator.errors)
-        raise Exception(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
     # print('getting metadata from hydrofabric')
     module_data = module_sample_data.get("modules")
@@ -287,14 +262,13 @@ def get_module_data_from_hydrofabric(run, modules):
 
 
 @extend_schema(
-    request=SaveTuningRequestValidator,
+    request=SaveTuningRequestSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -305,68 +279,53 @@ def get_module_data_from_hydrofabric(run, modules):
 )
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def save_tuning_tab(request):
-    try:
-        print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'save_tuning_tab() request from {request.user} - {body}')
+    data = request.data
+    logger.debug(f'save_tuning_tab() request from {request.user} - {data}')
 
-        validator = SaveTuningRequestValidator(data=body)
-        validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(SaveTuningRequestSerializer, data)
+    if error_return:
+        return error_return
 
-        calibration_run_id = validator.data.get('calibration_run_id')
-        automatic_validation = validator.data.get('automatic_validation')
-        calibration_times = validator.data.get('calibration_times')
-        validation_times = validator.data.get('validation_times')
-        parameters = validator.data.get('parameters')
+    calibration_run_id = validator.data.get('calibration_run_id')
+    automatic_validation = validator.data.get('automatic_validation')
+    calibration_times = validator.data.get('calibration_times')
+    validation_times = validator.data.get('validation_times')
+    parameters = validator.data.get('parameters')
 
-        output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
+    output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        run.automatic_validation = automatic_validation
+    run.automatic_validation = automatic_validation
 
-        save_times(run, calibration_times, validation_times)
+    save_times(run, calibration_times, validation_times)
 
-        print('parameters', parameters)
-        message = validate_parameters(run, parameters)
-        if message is not None:
-            return ResponseError(message)
+    print('parameters', parameters)
+    message = validate_parameters(run, parameters)
+    if message is not None:
+        return ResponseError(message)
 
-        message = save_output_variable(run, output_variable_to_calibrate)
-        if message is not None:
-            return ResponseError(message)
+    message = save_output_variable(run, output_variable_to_calibrate)
+    if message is not None:
+        return ResponseError(message)
 
-        with transaction.atomic():
-            run.save()
-            save_parameters(run, parameters)
+    with transaction.atomic():
+        run.save()
+        save_parameters(run, parameters)
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-        serializer = GenericResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from save_tuning_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from save_tuning_tab() - {serializer.data}')
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 def save_times(run, calibration_times, validation_times):
@@ -385,7 +344,7 @@ def save_times(run, calibration_times, validation_times):
 def validate_parameters(run, parameters):
     if parameters:
         if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-            return 'CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_tuning_tab.'
+            return 'Modules and/or CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
             if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():

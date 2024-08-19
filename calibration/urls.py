@@ -1,8 +1,8 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_landing_views, \
-    calibration_gage_views, calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_landing_views, calibration_gage_views, \
+    calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views
 
 urlpatterns = [
     ##################################
@@ -20,7 +20,7 @@ urlpatterns = [
     path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
-    
+
     ##################################
     # Plot Definitions tab
     ##################################

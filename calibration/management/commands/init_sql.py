@@ -176,10 +176,10 @@ class Command(BaseCommand):
 
         for v in values:
             Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                                 "description": v['description'],
-                                                                                 "categorical": v.get('categorical', False),
-                                                                                 "event_based": v.get('event_based', False),
-                                                                                 "created_by": self.user})
+                                                                      "description": v['description'],
+                                                                      "categorical": v.get('categorical', False),
+                                                                      "event_based": v.get('event_based', False),
+                                                                      "created_by": self.user})
 
     def define_status(self):
         if self.DELETE_FLAG:

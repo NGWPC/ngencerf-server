@@ -5,7 +5,7 @@ from calibration.models.calibration_run import CalibrationRun
 
 
 class Iteration(BaseModel):
-    iteration_num = models.IntegerField(null=False, unique=True)
+    iteration_num = models.IntegerField(null=False)
     calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.RESTRICT)
     calibration_output_variable_value = models.FloatField(null=False)
     worker = models.TextField(null=False)
@@ -14,3 +14,6 @@ class Iteration(BaseModel):
 
     class Meta:
         db_table = 'iteration'
+        constraints = [
+            models.UniqueConstraint(fields=['iteration_num', 'calibration_run'], name='iteration_iteration_num_calibration_run__unique')
+        ]

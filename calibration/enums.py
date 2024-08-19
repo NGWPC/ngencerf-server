@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import List
 
 
 class StatusEnum(StrEnum):
@@ -12,7 +13,8 @@ class StatusEnum(StrEnum):
     SERVER_ERROR = 'Server error'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
 
@@ -29,7 +31,8 @@ class DomainEnum(StrEnum):
     PUERTO_RICO = 'Puerto Rico'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
 
@@ -41,7 +44,8 @@ class DataTypeEnum(StrEnum):
     STRING = 'string'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
 
@@ -49,7 +53,8 @@ class LocationEnum(StrEnum):
     NODE = 'node'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
 
@@ -58,7 +63,8 @@ class UnitsEnum(StrEnum):
     NONE = 'none'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
 
@@ -67,7 +73,8 @@ class ForcingSourceEnum(StrEnum):
     UPLOAD = 'Upload'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
 
@@ -83,5 +90,6 @@ class ObservationalSourceEnum(StrEnum):
     UPLOAD = 'Upload'
 
     @classmethod
-    def values(cls):
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
         return [e.value for e in cls]

@@ -1,42 +1,38 @@
 import csv
-import json
 import logging
 import os
 import re
 from datetime import datetime
-from json.decoder import JSONDecodeError
 from typing import Dict
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from git import Repo
-from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.createInput import create_input
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration
-from calibration.util.calibration_validators import CalibrationRunValidator, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, ReportIterationValidator
+from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration, IterationTuneParameter, \
+    CalibrationTuneParameter
+from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: IsReadyResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -47,48 +43,34 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])()
+@handle_exceptions
 def is_ready(request):
-    try:
-        print('user', request.user)
+    data = request.data
+    logger.debug(f'is_ready() request from {request.user} - {data}')
 
-        body = json.loads(request.body or '{}')
-        logger.debug(f'is_ready() request from {request.user} - {body}')
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
-        validator = CalibrationRunValidator(data=body)
-        validator.is_valid(raise_exception=True)
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    messages, _ = ngen_cal_input.ready_to_run(run)
 
-        messages, _ = ngen_cal_input.ready_to_run(run)
+    response = {'calibration_run_id': run.id, 'status': run.status.name}
+    ready_not_ready = 'not ready' if messages else 'ready'
+    response['message'] = f'Calibration Run {run.id} is {ready_not_ready}'
+    if messages:
+        response['errors'] = messages
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name}
-        ready_not_ready = 'not ready' if messages else 'ready'
-        response['message'] = f'Calibration Run {run.id} is {ready_not_ready}'
-        if messages:
-            response['errors'] = messages
-
-        serializer = IsReadyResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from is_ready() - {serializer.data}')
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from is_ready() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -99,7 +81,6 @@ def is_ready(request):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -109,46 +90,32 @@ def is_ready(request):
     description="Run a calibration"
 )
 @api_view(['POST'])
+@handle_exceptions
 def run_calibration(request):
-    try:
-        print('user', request.user)
+    data = request.data
+    logger.debug(f'run_calibration() request from {request.user} - {data}')
 
-        body = json.loads(request.body or '{}')
-        logger.debug(f'run_calibration() request from {request.user} - {body}')
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
-        validator = CalibrationRunValidator(data=body)
-        validator.is_valid(raise_exception=True)
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    message = submit_job(run)
+    if message:
+        return ResponseError(message)
 
-        message = submit_job(run)
-        if message:
-            return ResponseError(message)
+    response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+                'status': run.status.name}
 
-        response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                    'status': run.status.name}
-        serializer = GenericResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from run_calibration() - {serializer.data}')
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    logger.debug(f'Returning to {request.user} from run_calibration() - {response_validator.data}')
+
+    return Response(response_validator.data)
 
 
 def submit_job(run):
@@ -176,13 +143,18 @@ def submit_job(run):
 
 # This is just a test endpoint to trigger read_output()
 @api_view(['GET', 'POST'])
+@handle_exceptions
 def test_read_output(request):
-    data = json.loads(request.body or '{}')
+    data = request.data if request.method == 'POST' else request.query_params
     calibration_run_id = data.get('calibration_run_id')
     optimization_name = data.get('optimization')
     username = data.get('user')
 
-    run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+    # TODO This should only be for DONE jobs
+    # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    print('run', run)
+
     # if errorReturn:
     #     return errorReturn
     if not run:
@@ -223,7 +195,6 @@ def test_read_output(request):
 
     return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
 
-
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
 def read_output(gage_dir, run):
@@ -234,13 +205,7 @@ def read_output(gage_dir, run):
 
     output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
 
-    metrics_iteration_filename = f'{run.gage.gage_id}_metrics_iteration.csv'
-    # Contains the best for a single worker
-    objective_log_best_filename = f'{run.gage.gage_id}_objective_log.txt'
-
-    # Contains the best across all workers -- Only for GWO and PSO
-    cost_hist_filename = f'{run.gage.gage_id}_cost_hist.csv'
-    cost_hist_file = os.path.join(output_calibration_run_dir, cost_hist_filename)
+    cost_hist_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_cost_hist.csv')
     # Get the best iteration number across all works
     # TODO This is not right
     # last_line = read_last_line(cost_hist_file)
@@ -249,29 +214,33 @@ def read_output(gage_dir, run):
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
 
-    with transaction.atomic:
-        find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename)
+    with transaction.atomic():
         run.save()
+        find_worker_directories(run, output_calibration_run_dir)
 
 
-def find_worker_directories(run, output_calibration_run_dir, metrics_iteration_filename, objective_log_best_filename):
+def find_worker_directories(run, output_calibration_run_dir):
     pattern = re.compile(r'^ngen_\w*_worker$')
 
     for worker_name in os.listdir(output_calibration_run_dir):
         worker_path = os.path.join(output_calibration_run_dir, worker_name)
         # Check if it's a directory and matches the pattern
         if os.path.isdir(worker_path) and pattern.match(worker_name):
-            process_metrics_iteration(run, worker_path, metrics_iteration_filename, objective_log_best_filename)
+            process_metrics_iteration(run, worker_path)
 
 
-def process_metrics_iteration(run, worker_path, metrics_iteration_file, objective_log_best_filename):
-    metrics_iteration_file = os.path.join(worker_path, metrics_iteration_file)
-    objective_log_best_file = os.path.join(worker_path, objective_log_best_filename)
-    cost_hist_file = os.path.join(worker_path, objective_log_best_filename)
+def process_metrics_iteration(run, worker_path):
+    metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
+    params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
+    # Contains the best for a single worker
+    objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
+
     if not os.path.exists(metrics_iteration_file):
-        raise Exception(f'{metrics_iteration_file} does not exist')
+        raise CerfException(f'{metrics_iteration_file} does not exist')
+    if not os.path.exists(params_iteration_file):
+        raise CerfException(f'{params_iteration_file} does not exist')
     if not os.path.exists(objective_log_best_file):
-        raise Exception(f'{objective_log_best_file} does not exist')
+        raise CerfException(f'{objective_log_best_file} does not exist')
 
     # Get the best iteration number
     last_line = read_last_line(objective_log_best_file)
@@ -279,16 +248,27 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
 
     worker_name = os.path.basename(worker_path)
 
+    #########
+    # TODO For dev only, we will delete entries first
+    #########
+    IterationMetric.objects.filter(iteration__calibration_run=run).delete()
+    IterationTuneParameter.objects.filter(iteration__calibration_run=run).delete()
+    Iteration.objects.filter(calibration_run=run).delete()
+    #####
+
     iterations_to_create = []
     metrics_to_create = []
+    params_to_create = []
 
+    # Create the Iteration objects
+    # We read the metrics_iteration_file to get the output variable value, as well as count the iterations
     with open(metrics_iteration_file) as file:
         reader = csv.DictReader(file)
         # iteration,objFunVal,Corr,MAE,RMSE,RSR,PBIAS,NSE,NSELog,NSEWt,KGE,POD,FAR,CSI,FBIAS,HSEG_FDC,MSEG_FDC,LSEG_FDC
         row_dict: Dict[str, str]
         for row_dict in reader:
             iteration_num = int(row_dict['iteration'])
-            best = iteration == best_iteration_for_worker
+            best = iteration_num == best_iteration_for_worker
 
             iteration = Iteration(
                 calibration_run=run,
@@ -302,30 +282,48 @@ def process_metrics_iteration(run, worker_path, metrics_iteration_file, objectiv
         # Bulk create Iteration objects
         created_iterations = Iteration.objects.bulk_create(iterations_to_create)
 
-        # Rewind the reader to the beginning of the CSV to pair up with the created iterations
-        file.seek(0)
-        reader = csv.DictReader(file)
+    with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
+        metrics_reader = csv.DictReader(metrics_file)
+        params_reader = csv.DictReader(params_file)
 
-        for iteration, row_dict in zip(created_iterations, reader):
-            for metric_name, value in row_dict.items():
+        # Read the metrics file again, this time getting all the metrics values
+        for iteration, metrics_row, params_row in zip(created_iterations, metrics_reader, params_reader):
+            for metric_name, value in metrics_row.items():
                 if metric_name in ['iteration', 'objFunVal']:
                     continue
                 # Do a case-insensitive match
                 metric = Metric.objects.filter(name__iexact=metric_name).first()
                 if not metric:
-                    print("Could not find metric", metric_name)
-                    continue
+                    raise CerfException(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
 
-                metric_value = float(value)
+                metric_value = float(value) if value else None
                 metric_obj = IterationMetric(
                     iteration=iteration,
                     metric=metric,
-                    metric_value = metric_value
+                    metric_value=metric_value
                 )
                 metrics_to_create.append(metric_obj)
 
-        # Bulk create IterationMetric objects
-        IterationMetric.objects.bulk_create(metrics_to_create)
+            # Process the parameters
+            for param_name, value in params_row.items():
+                if param_name in ['iteration']:
+                    continue
+                # Do a case-insensitive match
+                parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
+                if not parameter:
+                    raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
+
+                param_value = float(value) if value else None
+                param_obj = IterationTuneParameter(
+                    iteration=iteration,
+                    parameter=parameter,
+                    param_value=param_value
+                )
+                params_to_create.append(param_obj)
+
+    # Bulk create IterationMetric and IterationTuneParameter objects
+    IterationMetric.objects.bulk_create(metrics_to_create)
+    IterationTuneParameter.objects.bulk_create(params_to_create)
 
 
 # Read backwards from the end of the file until we find linefeed.  Then read the line
@@ -340,14 +338,13 @@ def read_last_line(filename):
 
 
 @extend_schema(
-    request=ReportIterationValidator,
+    request=ReportIterationSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -359,58 +356,45 @@ def read_last_line(filename):
 # Called by ngen_cal
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def report_iteration(request):
-    try:
-        print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'report_iteration() request from {request.user} - {body}')
+    data = request.data
+    logger.debug(f'report_iteration() request from {request.user} - {data}')
 
-        validator = ReportIterationValidator(data=body)
-        validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(ReportIterationSerializer, data)
+    if error_return:
+        return error_return
 
-        calibration_run_id = validator.data.get('calibration_run_id')
-        iteration_number = validator.data.get('iteration')
+    calibration_run_id = validator.data.get('calibration_run_id')
+    iteration_number = validator.data.get('iteration')
 
-        run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING])
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    if errorReturn:
+        return errorReturn
 
-        with transaction.atomic():
-            # TODO Do we always create a new one, or check to see if this iteration number exists?
-            # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
-            Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
-            response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                        'status': run.status.name}
-            serializer = GenericResponseSerializer(response)
-            logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
+    with transaction.atomic():
+        # TODO Do we always create a new one, or check to see if this iteration number exists?
+        # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
+        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
+        response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                    'status': run.status.name}
 
-            return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response_validator, error_response = validate_response(GenericResponseSerializer, response)
+        if error_response:
+            return error_response
+        logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
+
+        return Response(response_validator.data)
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -422,45 +406,30 @@ def report_iteration(request):
 # Called by ngen_cal
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def get_iteration(request):
-    try:
-        print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
-        logger.debug(f'get_iteration() request from {request.user} - {data}')
+    data = request.data if request.method == 'POST' else request.query_params
+    logger.debug(f'get_iteration() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
-        validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        # TODO read output file
+    # TODO read output file
 
-        run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)  # run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    if errorReturn:
+        return errorReturn
 
-        iteration = 1
-        response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
-                    'status': run.status.name, 'iteration': iteration}
-        serializer = GenericResponseSerializer(response)
-        logger.debug(f'Returning to {request.user} from report_iteration() - {serializer.data}')
+    iteration = 1
+    response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
+                'status': run.status.name, 'iteration': iteration}
 
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
+
+    return Response(response_validator.data)

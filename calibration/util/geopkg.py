@@ -42,7 +42,7 @@ def gpkg_to_png_selected_layers(gpkg_path, layers_to_include=None):
                 x, y = exterior.xy
                 ax.plot(x, y, color='black')
             elif isinstance(geom, MultiPolygon):
-                for poly in geom:
+                for poly in geom.geoms:
                     exterior = poly.exterior
                     x, y = exterior.xy
                     ax.plot(x, y, color='black')
