@@ -38,10 +38,11 @@ Run `manage.py migrate` to create all the tables
 ```
 
 Create a superuser called `admin` that is used for initializing 
-the static tables. 
+the static tables.  Use `createsuperuser_docker` even though you are not creating a docker container.  
+It is a locally modified version of `createsuperuser` that allows you to enter the password on the command line.
 
 ```
-(.venv-cerf) $ python manage.py createsuperuser
+(.venv-cerf) $ python manage.py createsuperuser_docker --username admin --password admin
 ```
 Run `init_sql` and `init_gages` to initialize the static tables
 ```
