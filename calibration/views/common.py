@@ -89,7 +89,7 @@ def validate_response(serializer_class, data):
         validator = serializer_class(data=data)
         validator.is_valid(raise_exception=True)
         return validator, None
-    except ValidationError as e:
+    except ValidationError as _:
         # Note that an exception here is most likely due to a coding error
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
         error_message = f"Data format error in response returning from {calling_function}"

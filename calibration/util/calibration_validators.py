@@ -617,8 +617,9 @@ class ImportSerializer(serializers.Serializer):
 # Misc
 ##################################
 class ReportIterationSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    iteration = serializers.IntegerField(required=True, min_value=1)
+    calibration_run_id = serializers.IntegerField(required=True, allow_null=False)
+    iteration = serializers.(required=True, min_value=0)
+    worker = serializers.CharField(required=True, allow_null=False)
 
 
 class ErrorResponseSerializer(BaseSerializer):

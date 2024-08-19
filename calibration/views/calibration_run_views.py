@@ -372,16 +372,15 @@ def report_iteration(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
     iteration_number = validator.data.get('iteration')
+    worker = validator.data.get('worker')
 
     run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if errorReturn:
         return errorReturn
 
     with transaction.atomic():
-        # TODO Do we always create a new one, or check to see if this iteration number exists?
-        # TODO calibration_output_variable_value is required, so add placeholder for now.  Unless it shouldn't be required?
-        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, calibration_output_variable_value=0)
-        response = {'message': f'Iteration {iteration_number} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number)
+        response = {'message': f'Iteration {iteration_number} for worker {worker} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
                     'status': run.status.name}
 
         response_validator, error_response = validate_response(GenericResponseSerializer, response)

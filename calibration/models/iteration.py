@@ -7,7 +7,7 @@ from calibration.models.calibration_run import CalibrationRun
 class Iteration(BaseModel):
     iteration_num = models.IntegerField(null=False)
     calibration_run = models.ForeignKey(CalibrationRun, null=False, on_delete=models.RESTRICT)
-    calibration_output_variable_value = models.FloatField(null=False)
+    calibration_output_variable_value = models.FloatField(null=True)
     worker = models.TextField(null=False)
     best_for_worker = models.BooleanField(null=False, default=False)
     best_overall = models.BooleanField(null=False, default=False)
