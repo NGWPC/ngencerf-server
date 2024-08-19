@@ -196,6 +196,24 @@ peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
             └── sloth_parameters.txt
 ```
 
+# Importing test data
 
+There is an import command that allows you to import data and create a calibration run job without having to go though the UI.  
+This is intended to facilitate testing (and eventually, provide a CLI interface to the user)
+
+In the `Import_test_data` directory, there are several scripts.  First, make sure they are executable.  Then, set environment variables with your username and password
+```
+$ chmod +x *.sh
+$ export NGEN_USERNAME="your_username"
+$ export NGEN_PASSWORD="your_password"
+```
+
+You can then run the `ngen_import.sh` script with one of the sample input files.  Everytime you run `ngen_import.sh`, a new Calibration Run job will be created.  
+The different data files will create jobs will various amounts of data imported.
+The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
+
+Note that the `run_after_import` flag is not yet supported.
+
+The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
 
 
