@@ -36,7 +36,7 @@ DATABASES = {
         'NAME': 'postgres',
         'USER': 'postgres',
         'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
-        'HOST': 'localhost',
+        'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
         'PORT': 5432,
         'OPTIONS': {
             'connect_timeout': 10,
