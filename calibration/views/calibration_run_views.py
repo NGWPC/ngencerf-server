@@ -7,6 +7,7 @@ from typing import Dict
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Max
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
 from git import Repo
 from rest_framework.decorators import api_view
@@ -372,15 +373,29 @@ def report_iteration(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
     iteration_number = validator.data.get('iteration')
-    worker = validator.data.get('worker')
+    worker_name = validator.data.get('worker_name')
 
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
+    # run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if errorReturn:
         return errorReturn
 
     with transaction.atomic():
-        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number)
-        response = {'message': f'Iteration {iteration_number} for worker {worker} set for Calibration Run {run.id}', 'calibration_run_id': run.id,
+        if iteration_number == 0:
+            # New worker_name, get a new worker_number
+            max_worker_number = Iteration.objects.filter(calibration_run=run).aggregate(Max('worker_number'))['worker_number__max']
+            worker_number = (max_worker_number or 0) + 1
+        else:
+            # Existing worker, find the worker_number
+            existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').first()
+            if existing_iteration:
+                worker_number = existing_iteration.worker_number
+            else:
+                # Handle case where worker_name does not exist
+                return ResponseError(f"No existing worker_name found for '{worker_name}' in this calibration run.")
+
+        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, worker_number=worker_number )
+        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}", 'calibration_run_id': run.id,
                     'status': run.status.name}
 
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
@@ -436,6 +451,6 @@ def get_iteration(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
 
     return Response(response_validator.data)

@@ -557,7 +557,7 @@ class IsReadyResponseSerializer(BaseSerializer):
 class ExportResponseSerializer(BaseSerializer):
     metadata = serializers.DictField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    # run_date = serializers.DateTimeField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
@@ -618,8 +618,8 @@ class ImportSerializer(serializers.Serializer):
 ##################################
 class ReportIterationSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, allow_null=False)
-    iteration = serializers.(required=True, min_value=0)
-    worker = serializers.CharField(required=True, allow_null=False)
+    iteration = serializers.IntegerField(required=True, min_value=0)
+    worker_name = serializers.CharField(required=True, allow_null=False)
 
 
 class ErrorResponseSerializer(BaseSerializer):

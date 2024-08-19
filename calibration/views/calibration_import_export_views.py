@@ -258,7 +258,7 @@ def export_job(request):
     stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
     export_file['stop_criteria'] = stop_criteria
 
-    export_file['run_date'] = run.run_date
+    # export_file['run_date'] = run.run_date
 
     messages, _ = ngen_cal_input.ready_to_run(run)
     metadata['messages'] = messages
