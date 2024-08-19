@@ -75,30 +75,29 @@ def import_job(request):
         #############################
         get_modules_from_hydrofabric(run)
         # List of module names
-        modules = set(validator.data.get('modules'))
+        module_names = set(validator.data.get('modules'))
 
-        message = validate_modules(run, modules)
+        message = validate_modules(run, module_names)
         if message:
             return ResponseError(message)
 
-        if modules:
-            if not validate_formulation(run, modules):
-                return ResponseError(f'Invalid formulation -  {modules}')
+        if module_names:
+            if not validate_formulation(run, module_names):
+                return ResponseError(f'Invalid formulation -  {module_names}')
 
         run.user_formulation_name = validator.data.get('formulation_name')
 
         run.use_sloth = validator.data.get('use_sloth')
         sloth_parameters = validator.data.get('sloth_parameters')
         if run.use_sloth:
-            modules.add(SLOTH)
-            if not sloth_parameters:
-                return ResponseError(f"If 'use_sloth' is True, you must enter {SLOTH} parameters")
+            if module_names:
+                module_names.add(SLOTH)
         else:
             if sloth_parameters:
                 return ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
 
         # Create any new formulations
-        for name in modules:
+        for name in module_names:
             CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
         message = add_sloth_parameters(run, sloth_parameters)
@@ -114,14 +113,19 @@ def import_job(request):
         if modules:
             get_module_data_from_hydrofabric(run, modules)
 
+        run.automatic_validation = validator.data.get('automatic_validation')
+
         calibration_times = validator.data.get('calibration_times')
         validation_times = validator.data.get('validation_times')
+        if not run.automatic_validation and validation_times:
+            return ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
-        run.automatic_validation = validator.data.get('automatic_validation')
         save_times(run, calibration_times, validation_times)
 
         output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
         parameters = validator.data.get('parameters')
+        if parameters and not modules:
+            return ResponseError('Parameters cannot be specified without modules')
 
         message = validate_parameters(run, parameters)
         if message is not None:

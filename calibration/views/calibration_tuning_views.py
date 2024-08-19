@@ -241,8 +241,8 @@ def get_module_data_from_hydrofabric(run, modules):
             outputs = m['module_output_variables']
             o: dict
             for o in outputs:
-                ModuleOutputVariable.objects.get_or_create(name=o['name'], calibration_formulation=module,
-                                                           defaults={'description': o['description']})
+                ModuleOutputVariable.objects.update_or_create(name=o['name'], calibration_formulation=module,
+                                                              defaults={'description': o['description']})
             # Save parameters
             # print('getting parameters for', m)
             parameters = m['module_parameters']
