@@ -57,8 +57,7 @@
     "output_variable_to_calibrate": {},
     "calibration_times": {},
     "validation_times": {},
-    "time_range": {},
-    
+
     "streamflow_threshold": null,
     "peak_flow_threshold": null,
     "parameters": [],
