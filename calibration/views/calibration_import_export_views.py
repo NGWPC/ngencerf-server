@@ -61,21 +61,30 @@ def import_job(request):
 
         main_dir = get_main_dir(run)
         if run.forcing_source == ForcingSourceEnum.UPLOAD.value:
-            # Need to copy user-loaded files to our instance directory
-            new_forcing_dir = os.path.join(main_dir, 'forcing')
-            copy_directory(run.forcing_dir_path, new_forcing_dir)
+            if os.path.exists(run.forcing_dir_path):
+                # Need to copy user-loaded files to our instance directory
+                new_forcing_dir = os.path.join(main_dir, 'forcing')
+                copy_directory(run.forcing_dir_path, new_forcing_dir)
+            else:
+                run.forcing_dir_path = None
+                run.forcing_user_dir = None
 
         if run.observational_source == ObservationalSourceEnum.UPLOAD.value:
-            # Need to copy user-loaded files to our instance directory
-            new_observational_dir = os.path.join(main_dir, 'observation')
-            copy_file_to_directory(run.observational_file_path, new_observational_dir)
+            if os.path.exists(run.observational_file_path):
+                # Need to copy user-loaded files to our instance directory
+                new_observational_dir = os.path.join(main_dir, 'observation')
+                copy_file_to_directory(run.observational_file_path, new_observational_dir)
+            else:
+                run.observational_file_path = None
+                run.observational_user_dir = None
 
         #############################
         # Formulations
         #############################
         get_modules_from_hydrofabric(run)
         # List of module names
-        module_names = set(validator.data.get('modules'))
+        modules_list = validator.data.get('modules')
+        module_names = set(modules_list) if modules_list else set()
 
         message = validate_modules(run, module_names)
         if message:
@@ -100,9 +109,10 @@ def import_job(request):
         for name in module_names:
             CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
-        message = add_sloth_parameters(run, sloth_parameters)
-        if message:
-            return ResponseError(message)
+        if sloth_parameters:
+            message = add_sloth_parameters(run, sloth_parameters)
+            if message:
+                return ResponseError(message)
 
         #############################
         # Tuning
@@ -214,6 +224,8 @@ def export_job(request):
         return errorReturn
 
     metadata = {'source_calibration_run_id': run.id, 'run_date': run.run_date, 'status': run.status.name}
+    time_range = get_time_range(run)
+    metadata['time_range'] = time_range if time_range else {}
     export_file['metadata'] = metadata
     export_file['gage_id'] = run.gage.gage_id if run.gage else None
     export_file['forcing_source'] = run.forcing_source if run.forcing_source else None
@@ -236,8 +248,6 @@ def export_job(request):
         'module': run.module_output_variable.calibration_formulation.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else {}
-    time_range = get_time_range(run)
-    export_file['time_range'] = time_range if time_range else {}
 
     export_file['output_variable_to_calibrate'] = output_variable_to_calibrate
     # Get the list of modules for this Run
