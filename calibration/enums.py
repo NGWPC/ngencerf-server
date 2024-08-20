@@ -36,6 +36,18 @@ class DomainEnum(StrEnum):
         return [e.value for e in cls]
 
 
+class OptimizationEnum(StrEnum):
+    DDS = 'DDS'
+    GWO = 'GWO'
+    PSO = 'PSO'
+
+    @classmethod
+    def values(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
+        return [e.value for e in cls]
+
+
+
 ####  These enums are used in validators
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'

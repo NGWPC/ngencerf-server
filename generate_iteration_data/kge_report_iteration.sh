@@ -16,13 +16,14 @@ if [ -z "$ACCESS_TOKEN" ]; then
 fi
 
 
-
 # Read data from file
 data=$(cat "$1")
 
+# Extract optimization value
+optimization=$(echo "$data" | jq -r '.optimization'  | awk '{print toupper($0)}')
 
 # Loop through each entry in the JSON data
-echo "$data" | jq -c '.[]' | while read -r entry; do
+echo "$data" | jq -c '.list[]' | while read -r entry; do
     calibration_run_id=$(echo "$entry" | jq -r '.calibration_run_id')
     iteration=$(echo "$entry" | jq -r '.iteration')
     worker_name=$(echo "$entry" | jq -r '.worker_name')
@@ -33,6 +34,7 @@ echo "$data" | jq -c '.[]' | while read -r entry; do
     --header "Authorization: Bearer $ACCESS_TOKEN" \
     --data '{
         "calibration_run_id": '"$calibration_run_id"',
+        "optimization": "'"$optimization"'",
         "iteration": '"$iteration"',
         "worker_name": "'"$worker_name"'"
     }'

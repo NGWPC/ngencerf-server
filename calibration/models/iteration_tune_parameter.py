@@ -9,6 +9,7 @@ class IterationTuneParameter(BaseModel):
     calibration_tune_parameter = models.ForeignKey('CalibrationTuneParameter', null=False, on_delete=models.CASCADE)
     data_type = models.CharField(max_length=50, null=False)
     tuned_value = models.FloatField(null=False)
+    best = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'iteration_tune_parameter'

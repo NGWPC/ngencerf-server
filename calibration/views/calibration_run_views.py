@@ -150,8 +150,8 @@ def submit_job(run, config_file=None):
 def test_read_output(request):
     data = request.data if request.method == 'POST' else request.query_params
     calibration_run_id = data.get('calibration_run_id')
-    optimization_name = data.get('optimization')
-    username = data.get('user')
+    # optimization_name = data.get('optimization')
+    # username = data.get('user')
 
     # TODO This should only be for DONE jobs
     # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
@@ -196,7 +196,7 @@ def test_read_output(request):
 
     read_output(gage_dir, run)
 
-    return Response(data={'calibration_run_id': calibration_run_id, 'user': username})
+    return Response(data={'calibration_run_id': calibration_run_id})
 
 
 # This is not an endpoint, but will be automatically called
@@ -209,21 +209,27 @@ def read_output(gage_dir, run):
 
     output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
 
-    cost_hist_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_cost_hist.csv')
-    # Get the best iteration number across all works
-    # TODO This is not right
-    # last_line = read_last_line(cost_hist_file)
-    # best_iteration_for_all = int(last_line.split(',')[2])
+    # TODO Read best params for GWO and PSO
+    global_best_params_list = {}
+    if run.optimization.name != 'DDS':
+        global_best_params_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_global_best_params.csv')
+        if not os.path.exists(global_best_params_file):
+            raise CerfException(f"{global_best_params_file} does not exist")
+        # For non-DDS, we get the best parameters
+        with open(global_best_params_file) as global_best_params:
+            next(global_best_params)  # Skip header
+            global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
+    print('global_best_params', global_best_params_list)
 
     realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
     run.realization_filename = realization_filename
 
     with transaction.atomic():
         run.save()
-        process_workers(run, output_calibration_run_dir)
+        process_workers(run, output_calibration_run_dir, global_best_params_list)
 
 
-def process_workers(run, output_calibration_run_dir):
+def process_workers(run, output_calibration_run_dir, global_best_params_list):
     # Query all Iteration objects for the given calibration_run
     iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
 
@@ -232,12 +238,10 @@ def process_workers(run, output_calibration_run_dir):
 
     # Process each group of iterations
     for worker_name, group in grouped_iterations:
-        # TODO This shouldn't be be necessary
-        iterations_group = list(group)
-        process_iteration(run, output_calibration_run_dir, worker_name, iterations_group)
+        process_iteration(run, output_calibration_run_dir, worker_name, group, global_best_params_list)
 
 
-def process_iteration(run, output_calibration_run_dir, worker_name: str, iterations):
+def process_iteration(run, output_calibration_run_dir, worker_name: str, iterations, global_best_params_list):
     worker_path = os.path.join(output_calibration_run_dir, worker_name)
     if not os.path.exists(worker_path):
         # TODO Need to make sure we're handling exceptions
@@ -245,26 +249,37 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
 
     metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
     params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
+    # Contains the best for DDS
+    objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
 
     if not os.path.exists(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist')
     if not os.path.exists(params_iteration_file):
         raise CerfException(f'{params_iteration_file} does not exist')
-
-    # Get the best iteration number
+    print('optimization', run.optimization.name)
+    best_iteration_for_worker = -1
+    if run.optimization.name == 'DDS':
+        print(f'checking if {objective_log_best_file} exists')
+        if not os.path.exists(objective_log_best_file):
+            raise CerfException(f'{objective_log_best_file} does not exist')
+        # Get the best iteration number
+        last_line = read_last_line(objective_log_best_file)
+        best_iteration_for_worker = int(last_line.split(',')[2])
+    else:
+        # for GWO and PSO, we can't get the best iteration number.  We need to read the actual best parameters and then try to match them up when we read the parameter file later
+        pass
 
     #########
     # TODO For dev only, we will delete entries first
     #########
     IterationMetric.objects.filter(iteration__calibration_run=run).delete()
     IterationTuneParameter.objects.filter(iteration__calibration_run=run).delete()
-    Iteration.objects.filter(calibration_run=run).delete()
     #####
 
     metrics_to_create = []
     params_to_create = []
 
-    update_output_variable(metrics_iteration_file)
+    update_output_variables(metrics_iteration_file, run, worker_name)
 
     # Read the metrics and parameter files and update values
     with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
@@ -274,7 +289,7 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
         for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
             print(f'iteration number: {iteration.iteration_num}')
             process_metrics_row(iteration, metrics_row, metrics_to_create)
-            process_params_row(iteration, params_row, params_to_create)
+            process_params_row(iteration, params_row, params_to_create, best_iteration_for_worker, global_best_params_list)
 
     # Bulk create IterationMetric and IterationTuneParameter objects
     IterationMetric.objects.bulk_create(metrics_to_create)
@@ -283,10 +298,11 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
 
 def process_metrics_row(iteration, metrics_row, metrics_to_create):
     """Process a single row from the metrics file and create IterationMetric objects."""
-    for metric_name, value in metrics_row.items():
-        if metric_name in ['iteration', 'objFunVal']:
-            continue
 
+    # Get rid of 'iteration' and 'objFunVal' columns
+    metrics_row = {k: v for k, v in metrics_row.items() if k not in ['iteration', 'objFunVal']}
+
+    for metric_name, value in metrics_row.items():
         # Do a case-insensitive match
         metric = Metric.objects.filter(name__iexact=metric_name).first()
         if not metric:
@@ -301,27 +317,66 @@ def process_metrics_row(iteration, metrics_row, metrics_to_create):
         metrics_to_create.append(metric_obj)
 
 
-def process_params_row(iteration, params_row, params_to_create):
+def process_params_row(iteration, params_row, params_to_create, best_iteration_for_worker, global_best_params_list):
     """Process a single row from the params file and create IterationTuneParameter objects."""
-    for param_name, value in params_row.items():
-        if param_name == 'iteration':
-            continue
 
+    # Get rid of the 'iteration' column
+    params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
+
+    # Check if this row matches global_best_params
+
+    # Convert global_best_params to a dictionary for easier comparison
+    best_params_dict = {
+        param['name']: float(param['value'])
+        for param in global_best_params_list
+    }
+
+    is_best_match = True
+
+    # Ensure params_row contains exactly the same parameters as global_best_params
+    if len(params_row) != len(best_params_dict):
+        is_best_match = False
+    else:
+        # Check if all params in params_row match those in best_params_dict
+        for param_name, value in params_row.items():
+            if param_name not in best_params_dict or float(value) != best_params_dict[param_name]:
+                is_best_match = False
+                break
+
+        # Check if all keys in best_params_dict are present in params_row
+        for best_param_name in best_params_dict:
+            if best_param_name not in params_row:
+                is_best_match = False
+                break
+
+    for param_name, value in params_row.items():
         # Do a case-insensitive match
         parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
         if not parameter:
             raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
 
+        # Determine if this param should be marked as best
+        # Either the iteration number matches (for DDS); or the parameter values match (for GWO or PSO)
+        best = is_best_match or iteration.iteration_num == best_iteration_for_worker
+
         param_value = float(value) if value else None
         param_obj = IterationTuneParameter(
             iteration=iteration,
             parameter=parameter,
-            param_value=param_value
+            param_value=param_value,
+            best=best
+
         )
         params_to_create.append(param_obj)
 
 
-def update_output_variable(metrics_iteration_file):
+def update_output_variables(metrics_iteration_file, run, worker_name):
+    # Prefetch all relevant Iteration objects and create a dictionary keyed by iteration_num
+    iterations_dict = {
+        iteration.iteration_num: iteration
+        for iteration in Iteration.objects.filter(calibration_run=run, worker_name=worker_name)
+    }
+
     iterations_to_update = []
 
     # We read the metrics_iteration_file to get the output variable value for the Iteration object
@@ -333,8 +388,12 @@ def update_output_variable(metrics_iteration_file):
             iteration_num = int(row_dict['iteration'])
             obj_fun_val = row_dict['objFunVal']
 
-            # Find the corresponding Iteration object
-            iteration = Iteration.objects.get(iteration_num=iteration_num)
+            # Retrieve the iteration object from the dictionary
+            iteration = iterations_dict.get(iteration_num)
+            if not iteration:
+                raise CerfException(
+                    f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}.  Ngen-cal did not report this iteration")
+
             iteration.calibration_output_variable_value = obj_fun_val
 
             # Add the modified object to the list
@@ -345,14 +404,14 @@ def update_output_variable(metrics_iteration_file):
 
 
 # # Read backwards from the end of the file until we find linefeed.  Then read the line
-# def read_last_line(filename):
-#     with open(filename, 'rb') as file:
-#         # Move the cursor to the end of the file
-#         file.seek(-2, 2)
-#         while file.read(1) != b'\n':
-#             file.seek(-2, 1)
-#         last_line = file.readline().decode()
-#         return last_line
+def read_last_line(filename):
+    with open(filename, 'rb') as file:
+        # Move the cursor to the end of the file
+        file.seek(-2, 2)
+        while file.read(1) != b'\n':
+            file.seek(-2, 1)
+        last_line = file.readline().decode()
+        return last_line
 
 
 @extend_schema(
@@ -384,6 +443,7 @@ def report_iteration(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
+    optimization = validator.data.get('optimization')
     iteration_number = validator.data.get('iteration')
     worker_name = validator.data.get('worker_name')
 
@@ -404,7 +464,10 @@ def report_iteration(request):
                 worker_number = existing_iteration.worker_number
             else:
                 # Handle case where worker_name does not exist
-                return ResponseError(f"No existing worker_name found for '{worker_name}' in this calibration run.")
+                return ResponseError(f"Worker '{worker_name}' not found in calibration run {run.id}.")
+
+        if Iteration.objects.filter(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name).exists():
+            return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
         Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, worker_number=worker_number)
         response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
