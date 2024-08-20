@@ -12,29 +12,14 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
-from calibration.util.aws_util import download_s3, download_all_s3
-from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, GeopackageSerializer, \
-    UploadForcingSerializer, ObservationalHydrofabricSerializer, ForcingHydrofabricSerializer, SaveGageResponseSerializer, \
+from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
+    SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import geopackage_dir, observation_dir, forcing_dir
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.ngen_cal_input import get_main_dir
-
-geopackage_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
-    "creation_date": "2024-07-30T12:33:00.001Z"
-}
-
-forcing_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/"
-}
-
-observational_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
-}
 
 logger = logging.getLogger(__name__)
 
@@ -153,65 +138,6 @@ def get_gage(request):
     return Response(response_validator.data)
 
 
-def get_geopackage_from_hydrofabric(gage_id):
-    # Get this from hydrofabric
-    # modules_request = {"gage_id": gage_id
-    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_data = response.json()
-    geopackage_data = geopackage_sample_data
-
-    validator = GeopackageSerializer(data=geopackage_data)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
-
-    uri = geopackage_data['uri']
-    file_path = download_s3(uri, geopackage_dir)
-
-    return file_path
-
-
-def get_observational_data_from_hydrofabric(observation_source):
-    print('Getting observational data from Hydrofabric')
-    # Get this from hydrofabric
-    # request = {"source": observational_source
-    # response = requests.post(settings.HYDROFABRIC_URL, json=request)
-    # response = response.json()
-    response = observational_sample_data
-    validator = ObservationalHydrofabricSerializer(data=response)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
-
-    s3_uri = validator.data.get('uri')
-
-    # This is a path to a single file, which we just need to download
-    # bucket, key = parse_s3_uri(s3_uri)
-    # filename = key.split('/')[-1]
-    download_s3(s3_uri, observation_dir)
-
-
-def get_forcing_data_from_hydrofabric(forcing_source):
-    print('Getting forcing data from Hydrofabric')
-    # Get this from hydrofabric
-    # request = {"source": forcing_source
-    # response = requests.post(settings.HYDROFABRIC_URL, json=request)
-    # response = response.json()
-    response = forcing_sample_data
-    validator = ForcingHydrofabricSerializer(data=response)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
-
-    s3_uri = validator.data.get('uri')
-
-    # This is a path to a directory, so we want to download all files
-    # bucket, key = parse_s3_uri(s3_uri)
-    # subdir = key.split('/')[-1]
-
-    download_all_s3(s3_uri, forcing_dir)
-
-
 @extend_schema(
     request=SaveGageRequestSerializer,
     responses={
@@ -243,6 +169,7 @@ def save_gage_tab(request):
     gage_id = validator.data.get('gage_id')
     forcing_source = validator.data.get('forcing_source')
     observational_source = validator.data.get('observational_source')
+    # TODO Sources should be foreign keys
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
