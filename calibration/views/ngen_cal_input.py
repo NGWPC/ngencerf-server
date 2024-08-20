@@ -186,12 +186,12 @@ def ready_to_run(run, build=None):
     if not run.objective_function:
         messages.append('objective function must be specified')
     else:
-        calibration['objective_function'] = run.objective_function.name
+        calibration['objective_function'] = run.objective_function.name.lower()
 
     if not run.optimization:
         messages.append('optimization must be specified')
     else:
-        calibration['optimization_algorithm'] = run.optimization.name
+        calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         all_input_names = set(
             OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list(

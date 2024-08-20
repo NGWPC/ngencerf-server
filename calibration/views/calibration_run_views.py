@@ -3,10 +3,10 @@ import logging
 import os
 from datetime import datetime, timezone
 from itertools import groupby
-from operator import itemgetter
+from operator import attrgetter
 from typing import Dict
 
-from django.contrib.auth import get_user_model
+from createInput import create_input
 from django.db import transaction
 from django.db.models import Max
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
@@ -15,14 +15,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Gage, Optimization, Metric, IterationMetric, Iteration, IterationTuneParameter, \
+from calibration.models import Metric, IterationMetric, Iteration, IterationTuneParameter, \
     CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
-from createInput import create_input
 
 logger = logging.getLogger(__name__)
 
@@ -228,12 +227,13 @@ def process_workers(run, output_calibration_run_dir):
     # Query all Iteration objects for the given calibration_run
     iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
 
-    # Group the iterations by worker_name
-    grouped_iterations = {
-        worker_name: list(group) for worker_name, group in groupby(iterations, key=itemgetter('worker_name'))
-    }
+    # Group the iterations by worker_name using groupby
+    grouped_iterations = groupby(iterations, key=attrgetter('worker_name'))
+
     # Process each group of iterations
-    for worker_name, iterations_group in grouped_iterations.items():
+    for worker_name, group in grouped_iterations:
+        # TODO This shouldn't be be necessary
+        iterations_group = list(group)
         process_iteration(run, output_calibration_run_dir, worker_name, iterations_group)
 
 
@@ -253,7 +253,6 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
 
     # Get the best iteration number
 
-
     #########
     # TODO For dev only, we will delete entries first
     #########
@@ -265,6 +264,66 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
     metrics_to_create = []
     params_to_create = []
 
+    update_output_variable(metrics_iteration_file)
+
+    # Read the metrics and parameter files and update values
+    with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
+        metrics_reader = csv.DictReader(metrics_file)
+        params_reader = csv.DictReader(params_file)
+
+        for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
+            print(f'iteration number: {iteration.iteration_num}')
+            process_metrics_row(iteration, metrics_row, metrics_to_create)
+            process_params_row(iteration, params_row, params_to_create)
+
+    # Bulk create IterationMetric and IterationTuneParameter objects
+    IterationMetric.objects.bulk_create(metrics_to_create)
+    IterationTuneParameter.objects.bulk_create(params_to_create)
+
+
+def process_metrics_row(iteration, metrics_row, metrics_to_create):
+    """Process a single row from the metrics file and create IterationMetric objects."""
+    for metric_name, value in metrics_row.items():
+        if metric_name in ['iteration', 'objFunVal']:
+            continue
+
+        # Do a case-insensitive match
+        metric = Metric.objects.filter(name__iexact=metric_name).first()
+        if not metric:
+            raise CerfException(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
+
+        metric_value = float(value) if value else None
+        metric_obj = IterationMetric(
+            iteration=iteration,
+            metric=metric,
+            metric_value=metric_value
+        )
+        metrics_to_create.append(metric_obj)
+
+
+def process_params_row(iteration, params_row, params_to_create):
+    """Process a single row from the params file and create IterationTuneParameter objects."""
+    for param_name, value in params_row.items():
+        if param_name == 'iteration':
+            continue
+
+        # Do a case-insensitive match
+        parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
+        if not parameter:
+            raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
+
+        param_value = float(value) if value else None
+        param_obj = IterationTuneParameter(
+            iteration=iteration,
+            parameter=parameter,
+            param_value=param_value
+        )
+        params_to_create.append(param_obj)
+
+
+def update_output_variable(metrics_iteration_file):
+    iterations_to_update = []
+
     # We read the metrics_iteration_file to get the output variable value for the Iteration object
     with open(metrics_iteration_file) as file:
         reader = csv.DictReader(file)
@@ -272,55 +331,17 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
         row_dict: Dict[str, str]
         for row_dict in reader:
             iteration_num = int(row_dict['iteration'])
-            Iteration.objects.filter(iteration_num=iteration_num).update(calibration_output_variable_value=row_dict['objFunVal'])
+            obj_fun_val = row_dict['objFunVal']
 
+            # Find the corresponding Iteration object
+            iteration = Iteration.objects.get(iteration_num=iteration_num)
+            iteration.calibration_output_variable_value = obj_fun_val
 
+            # Add the modified object to the list
+            iterations_to_update.append(iteration)
 
-    with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
-        metrics_reader = csv.DictReader(metrics_file)
-        params_reader = csv.DictReader(params_file)
-
-        # Read the metrics file again, this time getting all the metrics values
-        for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
-            print('iteration number', iteration.iteration_num)
-            for metric_name, value in metrics_row.items():
-                if metric_name in ['iteration', 'objFunVal']:
-                    continue
-                # Do a case-insensitive match
-                metric = Metric.objects.filter(name__iexact=metric_name).first()
-                if not metric:
-                    raise CerfException(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
-
-                metric_value = float(value) if value else None
-                metric_obj = IterationMetric(
-                    iteration=iteration,
-                    metric=metric,
-                    metric_value=metric_value
-                )
-                metrics_to_create.append(metric_obj)
-
-            # Process the parameters
-            for param_name, value in params_row.items():
-                if param_name in ['iteration']:
-                    continue
-                # Do a case-insensitive match
-                # A CalibrationTuneParameter is associated with a module, so theoretically, two different modules can have the same parameter name
-                # But we'll assume there is only one
-                parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
-                if not parameter:
-                    raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
-
-                param_value = float(value) if value else None
-                param_obj = IterationTuneParameter(
-                    iteration=iteration,
-                    parameter=parameter,
-                    param_value=param_value
-                )
-                params_to_create.append(param_obj)
-
-    # Bulk create IterationMetric and IterationTuneParameter objects
-    IterationMetric.objects.bulk_create(metrics_to_create)
-    IterationTuneParameter.objects.bulk_create(params_to_create)
+    # Perform a bulk update for all iterations in the list
+    Iteration.objects.bulk_update(iterations_to_update, ['calibration_output_variable_value'])
 
 
 # # Read backwards from the end of the file until we find linefeed.  Then read the line
@@ -385,8 +406,9 @@ def report_iteration(request):
                 # Handle case where worker_name does not exist
                 return ResponseError(f"No existing worker_name found for '{worker_name}' in this calibration run.")
 
-        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, worker_number=worker_number )
-        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}", 'calibration_run_id': run.id,
+        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, worker_number=worker_number)
+        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
+                    'calibration_run_id': run.id,
                     'status': run.status.name}
 
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
