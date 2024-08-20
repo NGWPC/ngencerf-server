@@ -11,6 +11,7 @@ from calibration.models import CalibrationOptimizationInput, Status, Calibration
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR
 from calibration.views.common import CerfException
+from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 
 config_template = {
 
@@ -110,7 +111,9 @@ def ready_to_run(run, build=None):
             if run.forcing_source == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
                 messages.append('forcing data must be uploaded')
             elif run.forcing_source != ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path:
-                messages.append('Error getting forcing path from Hydrofabric')
+                # Might have been imported so we never called hydrofabric
+                get_forcing_data_from_hydrofabric(run.forcing_source)
+                # messages.append('Error getting forcing path from Hydrofabric')
             else:
                 datafile['forcing_dir'] = run.forcing_dir_path
 
@@ -121,28 +124,32 @@ def ready_to_run(run, build=None):
                     not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
             elif run.observational_source != ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path:
-                messages.append('Error getting observational path from Hydrofabric')
+                # Might have been imported so we never called hydrofabric
+                get_observational_data_from_hydrofabric(run.observational_source)
+                # messages.append('Error getting observational path from Hydrofabric')
             else:
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
 
         if not run.hydrofabric_gpkg_path:
-            messages.append('Error getting geopackage from Hydrofabric')
+            # Might have been imported so we never called hydrofabric
+            get_geopackage_from_hydrofabric(run.gage.gage_id)
+            # messages.append('Error getting geopackage from Hydrofabric')
         else:
             datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    if not CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exists():
-        messages.append('modules must be specified')
-
-    if not run.user_formulation_name:
-        messages.append('formulation name must be specified')
-    else:
-        if not run.ngen_formulation_name:
-            messages.append('Coding error - ngen_formulation_name is not filled in')
+    if CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exists():
+        if not run.user_formulation_name:
+            messages.append('formulation name must be specified')
         else:
-            general['model'] = run.ngen_formulation_name
+            if not run.ngen_formulation_name:
+                messages.append('Coding error - ngen_formulation_name is not filled in')
+            else:
+                general['model'] = run.ngen_formulation_name
+    else:
+        messages.append('modules must be specified')
 
     main_dir = get_main_dir(run)
     general['main_dir'] = main_dir

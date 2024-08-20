@@ -59,6 +59,8 @@ def import_job(request):
         run.observational_file_path = validator.data.get('observational_file_path')
         run.hydrofabric_gpkg_path = validator.data.get('geopackage')
 
+        # TODO Need to call hydrofabric
+
         main_dir = get_main_dir(run)
         if run.forcing_source == ForcingSourceEnum.UPLOAD.value:
             if os.path.exists(run.forcing_dir_path):
