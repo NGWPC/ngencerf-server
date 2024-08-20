@@ -1,8 +1,9 @@
 import csv
 import logging
 import os
-import re
 from datetime import datetime, timezone
+from itertools import groupby
+from operator import itemgetter
 from typing import Dict
 
 from django.contrib.auth import get_user_model
@@ -158,35 +159,35 @@ def test_read_output(request):
     run, errorReturn = get_run(calibration_run_id, request.user)
     print('run', run)
 
-    # if errorReturn:
-    #     return errorReturn
-    if not run:
-        # create some dummies
-        gage = Gage(gage_id='01123000')
-        optimization = Optimization(name=optimization_name)
-        owner = get_user_model()(username=username)
-        objective_function = Metric(name='kge')
-        run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
-                             objective_function=objective_function, owner=owner)
+    if errorReturn:
+        return errorReturn
+    # if not run:
+    #     # create some dummies
+    #     gage = Gage(gage_id='01123000')
+    #     optimization = Optimization(name=optimization_name)
+    #     owner = get_user_model()(username=username)
+    #     objective_function = Metric(name='kge')
+    #     run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
+    #                          objective_function=objective_function, owner=owner)
 
-        # .
-        # └── ngen-cal-work
-        #     ├── bmi_config
-        #     │   └── Noah-OWP
-        #     ├── parquet
-        #     └── run_calib                      NGEN_CAL_RUN_DIR
-        #         ├── 100_peterx
-        #         │   └── kge_dds
-        #         │       └── cfe_noah
-        #         │           └── 01123000
-        #         ├── 101_peterx
-        #         │   └── kge_gwo
-        #         │       └── cfe_noah
-        #         │           └── 01123000
-        #         └── 102_peterx
-        #             └── kge_pso
-        #                 └── cfe_noah
-        #                     └── 01123000
+    # .
+    # └── ngen-cal-work
+    #     ├── bmi_config
+    #     │   └── Noah-OWP
+    #     ├── parquet
+    #     └── run_calib                      NGEN_CAL_RUN_DIR
+    #         ├── 100_peterx
+    #         │   └── kge_dds
+    #         │       └── cfe_noah
+    #         │           └── 01123000
+    #         ├── 101_peterx
+    #         │   └── kge_gwo
+    #         │       └── cfe_noah
+    #         │           └── 01123000
+    #         └── 102_peterx
+    #             └── kge_pso
+    #                 └── cfe_noah
+    #                     └── 01123000
 
     formulation_name = run.ngen_formulation_name
     gage_id = run.gage.gage_id
@@ -205,7 +206,7 @@ def read_output(gage_dir, run):
     print('Reading output from', gage_dir)
 
     if not os.path.isdir(gage_dir):
-        print(f'Directory {gage_dir} does not exist or is not a directory')
+        raise Exception(f'Directory {gage_dir} does not exist or is not a directory')
 
     output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
 
@@ -220,37 +221,38 @@ def read_output(gage_dir, run):
 
     with transaction.atomic():
         run.save()
-        find_worker_directories(run, output_calibration_run_dir)
+        process_workers(run, output_calibration_run_dir)
 
 
-def find_worker_directories(run, output_calibration_run_dir):
-    pattern = re.compile(r'^ngen_\w*_worker$')
+def process_workers(run, output_calibration_run_dir):
+    # Query all Iteration objects for the given calibration_run
+    iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
 
-    for worker_name in os.listdir(output_calibration_run_dir):
-        worker_path = os.path.join(output_calibration_run_dir, worker_name)
-        # Check if it's a directory and matches the pattern
-        if os.path.isdir(worker_path) and pattern.match(worker_name):
-            process_iteration(run, worker_path)
+    # Group the iterations by worker_name
+    grouped_iterations = {
+        worker_name: list(group) for worker_name, group in groupby(iterations, key=itemgetter('worker_name'))
+    }
+    # Process each group of iterations
+    for worker_name, iterations_group in grouped_iterations.items():
+        process_iteration(run, output_calibration_run_dir, worker_name, iterations_group)
 
 
-def process_iteration(run, worker_path):
+def process_iteration(run, output_calibration_run_dir, worker_name: str, iterations):
+    worker_path = os.path.join(output_calibration_run_dir, worker_name)
+    if not os.path.exists(worker_path):
+        # TODO Need to make sure we're handling exceptions
+        raise CerfException(f"{worker_path} does not exist")
+
     metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
     params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
-    # Contains the best for a single worker
-    objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
 
     if not os.path.exists(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist')
     if not os.path.exists(params_iteration_file):
         raise CerfException(f'{params_iteration_file} does not exist')
-    if not os.path.exists(objective_log_best_file):
-        raise CerfException(f'{objective_log_best_file} does not exist')
 
     # Get the best iteration number
-    last_line = read_last_line(objective_log_best_file)
-    best_iteration_for_worker = int(last_line.split(',')[2])
 
-    worker_name = os.path.basename(worker_path)
 
     #########
     # TODO For dev only, we will delete entries first
@@ -260,38 +262,27 @@ def process_iteration(run, worker_path):
     Iteration.objects.filter(calibration_run=run).delete()
     #####
 
-    iterations_to_create = []
     metrics_to_create = []
     params_to_create = []
 
-    # Create the Iteration objects
-    # We read the metrics_iteration_file to get the output variable value, as well as count the iterations
+    # We read the metrics_iteration_file to get the output variable value for the Iteration object
     with open(metrics_iteration_file) as file:
         reader = csv.DictReader(file)
         # iteration,objFunVal,Corr,MAE,RMSE,RSR,PBIAS,NSE,NSELog,NSEWt,KGE,POD,FAR,CSI,FBIAS,HSEG_FDC,MSEG_FDC,LSEG_FDC
         row_dict: Dict[str, str]
         for row_dict in reader:
             iteration_num = int(row_dict['iteration'])
-            best = iteration_num == best_iteration_for_worker
+            Iteration.objects.filter(iteration_num=iteration_num).update(calibration_output_variable_value=row_dict['objFunVal'])
 
-            iteration = Iteration(
-                calibration_run=run,
-                iteration_num=iteration_num,
-                worker=worker_name,
-                calibration_output_variable_value=row_dict['objFunVal'],
-                best_for_worker=best
-            )
-            iterations_to_create.append(iteration)
 
-        # Bulk create Iteration objects
-        created_iterations = Iteration.objects.bulk_create(iterations_to_create)
 
     with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
         metrics_reader = csv.DictReader(metrics_file)
         params_reader = csv.DictReader(params_file)
 
         # Read the metrics file again, this time getting all the metrics values
-        for iteration, metrics_row, params_row in zip(created_iterations, metrics_reader, params_reader):
+        for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
+            print('iteration number', iteration.iteration_num)
             for metric_name, value in metrics_row.items():
                 if metric_name in ['iteration', 'objFunVal']:
                     continue
@@ -332,15 +323,15 @@ def process_iteration(run, worker_path):
     IterationTuneParameter.objects.bulk_create(params_to_create)
 
 
-# Read backwards from the end of the file until we find linefeed.  Then read the line
-def read_last_line(filename):
-    with open(filename, 'rb') as file:
-        # Move the cursor to the end of the file
-        file.seek(-2, 2)
-        while file.read(1) != b'\n':
-            file.seek(-2, 1)
-        last_line = file.readline().decode()
-        return last_line
+# # Read backwards from the end of the file until we find linefeed.  Then read the line
+# def read_last_line(filename):
+#     with open(filename, 'rb') as file:
+#         # Move the cursor to the end of the file
+#         file.seek(-2, 2)
+#         while file.read(1) != b'\n':
+#             file.seek(-2, 1)
+#         last_line = file.readline().decode()
+#         return last_line
 
 
 @extend_schema(
