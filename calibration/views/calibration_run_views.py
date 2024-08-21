@@ -14,7 +14,7 @@ from git import Repo
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Metric, IterationMetric, Iteration, IterationTuneParameter, \
     CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
@@ -447,13 +447,15 @@ def report_iteration(request):
     iteration_number = validator.data.get('iteration')
     worker_name = validator.data.get('worker_name')
 
+    starting_iteration = 0 if optimization == OptimizationEnum.DDS else 1
+
     run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
     # run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if errorReturn:
         return errorReturn
 
     with transaction.atomic():
-        if iteration_number == 0:
+        if iteration_number == starting_iteration:
             # New worker_name, get a new worker_number
             max_worker_number = Iteration.objects.filter(calibration_run=run).aggregate(Max('worker_number'))['worker_number__max']
             worker_number = (max_worker_number or 0) + 1

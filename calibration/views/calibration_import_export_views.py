@@ -227,6 +227,7 @@ def export_job(request):
     metadata = {'source_calibration_run_id': run.id, 'run_date': run.run_date, 'status': run.status.name}
     time_range = get_time_range(run)
     metadata['time_range'] = time_range if time_range else {}
+    metadata['user_parameter_filename'] = run.user_parameter_filename
     export_file['metadata'] = metadata
     export_file['gage_id'] = run.gage.gage_id if run.gage else None
     export_file['forcing_source'] = run.forcing_source if run.forcing_source else None

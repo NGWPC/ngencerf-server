@@ -15,11 +15,11 @@ from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer
+    ValidationExceptionSerializer, UploadObservationalSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
-from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric
+from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 from calibration.views.ngen_cal_input import get_main_dir
 
 logger = logging.getLogger(__name__)
@@ -182,7 +182,6 @@ def save_gage_tab(request):
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
 
-        print('gage_id', gage_id)
         try:
             geopackage_path = save_geopackage_path(run, gage_id)
         except ClientError as e:
@@ -243,7 +242,7 @@ def save_geopackage_path(run, gage_id):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=UploadObservationalSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -265,9 +264,10 @@ def upload_observational_data(request):
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
         return error_return
+    print('data', data)
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
@@ -278,28 +278,13 @@ def upload_observational_data(request):
     if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
         return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
-    if len(request.FILES) == 0:
-        return ResponseError('Observational data must be uploaded')
-
-    keys = set(request.FILES.keys())
-    key = 'observational_file'
-    if key not in keys:
-        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
-
-    keys.remove(key)
-    if len(keys) > 0:
-        return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
-
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     main_dir = get_main_dir(run)
     observational_dir = os.path.join(main_dir, 'observation')
     fs = FileSystemStorage(location=observational_dir)
 
     # Make sure file doesn't exist
-    files = request.FILES.getlist(key)
-    count = len(files)
-    if count > 1:
-        return ResponseError("Only one observational file should be uploaded")
+    files = request.FILES.getlist('observational_file')
 
     observational_file = files[0]
     run.observational_file_path = os.path.join(observational_dir, observational_file.name)
@@ -349,7 +334,7 @@ def upload_forcing_data(request):
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(UploadForcingSerializer, data)
+    validator, error_return = validate_request(UploadForcingSerializer, data, context={'request': request})
     if error_return:
         return error_return
 
@@ -364,28 +349,18 @@ def upload_forcing_data(request):
         return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
     # Validate the file keys and how many there are
-    if len(request.FILES) == 0:
-        return ResponseError('Forcing data must be uploaded')
-
-    keys = set(request.FILES.keys())
     key = 'forcing_files'
-    if key not in keys:
-        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
-
-    keys.remove(key)
-    if len(keys) > 0:
-        return Response({'validation_error': f"Unexpected keys {keys}"}, status=status.HTTP_400_BAD_REQUEST)
+    files = request.FILES.getlist(key)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     main_dir = get_main_dir(run)
-    subdir = run.gage.gage_id
-    run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
+    forcing_dir = os.path.join(main_dir, 'forcing', run.gage.gage_id)
+    run.forcing_dir_path = forcing_dir
     run.forcing_user_dir = forcing_user_dir
 
     fs = FileSystemStorage(location=run.forcing_dir_path)
 
     # Note that this will replace files that already exist
-    files = request.FILES.getlist(key)
     for forcing_file in files:
         fs.save(forcing_file.name, forcing_file)
 
@@ -398,9 +373,8 @@ def upload_forcing_data(request):
 
     ngen_cal_input.ready_to_run(run)
 
-    file_or_files = 'file' if len(files) == 1 else 'files'
-    response = {'message': f'{len(files)} forcing {file_or_files} saved for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                'status': run.status.name}
+    response_message = f"{len(files)} forcing file{'s' if len(files) > 1 else ''} saved for Calibration Run {run.id}"
+    response = {'message': response_message, 'calibration_run_id': run.id, 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:

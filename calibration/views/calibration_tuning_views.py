@@ -1,4 +1,5 @@
 import csv
+import io
 import logging
 import os
 from datetime import MAXYEAR as MAXYEAR
@@ -8,13 +9,14 @@ from datetime import datetime, timezone
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer
+    ValidationExceptionSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 
@@ -135,6 +137,7 @@ def load_tuning_tab(request):
 
     response = {'calibration_run_id': run.id, 'status': run.status.name,
                 'modules': module_list,
+                'user_parameter_filename': run.user_parameter_filename,
                 'calibration_times': calibration_times,
                 'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
                 'time_range': time_range,
@@ -323,6 +326,63 @@ def save_tuning_tab(request):
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=UploadUserParameterFile,
+    responses={
+        200: GenericResponseSerializer,
+        400: PolymorphicProxySerializer(
+            component_name='MultipleErrorResponse',
+            serializers=[
+                ValidationExceptionSerializer,
+                ErrorResponseSerializer,
+            ],
+            resource_type_field_name=None
+        ),
+        500: ExceptionResponseSerializer
+    },
+    description="Allow user to upload observational data"
+)
+@api_view(['POST'])
+# @permission_classes([AllowAny])
+@handle_exceptions
+def upload_user_parameters(request):
+    data = request.data
+    logger.debug(f'upload_user_parameter_file() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.data.get('calibration_run_id')
+
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
+
+    files = request.FILES.getlist('user_parameter_file')
+
+    parameter_file = files[0]
+    file_contents = parameter_file.read().decode('utf-8')
+
+    # Strip trailing whitespace from each line
+    file_contents = "\n".join([line.strip() for line in file_contents.splitlines()])
+
+    # Read the CSV data
+    parsed_data = list(csv.DictReader(io.StringIO(file_contents), delimiter=' ', skipinitialspace=True))
+
+    run.user_parameter_filename = parameter_file.name
+    run.save()
+
+    response = {'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+                'user_parameter_file': list(parsed_data)}
+
+    response_validator, error_response = validate_response(UserParameterFileUploadResponse, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from upload_user_parameter_file() - {response_validator.data}')
     return Response(response_validator.data)
 
 

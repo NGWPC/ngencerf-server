@@ -150,6 +150,26 @@ class GageIdOptionalSerializer(BaseSerializer):
 class UploadForcingSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
+    forcing_files = serializers.FileField(required=True)
+
+    def validate_forcing_files(self, value):
+        request = self.context.get('request')
+        files = request.FILES.getlist('observational_file')
+        if len(files) == 0:
+            raise serializers.ValidationError("Forcing files must be uploaded")
+        return value
+
+
+class UploadObservationalSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    observational_file = serializers.FileField(required=True)
+
+    def validate_observational_file(self, value):
+        request = self.context.get('request')
+        files = request.FILES.getlist('observational_file')
+        if len(files) != 1:
+            raise serializers.ValidationError("Only one observational file should be uploaded.")
+        return value
 
 
 class SaveGageRequestSerializer(BaseSerializer):
@@ -297,6 +317,23 @@ class LoadFormulationResponseSerializer(BaseSerializer):
 ##################################
 # Tuning Tab
 ##################################
+class UploadUserParameterFile(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    user_parameter_file = serializers.FileField(required=True)
+
+    def validate_user_parameter_file(self, value):
+        request = self.context.get('request')
+        files = request.FILES.getlist('user_parameter_file')
+        if len(files) != 1:
+            raise serializers.ValidationError("Only one parameter file should be uploaded.")
+        return value
+
+
+class UserParameterFileUploadResponse(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    user_parameter_file = serializers.ListField(required=True)
+
 
 # Output variables from Hydrofabric
 class ModuleOutputVariablesSerializer(BaseSerializer):
@@ -482,6 +519,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     output_variable_to_calibrate = OutputVariableSerializer(required=False)
     time_range = TimeRangeSerializer(required=False)
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
+    user_parameter_filename = serializers.CharField(required=False)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 

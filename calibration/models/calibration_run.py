@@ -36,6 +36,7 @@ class CalibrationRun(BaseModel):
     observational_file_path = models.TextField(null=True)
     observational_user_filename = models.TextField(null=True)
     observational_source = models.TextField(null=True)
+    user_parameter_filename = models.TextField(null=True)
     realization_filename = models.TextField(null=True)
     status = models.ForeignKey(Status, null=False, on_delete=models.RESTRICT, db_index=True)
     user_formulation_name = models.CharField(max_length=50, null=True)
