@@ -163,11 +163,10 @@ def import_job(request):
         if optimization_inputs and not optimization_name:
             return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
-        if optimization_name and optimization_inputs:
-            optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
-            if message:
-                return ResponseError(message)
-            write_optimization_inputs(run, optimization, optimization_inputs)
+        optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
+        if message:
+            return ResponseError(message)
+        write_optimization_inputs(run, optimization, optimization_inputs)
 
         message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
         if message:

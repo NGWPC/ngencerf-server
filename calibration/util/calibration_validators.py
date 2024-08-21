@@ -6,7 +6,8 @@ from rest_framework.exceptions import ErrorDetail
 from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
-from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum
+from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
+    OptimizationEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -20,6 +21,7 @@ class BaseSerializer(serializers.Serializer):
                 })
 
         return super().run_validation(data)
+
 
 # class BaseSerializer(serializers.Serializer):
 #     def run_validation(self, data=None):
@@ -57,6 +59,11 @@ def domainNameValidator(value):
 def observationSourceValidator(value):
     if value not in ObservationalSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
+
+
+def optimizationValidator(value):
+    if value not in OptimizationEnum.values():
+        raise serializers.ValidationError(f"This field must be one of {OptimizationEnum.values()}")
 
 
 def dataTypeValidator(value):
@@ -491,7 +498,7 @@ class OptimizationInputsSerializer(BaseSerializer):
 class SaveOptimizationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
-    optimization = serializers.CharField(allow_blank=False, required=False)
+    optimization = serializers.CharField(allow_blank=False, required=False, validators=[optimizationValidator])
     objective_function = serializers.CharField(allow_blank=False, required=False)
     streamflow_threshold = serializers.FloatField(required=False)
     peak_flow_threshold = serializers.FloatField(required=False)
@@ -538,7 +545,7 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     streamflow_threshold = serializers.FloatField(required=False)
     peak_flow_threshold = serializers.FloatField(required=False)
     metrics = MetricSerializer(many=True)
-    optimization = serializers.CharField(required=False)
+    optimization = serializers.CharField(allow_blank=False, required=False, validators=[optimizationValidator])
     optimization_inputs = OptimizationInputsUserSerializer(many=True, required=False)
     objective_function = serializers.CharField(required=False)
     optimizations = OptimizationStaticSerializer(many=True)
@@ -589,13 +596,12 @@ class ExportResponseSerializer(BaseSerializer):
     output_variable_to_calibrate = OutputVariableSerializerAllowEmpty(required=True, allow_null=False)
     calibration_times = CalibrationTimeControlsAllowEmpty(required=False, allow_null=False)
     validation_times = ValidationTimeControlsAllowEmpty(required=False, allow_null=False)
-    # time_range = TimeRangeSerializerAllowEmpty(required=True, allow_null=False)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     parameters = TuningParametersSerializer(many=True, required=True, allow_null=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, allow_null=False, default={})
-    optimization = serializers.CharField(required=True, allow_null=True)
+    optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[optimizationValidator])
     plot_frequency = serializers.IntegerField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True)
 
@@ -624,7 +630,8 @@ class ImportSerializer(serializers.Serializer):
     parameters = TuningParametersSerializer(many=True, required=False)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
-    optimization = serializers.CharField(required=False, allow_null=True)
+    optimization = serializers.CharField(allow_blank=False, allow_null=True, required=False, validators=[optimizationValidator])
+
     plot_frequency = serializers.IntegerField(required=False, allow_null=True)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True)
 
@@ -634,6 +641,7 @@ class ImportSerializer(serializers.Serializer):
 ##################################
 class ReportIterationSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True, allow_null=False)
+    optimization = serializers.CharField(allow_blank=False, allow_null=False, required=True, validators=[optimizationValidator])
     iteration = serializers.IntegerField(required=True, min_value=0)
     worker_name = serializers.CharField(required=True, allow_null=False)
 
