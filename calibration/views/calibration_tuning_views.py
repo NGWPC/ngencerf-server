@@ -137,6 +137,7 @@ def load_tuning_tab(request):
 
     response = {'calibration_run_id': run.id, 'status': run.status.name,
                 'modules': module_list,
+                'user_parameter_filename': run.user_parameter_filename,
                 'calibration_times': calibration_times,
                 'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
                 'time_range': time_range,
@@ -361,29 +362,19 @@ def upload_user_parameters(request):
     if errorReturn:
         return errorReturn
 
-    if not request.FILES:
-        return ResponseError('Parameter file data must be uploaded')
-
-    keys = set(request.FILES.keys())
-    key = 'user_parameter_file'
-    # if key not in keys:
-    #     return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
-
-    keys.remove(key)
-    if len(keys) > 0:
-        return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
-
-    files = request.FILES.getlist(key)
+    files = request.FILES.getlist('user_parameter_file')
 
     parameter_file = files[0]
-    uploaded_data = parameter_file.read().decode('utf-8')
+    file_contents = parameter_file.read().decode('utf-8')
 
     # Strip trailing whitespace from each line
-    uploaded_data = "\n".join([line.strip() for line in uploaded_data.splitlines()])
+    file_contents = "\n".join([line.strip() for line in file_contents.splitlines()])
 
     # Read the CSV data
-    parsed_data = list(csv.DictReader(io.StringIO(uploaded_data), delimiter=' ', skipinitialspace=True))
-    print(parsed_data)
+    parsed_data = list(csv.DictReader(io.StringIO(file_contents), delimiter=' ', skipinitialspace=True))
+
+    run.user_parameter_filename = parameter_file.name
+    run.save()
 
     response = {'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                 'user_parameter_file': list(parsed_data)}

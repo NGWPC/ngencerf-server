@@ -279,27 +279,13 @@ def upload_observational_data(request):
     if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
         return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
-    if not request.FILES:
-        return ResponseError('Observational data must be uploaded')
-
-    keys = set(request.FILES.keys())
-    key = 'observational_file'
-    # if key not in request.FILES:
-    #     return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
-
-    keys.remove(key)
-    # if len(keys) > 0:
-    #     return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
-
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     main_dir = get_main_dir(run)
     observational_dir = os.path.join(main_dir, 'observation')
     fs = FileSystemStorage(location=observational_dir)
 
     # Make sure file doesn't exist
-    files = request.FILES.getlist(key)
-    # if len(files) > 1:
-    #     return ResponseError("Only one observational file should be uploaded")
+    files = request.FILES.getlist('observational_file')
 
     observational_file = files[0]
     run.observational_file_path = os.path.join(observational_dir, observational_file.name)
@@ -349,7 +335,7 @@ def upload_forcing_data(request):
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(UploadForcingSerializer, data)
+    validator, error_return = validate_request(UploadForcingSerializer, data, context={'request': request})
     if error_return:
         return error_return
 
@@ -366,26 +352,16 @@ def upload_forcing_data(request):
     # Validate the file keys and how many there are
     key = 'forcing_files'
     files = request.FILES.getlist(key)
-    if not files:
-        return ResponseError('Forcing data must be uploaded')
-
-    # if key not in request.FILES:
-    #     return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # unexpected_keys = set(request.FILES.keys()) - {key}
-    # if unexpected_keys:
-    #     return Response({'validation_error': f"Unexpected keys {unexpected_keys}"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     main_dir = get_main_dir(run)
-    subdir = run.gage.gage_id
-    run.forcing_dir_path = os.path.join(main_dir, 'forcing', subdir)
+    forcing_dir = os.path.join(main_dir, 'forcing', run.gage.gage_id)
+    run.forcing_dir_path = forcing_dir
     run.forcing_user_dir = forcing_user_dir
 
     fs = FileSystemStorage(location=run.forcing_dir_path)
 
     # Note that this will replace files that already exist
-    files = request.FILES.getlist(key)
     for forcing_file in files:
         fs.save(forcing_file.name, forcing_file)
 
