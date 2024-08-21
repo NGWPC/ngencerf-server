@@ -57,6 +57,7 @@ class Command(BaseCommand):
         add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_PR.csv'), puerto_rico_domain)
 
         # Some extra manually added gages
+
         with open(os.path.join(data_dir, 'Supplemental - AK.csv')) as file:
             # Skip the first 2 lines before header
             for i in range(2):
@@ -67,9 +68,42 @@ class Command(BaseCommand):
             for row in reader:
                 gage_count += 1
                 gage_id = row.get('gage_id')
+                # These are all new gages
                 gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
                         'station_name': row.get('station_name'), 'is_active': True,
                         'nwm_v3_calibrated': False, 'domain_id': alaska_domain['id']}
+                gages[gage_id] = gage
+        print(f'Processed {gage_count} gages from {file.name}.')
+
+        with open(os.path.join(data_dir, 'Supplemental - CONUS.csv')) as file:
+            # Skip the first line before header
+            for i in range(1):
+                next(file)
+            reader = csv.DictReader(file, delimiter='|')
+            gage_count = 0
+            row: dict[str, str]
+            for row in reader:
+                gage_count += 1
+                gage_id = row.get('gage_id')
+                gage = gages.get(gage_id)
+                # These gages should already exist, so we'll check for that.
+                # We'll create it, just in case it doesn't
+                if not gage:
+                    gage = {'gage_id': gage_id, 'is_active': True, 'domain_id': conus_domain['id']}
+                    gages[gage_id] = gage
+
+                nws_id = row.get('nws_id').strip()
+                station_name = row.get('station_name')
+                agency = row.get('agency')
+                nwm_v3_calibrated = row.get('nwm_v3_calibrated') == 'True'
+
+                rfc = row.get('rfc')
+                rfc_id = rfc_dict[rfc.strip()] if rfc else None
+
+                gage.update(
+                    {'nws_id': nws_id, 'station_name': station_name.strip() if station_name else '', 'rfc_id': rfc_id, 'nwm_v3_calibrated': nwm_v3_calibrated,
+                     'agency': agency.strip() if agency else ''})
+
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
 
@@ -113,8 +147,12 @@ class Command(BaseCommand):
         print('Creating objects.... this will take a minute or two')
         row_num = 0
         for gage in gages.values():
-            Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
-                                          **{unique_field: gage[unique_field]})
+            try:
+                Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
+                                              **{unique_field: gage[unique_field]})
+            except Exception as e:
+                print(str(e))
+                raise Exception(f'Error adding gage - {gage}')
             row_num += 1
             if row_num % 1000 == 0:
                 print(row_num, 'of', len(gages), '...')
@@ -133,7 +171,6 @@ def add_additional_gages(gage_file, domain):
                 continue
 
             rfc = row[0]
-            print('rfc', rfc)
             rfc_id = rfc_dict[rfc]
             for nws_id in row[1:]:
                 # Find this nws_id in our collection
