@@ -157,6 +157,13 @@ class UploadObservationalSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     observational_file = serializers.FileField(required=True)
 
+    def validate_observational_file(self, value):
+        request = self.context.get('request')
+        files = request.FILES.getlist('observational_file')
+        if len(files) > 1:
+            raise serializers.ValidationError("Only one observational file should be uploaded.")
+        return value
+
 
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
@@ -303,12 +310,19 @@ class LoadFormulationResponseSerializer(BaseSerializer):
 ##################################
 # Tuning Tab
 ##################################
-class UserParameterFileUpload(BaseSerializer):
+class UploadUserParameterFile(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     user_parameter_file = serializers.FileField(required=True)
 
+    def validate_user_parameter_file(self, value):
+        request = self.context.get('request')
+        files = request.FILES.getlist('user_parameter_file')
+        if len(files) > 1:
+            raise serializers.ValidationError("Only one parameter file should be uploaded.")
+        return value
 
-class UserParameterFileResponse(BaseSerializer):
+
+class UserParameterFileUploadResponse(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     user_parameter_file = serializers.ListField(required=True)

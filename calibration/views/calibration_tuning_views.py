@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, UserParameterFileUpload, UserParameterFileResponse
+    ValidationExceptionSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 
@@ -329,7 +329,7 @@ def save_tuning_tab(request):
 
 
 @extend_schema(
-    request=UserParameterFileUpload,
+    request=UploadUserParameterFile,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
@@ -351,12 +351,11 @@ def upload_user_parameters(request):
     data = request.data
     logger.debug(f'upload_user_parameter_file() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(UserParameterFileUpload, data)
+    validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
     if error_return:
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    print('data', data)
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -367,17 +366,14 @@ def upload_user_parameters(request):
 
     keys = set(request.FILES.keys())
     key = 'user_parameter_file'
-    if key not in keys:
-        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
+    # if key not in keys:
+    #     return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
     keys.remove(key)
     if len(keys) > 0:
         return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
     files = request.FILES.getlist(key)
-
-    if len(files) > 1:
-        return ResponseError("Only one parameter file should be uploaded")
 
     parameter_file = files[0]
     uploaded_data = parameter_file.read().decode('utf-8')
@@ -392,7 +388,7 @@ def upload_user_parameters(request):
     response = {'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                 'user_parameter_file': list(parsed_data)}
 
-    response_validator, error_response = validate_response(UserParameterFileResponse, response)
+    response_validator, error_response = validate_response(UserParameterFileUploadResponse, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from upload_user_parameter_file() - {response_validator.data}')

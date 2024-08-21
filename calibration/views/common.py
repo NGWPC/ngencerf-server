@@ -70,9 +70,10 @@ def ResponseError(error, httpStatus=status.HTTP_400_BAD_REQUEST):
     return Response(serializer.data, status=httpStatus)
 
 
-def validate_request(serializer_class, data):
+def validate_request(serializer_class, data, context=None):
     try:
-        validator = serializer_class(data=data)
+        validator = serializer_class(data=data, context=context)
+        print('context', context)
         validator.is_valid(raise_exception=True)
         return validator, None
     except ValidationError as e:

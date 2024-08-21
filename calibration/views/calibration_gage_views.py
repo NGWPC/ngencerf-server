@@ -265,7 +265,7 @@ def upload_observational_data(request):
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(UploadObservationalSerializer, data)
+    validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
         return error_return
     print('data', data)
@@ -284,12 +284,12 @@ def upload_observational_data(request):
 
     keys = set(request.FILES.keys())
     key = 'observational_file'
-    if key not in request.FILES:
-        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
+    # if key not in request.FILES:
+    #     return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
     keys.remove(key)
-    if len(keys) > 0:
-        return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
+    # if len(keys) > 0:
+    #     return Response({'validation_error': f"Unexpected keys {keys}".format(keys=keys)}, status=status.HTTP_400_BAD_REQUEST)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     main_dir = get_main_dir(run)
@@ -298,8 +298,8 @@ def upload_observational_data(request):
 
     # Make sure file doesn't exist
     files = request.FILES.getlist(key)
-    if len(files) > 1:
-        return ResponseError("Only one observational file should be uploaded")
+    # if len(files) > 1:
+    #     return ResponseError("Only one observational file should be uploaded")
 
     observational_file = files[0]
     run.observational_file_path = os.path.join(observational_dir, observational_file.name)
@@ -369,12 +369,12 @@ def upload_forcing_data(request):
     if not files:
         return ResponseError('Forcing data must be uploaded')
 
-    if key not in request.FILES:
-        return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
+    # if key not in request.FILES:
+    #     return Response({'validation_error': f"Missing expected key '{key}'"}, status=status.HTTP_400_BAD_REQUEST)
 
-    unexpected_keys = set(request.FILES.keys()) - {key}
-    if unexpected_keys:
-        return Response({'validation_error': f"Unexpected keys {unexpected_keys}"}, status=status.HTTP_400_BAD_REQUEST)
+    # unexpected_keys = set(request.FILES.keys()) - {key}
+    # if unexpected_keys:
+    #     return Response({'validation_error': f"Unexpected keys {unexpected_keys}"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     main_dir = get_main_dir(run)
