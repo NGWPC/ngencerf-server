@@ -62,7 +62,7 @@ def load_gage_tab(request):
     if errorReturn:
         return errorReturn
 
-    gage = {'gage_id': run.gage.id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
+    gage = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
             'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
     forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
