@@ -47,7 +47,6 @@ class OptimizationEnum(StrEnum):
         return [e.value for e in cls]
 
 
-
 ####  These enums are used in validators
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
