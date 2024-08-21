@@ -150,6 +150,12 @@ class GageIdOptionalSerializer(BaseSerializer):
 class UploadForcingSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False)
+    forcing_files = serializers.FileField(required=True)
+
+
+class UploadObservationalSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    observational_file = serializers.FileField(required=True)
 
 
 class SaveGageRequestSerializer(BaseSerializer):
@@ -297,6 +303,17 @@ class LoadFormulationResponseSerializer(BaseSerializer):
 ##################################
 # Tuning Tab
 ##################################
+class UserParameterFileUpload(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    user_parameter_file = serializers.FileField(required=True)
+
+
+class UserParameterFileResponse(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    user_parameter_file = serializers.ListField(required=True)
+
+
 
 # Output variables from Hydrofabric
 class ModuleOutputVariablesSerializer(BaseSerializer):
