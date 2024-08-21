@@ -1,4 +1,9 @@
 import logging
+from urllib.parse import urljoin
+
+import requests
+import rest_framework
+from rest_framework import status
 
 from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer
@@ -39,12 +44,27 @@ def get_geopackage_from_hydrofabric(gage_id):
     return file_path
 
 
-def get_observational_data_from_hydrofabric(observation_source):
+def get_observational_data_from_hydrofabric(observational_source):
     print('Getting observational data from Hydrofabric')
     # Get this from hydrofabric
-    # request = {"source": observational_source
-    # response = requests.post(settings.HYDROFABRIC_URL, json=request)
-    # response = response.json()
+    request = {"source": observational_source}
+    headers = {
+        "Content-Type": "application/json"
+    }
+    base_url = 'https://jsonplaceholder.typicode.com'
+    path = '/foo/1'
+    url = urljoin(base_url, path)
+    response = requests.get(url, json=request, headers=headers)
+    # Check if the request was successful
+    if response.status_code == rest_framework.status.HTTP_200_OK:
+        # Parse and print the response JSON
+        response_data = response.json()
+        print("Success:", response_data)
+    else:
+        # Print the error
+        logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.  Will try again when before job is submitted")
+        print("Response:", response.text)
+
     response = observational_sample_data
     validator = ObservationalHydrofabricSerializer(data=response)
     if not validator.is_valid():

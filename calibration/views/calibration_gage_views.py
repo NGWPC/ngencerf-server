@@ -182,7 +182,6 @@ def save_gage_tab(request):
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
 
-        print('gage_id', gage_id)
         try:
             geopackage_path = save_geopackage_path(run, gage_id)
         except ClientError as e:
