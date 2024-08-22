@@ -9,4 +9,4 @@ class Rfc(BaseModel):
     name = models.CharField(max_length=50, unique=True, null=False)
 
     class Meta:
-        db_table = 'rtc'
+        db_table = 'rfc'

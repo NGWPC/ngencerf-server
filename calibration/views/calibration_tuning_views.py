@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 

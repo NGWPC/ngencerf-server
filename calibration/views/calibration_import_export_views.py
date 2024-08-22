@@ -2,6 +2,7 @@ import logging
 import os
 
 from django.db import transaction
+from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -9,7 +10,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportSerializer, \
-    ExportResponseSerializer, IsReadyResponseSerializer
+    ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
@@ -26,6 +27,15 @@ from calibration.views.ngen_cal_input import get_main_dir
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(
+    request=ImportSerializer,
+    responses={
+        200: IsReadyResponseSerializer,
+        400: ErrorResponseSerializer,
+        500: ExceptionResponseSerializer
+    },
+    description="Import a job"
+)
 @api_view(['POST'])
 # @permission_classes([AllowAny])
 @handle_exceptions
@@ -203,6 +213,15 @@ def import_job(request):
         return Response(response_validator.data)
 
 
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: ExportResponseSerializer,
+        400: ErrorResponseSerializer,
+        500: ExceptionResponseSerializer
+    },
+    description="Export a job"
+)
 @api_view(['POST'])
 # @permission_classes([AllowAny])
 @handle_exceptions

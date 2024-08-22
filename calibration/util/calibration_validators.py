@@ -231,6 +231,7 @@ class LoadGageResponseSerializer(BaseSerializer):
     observational_user_filename = serializers.CharField(required=False)
     gages = GagesSerializer(required=True, many=True)
     gage = GageSerializer(required=False)
+    geopackage_image = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
 
 
@@ -588,7 +589,7 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     objective_function = serializers.CharField(required=False)
     optimizations = OptimizationStaticSerializer(many=True)
     plot_frequency = serializers.IntegerField(required=False)
-    stop_criteria = serializers.CharField(required=False)
+    stop_criteria = serializers.IntegerField(required=False)
 
 
 class ObservationalHydrofabricSerializer(BaseSerializer):
