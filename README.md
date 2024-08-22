@@ -9,13 +9,11 @@ Once you are in the virtual environment, you can use `python`
 
 ```
 $ cd $cerfServer
-$ python -m venv .venv-cerf
+$ python3.11 -m venv .venv-cerf
 $ source $cerfServer/.venv-cerf/bin/activate
+(.venv-cerf) $ pip install --upgrade pip
 (.venv-cerf) $ pip install -r requirements.txt
 ```
-
-**_Note:_**
-Due to a compatibility issue with ngen-cal's create_input, make sure you are running numpy 1.26.4 and not 2.x
 
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
@@ -23,7 +21,7 @@ The `settings.py` file contains settings that are applicable to all environments
 
 You should make copies of `__locall_settings.py` and `__.env`. 
 ```
-(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_setings.py
+(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
 (.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env
 ```
 The 2 template files are suitable for development and no changes need to be made.
@@ -40,10 +38,11 @@ Run `manage.py migrate` to create all the tables
 ```
 
 Create a superuser called `admin` that is used for initializing 
-the static tables. 
+the static tables.  Use `createsuperuser_docker` even though you are not creating a docker container.  
+It is a locally modified version of `createsuperuser` that allows you to enter the password on the command line.
 
 ```
-(.venv-cerf) $ python manage.py createsuperuser
+(.venv-cerf) $ python manage.py createsuperuser_docker --username admin --password admin
 ```
 Run `init_sql` and `init_gages` to initialize the static tables
 ```
@@ -65,12 +64,13 @@ begin
     end loop;
 end $$;
 ```
-where `public` is the name of you schema.
+where `public` is the name of your schema.
 
 # Updating
-After pulling the latest updates from the repo, you should run `migrate` 
-in case there have been any database changes
+After pulling the latest updates from the repo, you should update any dependencies and  apply any database changes.  
+Both of these commands can be run multiple times without any harm.
 ```
+(.venv-cerf) $ pip install -r requirements.txt
 (.venv-cerf) $ python manage.py migrate
 ```
 
@@ -141,20 +141,21 @@ type `Bearer token` that includes the access token.
 
 # Directory structure
 
-By convention with the Docker images, the mount point is at `~/ngwpc/data`.  Under there, we have our work directory, `ngen-cal-work`
+By convention with the Docker images, the mount point is at `~/ngwpc/data`.   This is defined in `settings.py` and should not change without proper coordination. 
 
-There are some static files that need to be put in place before running ngen-cal.  `ngen-cal-work/bmi_config/Noah-OWP` should be created and the 3 TBL files copied there.
-The `parquet` files should be copied to `ngen-cal-work/parquet`
+Under there, we have our work directory, `ngen-cal-work`.  This directory contains files that are common and can be shared with all the calibration runs, such as forcing and observation data that comes from hydrofabric,
+as well as some static files.
 
-`ngen-cal-work/forcing` and `ngen-cal-work/observation` are used for the forcing and observation files download from Hydrofabric.  
-This is a shared location, since forcing files and observation files can be re-used for the same gage.
+The static files are in `ngen-cal-work/bmi_config/Noah-OWP`  and `ngen-cal-work/parquet`.  These directories will be populated automatically at start-up.  Nothing else needs to be done.
+
+`ngen-cal-work/forcing`, `ngen-cal-work/observation` and `ngen-cal-work/geopackage` are used for the forcing, observation and geopackage files that are downloaded from Hydrofabric.  
+This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
-where `id` is the id of the calibration run and `user` is the owner of the run.
+where `id` is the id of the calibration run and `user` is the owner of the run.  
+The instance-specific directory is also where `create-input` creates the directory struction that is used at run-time by ngen and ngen-cal
 
 In the example below, `20_peter/forcing` and `20_peter/observation` contain user-uploaded forcing and observation files.
-
-The `ngen-cal-work/geopackage` directory is also shared, as geopackage files can also be re-used.
 
 ```
 peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
@@ -195,6 +196,24 @@ peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
             └── sloth_parameters.txt
 ```
 
+# Importing test data
 
+There is an import command that allows you to import data and create a calibration run job without having to go though the UI.  
+This is intended to facilitate testing (and eventually, provide a CLI interface to the user)
+
+In the `Import_test_data` directory, there are several scripts.  First, make sure they are executable.  Then, set environment variables with your username and password
+```
+$ chmod +x *.sh
+$ export NGEN_USERNAME="your_username"
+$ export NGEN_PASSWORD="your_password"
+```
+
+You can then run the `ngen_import.sh` script with one of the sample input files.  Everytime you run `ngen_import.sh`, a new Calibration Run job will be created.  
+The different data files will create jobs will various amounts of data imported.
+The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
+
+Note that the `run_after_import` flag is not yet supported.
+
+The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
 
 

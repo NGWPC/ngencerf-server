@@ -1,19 +1,21 @@
-import os
 import subprocess
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 
 
-def callback(future):
+def callback(future: Future) -> None:
     # print('filename:', future.temp_file_name)
     try:
         if future.exception() is not None:
             print('exception:', future.exception())
         else:
             print('result:', future.result())
-        with open(future.temp_file_name, 'r') as f:
-            print(f"Output from {future.temp_file_name}:")
-            print('data:', f.read())
+        if hasattr(future, 'temp_file_name'):
+            with open(future.temp_file_name, 'r') as f:
+                print(f"Output from {future.temp_file_name}:")
+                print('data:', f.read())
+        else:
+            print("No temp_file_name attribute found on the future object.")
     except Exception as e:
         print(f"Error in callback: {e}")
 
@@ -22,11 +24,8 @@ def callback(future):
 # Also see https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future
 
 def execute(args):
-    args[0] = os.path.expanduser(args[0])
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         temp_file_name = temp_file.name
-
-        # print('temp_file_name', temp_file_name)
 
         pool = ThreadPoolExecutor()
         with open(temp_file_name, 'w') as output_file:
@@ -37,10 +36,3 @@ def execute(args):
             # pool.shutdown(wait=False)
 
             print("Running task")
-
-
-if __name__ == '__main__':
-
-    execute(['~/testSpawn.sh', '1'])
-    execute(['~/testSpawn.sh', '2'])
-    execute(['~/testSpawn.sh', '3'])

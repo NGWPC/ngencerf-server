@@ -3,7 +3,9 @@ import os
 
 from django.apps import AppConfig
 
-from calibration.util.ngen_locations import files, dirs, parquet_dir, NOAH_PARAMETER_DIR
+from calibration.util.file_util import copy_directory
+from calibration.util.ngen_locations import files, dirs, PARQUET_DIR, NOAH_PARAMETER_DIR
+from cerfServer.settings import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,8 @@ class CalibrationConfig(AppConfig):
             if not os.path.exists(directory):
                 logger.warning(f'{directory} does not exist')
 
-        # Make sure we have files in these directories
-        if len(os.listdir(parquet_dir)) == 0:
-            logger.warning('No parquet files found')
+        # Copy the static files
+        copy_directory(os.path.join(BASE_DIR, 'ngen_static_files', 'parquet'), PARQUET_DIR)
+        copy_directory(os.path.join(BASE_DIR, 'ngen_static_files', 'bmi_config', 'Noah-OWP'), NOAH_PARAMETER_DIR)
 
-        if len(os.listdir(NOAH_PARAMETER_DIR)) == 0:
-            logger.warning('No Noah Parameter files found')
 

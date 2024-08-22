@@ -1,21 +1,19 @@
 import json
 import logging
-from json.decoder import JSONDecodeError
 
 from django.db import transaction
+from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
-from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationTuneParameter, ModuleOutputVariable
-from calibration.util.calibration_validators import SaveFormulationRequestValidator, CalibrationRunValidator, ModuleHydrofabricListValidator, \
-    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, \
+from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, ModuleHydrofabricListSerializer, \
+    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 
 logger = logging.getLogger(__name__)
 
@@ -210,14 +208,13 @@ module_sample_data = {"modules": [
 
 
 @extend_schema(
-    request=CalibrationRunValidator,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadFormulationResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -230,71 +227,52 @@ module_sample_data = {"modules": [
     description="Load formulation tab data"
 )
 @api_view(['GET', 'POST'])
+@handle_exceptions
 # @permission_classes([AllowAny])()
 def load_formulation_tab(request):
-    try:
-        print('user', request.user)
-        if request.method == 'POST':
-            data = json.loads(request.body or '{}')
-        else:
-            data = request.GET
+    data = request.data if request.method == 'POST' else request.query_params
 
-        logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+    logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
-        validator = CalibrationRunValidator(data=data)
-        validator.is_valid(raise_exception=True)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
 
-        calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.data.get('calibration_run_id')
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
 
-        user_formulation_name = run.user_formulation_name
+    user_formulation_name = run.user_formulation_name
 
-        get_modules_from_hydrofabric(run)
+    get_modules_from_hydrofabric(run)
 
-        modules = get_all_modules(run)
+    modules = get_all_modules(run)
 
-        # Unwrap the groups
-        for m in modules:
-            m['groups'] = json.loads(m['groups'])
-        module_list = list(modules)
+    # Unwrap the groups
+    for m in modules:
+        m['groups'] = json.loads(m['groups'])
+    module_list = list(modules)
 
-        use_sloth = run.use_sloth
+    use_sloth = run.use_sloth
 
-        sloth_parameters = get_sloth_parameters(run) if use_sloth else []
+    sloth_parameters = get_sloth_parameters(run) if use_sloth else []
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
 
-        response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
-                    "modules": module_list,
-                    'use_sloth': use_sloth,
-                    "sloth_parameters": sloth_parameters}
-        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
+                "modules": module_list,
+                'use_sloth': use_sloth,
+                "sloth_parameters": sloth_parameters}
+    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-        serializer = LoadFormulationResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from load_formulation_tab() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from load_formulation_tab() - {serializer.data}')
+    response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
 
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    return Response(response_validator.data)
 
 
 def get_all_modules(run):
@@ -314,6 +292,7 @@ def get_my_modules(run):
 def get_sloth_parameters(run):
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
+        .prefetch_related(Prefetch('maps_to_module', queryset=CalibrationFormulation.objects.only('name')))
         .values(
             'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
             'maps_to_variable_name')
@@ -337,10 +316,10 @@ def get_modules_from_hydrofabric(run):
 
     print('current_module_names', current_module_names)
 
-    validator = ModuleHydrofabricListValidator(data=module_sample_data)
+    validator = ModuleHydrofabricListSerializer(data=module_sample_data)
     if not validator.is_valid():
         logger.debug(validator.errors)
-        raise Exception(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
+        raise CerfException(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
 
     module_data = validator.data.get('modules')
     new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
@@ -348,29 +327,37 @@ def get_modules_from_hydrofabric(run):
 
     with transaction.atomic():
         if current_module_names != new_modules_names:
-            # Only if the modules names have changed
+            # Delete only if the modules names have changed
             to_be_deleted = current_module_names - new_modules_names
 
-            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
+            if to_be_deleted:
+                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
 
             # Create the new ones, if they don't already exist
+            new_modules = []
             for m in module_data:
-                CalibrationFormulation.objects.get_or_create(name=m['module_name'], calibration_run=run,
-                                                             defaults={'groups': json.dumps(m['groups']),
-                                                                       'description': m['description']})
+                if m['module_name'] not in current_module_names:
+                    new_modules.append(CalibrationFormulation(
+                        name=m['module_name'],
+                        calibration_run=run,
+                        groups=json.dumps(m['groups']),
+                        description=m['description']
+                    ))
+            # Use bulk_create to minimize the number of insert queries
+            if new_modules:
+                CalibrationFormulation.objects.bulk_create(new_modules)
 
-        return
+    return
 
 
 @extend_schema(
-    request=SaveFormulationRequestValidator,
+    request=SaveFormulationRequestSerializer,
     responses={
         200: GenericResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -381,103 +368,90 @@ def get_modules_from_hydrofabric(run):
 )
 @api_view(['POST'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def save_formulation_tab(request):
-    try:
-        print('user', request.user)
-        body = json.loads(request.body or '{}')
-        logger.debug(f'save_formulation_tab() request from {request.user} - {body}')
+    data = request.data
 
-        validator = SaveFormulationRequestValidator(data=body)
-        validator.is_valid(raise_exception=True)
+    logger.debug(f'save_formulation_tab() request from {request.user} - {data}')
 
-        new_module_names = set(validator.data.get('modules'))
-        calibration_run_id = validator.data.get('calibration_run_id')
-        user_formulation_name = validator.data.get('formulation_name')
-        use_sloth = validator.data.get('use_sloth')
-        sloth_parameters = validator.data.get('sloth_parameters')
+    validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
+    if error_return:
+        return error_return
 
-        run, errorReturn = get_run(calibration_run_id, request.user)
-        if errorReturn:
-            return errorReturn
+    new_module_names = set(validator.data.get('modules'))
+    calibration_run_id = validator.data.get('calibration_run_id')
+    user_formulation_name = validator.data.get('formulation_name')
+    use_sloth = validator.data.get('use_sloth')
+    sloth_parameters = validator.data.get('sloth_parameters')
 
-        message = validate_modules(run, new_module_names)
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
+
+    run.user_formulation_name = user_formulation_name
+
+    # Did we get the names from Hydrofabric?
+    if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
+        return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+
+    message = validate_modules(run, new_module_names)
+    if message:
+        return ResponseError(message)
+
+    if not validate_formulation(run, new_module_names):
+        return ResponseError(f'Invalid formulation -  {new_module_names}')
+
+    if use_sloth:
+        new_module_names.add(SLOTH)
+        if not sloth_parameters:
+            return ResponseError(f"If 'use_sloth' is checked, you must enter {SLOTH} parameters")
+    else:
+        if sloth_parameters:
+            return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
+
+    run.use_sloth = use_sloth
+
+    # Get current new_module_names
+    existing_module_names = set(CalibrationFormulation.objects
+                                .filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
+
+    print('old existing_module_names', existing_module_names)
+    print('new existing_module_names', new_module_names)
+
+    with transaction.atomic():
+        # Only if the module names have changed
+        if new_module_names != existing_module_names:
+            to_be_unused = existing_module_names - new_module_names
+            print('to_be_unused', to_be_unused)
+
+            # Set them to be unused and delete any parameters and output variables
+            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
+            CalibrationTuneParameter.objects.all().filter(calibration_formulation__calibration_run=run,
+                                                          calibration_formulation__name__in=to_be_unused).delete()
+            ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
+
+            # Create any new formulations
+            for name in new_module_names:
+                CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+
+        # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
+        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+        message = add_sloth_parameters(run, sloth_parameters)
         if message:
             return ResponseError(message)
 
-        if not validate_formulation(run, new_module_names):
-            return ResponseError(f'Invalid formulation -  {new_module_names}')
+        run.save()
 
-        run.user_formulation_name = user_formulation_name
+        ngen_cal_input.ready_to_run(run)
 
-        if use_sloth:
-            new_module_names.add(SLOTH)
-            if not sloth_parameters:
-                return ResponseError(f"If 'use_sloth' is checked, you must enter {SLOTH} parameters")
-        else:
-            if sloth_parameters:
-                return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
+        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
 
-        # Did we get the names from Hydrofabric
-        if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
-            return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+        response_validator, error_response = validate_response(GenericResponseSerializer, response)
+        if error_response:
+            return error_response
 
-        run.use_sloth = use_sloth
-
-        # Get current new_module_names
-        existing_module_names = set(CalibrationFormulation.objects
-                                    .filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
-
-        print('old existing_module_names', existing_module_names)
-        print('new existing_module_names', new_module_names)
-
-        with transaction.atomic():
-            # Only if the module names have changed
-            if new_module_names != existing_module_names:
-                to_be_unused = existing_module_names - new_module_names
-                print('to_be_unused', to_be_unused)
-
-                # Set them to be unused and delete any parameters and output variables
-                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
-                CalibrationTuneParameter.objects.all().filter(calibration_formulation__calibration_run=run,
-                                                              calibration_formulation__name__in=to_be_unused).delete()
-                ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
-
-                # Create any new formulations
-                for name in new_module_names:
-                    CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
-
-            # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
-            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-            message = add_sloth_parameters(run, sloth_parameters)
-            if message:
-                return ResponseError(message)
-
-            run.save()
-
-            ngen_cal_input.ready_to_run(run)
-
-            response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
-            serializer = GenericResponseSerializer(data=response)
-            if not serializer.is_valid():
-                return ResponseError(f'Data format error returning from save_formulation_tab() - {serializer.errors}',
-                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            logger.debug(f'Returning to {request.user} from save_formulation_tab() - {serializer.data}')
-            return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response_validator.data}')
+        return Response(response_validator.data)
 
 
 def validate_modules(run, module_names):
@@ -501,17 +475,21 @@ def validate_formulation(run, module_names):
 
 
 def add_sloth_parameters(run, sloth_parameters):
-
+    sloth_param_objects = []
     for s in sloth_parameters:
         # Get the module referenced by the sloth parameter
         module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run=run, used_by_calibration_run=True).first()
         if not module:
-            return f"Sloth parameter \'{s['param_name']}\' contain an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
+            return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
 
-        CalibrationSlothParam.objects.create(calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
-                                             param_type=s['param_type'],
-                                             param_units=s['param_units'], param_location=s['param_location'],
-                                             param_value=s['param_value'], maps_to_module=module,
-                                             maps_to_variable_name=s['maps_to_variable_name'])
+        sloth_param_objects.append(
+            CalibrationSlothParam(
+                calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                param_type=s['param_type'], param_units=s['param_units'], param_location=s['param_location'],
+                param_value=s['param_value'], maps_to_module=module, maps_to_variable_name=s['maps_to_variable_name']
+            )
+        )
+
+    CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
     return None

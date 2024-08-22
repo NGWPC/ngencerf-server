@@ -40,7 +40,7 @@ class Command(BaseCommand):
             print(f'{data_dir} must be a directory containing the data files')
             return
 
-        Gage.objects.all().delete()
+        # Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin
         user = get_user_model().objects.get(username='admin')
@@ -57,20 +57,63 @@ class Command(BaseCommand):
         add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_PR.csv'), puerto_rico_domain)
 
         # Some extra manually added gages
+
         with open(os.path.join(data_dir, 'Supplemental - AK.csv')) as file:
             # Skip the first 2 lines before header
             for i in range(2):
                 next(file)
             reader = csv.DictReader(file, delimiter=',')
             gage_count = 0
+            row: dict[str, str]
             for row in reader:
                 gage_count += 1
                 gage_id = row.get('gage_id')
+                # These are all new gages
                 gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
                         'station_name': row.get('station_name'), 'is_active': True,
                         'nwm_v3_calibrated': False, 'domain_id': alaska_domain['id']}
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
+
+        with open(os.path.join(data_dir, 'Supplemental - CONUS.csv')) as file:
+            # Skip the first line before header
+            for i in range(1):
+                next(file)
+            reader = csv.DictReader(file, delimiter='|')
+            new_count = 0
+            existing_count = 0
+            gage_count = 0
+            row: dict[str, str]
+            for row in reader:
+                gage_count += 1
+                gage_id = row.get('gage_id')
+                gage = gages.get(gage_id)
+                # These gages should already exist, so we'll check for that.
+                # We'll create it, just in case it doesn't
+                if not gage:
+                    new_count += 1
+                    gage = {'gage_id': gage_id, 'is_active': True, 'domain_id': conus_domain['id']}
+                    gages[gage_id] = gage
+                else:
+                    existing_count += 1
+
+                nws_id = row.get('nws_id').strip()
+                station_name = row.get('station_name')
+                agency = row.get('agency')
+                nwm_v3_calibrated = row.get('nwm_v3_calibrated') == 'True'
+
+                rfc = row.get('rfc')
+                rfc_id = rfc_dict[rfc.strip()] if rfc else None
+
+                gage.update(
+                    {'nws_id': nws_id if nws_id else None,
+                     'station_name': station_name.strip() if station_name else '',
+                     'rfc_id': rfc_id,
+                     'nwm_v3_calibrated': nwm_v3_calibrated,
+                     'agency': agency.strip() if agency else ''})
+
+                gages[gage_id] = gage
+        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
         # This file maps NWS id with USGS id
         with open(os.path.join(data_dir, 'ALL_USGS-HADS_SITES.txt')) as file:
@@ -81,6 +124,7 @@ class Command(BaseCommand):
                                     fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
             gage_count = 0
             skip_count = 0
+            row: dict[str, str]
             for row in reader:
                 nws_id = row.get('nws_id').strip()
                 gage_id = row.get('gage_id').strip()
@@ -111,8 +155,12 @@ class Command(BaseCommand):
         print('Creating objects.... this will take a minute or two')
         row_num = 0
         for gage in gages.values():
-            Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
-                                          **{unique_field: gage[unique_field]})
+            try:
+                Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
+                                              **{unique_field: gage[unique_field]})
+            except Exception as e:
+                print(str(e))
+                raise Exception(f'Error adding gage - {gage}')
             row_num += 1
             if row_num % 1000 == 0:
                 print(row_num, 'of', len(gages), '...')
@@ -123,6 +171,7 @@ def add_additional_gages(gage_file, domain):
         reader = csv.reader(file, delimiter=',')
         row_num = 0
         gage_count = 0
+        row: list[str]
         for row in reader:
             row_num += 1
             # Skip the first lines
@@ -154,6 +203,7 @@ def add_usgs_gages(usgs_file, domain):
                                             'lat_Long_datum', 'altitude', 'altitude_accuracy', 'altitude_datum', 'huc', 'drainage_area'])
 
         gage_count = 0
+        row: dict[str, str]
         for row in reader:
             gage_count += 1
             gage_id = row.get('gage_id')
@@ -190,6 +240,7 @@ def add_nwm_v3(nwm_v3_file, domain):
         new_count = 0
         existing_count = 0
         gage_count = 0
+        row: dict[str, str]
         for row in reader:
             gage_count += 1
             gage_id = row.get('ID')

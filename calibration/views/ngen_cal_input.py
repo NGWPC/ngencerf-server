@@ -5,11 +5,13 @@ import toml
 from django.conf import settings
 from django.db.models import F
 
-from calibration.enums import CalibrationRunType, StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationTuneParameter, OptimizationInput
+    CalibrationTuneParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    parquet_dir
+    PARQUET_DIR
+from calibration.views.common import CerfException
+from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 
 config_template = {
 
@@ -18,7 +20,7 @@ config_template = {
         "user": "",
         "basin": "",
         "model": "",
-        "run_type": "",
+        "run_type": "calib",
         "main_dir": ""
     },
 
@@ -92,7 +94,7 @@ def ready_to_run(run, build=None):
     messages = []
 
     if not run:
-        raise Exception('Must pass a run instance to validate')
+        raise CerfException('Must pass a run instance to validate')
 
     general['calibration_run_id'] = run.id
     general['user'] = run.owner
@@ -109,7 +111,9 @@ def ready_to_run(run, build=None):
             if run.forcing_source == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
                 messages.append('forcing data must be uploaded')
             elif run.forcing_source != ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path:
-                messages.append('Error getting forcing path from Hydrofabric')
+                # Might have been imported so we never called hydrofabric, or perhaps got an error
+                get_forcing_data_from_hydrofabric(run.forcing_source)
+                # messages.append('Error getting forcing path from Hydrofabric')
             else:
                 datafile['forcing_dir'] = run.forcing_dir_path
 
@@ -120,30 +124,32 @@ def ready_to_run(run, build=None):
                     not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
             elif run.observational_source != ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path:
-                messages.append('Error getting observational path from Hydrofabric')
+                # Might have been imported so we never called hydrofabric, or perhaps got an error
+                get_observational_data_from_hydrofabric(run.observational_source)
+                # messages.append('Error getting observational path from Hydrofabric')
             else:
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
 
         if not run.hydrofabric_gpkg_path:
-            messages.append('Error getting geopackage from Hydrofabric')
+            # Might have been imported so we never called hydrofabric, or perhaps got an error
+            get_geopackage_from_hydrofabric(run.gage.gage_id)
+            # messages.append('Error getting geopackage from Hydrofabric')
         else:
             datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
 
         # Need to set parquet file based on domain
-        datafile['attributes_file'] = os.path.join(parquet_dir, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
+        datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    if not run.user_formulation_name:
-        messages.append('formulation name must be specified')
-    else:
-        if not run.ngen_formulation_name:
-            messages.append('Coding error - ngen_formulation_name is not filled in')
+    if CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exists():
+        if not run.user_formulation_name:
+            messages.append('formulation name must be specified')
         else:
-            general['model'] = run.ngen_formulation_name
-
-    if not run.run_type:
-        messages.append(f'run_type must be specified - {CalibrationRunType.CALIB} or {CalibrationRunType.VALID_BEST}')
+            if not run.ngen_formulation_name:
+                messages.append('Coding error - ngen_formulation_name is not filled in')
+            else:
+                general['model'] = run.ngen_formulation_name
     else:
-        general['run_type'] = run.run_type
+        messages.append('modules must be specified')
 
     main_dir = get_main_dir(run)
     general['main_dir'] = main_dir
@@ -163,28 +169,29 @@ def ready_to_run(run, build=None):
         calibration['calib_eval_start_period'] = run.calibration_eval_start_period.strftime(DATE_FORMAT)
         calibration['calib_eval_end_period'] = run.calibration_eval_end_period.strftime(DATE_FORMAT)
 
-    if run.run_type == CalibrationRunType.VALID_BEST.value and (
-            not run.validation_start_period or not run.validation_end_period or not run.validation_eval_start_period or not run.validation_eval_end_period):
-        messages.append(
-            'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
-    elif run.run_type == CalibrationRunType.VALID_BEST.value:
-        calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
-        calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
-        calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
-        calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
+    if run.automatic_validation:
+        if any(field is None for field in
+               [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
+            messages.append(
+                'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+        else:
+            calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
+            calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
+            calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
+            calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
 
-        calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
-        calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
+            calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
+            calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
     if not run.objective_function:
         messages.append('objective function must be specified')
     else:
-        calibration['objective_function'] = run.objective_function.name
+        calibration['objective_function'] = run.objective_function.name.lower()
 
     if not run.optimization:
         messages.append('optimization must be specified')
     else:
-        calibration['optimization_algorithm'] = run.optimization.name
+        calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         all_input_names = set(
             OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list(

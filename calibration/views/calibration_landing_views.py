@@ -1,31 +1,22 @@
 import logging
-from json.decoder import JSONDecodeError
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Func, CharField, F
+from django.db.models import F, Q
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
-from rest_framework import serializers
 from rest_framework import status
 from rest_framework.decorators import api_view
-from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationErrorSerializer, ValidationExceptionSerializer, CreateCalibrationRunValidator
-from calibration.views.common import ResponseError
+    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
+    GageIdOptionalSerializer
+from calibration.views.common import handle_exceptions, validate_request, validate_response
 
 logger = logging.getLogger(__name__)
-
-
-class DateToChar(Func):
-    arity = 1
-    function = 'to_char'
-    output_field = CharField()
-    template = "%(function)s(%(expressions)s, 'dd-MM-yyyy HH:MI:SS')"
 
 
 @extend_schema(
@@ -36,7 +27,6 @@ class DateToChar(Func):
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -45,44 +35,32 @@ class DateToChar(Func):
     description="Create a new calibration"
 )
 @api_view(['POST'])
+@handle_exceptions
 # @permission_classes([AllowAny])
 def create_calibration_run(request):
-    try:
-        print('user', request.user)
-        logger.debug(f'create_calibration_run() request from {request.user}')
+    logger.debug(f'create_calibration_run() request from {request.user}')
 
-        with transaction.atomic():
-            run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+    with transaction.atomic():
+        run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
-            response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
-            serializer = CreateCalibrationRunValidator(data=response)
-            if not serializer.is_valid():
-                return ResponseError(f'Data format error returning from create_calibration_run() - {serializer.errors}',
-                                     httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            logger.debug(f'Returning to {request.user} from create_calibration_run() - {serializer.data}')
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-    except JSONDecodeError as e:
-        logger.exception(e)
-        return Response({'validation_error': 'JSON parsing error - ' + str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except serializers.ValidationError as e:
-        logger.exception(e)
-        return Response({'validation_error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
+
+        response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
+        if error_response:
+            return error_response
+
+        logger.debug(f'Returning to {request.user} from create_calibration_run() - {response_validator.data}')
+        return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
-    request=None,
+    request=GageIdOptionalSerializer,
     responses={
         200: GetJobsResponseSerializer,
         400: PolymorphicProxySerializer(
             component_name='MultipleErrorResponse',
             serializers=[
                 ValidationExceptionSerializer,
-                ValidationErrorSerializer,
                 ErrorResponseSerializer,
             ],
             resource_type_field_name=None
@@ -94,49 +72,43 @@ def create_calibration_run(request):
 )
 @api_view(['POST', 'GET'])
 # @permission_classes([AllowAny])
+@handle_exceptions
 def get_jobs(request):
-    try:
-        logger.debug(f'get_jobs() request from {request.user}')
+    data = request.data if request.method == 'POST' else request.query_params
 
-        # Get all jobs for this user
-        # TODO Need to filter jobs by user
-        runs = list(CalibrationRun.objects.filter(owner=request.user)
-                    .only('id', 'user_formulation_name', 'gage', 'run_date',
-                          'calibration_start_period', 'calibration_end_period', 'status', 'owner')
-                    .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-                            'status__name',  'owner__username', formulation_name=F('user_formulation_name')))
-        for r in runs:
-            r['calibration_run_id'] = r.pop('id')
-            r['gage_id'] = r.pop('gage__gage_id')
-            r['status'] = r.pop('status__name')
-            r['owner'] = r.pop('owner__username')
+    logger.debug(f'get_jobs() request from {request.user} - {data}')
 
-        response = {'jobs': runs}
-        response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
-        print('response', response)
+    validator, error_return = validate_request(GageIdOptionalSerializer, data)
+    if error_return:
+        return error_return
 
-        serializer = GetJobsResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from get_jobs() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    gage_id = validator.data.get('gage_id')
 
-        logger.debug(f'Returning to {request.user} from get_jobs() - {serializer.data}')
-        return Response(serializer.data)
-    except JSONDecodeError as e:
-        response = {'validation_error': 'JSON parsing error - ' + str(e)}
-        serializer = ValidationErrorSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except ValidationError as e:
-        response = {'validation_error': str(e)}
-        serializer = ValidationExceptionSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_400_BAD_REQUEST)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    query = Q(owner=request.user)
+    if gage_id:
+        query &= Q(gage__gage_id=gage_id) & Q(status__name__in=[StatusEnum.DONE, StatusEnum.FAILED])
+
+    jobs = CalibrationRun.objects.filter(query)
+
+    # Get all jobs for this user
+    runs = list(jobs
+                .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
+                        'status__name', 'owner__username', formulation_name=F('user_formulation_name')))
+    for r in runs:
+        r['calibration_run_id'] = r.pop('id')
+        r['gage_id'] = r.pop('gage__gage_id')
+        r['status'] = r.pop('status__name')
+        r['owner'] = r.pop('owner__username')
+
+    response = {'jobs': runs}
+    print('response', response)
+
+    response_validator, error_response = validate_response(GetJobsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user} from get_jobs() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -148,17 +120,13 @@ def get_jobs(request):
     description="Load gage tab data"
 )
 @api_view(['POST', 'GET'])
+@handle_exceptions
 def get_footer(request):
-    try:
-        response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
-        serializer = FooterResponseSerializer(data=response)
-        if not serializer.is_valid():
-            return ResponseError(f'Data format error returning from get_footer() - {serializer.errors}',
-                                 httpStatus=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        logger.debug(f'Returning to {request.user} from get_footer() - {serializer.data}')
-        return Response(serializer.data)
-    except Exception as e:
-        response = {'exception': str(e)}
-        serializer = ExceptionResponseSerializer(response)
-        logger.exception(e)
-        return Response(serializer.data, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
+
+    response_validator, error_response = validate_response(FooterResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user} from get_footer() - {response_validator.data}')
+    return Response(response_validator.data)

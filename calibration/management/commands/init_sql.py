@@ -169,17 +169,17 @@ class Command(BaseCommand):
                   {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
                   {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
                   {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
-                  {"name": "FBIAS", "description": ""},
-                  {"name": "MSEG_FDC", "description": ""},
-                  {"name": "NSEWt", "description": ""},
+                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True},
+                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve"},
+                  {"name": "NSEWt", "description": "Weighted NSE and NSELog"},
                   ]
 
         for v in values:
-            foo, bar = Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                                 "description": v['description'],
-                                                                                 "categorical": v.get('categorical', False),
-                                                                                 "event_based": v.get('event_based', False),
-                                                                                 "created_by": self.user})
+            Metric.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                      "description": v['description'],
+                                                                      "categorical": v.get('categorical', False),
+                                                                      "event_based": v.get('event_based', False),
+                                                                      "created_by": self.user})
 
     def define_status(self):
         if self.DELETE_FLAG:

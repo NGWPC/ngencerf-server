@@ -1,21 +1,22 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_api_views, calibration_landing_views, \
-    calibration_gage_views, calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_results_views, calibration_gage_views, \
+    calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views
 
 urlpatterns = [
-    ##################################
-    # Api page
-    ##################################
-    path('calibration/report_iteration/', calibration_api_views.report_iteration, name="reportIteration"),
-
     ##################################
     # Landing page
     ##################################
     path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_jobs/', calibration_landing_views.get_jobs, name="getJobs"),
+
+
+    ##################################
+    # Results page
+    ##################################
+    path('calibration/get_job_results/', calibration_results_views.get_job_results, name="getJobResults"),
 
     ##################################
     # Gage tab
@@ -25,7 +26,7 @@ urlpatterns = [
     path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
-    
+
     ##################################
     # Plot Definitions tab
     ##################################
@@ -43,6 +44,7 @@ urlpatterns = [
     ##################################
     path('calibration/load_tuning_tab/', calibration_tuning_views.load_tuning_tab, name="loadTuningTab"),
     path('calibration/save_tuning_tab/', calibration_tuning_views.save_tuning_tab, name="saveTuningTab"),
+    path('calibration/upload_user_parameters/', calibration_tuning_views.upload_user_parameters, name="uploadUserParameters"),
 
     ##################################
     # Optimizations/Metrics tab
@@ -55,6 +57,9 @@ urlpatterns = [
     ##################################
     path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
+
+    path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
+    path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
 
     # Testing
     path('calibration/read_output/', calibration_run_views.test_read_output, name="readOutput"),

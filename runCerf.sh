@@ -1,15 +1,23 @@
+#! /bin/bash
+
 # Run ngenCerf outside of Pycharm
 
-cerfServer=~/projects/cerfServer/
+source ./cerfserver.env
 
-source $cerfServer/.venv/bin/activate
+cerfServer="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
+if [ -n "${CERF_VENV}" ] ; then
+    source "$cerfServer"/.venv/bin/activate
+fi
 
 echo
 echo Running pre_start
-$cerfServer/manage.py pre_start
+python3 "$cerfServer"/manage.py pre_start
 
 echo
 echo Starting server
-$cerfServer/manage.py runserver localhost:8000
+python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000
 
-deactivate
+if [ -n "${CERF_VENV}" ] ; then
+    deactivate
+fi
