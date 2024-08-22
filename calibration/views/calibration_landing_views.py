@@ -13,8 +13,9 @@ from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
-    GageIdOptionalSerializer
-from calibration.views.common import handle_exceptions, validate_request, validate_response
+    GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
+from calibration.views.calibration_import_export_views import load_calibration_run_data
+from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
 
 logger = logging.getLogger(__name__)
 
@@ -130,3 +131,40 @@ def get_footer(request):
 
     logger.debug(f'Returning to {request.user} from get_footer() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+@extend_schema(
+    request=None,
+    responses={
+        200: CalibrationRunSerializer,
+        400: LoadCalibrationRunResponseSerializer,
+        500: ExceptionResponseSerializer
+    },
+    description="Load all data for a previously saved calibration"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def load_calibration_run(request):
+    data = request.data if request.method == 'POST' else request.query_params
+
+    logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.data.get('calibration_run_id')
+
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
+
+    calibration_run_data = load_calibration_run_data(run)
+
+    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
+
+    return Response(response_validator.data)
+

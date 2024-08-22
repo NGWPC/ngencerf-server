@@ -87,7 +87,7 @@ def load_gage_tab(request):
                 'domain_values': domain_values,
                 'forcing_source_values': forcing_source_values,
                 'observational_source_values': observational_source_values,
-                'geopackage_image': geopackage_image_url,
+                'geopackage_image_url': geopackage_image_url,
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
