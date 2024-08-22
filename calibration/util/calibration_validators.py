@@ -589,7 +589,7 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     objective_function = serializers.CharField(required=False)
     optimizations = OptimizationStaticSerializer(many=True)
     plot_frequency = serializers.IntegerField(required=False)
-    stop_criteria = serializers.CharField(required=False)
+    stop_criteria = serializers.IntegerField(required=False)
 
 
 class ObservationalHydrofabricSerializer(BaseSerializer):
