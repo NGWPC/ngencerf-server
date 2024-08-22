@@ -80,6 +80,8 @@ class Command(BaseCommand):
             for i in range(1):
                 next(file)
             reader = csv.DictReader(file, delimiter='|')
+            new_count = 0
+            existing_count = 0
             gage_count = 0
             row: dict[str, str]
             for row in reader:
@@ -89,8 +91,11 @@ class Command(BaseCommand):
                 # These gages should already exist, so we'll check for that.
                 # We'll create it, just in case it doesn't
                 if not gage:
+                    new_count += 1
                     gage = {'gage_id': gage_id, 'is_active': True, 'domain_id': conus_domain['id']}
                     gages[gage_id] = gage
+                else:
+                    existing_count += 1
 
                 nws_id = row.get('nws_id').strip()
                 station_name = row.get('station_name')
@@ -101,11 +106,14 @@ class Command(BaseCommand):
                 rfc_id = rfc_dict[rfc.strip()] if rfc else None
 
                 gage.update(
-                    {'nws_id': nws_id, 'station_name': station_name.strip() if station_name else '', 'rfc_id': rfc_id, 'nwm_v3_calibrated': nwm_v3_calibrated,
+                    {'nws_id': nws_id if nws_id else None,
+                     'station_name': station_name.strip() if station_name else '',
+                     'rfc_id': rfc_id,
+                     'nwm_v3_calibrated': nwm_v3_calibrated,
                      'agency': agency.strip() if agency else ''})
 
                 gages[gage_id] = gage
-        print(f'Processed {gage_count} gages from {file.name}.')
+        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
         # This file maps NWS id with USGS id
         with open(os.path.join(data_dir, 'ALL_USGS-HADS_SITES.txt')) as file:

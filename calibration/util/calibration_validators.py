@@ -231,6 +231,7 @@ class LoadGageResponseSerializer(BaseSerializer):
     observational_user_filename = serializers.CharField(required=False)
     gages = GagesSerializer(required=True, many=True)
     gage = GageSerializer(required=False)
+    geopackage_image = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
 
 

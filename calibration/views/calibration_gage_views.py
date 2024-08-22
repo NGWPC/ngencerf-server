@@ -65,6 +65,10 @@ def load_gage_tab(request):
     gage = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
             'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
 
+    geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
+    base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+    geopackage_image_url = f'data:image/png;base64,{base64_str}'
+
     forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
     observational_source_values = list(ObservationalSource.objects
                                        .values('name', 'description', 'is_active'))
@@ -83,6 +87,7 @@ def load_gage_tab(request):
                 'domain_values': domain_values,
                 'forcing_source_values': forcing_source_values,
                 'observational_source_values': observational_source_values,
+                'geopackage_image': geopackage_image_url,
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
