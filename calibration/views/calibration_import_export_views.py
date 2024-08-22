@@ -9,7 +9,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
-from calibration.util.calibration_validators import CalibrationRunSerializer, ImportSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.views import ngen_cal_input
@@ -201,11 +201,11 @@ def import_job(request):
                 submit_job(run, config_file=config_file)
                 imported_and_submitted = 'imported and submitted'
 
-        response = {'message': f'Calibration Run {run.id} {imported_and_submitted}','run_id': run.id }
+        response = {'message': f'Calibration Run {run.id} {imported_and_submitted}','calibration_run_id': run.id }
         if errors:
             response['errors'] = errors
 
-        response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
+        response_validator, error_response = validate_response(ImportResponseSerializer, response)
         if error_response:
             return error_response
 

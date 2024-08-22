@@ -52,7 +52,7 @@ def get_plot_names(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.SAVED])
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if errorReturn:
         return errorReturn
 

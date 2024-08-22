@@ -7,6 +7,7 @@ import json
 from requests import Response
 from calibration.enums import StatusEnum
 from calibration.management.commands.init_sql import Command
+from calibration.models.status import Status
 from calibration.views.common import get_run
 from rest_framework.test import force_authenticate
 from rest_framework.test import APIRequestFactory
@@ -40,9 +41,15 @@ class CerfUnitTest(TestCase):
         response.render()
         res = json.loads(response.content)
         print(f"Response: {response.content}")
-        self.run_id = res["run_id"]
+        self.run_id = res["calibration_run_id"]
         print(f"test_set_up(): Calibration run ID: {self.run_id}")
-
+        # verify the record for calibration_run_id
+        run, errorReturn = get_run(self.run_id, user)
+        if errorReturn:
+            return errorReturn
+        status=Status.objects.get(name=StatusEnum.RUNNING.value)
+        run.status = status
+        run.save()
         return self.run_id
 
     # Tests the /calibration/get_plot_names/ end-point
@@ -57,8 +64,10 @@ class CerfUnitTest(TestCase):
         force_authenticate(request, user=user)
         response = calibration_plot_views.get_plot_names(request)
         response.render()
+        # check if transaction was successful
+        self.assertEqual(response.status_code, 200)
 
-        run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED])
+        run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
         if errorReturn:
             return errorReturn
     
@@ -71,8 +80,6 @@ class CerfUnitTest(TestCase):
         )
         expected_response = {f"calibration_run_id": calibration_run_id, "plot_list": list(plots)}
                               
-        # check if transaction was successful
-        self.assertEqual(response.status_code, 200)
         # verify content
         self.maxDiff = None
         self.assertEqual(json.loads(response.content), expected_response)
