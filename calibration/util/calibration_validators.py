@@ -608,6 +608,11 @@ class IsReadyResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
+class ImportResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
+    errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+
 
 ##################################
 # Import/Export
