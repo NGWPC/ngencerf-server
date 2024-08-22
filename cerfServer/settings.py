@@ -222,9 +222,6 @@ LOGGING = {
 }
 
 # Locations for running ngen-cal
-IMPORT_TEST_DATA_FILE = os.path.join(BASE_DIR, 'Import_test_data/import_complete.json')
-
-# Locations for running ngen-cal
 REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')

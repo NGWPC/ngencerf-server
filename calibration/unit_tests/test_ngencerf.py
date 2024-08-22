@@ -1,4 +1,5 @@
 
+import os
 from django.contrib.auth.models import User
 from django.forms import CharField
 from django.test import TestCase
@@ -32,7 +33,8 @@ class CerfUnitTest(TestCase):
 
         factory = APIRequestFactory()
         # Opening import_complete.json file
-        f = open(settings.IMPORT_TEST_DATA_FILE)
+
+        f = open(os.path.join(settings.BASE_DIR, 'Import_test_data/import_complete.json'))
         # returns JSON object as a dictionary
         data = json.load(f)
         request = factory.post('/calibration/import/', data, format='json')
