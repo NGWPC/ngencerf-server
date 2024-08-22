@@ -113,9 +113,6 @@ def load_tuning_tab(request):
     if errorReturn:
         return errorReturn
 
-    calibration_times, validation_times = get_times(run)
-
-    output_variable_to_calibrate = get_output_variable_to_calibrate(run)
 
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
@@ -130,19 +127,10 @@ def load_tuning_tab(request):
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(modules)
 
-    time_range = get_time_range(run)
-
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name,
-                'modules': module_list,
-                'user_parameter_filename': run.user_parameter_filename,
-                'calibration_times': calibration_times,
-                'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
-                'time_range': time_range,
-                'output_variable_to_calibrate': output_variable_to_calibrate}
-    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
-
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
+    
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response

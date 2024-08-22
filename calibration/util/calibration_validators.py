@@ -524,12 +524,7 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 
 class LoadTuningResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    calibration_times = CalibrationTimeControls(required=False)
-    validation_times = ValidationTimeControls(required=False)
-    automatic_validation = serializers.BooleanField(required=True)
-    output_variable_to_calibrate = OutputVariableSerializer(required=False)
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
-    user_parameter_filename = serializers.CharField(required=False)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
