@@ -53,31 +53,14 @@ def load_optimization_tab(request):
     if errorReturn:
         return errorReturn
 
-    objective_function = run.objective_function.name if run.objective_function else None
-    streamflow_threshold = run.streamflow_threshold if (run.objective_function and run.objective_function.categorical) else None
-    peak_flow_threshold = run.peak_flow_threshold if (run.objective_function and run.objective_function.event_based) else None
-    optimization, optimization_inputs = get_user_optimization(run)
-
     metrics = get_metrics()
 
     optimization_list = get_static_optimizations()
 
-    plot_frequency = run.plot_frequency if run.plot_frequency else None
-
-    calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
-
     ngen_cal_input.ready_to_run(run)
     response = {'calibration_run_id': run.id, 'status': run.status.name,
-                'streamflow_threshold': streamflow_threshold,
-                'peak_flow_threshold': peak_flow_threshold,
                 'metrics': metrics,
-                'optimization': optimization,
-                'optimization_inputs': optimization_inputs,
-                'objective_function': objective_function,
-                'optimizations': optimization_list,
-                'plot_frequency': plot_frequency,
-                'stop_criteria': stop_criteria
+                'optimizations': optimization_list
                 }
 
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
@@ -103,7 +86,7 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    optimizations = Optimization.objects.filter(is_active=True).prefect_releate('inputs')
+    optimizations = Optimization.objects.filter(is_active=True).prefetch_related('inputs')
     optimization_list = []
     for o in optimizations:
         inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))

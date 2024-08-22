@@ -594,15 +594,8 @@ class OptimizationStaticSerializer(serializers.Serializer):
 class LoadOptimizationResponseSerializer(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
-    streamflow_threshold = serializers.FloatField(required=False)
-    peak_flow_threshold = serializers.FloatField(required=False)
     metrics = MetricSerializer(many=True)
-    optimization = serializers.CharField(allow_blank=False, required=False, validators=[optimizationValidator])
-    optimization_inputs = OptimizationInputsUserSerializer(many=True, required=False)
-    objective_function = serializers.CharField(required=False)
     optimizations = OptimizationStaticSerializer(many=True)
-    plot_frequency = serializers.IntegerField(required=False)
-    stop_criteria = serializers.IntegerField(required=False)
 
 
 class ObservationalHydrofabricSerializer(BaseSerializer):
@@ -620,6 +613,7 @@ class ForcingHydrofabricSerializer(BaseSerializer):
 class IsReadyResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+
 
 class ImportResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
