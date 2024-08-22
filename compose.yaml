@@ -3,8 +3,10 @@ name: ngencerf-server
 services:
   db:
     image: postgres:16
+    ports:
+      - "5432:5432"
     volumes:
-      - ./data/db:/var/lib/postgresql/data
+      - ../data/db:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=postgres
       - POSTGRES_USER=postgres
@@ -17,13 +19,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
+      - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
     environment:
       - CERF_SERVER_DATABASE_NAME=postgres
       - CERF_SERVER_DATABASE_USER=postgres
       - CERF_SERVER_DATABASE_PASSWORD=postgres
       - CERF_SERVER_DATABASE_HOST=db
-      # - CERF_LOAD_STATIC_DATA=true
     depends_on:
       - db
 

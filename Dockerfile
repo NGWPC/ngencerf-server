@@ -12,6 +12,7 @@ RUN set -eux; \
     dnf install -y \
         file \
         findutils \
+        jq \
         libpq \
         git \
         openssl openssl-devel \
