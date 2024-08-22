@@ -359,6 +359,8 @@ class LoadGageResponseSerializer(BaseSerializer):
     forcing_source_values = ForcingSourceSerializer(many=True)
     observational_source_values = ObservationalSourceSerializer(many=True)
     gages = GagesSerializer(required=True, many=True)
+    gage = GageSerializer(required=False)
+    geopackage_image_url = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
 
 
