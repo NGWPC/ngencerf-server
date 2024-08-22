@@ -235,7 +235,7 @@ NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 # Directory containing the ngen-cal virtual environment
-NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv')
+NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 # This needs to be at the end of settings.py
 try:

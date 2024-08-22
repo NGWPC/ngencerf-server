@@ -19,9 +19,10 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationTune
     CalibrationTuneParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
-from calibration.views import ngen_cal_input
+from calibration.util.ngen_locations import CALIBRATION_PY
+from calibration.views import ngen_cal_input, spawn_process
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR, NGEN_CAL_VENV
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +142,11 @@ def submit_job(run, config_file=None):
 
     # TODO Do something here to kick it off
 
+    calibration_input = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
+    print('calibration_input', calibration_input)
+    cmd = [os.path.join(NGEN_CAL_VENV, 'bin/python'), CALIBRATION_PY, calibration_input]
+    spawn_process.execute(cmd)
+
     return None
 
 
@@ -188,10 +194,7 @@ def test_read_output(request):
     #                 └── cfe_noah
     #                     └── 01123000
 
-    formulation_name = run.ngen_formulation_name
-    gage_id = run.gage.gage_id
-    gage_dir = os.path.join(NGEN_CAL_RUN_DIR, f'{calibration_run_id}_{run.owner.username}',
-                            f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}', formulation_name, gage_id)
+    gage_dir = get_gage_dir(run)
     print("gage_dir", gage_dir)
 
     read_output(gage_dir, run)
@@ -412,6 +415,13 @@ def read_last_line(filename):
             file.seek(-2, 1)
         last_line = file.readline().decode()
         return last_line
+
+
+# Construct the directory where the Input/Output is
+def get_gage_dir(run) -> str | bytes:
+    return os.path.join(NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}',
+                        f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}',
+                        run.ngen_formulation_name, run.gage.gage_id)
 
 
 @extend_schema(
