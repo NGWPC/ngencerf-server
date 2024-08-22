@@ -2,8 +2,7 @@ import json
 
 
 def generate_calibration_data(worker_names, iteration_range_per_worker, calibration_run_id, optimization):
-    data = {}
-    data['optimization'] = optimization
+    data = {'optimization': optimization}
     list = []
     data['list'] = list
 
