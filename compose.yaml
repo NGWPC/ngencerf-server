@@ -1,0 +1,32 @@
+name: ngencerf-server
+
+services:
+  db:
+    image: postgres:16
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+  ngencerf-services:
+    build: 
+      context: .
+      secrets:
+        - gitlab_token
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
+    environment:
+      - CERF_SERVER_DATABASE_NAME=postgres
+      - CERF_SERVER_DATABASE_USER=postgres
+      - CERF_SERVER_DATABASE_PASSWORD=postgres
+      - CERF_SERVER_DATABASE_HOST=db
+      # - CERF_LOAD_STATIC_DATA=true
+    depends_on:
+      - db
+
+secrets:
+  gitlab_token:
+    file: ~/.gitlab_token

@@ -11,11 +11,29 @@ if [ -n "${CERF_VENV}" ] ; then
 fi
 
 echo
-echo Running pre_start
+echo "Running migrate"
+python3 manage.py migrate
+
+if [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
+    echo
+    echo "Loading ngenCERF static data"
+
+    python3 manage.py createsuperuser_docker --noinput \
+        --username admin \
+        --password admin \
+        --email admin@nextgenwaterprediction.com
+    python3 manage.py init_sql; \
+    python3 manage.py init_gages
+
+    touch "${CERF_LOAD_STATIC_DATA}"
+fi
+
+echo
+echo "Running pre_start"
 python3 "$cerfServer"/manage.py pre_start
 
 echo
-echo Starting server
+echo "Starting server"
 python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000
 
 if [ -n "${CERF_VENV}" ] ; then
