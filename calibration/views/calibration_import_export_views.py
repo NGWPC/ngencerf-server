@@ -175,7 +175,7 @@ def import_job(request):
                 submit_job(run)
                 imported_and_submitted = 'imported and submitted'
 
-            response = {'message': f'Calibration Run {run.id} {imported_and_submitted}'}
+            response = { 'message': f'Calibration Run {run.id} {imported_and_submitted}','run_id': run.id }
             serializer = GenericMessageResponseSerializer(data=response)
             if not serializer.is_valid():
                 return ResponseError(f'Data format error returning from import_job() - {serializer.errors}',
