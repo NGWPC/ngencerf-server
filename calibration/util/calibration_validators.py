@@ -425,10 +425,7 @@ class ModuleStaticSerializer(BaseSerializer):
 
 class LoadFormulationResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(required=False, allow_blank=False)
     modules = ModuleStaticSerializer(many=True)
-    use_sloth = serializers.BooleanField(required=True)
-    sloth_parameters = SlothParameters(required=False, many=True, )
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 

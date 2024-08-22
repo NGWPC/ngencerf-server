@@ -152,7 +152,6 @@ def get_gage(request):
     description="Save gage tab data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def save_gage_tab(request):
     data = request.data
