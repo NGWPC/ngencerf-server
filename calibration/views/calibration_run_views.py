@@ -7,6 +7,7 @@ from operator import attrgetter
 from typing import Dict
 
 from createInput import create_input
+from datetimerange import DateTimeRange
 from django.db import transaction
 from django.db.models import Max
 from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
@@ -542,3 +543,18 @@ def get_iteration(request):
     logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
 
     return Response(response_validator.data)
+
+
+def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
+    with open(input_file, 'r') as infile, open(output_file, 'w', newline='') as outfile:
+        reader = csv.reader(infile)
+        writer = csv.writer(outfile)
+
+        header = next(reader)  # Read the header
+        writer.writerow(header)  # Write the header to the output file
+
+        for row in reader:
+            row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+            if row_date in date_time_range:
+                writer.writerow(row)
+
