@@ -381,6 +381,9 @@ def load_calibration_run_data(run):
 
     ngen_cal_input.ready_to_run(run)
     calibration_run_data['status'] = run.status.name
+    if run.status.name in [StatusEnum.RUNNING.value, StatusEnum.DONE.value]:
+        # Other stuff we need for Running/Done jobs
+        pass
 
     print('export', calibration_run_data)
     return calibration_run_data
