@@ -52,7 +52,7 @@ def get_plot_names(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+    run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
         return errorReturn
 
@@ -119,6 +119,8 @@ def get_plot(request):
         return error_return
 
     plot_file_name = validator.data.get('cal_plot_name')
+
+    # TODO Need to simply base64-encode the file and return it in a regular response
 
     response = download_plot(plot_file_name)
 
