@@ -151,7 +151,7 @@ def get_parameters_and_output_variables(modules):
     for m in modules:
         calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m))
 
-        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
         module_entry = {'name': m.name, 'parameters': parameters,
                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
 
@@ -163,8 +163,7 @@ def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
         calibrationTuneParameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                         .only('name', 'minimum', 'maximum', 'initial_value')
-                                         .values('name', 'minimum', 'maximum', 'initial_value'))
+                                         .values('name', 'minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'))
 
         for p in calibrationTuneParameters:
             p['module'] = m.name
@@ -418,7 +417,7 @@ def save_parameters(run, parameters):
         for p in parameters:
             (CalibrationTuneParameter.objects
              .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
-             .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
+             .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value'], user_selected_for_tuning=True))
 
 
 # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range

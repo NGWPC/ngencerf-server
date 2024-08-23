@@ -22,7 +22,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
-    save_parameters, get_module_data_from_hydrofabric, get_time_range
+    save_parameters, get_module_data_from_hydrofabric, get_time_range, get_parameters_and_output_variables
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.ngen_cal_input import get_main_dir
 
@@ -352,6 +352,8 @@ def load_calibration_run_data(run):
     calibration_times, validation_times = get_times(run)
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
+    module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    calibration_run_data['module_metadata'] = get_parameters_and_output_variables(module_objects)
     output_variable_to_calibrate = {
         'module': run.module_output_variable.calibration_formulation.name,
         'name': run.module_output_variable.name
@@ -361,11 +363,6 @@ def load_calibration_run_data(run):
     # Optimization
     #############################
     calibration_run_data['output_variable_to_calibrate'] = output_variable_to_calibrate
-    # Get the list of modules for this Run
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
-    # For each module, get the Parameters and Output Variables
-    parameters = get_parameters_for_export(modules)
-    calibration_run_data['parameters'] = parameters
     calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
     calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
     calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold
