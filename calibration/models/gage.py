@@ -5,7 +5,7 @@ from calibration.models.base_model import BaseModel
 
 class Gage(BaseModel):
     is_active = models.BooleanField(null=False, default=True)
-    gage_id = models.CharField(max_length=50, unique=True, null=False, db_index=True)
+    gage_id = models.CharField(max_length=50, null=False, db_index=True)
     nws_id = models.CharField(max_length=50, null=True)
     rfc = models.ForeignKey('Rfc', null=True, on_delete=models.SET_NULL)
     nwm_v3_calibrated = models.BooleanField(null=False, default=False)
@@ -25,5 +25,8 @@ class Gage(BaseModel):
 
     class Meta:
         db_table = 'gage'
+        constraints = [
+            models.UniqueConstraint(fields=['gage_id', 'agency'], name='gage__gage_id__agency__unique')
+        ]
 
 
