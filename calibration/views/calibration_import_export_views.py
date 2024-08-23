@@ -70,13 +70,13 @@ def import_job(request):
         run.observational_user_filename = validator.data.get('observational_user_filename')
         run.observational_file_path = validator.data.get('observational_file_path')
         geopackage = validator.data.get('geopackage')
-        run.hydrofabric_gpkg_path = geopackage if os.path.exists(geopackage) else None
+        run.hydrofabric_gpkg_path = geopackage if geopackage and os.path.exists(geopackage) else None
 
         # TODO Need to call hydrofabric
 
         main_dir = get_main_dir(run)
         if run.forcing_source == ForcingSourceEnum.UPLOAD.value:
-            if os.path.exists(run.forcing_dir_path):
+            if run.forcing_dir_path and os.path.exists(run.forcing_dir_path):
                 # Need to copy user-loaded files to our instance directory
                 new_forcing_dir = os.path.join(main_dir, 'forcing')
                 copy_directory(run.forcing_dir_path, new_forcing_dir)
@@ -85,7 +85,7 @@ def import_job(request):
                 run.forcing_user_dir = None
 
         if run.observational_source == ObservationalSourceEnum.UPLOAD.value:
-            if os.path.exists(run.observational_file_path):
+            if run.observational_file_path and os.path.exists(run.observational_file_path):
                 # Need to copy user-loaded files to our instance directory
                 new_observational_dir = os.path.join(main_dir, 'observation')
                 copy_file_to_directory(run.observational_file_path, new_observational_dir)
