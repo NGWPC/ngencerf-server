@@ -211,9 +211,9 @@ class GageSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
     agency = serializers.CharField(required=True, allow_blank=False)
     station_name = serializers.CharField(required=True, allow_blank=False)
-    latitude = serializers.FloatField(required=True)
-    longitude = serializers.FloatField(required=True)
-    altitude = serializers.FloatField(required=True)
+    latitude = serializers.FloatField(required=True, allow_null=True)
+    longitude = serializers.FloatField(required=True, allow_null=True)
+    altitude = serializers.FloatField(required=True, allow_null=True)
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
