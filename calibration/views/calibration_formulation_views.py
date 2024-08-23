@@ -244,7 +244,6 @@ def load_formulation_tab(request):
     if errorReturn:
         return errorReturn
 
-    user_formulation_name = run.user_formulation_name
 
     get_modules_from_hydrofabric(run)
 
@@ -255,16 +254,11 @@ def load_formulation_tab(request):
         m['groups'] = json.loads(m['groups'])
     module_list = list(modules)
 
-    use_sloth = run.use_sloth
-
-    sloth_parameters = get_sloth_parameters(run) if use_sloth else []
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'formulation_name': user_formulation_name,
-                "modules": module_list,
-                'use_sloth': use_sloth,
-                "sloth_parameters": sloth_parameters}
+    response = {'calibration_run_id': run.id, 'status': run.status.name, "modules": module_list}
+
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)

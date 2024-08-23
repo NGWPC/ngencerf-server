@@ -23,29 +23,6 @@ class BaseSerializer(serializers.Serializer):
         return super().run_validation(data)
 
 
-# class BaseSerializer(serializers.Serializer):
-#     def run_validation(self, data=None):
-#         if data is not None and data != empty:
-#             # unknown = set(data) - set(self.fields)
-#             unknown = set()
-#             if isinstance(data, dict):
-#
-#                 for field_name, field_value in data.items():
-#                     if field_name in self.fields:
-#                         field = self.fields[field_name]
-#                         if isinstance(field, serializers.JSONField):
-#                             continue  # Skip validation for JSONField objects
-#                     else:
-#                         unknown.add(field_name)
-#                 if unknown:
-#                     errors = ["Unknown field: {}".format(f) for f in unknown]
-#                     raise serializers.ValidationError({
-#                         api_settings.NON_FIELD_ERRORS_KEY: errors,
-#                     })
-#
-#         return super().run_validation(data)
-
-
 def forcingSourceValidator(value):
     if value not in ForcingSourceEnum.values():
         raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
@@ -107,7 +84,140 @@ class CalibrationPlotNameSerializer(BaseSerializer):
 
 
 ##################################
-# Jobs page
+# Common serializers that need to be defined before usage
+##################################
+class SlothParameters(BaseSerializer):
+    param_name = serializers.CharField(required=True, allow_blank=False)
+    param_count = serializers.IntegerField(required=True)
+    param_type = serializers.CharField(required=True, validators=[dataTypeValidator])
+    param_units = serializers.CharField(required=True, validators=[unitsValidator])
+    param_location = serializers.CharField(required=True, validators=[locationValidator])
+    param_value = serializers.FloatField(required=True)
+    maps_to_module = serializers.CharField(required=True, allow_blank=False)
+    maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
+
+
+class TimeRangeSerializer(BaseSerializer):
+    start_time = serializers.DateTimeField(required=True)
+    end_time = serializers.DateTimeField(required=True)
+
+
+class TimeRangeSerializerAllowEmpty(BaseSerializer):
+    start_time = serializers.DateTimeField(required=False)
+    end_time = serializers.DateTimeField(required=False)
+
+
+class CalibrationTimeControls(BaseSerializer):
+    calibration_start_time = serializers.DateTimeField(required=True)
+    calibration_end_time = serializers.DateTimeField(required=True)
+    simulation_start_time = serializers.DateTimeField(required=True)
+    simulation_end_time = serializers.DateTimeField(required=True)
+
+    def validate(self, data):
+        calibration_range = DateTimeRange(data['calibration_start_time'], data['calibration_end_time'])
+        if not calibration_range.is_valid_timerange():
+            raise serializers.ValidationError(f'{calibration_range} is not a valid time range')
+
+        simulation_range = DateTimeRange(data['simulation_start_time'], data['simulation_end_time'])
+        if not simulation_range.is_valid_timerange():
+            raise serializers.ValidationError(f'{simulation_range} is not a valid time range')
+
+        if (simulation_range.start_datetime not in calibration_range) or (simulation_range.end_datetime not in calibration_range):
+            raise serializers.ValidationError(f'Simulation range {simulation_range} must be contained within calibration range {calibration_range}')
+
+        return data
+
+
+class CalibrationTimeControlsAllowEmpty(BaseSerializer):
+    calibration_start_time = serializers.DateTimeField(required=False)
+    calibration_end_time = serializers.DateTimeField(required=False)
+    simulation_start_time = serializers.DateTimeField(required=False)
+    simulation_end_time = serializers.DateTimeField(required=False)
+
+
+class ValidationTimeControls(BaseSerializer):
+    validation_start_time = serializers.DateTimeField(required=True)
+    validation_end_time = serializers.DateTimeField(required=True)
+    simulation_start_time = serializers.DateTimeField(required=True)
+    simulation_end_time = serializers.DateTimeField(required=True)
+
+    def validate(self, data):
+        validation_range = DateTimeRange(data['validation_start_time'], data['validation_end_time'])
+        if not validation_range.is_valid_timerange():
+            raise serializers.ValidationError(
+                f'{validation_range} is not a valid time range')
+
+        simulation_range = DateTimeRange(data['simulation_start_time'], data['simulation_end_time'])
+        if not simulation_range.is_valid_timerange():
+            raise serializers.ValidationError(
+                f'{simulation_range} is not a valid time range')
+
+        if simulation_range.get_start_time_str() not in validation_range or simulation_range.get_end_time_str() not in validation_range:
+            raise serializers.ValidationError(f'Simulation range {simulation_range} must be contained within validation range {validation_range}')
+
+        return data
+
+
+class ValidationTimeControlsAllowEmpty(BaseSerializer):
+    validation_start_time = serializers.DateTimeField(required=False)
+    validation_end_time = serializers.DateTimeField(required=False)
+    simulation_start_time = serializers.DateTimeField(required=False)
+    simulation_end_time = serializers.DateTimeField(required=False)
+
+
+# TODO See if we can eliminate 1 of these after Hydrofabric implementation
+# Used for the output from Hydrofabric
+class OutputVariableMetadataSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    description = serializers.CharField(required=True, allow_blank=False)
+
+
+# Used by SaveTuningRequestValidator
+class OutputVariableSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    module = serializers.CharField(required=True, allow_blank=False)
+
+
+# Used by Export
+class OutputVariableSerializerAllowEmpty(BaseSerializer):
+    name = serializers.CharField(required=False, allow_blank=False)
+    module = serializers.CharField(required=False, allow_blank=False)
+
+
+# Used by SaveTuningRequestValidator
+class TuningParametersSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    minimum = serializers.FloatField(required=True)
+    maximum = serializers.FloatField(required=True)
+    initial_value = serializers.FloatField(required=True, allow_null=True)
+    module = serializers.CharField(required=True, allow_blank=False)
+
+    def validate(self, data):
+        if data['minimum'] > data['maximum']:
+            raise serializers.ValidationError(
+                f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}")
+        if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
+            raise serializers.ValidationError(
+                f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}")
+        return data
+
+
+class OptimizationInputsSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_blank=False)
+    value = serializers.FloatField(required=True)
+
+
+class GageSerializer(BaseSerializer):
+    gage_id = serializers.CharField(required=True, allow_blank=False)
+    agency = serializers.CharField(required=True, allow_blank=False)
+    station_name = serializers.CharField(required=True, allow_blank=False)
+    latitude = serializers.FloatField(required=True)
+    longitude = serializers.FloatField(required=True)
+    altitude = serializers.FloatField(required=True)
+
+
+##################################
+# Landing page
 ##################################
 
 
@@ -129,6 +239,38 @@ class GetJobsResponseSerializer(BaseSerializer):
 class FooterResponseSerializer(BaseSerializer):
     version = serializers.CharField(required=True)
     contact_email = serializers.CharField(required=True)
+
+
+class LoadCalibrationRunResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    gage = GageSerializer(required=True, allow_null=True)
+    forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
+    forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_source = serializers.CharField(required=True, allow_null=True, validators=[observationSourceValidator])
+    observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_image_url = serializers.CharField(required=False)
+
+    modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
+    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
+    use_sloth = serializers.BooleanField(default=False)
+    sloth_parameters = SlothParameters(many=True, allow_null=False, default={})
+    automatic_validation = serializers.BooleanField(allow_null=False, default=False)
+    time_range = TimeRangeSerializerAllowEmpty(required=False)
+    calibration_times = CalibrationTimeControlsAllowEmpty(required=False, allow_null=False)
+    validation_times = ValidationTimeControlsAllowEmpty(required=False, allow_null=False)
+    output_variable_to_calibrate = OutputVariableSerializerAllowEmpty(required=True, allow_null=False)
+
+    parameters = TuningParametersSerializer(many=True, required=True, allow_null=False)
+    objective_function = serializers.CharField(required=True, allow_null=True)
+    streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
+    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
+    optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[optimizationValidator])
+    optimization_inputs = OptimizationInputsSerializer(many=True, allow_null=False, default={})
+    plot_frequency = serializers.IntegerField(required=True, allow_null=True)
+    stop_criteria = serializers.IntegerField(required=True, allow_null=True)
+    status = serializers.CharField(validators=[statusValidator], required=True)
 
 
 ##################################
@@ -179,15 +321,6 @@ class SaveGageRequestSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
 
 
-class GageSerializer(BaseSerializer):
-    gage_id = serializers.CharField(required=True, allow_blank=False)
-    agency = serializers.CharField(required=True, allow_blank=False)
-    station_name = serializers.CharField(required=True, allow_blank=False)
-    latitude = serializers.FloatField(required=True)
-    longitude = serializers.FloatField(required=True)
-    altitude = serializers.FloatField(required=True)
-
-
 class SaveGageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
@@ -223,15 +356,11 @@ class ObservationalSourceSerializer(BaseSerializer):
 class LoadGageResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
     calibration_run_id = serializers.IntegerField(required=True)
-    forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
-    observational_source = serializers.CharField(required=False, validators=[ObservationalSourceSerializer])
-    forcing_user_dir = serializers.CharField(required=False)
     forcing_source_values = ForcingSourceSerializer(many=True)
     observational_source_values = ObservationalSourceSerializer(many=True)
-    observational_user_filename = serializers.CharField(required=False)
     gages = GagesSerializer(required=True, many=True)
     gage = GageSerializer(required=False)
-    geopackage_image = serializers.CharField(required=False)
+    geopackage_image_url = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
 
 
@@ -281,16 +410,6 @@ class LoadPlotResponseSerializer(BaseSerializer):
 # Formulation Tab
 ##################################
 
-class SlothParameters(BaseSerializer):
-    param_name = serializers.CharField(required=True, allow_blank=False)
-    param_count = serializers.IntegerField(required=True)
-    param_type = serializers.CharField(required=True, validators=[dataTypeValidator])
-    param_units = serializers.CharField(required=True, validators=[unitsValidator])
-    param_location = serializers.CharField(required=True, validators=[locationValidator])
-    param_value = serializers.FloatField(required=True)
-    maps_to_module = serializers.CharField(required=True, allow_blank=False)
-    maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
-
 
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
@@ -308,10 +427,7 @@ class ModuleStaticSerializer(BaseSerializer):
 
 class LoadFormulationResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(required=False, allow_blank=False)
     modules = ModuleStaticSerializer(many=True)
-    use_sloth = serializers.BooleanField(required=True)
-    sloth_parameters = SlothParameters(required=False, many=True, )
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
@@ -384,100 +500,6 @@ class ModuleHydrofabricListSerializer(BaseSerializer):
     modules = ModuleHydrofabricSerializer(many=True, min_length=1, required=True)
 
 
-# Used by SaveTuningRequestValidator
-class TuningParametersSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=True)
-    maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True, allow_null=True)
-    module = serializers.CharField(required=True, allow_blank=False)
-
-    def validate(self, data):
-        if data['minimum'] > data['maximum']:
-            raise serializers.ValidationError(
-                f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}")
-        if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
-            raise serializers.ValidationError(
-                f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}")
-        return data
-
-
-class CalibrationTimeControls(BaseSerializer):
-    calibration_start_time = serializers.DateTimeField(required=True)
-    calibration_end_time = serializers.DateTimeField(required=True)
-    simulation_start_time = serializers.DateTimeField(required=True)
-    simulation_end_time = serializers.DateTimeField(required=True)
-
-    def validate(self, data):
-        calibration_range = DateTimeRange(data['calibration_start_time'], data['calibration_end_time'])
-        if not calibration_range.is_valid_timerange():
-            raise serializers.ValidationError(f'{calibration_range} is not a valid time range')
-
-        simulation_range = DateTimeRange(data['simulation_start_time'], data['simulation_end_time'])
-        if not simulation_range.is_valid_timerange():
-            raise serializers.ValidationError(f'{simulation_range} is not a valid time range')
-
-        if (simulation_range.start_datetime not in calibration_range) or (simulation_range.end_datetime not in calibration_range):
-            raise serializers.ValidationError(f'Simulation range {simulation_range} must be contained within calibration range {calibration_range}')
-
-        return data
-
-
-class CalibrationTimeControlsAllowEmpty(BaseSerializer):
-    calibration_start_time = serializers.DateTimeField(required=False)
-    calibration_end_time = serializers.DateTimeField(required=False)
-    simulation_start_time = serializers.DateTimeField(required=False)
-    simulation_end_time = serializers.DateTimeField(required=False)
-
-
-class ValidationTimeControls(BaseSerializer):
-    validation_start_time = serializers.DateTimeField(required=True)
-    validation_end_time = serializers.DateTimeField(required=True)
-    simulation_start_time = serializers.DateTimeField(required=True)
-    simulation_end_time = serializers.DateTimeField(required=True)
-
-    def validate(self, data):
-        validation_range = DateTimeRange(data['validation_start_time'], data['validation_end_time'])
-        if not validation_range.is_valid_timerange():
-            raise serializers.ValidationError(
-                f'{validation_range} is not a valid time range')
-
-        simulation_range = DateTimeRange(data['simulation_start_time'], data['simulation_end_time'])
-        if not simulation_range.is_valid_timerange():
-            raise serializers.ValidationError(
-                f'{simulation_range} is not a valid time range')
-
-        if simulation_range.get_start_time_str() not in validation_range or simulation_range.get_end_time_str() not in validation_range:
-            raise serializers.ValidationError(f'Simulation range {simulation_range} must be contained within validation range {validation_range}')
-
-        return data
-
-
-class ValidationTimeControlsAllowEmpty(BaseSerializer):
-    validation_start_time = serializers.DateTimeField(required=False)
-    validation_end_time = serializers.DateTimeField(required=False)
-    simulation_start_time = serializers.DateTimeField(required=False)
-    simulation_end_time = serializers.DateTimeField(required=False)
-
-
-# Used for the output from Hydrofabric
-class OutputVariableMetadataSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
-
-
-# Used by SaveTuningRequestValidator
-class OutputVariableSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    module = serializers.CharField(required=True, allow_blank=False)
-
-
-# Used by Export
-class OutputVariableSerializerAllowEmpty(BaseSerializer):
-    name = serializers.CharField(required=False, allow_blank=False)
-    module = serializers.CharField(required=False, allow_blank=False)
-
-
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     parameters = TuningParametersSerializer(many=True, required=False)
@@ -496,16 +518,6 @@ class SaveTuningRequestSerializer(BaseSerializer):
         return data
 
 
-class TimeRangeSerializer(BaseSerializer):
-    start_time = serializers.DateTimeField(required=True)
-    end_time = serializers.DateTimeField(required=True)
-
-
-class TimeRangeSerializerAllowEmpty(BaseSerializer):
-    start_time = serializers.DateTimeField(required=False)
-    end_time = serializers.DateTimeField(required=False)
-
-
 class ModuleMetadataStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     parameters = ModuleParametersSerializer(required=True, many=True)
@@ -514,24 +526,13 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 
 class LoadTuningResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    calibration_times = CalibrationTimeControls(required=False)
-    validation_times = ValidationTimeControls(required=False)
-    automatic_validation = serializers.BooleanField(required=True)
-    output_variable_to_calibrate = OutputVariableSerializer(required=False)
-    time_range = TimeRangeSerializer(required=False)
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
-    user_parameter_filename = serializers.CharField(required=False)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
 ##################################
 # Optimization Tab
 ##################################
-
-
-class OptimizationInputsSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    value = serializers.FloatField(required=True)
 
 
 class SaveOptimizationRequestSerializer(BaseSerializer):
@@ -581,15 +582,8 @@ class OptimizationStaticSerializer(serializers.Serializer):
 class LoadOptimizationResponseSerializer(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
-    streamflow_threshold = serializers.FloatField(required=False)
-    peak_flow_threshold = serializers.FloatField(required=False)
     metrics = MetricSerializer(many=True)
-    optimization = serializers.CharField(allow_blank=False, required=False, validators=[optimizationValidator])
-    optimization_inputs = OptimizationInputsUserSerializer(many=True, required=False)
-    objective_function = serializers.CharField(required=False)
     optimizations = OptimizationStaticSerializer(many=True)
-    plot_frequency = serializers.IntegerField(required=False)
-    stop_criteria = serializers.IntegerField(required=False)
 
 
 class ObservationalHydrofabricSerializer(BaseSerializer):
@@ -607,6 +601,7 @@ class ForcingHydrofabricSerializer(BaseSerializer):
 class IsReadyResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+
 
 class ImportResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)

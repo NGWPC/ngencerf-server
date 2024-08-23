@@ -44,6 +44,7 @@ def get_geopackage_from_hydrofabric(gage_id):
     return file_path
 
 
+# TODO Throw exception for AWS errors and Hydrofabric errors
 def get_observational_data_from_hydrofabric(observational_source):
     print('Getting observational data from Hydrofabric')
     # Get this from hydrofabric
