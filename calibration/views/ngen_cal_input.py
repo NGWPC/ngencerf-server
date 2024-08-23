@@ -2,6 +2,7 @@ import os
 import re
 
 import toml
+from datetimerange import DateTimeRange
 from django.conf import settings
 from django.db.models import F
 
@@ -10,6 +11,7 @@ from calibration.models import CalibrationOptimizationInput, Status, Calibration
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR
+from calibration.views.calibration_run_views import subset_by_time_range
 from calibration.views.common import CerfException
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 
@@ -111,6 +113,7 @@ def ready_to_run(run, build=None):
             if run.forcing_source == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
                 messages.append('forcing data must be uploaded')
             elif run.forcing_source != ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path:
+                # TODO need to fix this up after Hydrofabric stuff is done
                 # Might have been imported so we never called hydrofabric, or perhaps got an error
                 get_forcing_data_from_hydrofabric(run.forcing_source)
                 # messages.append('Error getting forcing path from Hydrofabric')
@@ -124,10 +127,14 @@ def ready_to_run(run, build=None):
                     not run.observational_file_path or not run.observational_user_filename):
                 messages.append('observational data must be uploaded')
             elif run.observational_source != ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path:
+                # TODO need to fix this up after Hydrofabric stuff is done
                 # Might have been imported so we never called hydrofabric, or perhaps got an error
                 get_observational_data_from_hydrofabric(run.observational_source)
                 # messages.append('Error getting observational path from Hydrofabric')
             else:
+                if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
+                    # For non-uploaded data, we need to setset
+                    subset_by_time_range(run.observational_file_path, DateTimeRange(run.calibration_start_period, run.calibration_end_period))
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
 
         if not run.hydrofabric_gpkg_path:

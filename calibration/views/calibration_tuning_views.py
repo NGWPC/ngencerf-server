@@ -451,7 +451,6 @@ def get_forcing_date_range(forcing_dir_path):
 
 
 def get_observation_date_range(observational_filepath):
-    # obs_file = '/home/peter.a.kronenberg/ngen-cal-work/observation/01123000_hourly_discharge.csv'
     return get_csv_daterange(observational_filepath)
 
 
