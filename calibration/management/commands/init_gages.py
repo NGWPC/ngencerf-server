@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand
 
 from calibration.enums import DomainEnum
 from calibration.models import Gage, Domain, Rfc
+from cerfServer.settings import BASE_DIR
 
 # Gages are loaded from several files
 # 1 USGS files
@@ -34,12 +35,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         data_dir = options['data_dir']
         if not data_dir:
-            data_dir = 'calibration/management/commands'
-
-        if not os.path.isdir(data_dir) or not os.path.exists(data_dir):
-            print(f'{data_dir} must be a directory containing the data files')
-            return
-
+            data_dir = os.path.join(BASE_DIR, 'calibration/management/commands')
+ 
         # Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin
