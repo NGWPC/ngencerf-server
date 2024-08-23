@@ -207,6 +207,15 @@ class OptimizationInputsSerializer(BaseSerializer):
     value = serializers.FloatField(required=True)
 
 
+class GageSerializer(BaseSerializer):
+    gage_id = serializers.CharField(required=True, allow_blank=False)
+    agency = serializers.CharField(required=True, allow_blank=False)
+    station_name = serializers.CharField(required=True, allow_blank=False)
+    latitude = serializers.FloatField(required=True)
+    longitude = serializers.FloatField(required=True)
+    altitude = serializers.FloatField(required=True)
+
+
 ##################################
 # Landing page
 ##################################
@@ -234,7 +243,7 @@ class FooterResponseSerializer(BaseSerializer):
 
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    gage_id = serializers.CharField(required=True, allow_null=True)
+    gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
@@ -312,15 +321,6 @@ class SaveGageRequestSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
 
 
-class GageSerializer(BaseSerializer):
-    gage_id = serializers.CharField(required=True, allow_blank=False)
-    agency = serializers.CharField(required=True, allow_blank=False)
-    station_name = serializers.CharField(required=True, allow_blank=False)
-    latitude = serializers.FloatField(required=True)
-    longitude = serializers.FloatField(required=True)
-    altitude = serializers.FloatField(required=True)
-
-
 class SaveGageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
@@ -356,15 +356,9 @@ class ObservationalSourceSerializer(BaseSerializer):
 class LoadGageResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
     calibration_run_id = serializers.IntegerField(required=True)
-    forcing_source = serializers.CharField(required=False, validators=[forcingSourceValidator])
-    observational_source = serializers.CharField(required=False, validators=[ObservationalSourceSerializer])
-    forcing_user_dir = serializers.CharField(required=False)
     forcing_source_values = ForcingSourceSerializer(many=True)
     observational_source_values = ObservationalSourceSerializer(many=True)
-    observational_user_filename = serializers.CharField(required=False)
     gages = GagesSerializer(required=True, many=True)
-    gage = GageSerializer(required=False)
-    geopackage_image_url = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
 
 

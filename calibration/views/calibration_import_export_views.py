@@ -315,7 +315,10 @@ def load_calibration_run_data(run):
     #############################
     # Gage
     #############################
-    calibration_run_data['gage_id'] = run.gage.gage_id
+
+    calibration_run_data['gage'] = gage = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name,
+                                           'latitude': run.gage.latitude,
+                                           'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else None
 
     calibration_run_data['forcing_source'] = run.forcing_source
     calibration_run_data['forcing_user_dir'] = run.forcing_user_dir
@@ -325,10 +328,11 @@ def load_calibration_run_data(run):
     calibration_run_data['observational_user_filename'] = run.observational_user_filename
 
     # TODO This should be the map file, which might need to be regenerated
-    geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
-    base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-    geopackage_image_url = f'data:image/png;base64,{base64_str}'
-    calibration_run_data['geopackage_image_url'] = geopackage_image_url
+    if run.hydrofabric_gpkg_path:
+        geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
+        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+        geopackage_image_url = f'data:image/png;base64,{base64_str}'
+        calibration_run_data['geopackage_image_url'] = geopackage_image_url
 
     #############################
     # Formulation
