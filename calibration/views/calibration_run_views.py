@@ -15,8 +15,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
-from calibration.models import Metric, IterationMetric, Iteration, IterationTuneParameter, \
-    CalibrationTuneParameter
+from calibration.models import Metric, IterationMetric, Iteration, IterationParameter, \
+    CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
 from calibration.util.ngen_locations import CALIBRATION_PY
@@ -276,7 +276,7 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
     # TODO For dev only, we will delete entries first
     #########
     IterationMetric.objects.filter(iteration__calibration_run=run).delete()
-    IterationTuneParameter.objects.filter(iteration__calibration_run=run).delete()
+    IterationParameter.objects.filter(iteration__calibration_run=run).delete()
     #####
 
     metrics_to_create = []
@@ -294,9 +294,9 @@ def process_iteration(run, output_calibration_run_dir, worker_name: str, iterati
             process_metrics_row(iteration, metrics_row, metrics_to_create)
             process_params_row(iteration, params_row, params_to_create, best_iteration_for_worker, global_best_params_list)
 
-    # Bulk create IterationMetric and IterationTuneParameter objects
+    # Bulk create IterationMetric and IterationParameter objects
     IterationMetric.objects.bulk_create(metrics_to_create)
-    IterationTuneParameter.objects.bulk_create(params_to_create)
+    IterationParameter.objects.bulk_create(params_to_create)
 
 
 def process_metrics_row(iteration, metrics_row, metrics_to_create):
@@ -321,7 +321,7 @@ def process_metrics_row(iteration, metrics_row, metrics_to_create):
 
 
 def process_params_row(iteration, params_row, params_to_create, best_iteration_for_worker, global_best_params_list):
-    """Process a single row from the params file and create IterationTuneParameter objects."""
+    """Process a single row from the params file and create IterationParameter objects."""
 
     # Get rid of the 'iteration' column
     params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
@@ -354,7 +354,7 @@ def process_params_row(iteration, params_row, params_to_create, best_iteration_f
 
     for param_name, value in params_row.items():
         # Do a case-insensitive match
-        parameter = CalibrationTuneParameter.objects.filter(name__iexact=param_name).first()
+        parameter = CalibrationParameter.objects.filter(name__iexact=param_name).first()
         if not parameter:
             raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
 
@@ -363,7 +363,7 @@ def process_params_row(iteration, params_row, params_to_create, best_iteration_f
         best = is_best_match or iteration.iteration_num == best_iteration_for_worker
 
         param_value = float(value) if value else None
-        param_obj = IterationTuneParameter(
+        param_obj = IterationParameter(
             iteration=iteration,
             parameter=parameter,
             param_value=param_value,

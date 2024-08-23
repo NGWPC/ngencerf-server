@@ -1,3 +1,4 @@
+import base64
 import logging
 import os
 
@@ -12,6 +13,7 @@ from calibration.models import CalibrationFormulation, Status, CalibrationRun, C
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
+from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -20,7 +22,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
-    save_parameters, get_module_data_from_hydrofabric, get_time_range
+    save_parameters, get_module_data_from_hydrofabric, get_time_range, get_parameters_and_output_variables
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.ngen_cal_input import get_main_dir
 
@@ -67,13 +69,14 @@ def import_job(request):
         run.observational_source = validator.data.get('observational_source')
         run.observational_user_filename = validator.data.get('observational_user_filename')
         run.observational_file_path = validator.data.get('observational_file_path')
-        run.hydrofabric_gpkg_path = validator.data.get('geopackage')
+        geopackage = validator.data.get('geopackage')
+        run.hydrofabric_gpkg_path = geopackage if geopackage and os.path.exists(geopackage) else None
 
         # TODO Need to call hydrofabric
 
         main_dir = get_main_dir(run)
         if run.forcing_source == ForcingSourceEnum.UPLOAD.value:
-            if os.path.exists(run.forcing_dir_path):
+            if run.forcing_dir_path and os.path.exists(run.forcing_dir_path):
                 # Need to copy user-loaded files to our instance directory
                 new_forcing_dir = os.path.join(main_dir, 'forcing')
                 copy_directory(run.forcing_dir_path, new_forcing_dir)
@@ -82,7 +85,7 @@ def import_job(request):
                 run.forcing_user_dir = None
 
         if run.observational_source == ObservationalSourceEnum.UPLOAD.value:
-            if os.path.exists(run.observational_file_path):
+            if run.observational_file_path and os.path.exists(run.observational_file_path):
                 # Need to copy user-loaded files to our instance directory
                 new_observational_dir = os.path.join(main_dir, 'observation')
                 copy_file_to_directory(run.observational_file_path, new_observational_dir)
@@ -201,7 +204,7 @@ def import_job(request):
                 submit_job(run, config_file=config_file)
                 imported_and_submitted = 'imported and submitted'
 
-        response = {'message': f'Calibration Run {run.id} {imported_and_submitted}','calibration_run_id': run.id }
+        response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id}
         if errors:
             response['errors'] = errors
 
@@ -236,12 +239,11 @@ def export_job(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    export_file = {}
-
-    # TODO We should only allow DONE
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
         return errorReturn
+
+    export_file = {}
 
     metadata = {'source_calibration_run_id': run.id, 'run_date': run.run_date, 'status': run.status.name}
     time_range = get_time_range(run)
@@ -302,3 +304,83 @@ def export_job(request):
 
     logger.debug(f'Returning to {request.user} from export() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+# TODO Needs to combine this with Export
+def load_calibration_run_data(run):
+    # noinspection PyDictCreation
+    calibration_run_data = {}
+
+    calibration_run_data['calibration_run_id'] = run.id
+
+    #############################
+    # Gage
+    #############################
+
+    calibration_run_data['gage'] = gage = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name,
+                                           'latitude': run.gage.latitude,
+                                           'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else None
+
+    calibration_run_data['forcing_source'] = run.forcing_source
+    calibration_run_data['forcing_user_dir'] = run.forcing_user_dir
+    calibration_run_data['forcing_dir_path'] = run.forcing_dir_path
+    calibration_run_data['observational_source'] = run.observational_source
+    calibration_run_data['observational_file_path'] = run.observational_file_path
+    calibration_run_data['observational_user_filename'] = run.observational_user_filename
+
+    # TODO This should be the map file, which might need to be regenerated
+    if run.hydrofabric_gpkg_path:
+        geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
+        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+        geopackage_image_url = f'data:image/png;base64,{base64_str}'
+        calibration_run_data['geopackage_image_url'] = geopackage_image_url
+
+    #############################
+    # Formulation
+    #############################
+    calibration_run_data['formulation_name'] = run.user_formulation_name
+    calibration_run_data['modules'] = get_my_modules(run)
+    calibration_run_data['use_sloth'] = run.use_sloth
+    if run.use_sloth:
+        calibration_run_data['sloth_parameters'] = get_sloth_parameters(run)
+
+    #############################
+    # Tuning
+    #############################
+    calibration_run_data['automatic_validation'] = run.automatic_validation
+    time_range = get_time_range(run)
+    calibration_run_data['time_range'] = time_range if time_range else {}
+    calibration_times, validation_times = get_times(run)
+    calibration_run_data['calibration_times'] = calibration_times
+    calibration_run_data['validation_times'] = validation_times
+    module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    calibration_run_data['module_metadata'] = get_parameters_and_output_variables(module_objects)
+    output_variable_to_calibrate = {
+        'module': run.module_output_variable.calibration_formulation.name,
+        'name': run.module_output_variable.name
+    } if run.module_output_variable else {}
+
+    #############################
+    # Optimization
+    #############################
+    calibration_run_data['output_variable_to_calibrate'] = output_variable_to_calibrate
+    calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
+    calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
+    calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold
+    optimization, optimization_inputs = get_user_optimization(run)
+    calibration_run_data['optimization'] = optimization
+    calibration_run_data['optimization_inputs'] = optimization_inputs
+    calibration_run_data['plot_frequency'] = run.plot_frequency
+
+    # Get stop criteria
+    calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
+    stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
+    calibration_run_data['stop_criteria'] = stop_criteria
+
+    # calibration_run_data['run_date'] = run.run_date
+
+    ngen_cal_input.ready_to_run(run)
+    calibration_run_data['status'] = run.status.name
+
+    print('export', calibration_run_data)
+    return calibration_run_data

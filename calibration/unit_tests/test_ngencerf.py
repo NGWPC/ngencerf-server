@@ -1,6 +1,9 @@
-
+import json
 import os
+
 from django.contrib.auth.models import User
+from django.db.models import Value, CharField
+from django.db.models.functions import Concat
 from django.forms import CharField
 from django.test import TestCase
 import json
@@ -13,7 +16,11 @@ from calibration.models.status import Status
 from calibration.views.common import get_run
 from rest_framework.test import force_authenticate
 from rest_framework.test import APIRequestFactory
+from rest_framework.test import force_authenticate
+
+from calibration.enums import StatusEnum
 from calibration.models.plot_definitions import PlotDefinitions
+from calibration.models.status import Status
 from calibration.views import calibration_import_export_views, calibration_plot_views
 from django.db.models.functions import Concat
 from django.db.models import Value, CharField
@@ -26,6 +33,7 @@ class CerfUnitTest(TestCase):
     calibration run record, and returns the run ID for the unit tests' use. It accomplishes
     this by importing Import_test_data/import_complete.json file. 
     """
+
     def setUp(self):
         user = User.objects.create_user('admin', 'admin@...', 'admin')
         print(f"Username: {user.username}, email: {user.email}")
@@ -53,7 +61,7 @@ class CerfUnitTest(TestCase):
         run, errorReturn = get_run(self.run_id, user)
         if errorReturn:
             return errorReturn
-        status=Status.objects.get(name=StatusEnum.RUNNING.value)
+        status = Status.objects.get(name=StatusEnum.RUNNING.value)
         run.status = status
         run.save()
 
@@ -75,7 +83,7 @@ class CerfUnitTest(TestCase):
         run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
         if errorReturn:
             return errorReturn
-    
+
         gage_id = run.gage.gage_id
         print(f"test_plot_definitions_view(): Gage ID: {gage_id}")
         plots = (
@@ -84,7 +92,7 @@ class CerfUnitTest(TestCase):
             .values('name', 'description', 'filename')
         )
         expected_response = {f"calibration_run_id": calibration_run_id, "plot_list": list(plots)}
-                              
+
         # verify content
         self.maxDiff = None
         self.assertEqual(json.loads(response.content), expected_response)

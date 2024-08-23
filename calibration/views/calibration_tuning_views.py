@@ -12,7 +12,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicPr
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
@@ -113,9 +113,6 @@ def load_tuning_tab(request):
     if errorReturn:
         return errorReturn
 
-    calibration_times, validation_times = get_times(run)
-
-    output_variable_to_calibrate = get_output_variable_to_calibrate(run)
 
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
@@ -130,19 +127,10 @@ def load_tuning_tab(request):
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(modules)
 
-    time_range = get_time_range(run)
-
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name,
-                'modules': module_list,
-                'user_parameter_filename': run.user_parameter_filename,
-                'calibration_times': calibration_times,
-                'validation_times': validation_times, 'automatic_validation': run.automatic_validation,
-                'time_range': time_range,
-                'output_variable_to_calibrate': output_variable_to_calibrate}
-    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
-
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
+    
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
@@ -161,9 +149,9 @@ def get_output_variable_to_calibrate(run):
 def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules:
-        calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m))
+        calibrationTuneParameters = (CalibrationParameter.objects.filter(calibration_formulation=m))
 
-        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description'))
+        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
         module_entry = {'name': m.name, 'parameters': parameters,
                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
 
@@ -174,9 +162,8 @@ def get_parameters_and_output_variables(modules):
 def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
-        calibrationTuneParameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
-                                         .only('name', 'minimum', 'maximum', 'initial_value')
-                                         .values('name', 'minimum', 'maximum', 'initial_value'))
+        calibrationTuneParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
+                                         .values('name', 'minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'))
 
         for p in calibrationTuneParameters:
             p['module'] = m.name
@@ -250,7 +237,7 @@ def get_module_data_from_hydrofabric(run, modules):
             parameters = m['module_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
-                CalibrationTuneParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
+                CalibrationParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
                                                                   defaults={'data_type': p['data_type'],
                                                                             'description': p['description'], 'minimum': p['minimum'],
                                                                             'maximum': p['maximum']})
@@ -400,11 +387,11 @@ def save_times(run, calibration_times, validation_times):
 
 def validate_parameters(run, parameters):
     if parameters:
-        if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-            return 'Modules and/or CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
+        if not CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
+            return 'Modules and/or CalibrationParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
-            if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
+            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
                 return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
     return None
 
@@ -428,9 +415,9 @@ def save_output_variable(run, output_variable_to_calibrate):
 def save_parameters(run, parameters):
     if parameters:
         for p in parameters:
-            (CalibrationTuneParameter.objects
+            (CalibrationParameter.objects
              .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
-             .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value']))
+             .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value'], user_selected_for_tuning=True))
 
 
 # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range

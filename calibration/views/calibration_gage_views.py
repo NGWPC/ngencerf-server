@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import shutil
 
 from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
@@ -62,13 +63,6 @@ def load_gage_tab(request):
     if errorReturn:
         return errorReturn
 
-    gage = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name, 'latitude': run.gage.latitude,
-            'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else {}
-
-    geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
-    base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-    geopackage_image_url = f'data:image/png;base64,{base64_str}'
-
     forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
     observational_source_values = list(ObservationalSource.objects
                                        .values('name', 'description', 'is_active'))
@@ -81,13 +75,10 @@ def load_gage_tab(request):
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'gage': gage,
-                'forcing_source': run.forcing_source, 'forcing_user_dir': run.forcing_user_dir,
-                'observational_source': run.observational_source, 'observational_user_filename': run.observational_user_filename,
+    response = {'calibration_run_id': run.id, 'status': run.status.name,
                 'domain_values': domain_values,
                 'forcing_source_values': forcing_source_values,
                 'observational_source_values': observational_source_values,
-                'geopackage_image': geopackage_image_url,
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
@@ -161,7 +152,6 @@ def get_gage(request):
     description="Save gage tab data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def save_gage_tab(request):
     data = request.data
@@ -195,12 +185,6 @@ def save_gage_tab(request):
 
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
-        # Convert to base64 so we can return to the front-end
-        # with open(geopackage_png, 'rb') as geopackage_data:
-        #     base64_str = base64.b64encode(geopackage_data.read()).decode('utf-8')
-        # extension = geopackage_path.split('.')[-1]
-        # geopackage_image_url = f'data:image/{extension};base64,{base64_str}'
-
         # Convert ByteIO image to base64
         base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
         geopackage_image_url = f'data:image/png;base64,{base64_str}'
@@ -211,11 +195,14 @@ def save_gage_tab(request):
         try:
             if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
                 run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+        except ClientError as e:
+            return Response(f'Error downloading observational data from AWS.  Check your credentials - {e}')
 
+        try:
             if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
                 run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
         except ClientError as e:
-            return Response(f'Error downloading forcing or observational data from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading forcing data from AWS.  Check your credentials - {e}')
 
     with transaction.atomic():
         run.save()
@@ -236,7 +223,22 @@ def save_gage_tab(request):
 def save_gage(run, gage_id):
     gage = Gage.objects.only('gage_id').filter(gage_id=gage_id).first()
     if gage:
-        run.gage = gage
+        if run.gage != gage:
+
+            # Delete any user uploaded files
+            if run.gage and run.forcing_user_dir:
+                shutil.rmtree(run.forcing_user_dir)
+            run.forcing_user_dir = None
+            run.forcing_dir_path = None
+
+            if run.gage and run.observational_file_path:
+                os.remove(run.observational_file_path)
+            run.observational_file_path = None
+            run.observational_user_filename = None
+
+            run.hydrofabric_gpkg_path = None
+
+            run.gage = gage
     return gage
 
 
