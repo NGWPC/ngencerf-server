@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
-    CalibrationTuneParameter, ModuleOutputVariable
+    CalibrationParameter, ModuleOutputVariable
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, ModuleHydrofabricListSerializer, \
     GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer
@@ -420,7 +420,7 @@ def save_formulation_tab(request):
 
             # Set them to be unused and delete any parameters and output variables
             CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
-            CalibrationTuneParameter.objects.all().filter(calibration_formulation__calibration_run=run,
+            CalibrationParameter.objects.all().filter(calibration_formulation__calibration_run=run,
                                                           calibration_formulation__name__in=to_be_unused).delete()
             ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
 

@@ -12,7 +12,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicPr
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationTuneParameter
+from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
     LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
@@ -149,7 +149,7 @@ def get_output_variable_to_calibrate(run):
 def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules:
-        calibrationTuneParameters = (CalibrationTuneParameter.objects.filter(calibration_formulation=m))
+        calibrationTuneParameters = (CalibrationParameter.objects.filter(calibration_formulation=m))
 
         parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
         module_entry = {'name': m.name, 'parameters': parameters,
@@ -162,7 +162,7 @@ def get_parameters_and_output_variables(modules):
 def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
-        calibrationTuneParameters = list(CalibrationTuneParameter.objects.filter(calibration_formulation=m)
+        calibrationTuneParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
                                          .values('name', 'minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'))
 
         for p in calibrationTuneParameters:
@@ -237,7 +237,7 @@ def get_module_data_from_hydrofabric(run, modules):
             parameters = m['module_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
-                CalibrationTuneParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
+                CalibrationParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
                                                                   defaults={'data_type': p['data_type'],
                                                                             'description': p['description'], 'minimum': p['minimum'],
                                                                             'maximum': p['maximum']})
@@ -387,11 +387,11 @@ def save_times(run, calibration_times, validation_times):
 
 def validate_parameters(run, parameters):
     if parameters:
-        if not CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-            return 'Modules and/or CalibrationTuneParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
+        if not CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
+            return 'Modules and/or CalibrationParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
-            if not CalibrationTuneParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
+            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
                 return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
     return None
 
@@ -415,7 +415,7 @@ def save_output_variable(run, output_variable_to_calibrate):
 def save_parameters(run, parameters):
     if parameters:
         for p in parameters:
-            (CalibrationTuneParameter.objects
+            (CalibrationParameter.objects
              .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
              .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value'], user_selected_for_tuning=True))
 

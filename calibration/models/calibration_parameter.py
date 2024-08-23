@@ -3,7 +3,7 @@ from django.db import models
 from calibration.models.base_model import BaseModel
 
 
-class CalibrationTuneParameter(BaseModel):
+class CalibrationParameter(BaseModel):
     calibration_formulation = models.ForeignKey('CalibrationFormulation', null=False, on_delete=models.CASCADE)
     name = models.CharField(max_length=255, null=False)
     description = models.TextField(null=False)
@@ -14,7 +14,7 @@ class CalibrationTuneParameter(BaseModel):
     user_selected_for_tuning = models.BooleanField(default=False)
 
     class Meta:
-        db_table = 'calibration_tune_parameter'
+        db_table = 'calibration_parameter'
         constraints = [
             models.UniqueConstraint(fields=['name', 'calibration_formulation'],
                                     name='calibration_tune_parameter__name__calibration_formulation__unique')

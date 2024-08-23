@@ -3,14 +3,14 @@ from .calibration_optimization_input import CalibrationOptimizationInput
 from .calibration_run import CalibrationRun
 from .calibration_sloth_param import CalibrationSlothParam
 from .calibration_stop_criteria import CalibrationStopCriteria
-from .calibration_tune_parameter import CalibrationTuneParameter
+from .calibration_parameter import CalibrationParameter
 from .domain import Domain
 from .forcing_source import ForcingSource
 from .gage import Gage
 from .iteration import Iteration
 from .iteration_metric import IterationMetric
 from .iteration_result import IterationResult
-from .iteration_tune_parameter import IterationTuneParameter
+from .iteration_parameter import IterationParameter
 from .metric import Metric
 from .module_output_variable import ModuleOutputVariable
 from .ngen_cal_formulation import NgenCalFormulation

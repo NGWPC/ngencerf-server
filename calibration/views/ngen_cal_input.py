@@ -7,7 +7,7 @@ from django.db.models import F
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationTuneParameter, OptimizationInput, CalibrationFormulation
+    CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR
 from calibration.views.common import CerfException
@@ -255,7 +255,7 @@ def ready_to_run(run, build=None):
                                        s['module'], s['maps_to_variable_name']))
             datafile['sloth_parameter_file'] = sloth_parameter_file
 
-    params = list(CalibrationTuneParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
+    params = list(CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
                   .only('name', 'initial_value', 'minimum', 'maximum', 'calibration_formulation')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
     param_error = False
