@@ -70,7 +70,7 @@ def import_job(request):
         run.observational_user_filename = validator.data.get('observational_user_filename')
         run.observational_file_path = validator.data.get('observational_file_path')
         geopackage = validator.data.get('geopackage')
-        run.hydrofabric_gpkg_path = geopackage if os.path.exists(goepackage) else None
+        run.hydrofabric_gpkg_path = geopackage if os.path.exists(geopackage) else None
 
         # TODO Need to call hydrofabric
 
