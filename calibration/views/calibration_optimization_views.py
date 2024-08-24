@@ -221,5 +221,5 @@ def write_optimization_inputs(run, optimization, optimization_inputs):
     CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
     if optimization_inputs:
         for o in optimization_inputs:
-            optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=o['name'], is_active=True).first()
+            optimization_input = OptimizationInput.objects.get(optimization=optimization, name=o['name'], is_active=True)
             CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o['value'])
