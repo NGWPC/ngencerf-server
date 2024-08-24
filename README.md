@@ -153,7 +153,7 @@ This is a shared location, since these files can be re-used by different jobs fo
 
 If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
-The instance-specific directory is also where `create-input` creates the directory struction that is used at run-time by ngen and ngen-cal
+The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal
 
 In the example below, `20_peter/forcing` and `20_peter/observation` contain user-uploaded forcing and observation files.
 

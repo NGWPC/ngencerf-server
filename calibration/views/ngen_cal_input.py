@@ -118,6 +118,11 @@ def ready_to_run(run, build=None):
                 get_forcing_data_from_hydrofabric(run.forcing_source)
                 # messages.append('Error getting forcing path from Hydrofabric')
             else:
+                if run.forcing_source != ForcingSourceEnum.UPLOAD.name:
+                    # for non-uploaded data, we need to subset
+                    output_file_path = os.path.join(get_main_dir(run), 'forcing', run.gage.gage_id)
+                    subset_by_time_range(run.observational_file_path, output_file_path,
+                                         DateTimeRange(run.calibration_start_period, run.calibration_end_period))
                 datafile['forcing_dir'] = run.forcing_dir_path
 
         if not run.observational_source:
@@ -133,8 +138,10 @@ def ready_to_run(run, build=None):
                 # messages.append('Error getting observational path from Hydrofabric')
             else:
                 if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
-                    # For non-uploaded data, we need to setset
-                    subset_by_time_range(run.observational_file_path, DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                    # For non-uploaded data, we need to subset
+                    output_file_path = os.path.join(get_main_dir(run), 'observation')
+                    subset_by_time_range(run.observational_file_path, output_file_path,
+                                         DateTimeRange(run.calibration_start_period, run.calibration_end_period))
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
 
         if not run.hydrofabric_gpkg_path:
@@ -311,5 +318,3 @@ def build_config(config, directory):
     return config_file
 
 
-def get_main_dir(run):
-    return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')

@@ -7,7 +7,7 @@ from rest_framework import status
 
 from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer
-from calibration.util.ngen_locations import observation_dir, forcing_dir, geopackage_dir
+from calibration.util.ngen_locations import observation_from_hydrofabric_dir, forcing_from_hydrofabric_dir, geopackage_dir
 from calibration.views.common import CerfException
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ def get_observational_data_from_hydrofabric(observational_source):
     # This is a path to a single file, which we just need to download
     # bucket, key = parse_s3_uri(s3_uri)
     # filename = key.split('/')[-1]
-    download_s3(s3_uri, observation_dir)
+    download_s3(s3_uri, observation_from_hydrofabric_dir)
 
 
 def get_forcing_data_from_hydrofabric(forcing_source):
@@ -98,4 +98,4 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     # bucket, key = parse_s3_uri(s3_uri)
     # subdir = key.split('/')[-1]
 
-    download_all_s3(s3_uri, forcing_dir)
+    download_all_s3(s3_uri, forcing_from_hydrofabric_dir)

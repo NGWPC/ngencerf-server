@@ -18,10 +18,10 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer, UploadObservationalSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.ngen_locations import get_observation_directory, get_forcing_directory
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
-from calibration.views.ngen_cal_input import get_main_dir
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ def save_gage_tab(request):
         base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
         geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
-        # Get observational data
+        # Get forcing and observational data
         run.forcing_source = forcing_source
         run.observational_source = observational_source
         try:
@@ -286,8 +286,7 @@ def upload_observational_data(request):
         return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
-    main_dir = get_main_dir(run)
-    observational_dir = os.path.join(main_dir, 'observation')
+    observational_dir = get_observation_directory(run)
     fs = FileSystemStorage(location=observational_dir)
 
     # Make sure file doesn't exist
@@ -359,9 +358,8 @@ def upload_forcing_data(request):
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    # Need to upload to the run-specific observational directory, as opposed to the global directory
-    main_dir = get_main_dir(run)
-    forcing_dir = os.path.join(main_dir, 'forcing', run.gage.gage_id)
+    # Need to upload to the run-specific forcing directory, as opposed to the global directory
+    forcing_dir = get_forcing_directory(run)
     run.forcing_dir_path = forcing_dir
     run.forcing_user_dir = forcing_user_dir
 
