@@ -243,96 +243,41 @@ def export_job(request):
     if errorReturn:
         return errorReturn
 
-    export_file = {}
+    calibration_run_data = load_calibration_run_data(run, export=True)
 
-    metadata = {'source_calibration_run_id': run.id, 'run_date': run.run_date, 'status': run.status.name}
-    time_range = get_time_range(run)
-    metadata['time_range'] = time_range if time_range else {}
-    metadata['user_parameter_filename'] = run.user_parameter_filename
-    export_file['metadata'] = metadata
-    export_file['gage_id'] = run.gage.gage_id if run.gage else None
-    export_file['forcing_source'] = run.forcing_source if run.forcing_source else None
-    export_file['forcing_user_dir'] = run.forcing_user_dir
-    export_file['forcing_dir_path'] = run.forcing_dir_path
-    export_file['observational_source'] = run.observational_source
-    export_file['observational_file_path'] = run.observational_file_path
-    export_file['geopackage'] = run.hydrofabric_gpkg_path
-    # export_file['realization_filename'] = run.realization_filename
-    export_file['formulation_name'] = run.user_formulation_name
-    export_file['modules'] = get_my_modules(run)
-    export_file['use_sloth'] = run.use_sloth
-    if run.use_sloth:
-        export_file['sloth_parameters'] = get_sloth_parameters(run)
-    export_file['automatic_validation'] = run.automatic_validation
-    calibration_times, validation_times = get_times(run)
-    export_file['calibration_times'] = calibration_times
-    export_file['validation_times'] = validation_times
-    output_variable_to_calibrate = {
-        'module': run.module_output_variable.calibration_formulation.name,
-        'name': run.module_output_variable.name
-    } if run.module_output_variable else {}
-
-    export_file['output_variable_to_calibrate'] = output_variable_to_calibrate
-    # Get the list of modules for this Run
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
-    # For each module, get the Parameters and Output Variables
-    parameters = get_parameters_for_export(modules)
-    export_file['parameters'] = parameters
-    export_file['objective_function'] = run.objective_function.name if run.objective_function else None
-    export_file['streamflow_threshold'] = run.streamflow_threshold
-    export_file['peak_flow_threshold'] = run.peak_flow_threshold
-    optimization, optimization_inputs = get_user_optimization(run)
-    export_file['optimization'] = optimization
-    export_file['optimization_inputs'] = optimization_inputs
-    export_file['plot_frequency'] = run.plot_frequency
-
-    # Get stop criteria
-    calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
-    export_file['stop_criteria'] = stop_criteria
-
-    # export_file['run_date'] = run.run_date
-
-    messages, _ = ngen_cal_input.ready_to_run(run)
-    metadata['messages'] = messages
-
-    print('export', export_file)
-
-    response_validator, error_response = validate_response(ExportResponseSerializer, export_file)
+    response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-
     logger.debug(f'Returning to {request.user} from export() - {response_validator.data}')
+
     return Response(response_validator.data)
 
 
-def export_job2(run, data):
-    # calibration_run_data = load_calibration_run_data(run)
-    calibration_run_data = data.copy()
+# def export_job2(run, data):
+#     # calibration_run_data = load_calibration_run_data(run)
+#     calibration_run_data = data.copy()
+#
+#     # Certain things don't need to be returned to the user and are only for the UI
+#     # I want the output of export to also be valid input for import.
+#     # Certain information that is useful to the user is not valid input, so we'll put that in the metaata
+#     metadata = {'source_calibration_run_id': calibration_run_data.pop('calibration_run_id'),
+#                 'time_range': calibration_run_data.pop('time_range')}
+#     calibration_run_data['metadata'] = metadata
+#
+#     calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
+#     calibration_run_data.pop('gage')
+#     calibration_run_data.pop('status')
+#
+#     calibration_run_data['parameters'] = get_parameters_for_export(calibration_run_data['modules'])
+#     calibration_run_data.pop('module_metadata')
+#
+#     return calibration_run_data
 
-    # Certain things don't need to be returned to the user and are only for the UI
-    # I want the output of export to also be valid input for import.
-    # Certain information that is useful to the user is not valid input, so we'll put that in the metaata
-    metadata = {'source_calibration_run_id': calibration_run_data.pop('calibration_run_id'),
-                'time_range': calibration_run_data.pop('time_range')}
-    calibration_run_data['metadata'] = metadata
 
-    calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
-    calibration_run_data.pop('gage')
-    calibration_run_data.pop('status')
-
-    calibration_run_data['parameters'] = get_parameters_for_export(calibration_run_data['modules'])
-    calibration_run_data.pop('module_metadata')
-
-    return calibration_run_data
-
-
-# TODO Needs to combine this with Export
 def load_calibration_run_data(run, export: bool = None):
     if export is None:
         export = False
 
-    # noinspection PyDictCreation
     calibration_run_data = {}
 
     metadata = {}
