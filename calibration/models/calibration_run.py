@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
+from django.db.models import RESTRICT
 
 from calibration.models.status import Status
 from calibration.models.base_model import BaseModel
@@ -32,13 +33,13 @@ class CalibrationRun(BaseModel):
     hydrofabric_gpkg_path = models.TextField(null=True)
     forcing_dir_path = models.TextField(null=True)
     forcing_user_dir = models.TextField(null=True)
-    forcing_source = models.TextField(null=True)
+    forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT)
     observational_file_path = models.TextField(null=True)
     observational_user_filename = models.TextField(null=True)
-    observational_source = models.TextField(null=True)
+    observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
     user_parameter_filename = models.TextField(null=True)
     realization_filename = models.TextField(null=True)
-    status = models.ForeignKey(Status, null=False, on_delete=models.RESTRICT, db_index=True)
+    status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     user_formulation_name = models.CharField(max_length=50, null=True)
     ngen_formulation_name = models.CharField(max_length=50, null=True)
     plot_frequency = models.PositiveIntegerField(null=True)

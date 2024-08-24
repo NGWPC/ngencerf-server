@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria
+from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria, ForcingSource, ObservationalSource
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
@@ -66,21 +66,23 @@ def import_job(request):
             if not gage:
                 return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
 
-        run.forcing_source = validator.data.get('forcing_source')
+        forcing_source_name = validator.data.get('forcing_source')
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
         run.forcing_user_dir = validator.data.get('forcing_user_dir')
         run.forcing_dir_path = validator.data.get('forcing_dir_path')
-        run.observational_source = validator.data.get('observational_source')
+        observational_source_name =  validator.data.get('observational_source')
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
         run.observational_user_filename = validator.data.get('observational_user_filename')
         run.observational_file_path = validator.data.get('observational_file_path')
 
         get_geopackage_from_hydrofabric(gage_id)
-        if run.observational_source and run.observational_source != ObservationalSourceEnum.UPLOAD.name:
+        if run.observational_source and run.observational_source != ObservationalSourceEnum.UPLOAD.value:
             get_observational_data_from_hydrofabric(run.observational_source)
 
-        if run.forcing_source and run.forcing_source != ForcingSourceEnum.UPLOAD.name:
+        if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
             get_forcing_data_from_hydrofabric(run.forcing_source)
 
-        if run.forcing_source == ForcingSourceEnum.UPLOAD.value:
+        if run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             if run.forcing_dir_path and os.path.exists(run.forcing_dir_path):
                 # Need to copy user-loaded files to our instance directory
                 new_forcing_dir = get_forcing_directory(run)
@@ -90,7 +92,7 @@ def import_job(request):
                 run.forcing_dir_path = None
                 run.forcing_user_dir = None
 
-        if run.observational_source == ObservationalSourceEnum.UPLOAD.value:
+        if run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
             if run.observational_file_path and os.path.exists(run.observational_file_path):
                 # Need to copy user-loaded files to our instance directory
                 new_observational_dir = get_observation_directory(run)
@@ -328,9 +330,9 @@ def load_calibration_run_data(run, export: bool = None):
     # Gage
     #############################
 
-    calibration_run_data['forcing_source'] = run.forcing_source
+    calibration_run_data['forcing_source'] = run.forcing_source.name
     calibration_run_data['forcing_user_dir'] = run.forcing_user_dir
-    calibration_run_data['observational_source'] = run.observational_source
+    calibration_run_data['observational_source'] = run.observational_source.name
     calibration_run_data['observational_user_filename'] = run.observational_user_filename
 
     #############################

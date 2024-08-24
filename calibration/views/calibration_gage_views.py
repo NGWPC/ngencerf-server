@@ -163,8 +163,8 @@ def save_gage_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
     gage_id = validator.data.get('gage_id')
-    forcing_source = validator.data.get('forcing_source')
-    observational_source = validator.data.get('observational_source')
+    forcing_source_name = validator.data.get('forcing_source_name')
+    observational_source_name = validator.data.get('observational_source_name')
     # TODO Sources should be foreign keys
 
     run, errorReturn = get_run(calibration_run_id, request.user)
@@ -190,17 +190,17 @@ def save_gage_tab(request):
         geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
         # Get forcing and observational data
-        run.forcing_source = forcing_source
-        run.observational_source = observational_source
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
         try:
-            if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
-                get_observational_data_from_hydrofabric(observational_source)
+            if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
+                get_observational_data_from_hydrofabric(observational_source_name)
         except ClientError as e:
             return Response(f'Error downloading observational data from AWS.  Check your credentials - {e}')
 
         try:
-            if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
-                get_forcing_data_from_hydrofabric(forcing_source)
+            if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
+                get_forcing_data_from_hydrofabric(forcing_source_name)
         except ClientError as e:
             return Response(f'Error downloading forcing data from AWS.  Check your credentials - {e}')
 
@@ -282,7 +282,7 @@ def upload_observational_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
+    if run.observational_source.name != ObservationalSourceEnum.UPLOAD.value:
         return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
@@ -351,7 +351,7 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
+    if run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
         return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
     # Validate the file keys and how many there are
