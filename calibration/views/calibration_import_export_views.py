@@ -14,6 +14,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.ngen_locations import get_main_dir
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -24,7 +25,6 @@ from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range, get_parameters_and_output_variables
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
-from calibration.views.ngen_cal_input import get_main_dir
 
 logger = logging.getLogger(__name__)
 
@@ -306,34 +306,70 @@ def export_job(request):
     return Response(response_validator.data)
 
 
+def export_job2(run, data):
+    # calibration_run_data = load_calibration_run_data(run)
+    calibration_run_data = data.copy()
+
+    # Certain things don't need to be returned to the user and are only for the UI
+    # I want the output of export to also be valid input for import.
+    # Certain information that is useful to the user is not valid input, so we'll put that in the metaata
+    metadata = {'source_calibration_run_id': calibration_run_data.pop('calibration_run_id'),
+                'time_range': calibration_run_data.pop('time_range')}
+    calibration_run_data['metadata'] = metadata
+
+    calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
+    calibration_run_data.pop('gage')
+    calibration_run_data.pop('status')
+
+    calibration_run_data['parameters'] = get_parameters_for_export(calibration_run_data['modules'])
+    calibration_run_data.pop('module_metadata')
+
+    return calibration_run_data
+
+
 # TODO Needs to combine this with Export
-def load_calibration_run_data(run):
+def load_calibration_run_data(run, export: bool = None):
+    if export is None:
+        export = False
+
     # noinspection PyDictCreation
     calibration_run_data = {}
 
-    calibration_run_data['calibration_run_id'] = run.id
+    metadata = {}
+    time_range = get_time_range(run) or {}
+    module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+
+    if export:
+        calibration_run_data['metadata'] = metadata
+        metadata['source_calibration_run_id'] = run.id
+        metadata['time_range'] = time_range
+        calibration_run_data['gage_id'] = run.gage.gage_id
+        calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
+
+    else:
+        calibration_run_data['calibration_run_id'] = run.id
+        calibration_run_data['time_range'] = time_range
+        calibration_run_data['gage'] = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name,
+                                        'latitude': run.gage.latitude,
+                                        'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else None
+        calibration_run_data['status'] = run.status.name
+        calibration_run_data['module_metadata'] = get_parameters_and_output_variables(module_objects)
+
+        # TODO This should be the map file, which might need to be regenerated
+        if run.hydrofabric_gpkg_path:
+            geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
+            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+            geopackage_image_url = f'data:image/png;base64,{base64_str}'
+            calibration_run_data['geopackage_image_url'] = geopackage_image_url
 
     #############################
     # Gage
     #############################
 
-    calibration_run_data['gage'] = gage = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name,
-                                           'latitude': run.gage.latitude,
-                                           'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else None
-
     calibration_run_data['forcing_source'] = run.forcing_source
     calibration_run_data['forcing_user_dir'] = run.forcing_user_dir
-    calibration_run_data['forcing_dir_path'] = run.forcing_dir_path
     calibration_run_data['observational_source'] = run.observational_source
-    calibration_run_data['observational_file_path'] = run.observational_file_path
     calibration_run_data['observational_user_filename'] = run.observational_user_filename
-
-    # TODO This should be the map file, which might need to be regenerated
-    if run.hydrofabric_gpkg_path:
-        geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
-        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-        geopackage_image_url = f'data:image/png;base64,{base64_str}'
-        calibration_run_data['geopackage_image_url'] = geopackage_image_url
 
     #############################
     # Formulation
@@ -348,13 +384,11 @@ def load_calibration_run_data(run):
     # Tuning
     #############################
     calibration_run_data['automatic_validation'] = run.automatic_validation
-    time_range = get_time_range(run)
-    calibration_run_data['time_range'] = time_range if time_range else {}
+
     calibration_times, validation_times = get_times(run)
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
-    module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
-    calibration_run_data['module_metadata'] = get_parameters_and_output_variables(module_objects)
+
     output_variable_to_calibrate = {
         'module': run.module_output_variable.calibration_formulation.name,
         'name': run.module_output_variable.name
@@ -379,11 +413,10 @@ def load_calibration_run_data(run):
 
     # calibration_run_data['run_date'] = run.run_date
 
-    ngen_cal_input.ready_to_run(run)
-    calibration_run_data['status'] = run.status.name
-    if run.status.name in [StatusEnum.RUNNING.value, StatusEnum.DONE.value]:
+    if not export and run.status.name in [StatusEnum.RUNNING.value, StatusEnum.DONE.value]:
         # Other stuff we need for Running/Done jobs
         pass
 
     print('export', calibration_run_data)
+
     return calibration_run_data

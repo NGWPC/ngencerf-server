@@ -9,7 +9,6 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicPr
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
 from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
     ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameSerializer
