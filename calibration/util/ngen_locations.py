@@ -2,9 +2,11 @@ import os
 
 from django.conf import settings
 
+from calibration.models import CalibrationRun
+
 # Forcing,  obs and geopackage directories will be created as needed
-forcing_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing')
-observation_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation')
+forcing_from_hydrofabric_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing_from_hydrofabric')
+observation_from_hydrofabric_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation_from_hydrofabric')
 geopackage_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')
 
 dirs = [CALIB_VALID_DIR := os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python/runCalibValid'),
@@ -26,3 +28,16 @@ files = [NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen'),
          CALIBRATION_PY := os.path.join(CALIB_VALID_DIR, 'calibration.py'),
          VALIDATION_PY := os.path.join(CALIB_VALID_DIR, 'validation.py')]
 
+
+def get_main_dir(run: CalibrationRun) -> str:
+    return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
+
+
+# Job-specific observation directory
+def get_observation_directory(run: CalibrationRun) -> str:
+    return os.path.join(get_main_dir(run), 'observation')
+
+
+# Job-specific forcing directory
+def get_forcing_directory(run: CalibrationRun) -> str:
+    return os.path.join(get_main_dir(run), 'forcing', run.gage.gage_id)
