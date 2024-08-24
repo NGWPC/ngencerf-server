@@ -647,7 +647,6 @@ class ImportSerializer(serializers.Serializer):
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    geopackage = serializers.CharField(required=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False)
