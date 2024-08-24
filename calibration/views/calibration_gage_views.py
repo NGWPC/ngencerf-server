@@ -194,13 +194,13 @@ def save_gage_tab(request):
         run.observational_source = observational_source
         try:
             if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
-                run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+                get_observational_data_from_hydrofabric(observational_source)
         except ClientError as e:
             return Response(f'Error downloading observational data from AWS.  Check your credentials - {e}')
 
         try:
             if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
-                run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+                get_forcing_data_from_hydrofabric(forcing_source)
         except ClientError as e:
             return Response(f'Error downloading forcing data from AWS.  Check your credentials - {e}')
 
@@ -219,7 +219,6 @@ def save_gage_tab(request):
     return Response(response_validator.data)
 
 
-# Function to be used for saving a config file to allow CLI
 def save_gage(run, gage_id):
     gage = Gage.objects.only('gage_id').filter(gage_id=gage_id).first()
     if gage:
@@ -227,7 +226,7 @@ def save_gage(run, gage_id):
 
             # Delete any user uploaded files
             if run.gage and run.forcing_user_dir:
-                shutil.rmtree(run.forcing_user_dir)
+                shutil.rmtree(run.forcing_dir_path)
             run.forcing_user_dir = None
             run.forcing_dir_path = None
 
@@ -358,9 +357,8 @@ def upload_forcing_data(request):
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    # Need to upload to the run-specific forcing directory, as opposed to the global directory
-    forcing_dir = get_forcing_directory(run)
-    run.forcing_dir_path = forcing_dir
+    # Upload to the run-specific forcing directory
+    run.forcing_dir_path = get_forcing_directory(run)
     run.forcing_user_dir = forcing_user_dir
 
     fs = FileSystemStorage(location=run.forcing_dir_path)
