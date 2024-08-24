@@ -1,29 +1,22 @@
+import json
 import logging
 from urllib.parse import urljoin
 
 import requests
 import rest_framework
+from django.db import transaction
 from rest_framework import status
 
+from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation
 from calibration.util.aws_util import download_s3, download_all_s3
-from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer
+from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
+    ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer
 from calibration.util.ngen_locations import observation_from_hydrofabric_dir, forcing_from_hydrofabric_dir, geopackage_dir
 from calibration.views.common import CerfException
+from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_metadata_sample_data, \
+    module_sample_data, forcing_sample_data
 
 logger = logging.getLogger(__name__)
-
-geopackage_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
-    "creation_date": "2024-07-30T12:33:00.001Z"
-}
-
-forcing_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/"
-}
-
-observational_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
-}
 
 
 def get_geopackage_from_hydrofabric(gage_id):
@@ -99,3 +92,96 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     # subdir = key.split('/')[-1]
 
     download_all_s3(s3_uri, forcing_from_hydrofabric_dir)
+
+
+def get_module_data_from_hydrofabric(run, modules):
+    # Get this from hydrofabric
+    # modules_request = {"modules":modules}
+    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+    # module_data = response.json()
+
+    validator = ModuleDataHydrofabricListSerializer(data=module_metadata_sample_data)
+    if not validator.is_valid():
+        logger.error(validator.errors)
+        raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
+
+    # print('getting metadata from hydrofabric')
+    module_data = module_metadata_sample_data.get("modules")
+
+    # Save the output variables and parameters for each module
+    # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
+    with transaction.atomic():
+        for m in module_data:
+            # Get the modules object from our list
+            module = modules.filter(name=m['module_name']).first()
+            # print('module', module)
+
+            # Save output variables
+            outputs = m['module_output_variables']
+            o: dict
+            for o in outputs:
+                ModuleOutputVariable.objects.update_or_create(name=o['name'], calibration_formulation=module,
+                                                              defaults={'description': o['description']})
+            # Save parameters
+            # print('getting parameters for', m)
+            parameters = m['module_parameters']
+            # print('parameters from Hydro', parameters)
+            for p in parameters:
+                CalibrationParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
+                                                              defaults={'data_type': p['data_type'],
+                                                                        'description': p['description'], 'minimum': p['minimum'],
+                                                                        'maximum': p['maximum']})
+
+        # run.got_module_data_from_hydrofabric = True
+        run.save()
+
+    return
+
+
+def get_modules_from_hydrofabric(run):
+    print('calling hydrofabric')
+
+    # Get this from hydrofabric
+    # modules_request = {}
+    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
+    # module_data = response.json()
+
+    current_module_names = set(
+        CalibrationFormulation.objects.filter(calibration_run=run)
+        .values_list('name', flat=True)
+    )
+
+    print('current_module_names', current_module_names)
+
+    validator = ModuleHydrofabricListSerializer(data=module_sample_data)
+    if not validator.is_valid():
+        logger.debug(validator.errors)
+        raise CerfException(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
+
+    module_data = validator.data.get('modules')
+    new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
+    print('new_modules_names', new_modules_names)
+
+    with transaction.atomic():
+        if current_module_names != new_modules_names:
+            # Delete only if the modules names have changed
+            to_be_deleted = current_module_names - new_modules_names
+
+            if to_be_deleted:
+                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
+
+            # Create the new ones, if they don't already exist
+            new_modules = []
+            for m in module_data:
+                if m['module_name'] not in current_module_names:
+                    new_modules.append(CalibrationFormulation(
+                        name=m['module_name'],
+                        calibration_run=run,
+                        groups=json.dumps(m['groups']),
+                        description=m['description']
+                    ))
+            # Use bulk_create to minimize the number of insert queries
+            if new_modules:
+                CalibrationFormulation.objects.bulk_create(new_modules)
+
+    return

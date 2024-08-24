@@ -225,6 +225,7 @@ class ModuleParametersSerializer(serializers.Serializer):
     minimum = serializers.FloatField(required=False, allow_null=True)
     maximum = serializers.FloatField(required=False, allow_null=True)
     initial_value = serializers.FloatField(required=False, allow_null=True)
+    user_selected_for_tuning = serializers.BooleanField(required=False)
 
 
 class ModuleMetadataStaticSerializer(BaseSerializer):
