@@ -3,9 +3,6 @@ import os
 
 from django.apps import AppConfig
 
-from calibration.util.file_util import copy_directory
-from calibration.util.ngen_locations import files, dirs, PARQUET_DIR, NOAH_PARAMETER_DIR
-from cerfServer.settings import BASE_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +12,10 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
+        from calibration.util.file_util import copy_directory
+        from calibration.util.ngen_locations import files, dirs, PARQUET_DIR, NOAH_PARAMETER_DIR
+        from cerfServer.settings import BASE_DIR
+
         for file in files:
             if not os.path.exists(file):
                 logger.warning(f'{file} does not exist')

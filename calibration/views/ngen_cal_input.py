@@ -3,14 +3,13 @@ import re
 
 import toml
 from datetimerange import DateTimeRange
-from django.conf import settings
 from django.db.models import F
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    PARQUET_DIR
+    PARQUET_DIR, get_main_dir
 from calibration.views.calibration_run_views import subset_by_time_range
 from calibration.views.common import CerfException
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric

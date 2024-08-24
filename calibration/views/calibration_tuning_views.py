@@ -113,7 +113,6 @@ def load_tuning_tab(request):
     if errorReturn:
         return errorReturn
 
-
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
@@ -130,7 +129,7 @@ def load_tuning_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
-    
+
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
@@ -151,7 +150,8 @@ def get_parameters_and_output_variables(modules):
     for m in modules:
         calibrationTuneParameters = (CalibrationParameter.objects.filter(calibration_formulation=m))
 
-        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
+        parameters = list(
+            calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
         module_entry = {'name': m.name, 'parameters': parameters,
                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
 
@@ -163,7 +163,7 @@ def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
         calibrationTuneParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
-                                         .values('name', 'minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'))
+                                         .values('name', 'minimum', 'maximum', 'initial_value'))
 
         for p in calibrationTuneParameters:
             p['module'] = m.name
@@ -238,9 +238,9 @@ def get_module_data_from_hydrofabric(run, modules):
             # print('parameters from Hydro', parameters)
             for p in parameters:
                 CalibrationParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
-                                                                  defaults={'data_type': p['data_type'],
-                                                                            'description': p['description'], 'minimum': p['minimum'],
-                                                                            'maximum': p['maximum']})
+                                                              defaults={'data_type': p['data_type'],
+                                                                        'description': p['description'], 'minimum': p['minimum'],
+                                                                        'maximum': p['maximum']})
 
         # run.got_module_data_from_hydrofabric = True
         run.save()

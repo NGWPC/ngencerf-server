@@ -159,7 +159,7 @@ def load_calibration_run(request):
     if errorReturn:
         return errorReturn
 
-    calibration_run_data = load_calibration_run_data(run)
+    calibration_run_data = load_calibration_run_data(run, export=False)
 
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
     if error_response:
@@ -167,4 +167,3 @@ def load_calibration_run(request):
     logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
-
