@@ -210,11 +210,17 @@ def import_job(request):
         run.save()
 
         imported_and_submitted = 'imported'
+<<<<<<< HEAD
+       
+        errors = None
+=======
 
         errors, config_file = ngen_cal_input.ready_to_run(run)
         errors.extend(warnings)
 
+>>>>>>> f3b3390 (Testing import/export)
         if run_after_import:
+            errors, config_file = ngen_cal_input.ready_to_run(run)
             if not errors:
                 submit_job(run, config_file=config_file)
                 imported_and_submitted = 'imported and submitted'
