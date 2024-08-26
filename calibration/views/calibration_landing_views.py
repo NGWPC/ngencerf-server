@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=None,
     responses={
-        201: GenericMessageResponseSerializer,
+        201: CreateCalibrationRunSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
