@@ -268,7 +268,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
-    module_metadata = ModuleMetadataStaticSerializer(many=True, required=False, allow_null=True)
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
