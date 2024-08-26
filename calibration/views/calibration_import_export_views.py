@@ -85,7 +85,7 @@ def import_job(request):
         if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
             get_forcing_data_from_hydrofabric(run.forcing_source)
 
-        if run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
+        if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             if run.forcing_dir_path and os.path.exists(run.forcing_dir_path):
                 # Need to copy user-loaded files to our instance directory
                 new_forcing_dir = get_forcing_directory(run)
@@ -95,7 +95,7 @@ def import_job(request):
                 run.forcing_dir_path = None
                 run.forcing_user_dir = None
 
-        if run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
+        if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
             if run.observational_file_path and os.path.exists(run.observational_file_path):
                 # Need to copy user-loaded files to our instance directory
                 new_observational_dir = get_observation_directory(run)
@@ -317,7 +317,6 @@ def load_calibration_run_data(run, export: bool = None):
                                         'latitude': run.gage.latitude,
                                         'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else None
         calibration_run_data['status'] = run.status.name
-        calibration_run_data['module_metadata'] = get_parameters_and_output_variables(module_objects)
 
         # TODO This should be the map file, which might need to be regenerated
         if run.hydrofabric_gpkg_path:
@@ -330,9 +329,9 @@ def load_calibration_run_data(run, export: bool = None):
     # Gage
     #############################
 
-    calibration_run_data['forcing_source'] = run.forcing_source.name
+    calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
     calibration_run_data['forcing_user_dir'] = run.forcing_user_dir
-    calibration_run_data['observational_source'] = run.observational_source.name
+    calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['observational_user_filename'] = run.observational_user_filename
 
     #############################

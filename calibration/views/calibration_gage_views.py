@@ -270,7 +270,7 @@ def upload_observational_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.observational_source.name != ObservationalSourceEnum.UPLOAD.value:
+    if run.observational_source and run.observational_source.name != ObservationalSourceEnum.UPLOAD.value:
         return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
@@ -335,7 +335,7 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
+    if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
         return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
     # Validate the file keys and how many there are
