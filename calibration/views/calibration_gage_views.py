@@ -276,6 +276,7 @@ def upload_observational_data(request):
     print('data', data)
 
     calibration_run_id = validator.data.get('calibration_run_id')
+    observational_user_filepath = validator.data.get('observational_user_filepath')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -293,7 +294,7 @@ def upload_observational_data(request):
 
     observational_file = files[0]
     run.observational_file_path = os.path.join(observational_dir, observational_file.name)
-    run.observational_user_filename = observational_file.name
+    run.observational_user_filename = observational_user_filepath
 
     fs.save(observational_file.name, observational_file)
 

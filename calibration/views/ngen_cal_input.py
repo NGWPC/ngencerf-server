@@ -118,10 +118,12 @@ def ready_to_run(run, build=None):
                 # messages.append('Error getting forcing path from Hydrofabric')
             else:
                 if run.forcing_source != ForcingSourceEnum.UPLOAD.name:
-                    # for non-uploaded data, we need to subset
-                    output_file_path = os.path.join(get_main_dir(run), 'forcing', run.gage.gage_id)
-                    subset_by_time_range(run.observational_file_path, output_file_path,
-                                         DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                    if build:
+                        # for non-uploaded data, we need to subset
+                        output_file_path = os.path.join(get_main_dir(run), 'forcing', run.gage.gage_id)
+                        # TODO The paths here are not right
+                        subset_by_time_range(run.observational_file_path, output_file_path,
+                                             DateTimeRange(run.calibration_start_period, run.calibration_end_period))
                 datafile['forcing_dir'] = run.forcing_dir_path
 
         if not run.observational_source:
@@ -137,10 +139,12 @@ def ready_to_run(run, build=None):
                 # messages.append('Error getting observational path from Hydrofabric')
             else:
                 if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
-                    # For non-uploaded data, we need to subset
-                    output_file_path = os.path.join(get_main_dir(run), 'observation')
-                    subset_by_time_range(run.observational_file_path, output_file_path,
-                                         DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                    if build:
+                        # For non-uploaded data, we need to subset
+                        output_file_path = os.path.join(get_main_dir(run), 'observation')
+                        # TODO The paths here are not right
+                        subset_by_time_range(run.observational_file_path, output_file_path,
+                                             DateTimeRange(run.calibration_start_period, run.calibration_end_period))
                 datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
 
         if not run.hydrofabric_gpkg_path:
@@ -288,7 +292,7 @@ def ready_to_run(run, build=None):
 
         datafile['calib_parameter_file'] = parameter_file
 
-    print('validation messages', messages)
+    print('validation messages from ngen_cal_input:', messages)
 
     run.status = Status.objects.filter(name=(StatusEnum.SAVED if messages else StatusEnum.READY)).first()
     run.save()

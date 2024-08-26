@@ -53,7 +53,7 @@ def get_observational_data_from_hydrofabric(observational_source):
         "Content-Type": "application/json"
     }
     base_url = 'https://jsonplaceholder.typicode.com'
-    path = '/foo/1'
+    path = '/todos/1'
     url = urljoin(base_url, path)
     response = requests.get(url, json=request, headers=headers)
     # Check if the request was successful
@@ -64,7 +64,7 @@ def get_observational_data_from_hydrofabric(observational_source):
     else:
         # Print the error
         logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.  Will try again when before job is submitted")
-        print("Response:", response.text)
+        print("Response from Hydrofabric:", response.text)
 
     response = observational_sample_data
     validator = ObservationalHydrofabricSerializer(data=response)
