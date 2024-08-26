@@ -2,14 +2,14 @@ import logging
 
 from django.db import transaction
 from django.db.models import F
-from drf_spectacular.utils import extend_schema, OpenApiParameter, PolymorphicProxySerializer
+from drf_spectacular.utils import extend_schema, OpenApiParameter, PolymorphicProxySerializer, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
-    SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer
+    SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer
+
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 
@@ -20,15 +20,11 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunSerializer,
     responses={
         200: LoadOptimizationResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -103,15 +99,11 @@ def get_metrics():
     request=SaveOptimizationRequestSerializer,
     responses={
         200: SaveOptimizationResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Save optimization tab data"
 )

@@ -6,7 +6,7 @@ import shutil
 from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -15,8 +15,8 @@ from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, UploadObservationalSerializer
+    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
+    UploadObservationalSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observation_directory, get_forcing_directory
 from calibration.views import ngen_cal_input
@@ -30,15 +30,15 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunSerializer,
     responses={
         200: LoadGageResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        404: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Gage not found"
+        ),
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -95,15 +95,11 @@ def load_gage_tab(request):
     request=GageIdSerializer,
     responses={
         200: GageSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -126,7 +122,7 @@ def get_gage(request):
 
     gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
     if not gage:
-        return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+        return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
@@ -139,15 +135,11 @@ def get_gage(request):
     request=SaveGageRequestSerializer,
     responses={
         200: SaveGageResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Save gage tab data"
 )
@@ -175,7 +167,7 @@ def save_gage_tab(request):
     if gage_id:
         gage = save_gage(run, gage_id)
         if not gage:
-            return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+            return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
         try:
             geopackage_path = save_geopackage_path(run, gage_id)
@@ -251,15 +243,11 @@ def save_geopackage_path(run, gage_id):
     request=UploadObservationalSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -321,15 +309,11 @@ def upload_observational_data(request):
     request=UploadForcingSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )

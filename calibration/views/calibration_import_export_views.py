@@ -3,7 +3,7 @@ import logging
 import os
 
 from django.db import transaction
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria, ForcingSource, ObservationalSource
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
-    ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer
+    ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_directory, get_observation_directory
@@ -34,8 +34,11 @@ logger = logging.getLogger(__name__)
     request=ImportSerializer,
     responses={
         200: IsReadyResponseSerializer,
-        400: ErrorResponseSerializer,
-        500: ExceptionResponseSerializer
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
     },
     description="Import a job"
 )
@@ -232,8 +235,11 @@ def import_job(request):
     request=CalibrationRunSerializer,
     responses={
         200: ExportResponseSerializer,
-        400: ErrorResponseSerializer,
-        500: ExceptionResponseSerializer
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
     },
     description="Export a job"
 )

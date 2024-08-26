@@ -3,7 +3,7 @@ import re
 from datetimerange import DateTimeRange
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
-from rest_framework.fields import empty
+from rest_framework.fields import empty, DictField
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
@@ -677,10 +677,6 @@ class ReportIterationSerializer(BaseSerializer):
     worker_name = serializers.CharField(required=True)
 
 
-class ErrorResponseSerializer(BaseSerializer):
-    error = serializers.CharField(required=True)
-
-
 class ErrorDetailListField(serializers.ListField):
     child = serializers.CharField()
 
@@ -696,10 +692,17 @@ class ErrorDetailListField(serializers.ListField):
         return [ErrorDetail(item) for item in data]
 
 
-class ValidationExceptionSerializer(BaseSerializer):
-    # validation_error = serializers.DictField(child=ErrorDetailListField(), required=True)
-    validation_error = serializers.JSONField(required=True)
+# class ValidationExceptionSerializer(BaseSerializer):
+#     # validation_error = serializers.DictField(child=ErrorDetailListField(), required=True)
+#     validation_error = serializers.JSONField(required=True)
 
 
-class ExceptionResponseSerializer(BaseSerializer):
-    exception = serializers.CharField(required=True)
+class ErrorResponseSerializer(BaseSerializer):
+    response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    validation_errors = serializers.JSONField(required=False, allow_null=True)
+
+#
+#
+# class ExceptionResponseSerializer(BaseSerializer):
+#     exception = serializers.CharField(required=True)

@@ -8,14 +8,14 @@ from datetime import datetime, timezone
 
 from datetimerange import DateTimeRange
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import CalibrationFormulation, CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
-    GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
+    GenericResponseSerializer, ErrorResponseSerializer, \
+    UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
@@ -30,15 +30,11 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
     request=CalibrationRunSerializer,
     responses={
         200: LoadTuningResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -158,15 +154,11 @@ def get_times(run):
     request=SaveTuningRequestSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Save tuning tab data"
 )
@@ -225,15 +217,11 @@ def save_tuning_tab(request):
     request=UploadUserParameterFile,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )

@@ -5,13 +5,14 @@ import os
 from django.db.models import Value, CharField
 from django.db.models.functions import Concat
 from django.http import HttpResponse
-from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import PlotDefinitions
-from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, ErrorResponseSerializer, CalibrationPlotNameSerializer
+from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, \
+    ErrorResponseSerializer, CalibrationPlotNameSerializer
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
 from calibration.views.common import get_run, handle_exceptions, validate_request, validate_response
 
@@ -22,15 +23,11 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunSerializer,
     responses={
         200: LoadPlotDefinitionsResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -51,7 +48,7 @@ def get_plot_names(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
+    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if errorReturn:
         return errorReturn
 
@@ -90,16 +87,12 @@ def download_plot(filename):
 @extend_schema(
     request=CalibrationPlotNameSerializer,
     responses={
-        # 200: ,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        200: CalibrationPlotNameSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
