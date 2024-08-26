@@ -173,7 +173,7 @@ def save_gage_tab(request):
             geopackage_path = save_geopackage_path(run, gage_id)
         except ClientError as e:
             # TODO Check for other errors
-            return Response(f'Error downloading geopackage from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
 
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
@@ -188,13 +188,13 @@ def save_gage_tab(request):
             if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
                 get_observational_data_from_hydrofabric(observational_source_name)
         except ClientError as e:
-            return Response(f'Error downloading observational data from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading observational data from AWS.  Check your AWS credentials - {e}')
 
         try:
             if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
                 get_forcing_data_from_hydrofabric(forcing_source_name)
         except ClientError as e:
-            return Response(f'Error downloading forcing data from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading forcing data from AWS.  Check your AWS credentials - {e}')
 
     with transaction.atomic():
         run.save()
