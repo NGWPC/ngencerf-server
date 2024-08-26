@@ -10,7 +10,7 @@ from createInput import create_input
 from datetimerange import DateTimeRange
 from django.db import transaction
 from django.db.models import Max
-from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -19,7 +19,7 @@ from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Metric, IterationMetric, Iteration, IterationParameter, \
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, ReportIterationSerializer
+    ErrorResponseSerializer, ReportIterationSerializer
 from calibration.util.ngen_locations import CALIBRATION_PY
 from calibration.views import ngen_cal_input, spawn_process
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
@@ -32,15 +32,11 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunSerializer,
     responses={
         200: IsReadyResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Check if a job is ready to run"
 )
@@ -80,15 +76,11 @@ def is_ready(request):
     request=None,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Run a calibration"
 )
@@ -429,15 +421,11 @@ def get_gage_dir(run) -> str | bytes:
     request=ReportIterationSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Report iteration of a running calibration"
 )
@@ -499,15 +487,11 @@ def report_iteration(request):
     request=CalibrationRunSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Report iteration of a running calibration"
 )
@@ -557,4 +541,3 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             if row_date in date_time_range:
                 writer.writerow(row)
-
