@@ -8,87 +8,33 @@ from datetime import datetime, timezone
 
 from datetimerange import DateTimeRange
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, ModuleOutputVariable, CalibrationParameter
-from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, ModuleDataHydrofabricListSerializer, \
-    LoadTuningResponseSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
+from calibration.models import CalibrationFormulation, CalibrationParameter
+from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
+    GenericResponseSerializer, ErrorResponseSerializer, \
+    UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.hydrofabric import get_module_data_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
 MIN_TIME = datetime(MAXYEAR, 12, 31, 11, 59, 59).replace(tzinfo=timezone.utc)
 MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 
-# For testing
-module_sample_data = {"modules": [
-    {
-        "module_name": "Noah-OWP-Modular",
-        "module_output_variables": [
-            {
-                "name": "QINSUR",
-                "description": "description of variable",
-            },
-            {
-                "name": "ETRAN",
-                "description": "description of variable",
-            },
-            {
-                "name": "QSEVA",
-                "description": "description of variable",
-            },
-        ],
-        "module_parameters": [
-            {
-                "name": "parameter1",
-                "data_type": "double",
-                "description": "description of variable",
-                "initial_value": 0.0,
-                "minimum": 0.0,
-                "maximum": 0.0
-            },
-
-            {
-                "name": "parameter2",
-                "data_type": "double",
-                "description": "description of variable",
-                "initial_value": 0.0,
-                "minimum": 0.0,
-                "maximum": 0.0
-            },
-            {
-                "name": "parameter3",
-                "data_type": "double",
-                "description": "description of variable",
-                # "units": "m/s",
-                "initial_value": 0.0,
-                "minimum": 0.0,
-                "maximum": 0.0
-            }
-
-        ]
-    },
-]
-}
-
 
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
         200: LoadTuningResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -113,7 +59,6 @@ def load_tuning_tab(request):
     if errorReturn:
         return errorReturn
 
-
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
@@ -130,7 +75,7 @@ def load_tuning_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
-    
+
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
@@ -149,9 +94,11 @@ def get_output_variable_to_calibrate(run):
 def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules:
-        calibrationTuneParameters = (CalibrationParameter.objects.filter(calibration_formulation=m))
+        calibrationParameters = (CalibrationParameter.objects.filter(calibration_formulation=m))
 
-        parameters = list(calibrationTuneParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
+        parameters = list(
+            calibrationParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
+        print('parameters', parameters)
         module_entry = {'name': m.name, 'parameters': parameters,
                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
 
@@ -162,10 +109,10 @@ def get_parameters_and_output_variables(modules):
 def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
-        calibrationTuneParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
-                                         .values('name', 'minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'))
+        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
+                                     .values('name', 'minimum', 'maximum', 'initial_value'))
 
-        for p in calibrationTuneParameters:
+        for p in calibrationParameters:
             p['module'] = m.name
             parameter_list.append(p)
 
@@ -203,64 +150,15 @@ def get_times(run):
     return calibration_times, validation_times
 
 
-# @permission_classes([AllowAny])()
-def get_module_data_from_hydrofabric(run, modules):
-    # Get this from hydrofabric
-    # modules_request = {"modules":modules}
-    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_data = response.json()
-
-    validator = ModuleDataHydrofabricListSerializer(data=module_sample_data)
-    if not validator.is_valid():
-        logger.error(validator.errors)
-        raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
-
-    # print('getting metadata from hydrofabric')
-    module_data = module_sample_data.get("modules")
-
-    # Save the output variables and parameters for each module
-    # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
-    with transaction.atomic():
-        for m in module_data:
-            # Get the modules object from our list
-            module = modules.filter(name=m['module_name']).first()
-            # print('module', module)
-
-            # Save output variables
-            outputs = m['module_output_variables']
-            o: dict
-            for o in outputs:
-                ModuleOutputVariable.objects.update_or_create(name=o['name'], calibration_formulation=module,
-                                                              defaults={'description': o['description']})
-            # Save parameters
-            # print('getting parameters for', m)
-            parameters = m['module_parameters']
-            # print('parameters from Hydro', parameters)
-            for p in parameters:
-                CalibrationParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
-                                                                  defaults={'data_type': p['data_type'],
-                                                                            'description': p['description'], 'minimum': p['minimum'],
-                                                                            'maximum': p['maximum']})
-
-        # run.got_module_data_from_hydrofabric = True
-        run.save()
-
-    return
-
-
 @extend_schema(
     request=SaveTuningRequestSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Save tuning tab data"
 )
@@ -319,15 +217,11 @@ def save_tuning_tab(request):
     request=UploadUserParameterFile,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -451,7 +345,6 @@ def get_forcing_date_range(forcing_dir_path):
 
 
 def get_observation_date_range(observational_filepath):
-    # obs_file = '/home/peter.a.kronenberg/ngen-cal-work/observation/01123000_hourly_discharge.csv'
     return get_csv_daterange(observational_filepath)
 
 

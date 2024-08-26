@@ -6,7 +6,7 @@ import shutil
 from botocore.exceptions import ClientError
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -15,13 +15,13 @@ from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, UploadObservationalSerializer
+    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
+    UploadObservationalSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.ngen_locations import get_observation_directory, get_forcing_directory
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
-from calibration.views.ngen_cal_input import get_main_dir
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,15 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunSerializer,
     responses={
         200: LoadGageResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        404: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Gage not found"
+        ),
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -95,15 +95,11 @@ def load_gage_tab(request):
     request=GageIdSerializer,
     responses={
         200: GageSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -126,7 +122,7 @@ def get_gage(request):
 
     gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
     if not gage:
-        return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+        return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
@@ -139,15 +135,11 @@ def get_gage(request):
     request=SaveGageRequestSerializer,
     responses={
         200: SaveGageResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Save gage tab data"
 )
@@ -163,8 +155,8 @@ def save_gage_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
     gage_id = validator.data.get('gage_id')
-    forcing_source = validator.data.get('forcing_source')
-    observational_source = validator.data.get('observational_source')
+    forcing_source_name = validator.data.get('forcing_source_name')
+    observational_source_name = validator.data.get('observational_source_name')
     # TODO Sources should be foreign keys
 
     run, errorReturn = get_run(calibration_run_id, request.user)
@@ -175,7 +167,7 @@ def save_gage_tab(request):
     if gage_id:
         gage = save_gage(run, gage_id)
         if not gage:
-            return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+            return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
         try:
             geopackage_path = save_geopackage_path(run, gage_id)
@@ -189,18 +181,18 @@ def save_gage_tab(request):
         base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
         geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
-        # Get observational data
-        run.forcing_source = forcing_source
-        run.observational_source = observational_source
+        # Get forcing and observational data
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
         try:
-            if observational_source and observational_source != ObservationalSourceEnum.UPLOAD.value:
-                run.observational_path = get_observational_data_from_hydrofabric(observational_source)
+            if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
+                get_observational_data_from_hydrofabric(observational_source_name)
         except ClientError as e:
             return Response(f'Error downloading observational data from AWS.  Check your credentials - {e}')
 
         try:
-            if forcing_source and forcing_source != ForcingSourceEnum.UPLOAD.value:
-                run.forcing_path = get_forcing_data_from_hydrofabric(forcing_source)
+            if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
+                get_forcing_data_from_hydrofabric(forcing_source_name)
         except ClientError as e:
             return Response(f'Error downloading forcing data from AWS.  Check your credentials - {e}')
 
@@ -219,7 +211,6 @@ def save_gage_tab(request):
     return Response(response_validator.data)
 
 
-# Function to be used for saving a config file to allow CLI
 def save_gage(run, gage_id):
     gage = Gage.objects.only('gage_id').filter(gage_id=gage_id).first()
     if gage:
@@ -227,7 +218,7 @@ def save_gage(run, gage_id):
 
             # Delete any user uploaded files
             if run.gage and run.forcing_user_dir:
-                shutil.rmtree(run.forcing_user_dir)
+                shutil.rmtree(run.forcing_dir_path)
             run.forcing_user_dir = None
             run.forcing_dir_path = None
 
@@ -252,15 +243,11 @@ def save_geopackage_path(run, gage_id):
     request=UploadObservationalSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -277,17 +264,17 @@ def upload_observational_data(request):
     print('data', data)
 
     calibration_run_id = validator.data.get('calibration_run_id')
+    observational_user_filepath = validator.data.get('observational_user_filepath')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
         return errorReturn
 
-    if run.observational_source != ObservationalSourceEnum.UPLOAD.value:
+    if run.observational_source and run.observational_source.name != ObservationalSourceEnum.UPLOAD.value:
         return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
-    main_dir = get_main_dir(run)
-    observational_dir = os.path.join(main_dir, 'observation')
+    observational_dir = get_observation_directory(run)
     fs = FileSystemStorage(location=observational_dir)
 
     # Make sure file doesn't exist
@@ -295,7 +282,7 @@ def upload_observational_data(request):
 
     observational_file = files[0]
     run.observational_file_path = os.path.join(observational_dir, observational_file.name)
-    run.observational_user_filename = observational_file.name
+    run.observational_user_filename = observational_user_filepath
 
     fs.save(observational_file.name, observational_file)
 
@@ -322,15 +309,11 @@ def upload_observational_data(request):
     request=UploadForcingSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Allow user to upload observational data"
 )
@@ -352,17 +335,15 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.forcing_source != ForcingSourceEnum.UPLOAD.value:
+    if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
         return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
 
     # Validate the file keys and how many there are
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    # Need to upload to the run-specific observational directory, as opposed to the global directory
-    main_dir = get_main_dir(run)
-    forcing_dir = os.path.join(main_dir, 'forcing', run.gage.gage_id)
-    run.forcing_dir_path = forcing_dir
+    # Upload to the run-specific forcing directory
+    run.forcing_dir_path = get_forcing_directory(run)
     run.forcing_user_dir = forcing_user_dir
 
     fs = FileSystemStorage(location=run.forcing_dir_path)

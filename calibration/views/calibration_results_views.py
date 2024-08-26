@@ -1,12 +1,12 @@
 import logging
 
-from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.util.calibration_validators import GenericMessageResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer, CalibrationRunSerializer
+from calibration.util.calibration_validators import GenericMessageResponseSerializer, ErrorResponseSerializer, \
+    CalibrationRunSerializer
 from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
 
 logger = logging.getLogger(__name__)
@@ -16,15 +16,11 @@ logger = logging.getLogger(__name__)
     request=CalibrationRunSerializer,
     responses={
         200: GenericMessageResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
 
     description="Get all jobs"

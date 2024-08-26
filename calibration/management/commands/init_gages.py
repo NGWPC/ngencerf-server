@@ -36,7 +36,13 @@ class Command(BaseCommand):
         data_dir = options['data_dir']
         if not data_dir:
             data_dir = os.path.join(BASE_DIR, 'calibration/management/commands')
- 
+
+        print(f'Reading data from {data_dir}')
+
+        if not os.path.isdir(data_dir) or not os.path.exists(data_dir):
+            print(f'{data_dir} must be a directory containing the data files')
+            return
+
         # Gage.objects.all().delete()
 
         # need to get a user that is guaranteed to be there, such as admin

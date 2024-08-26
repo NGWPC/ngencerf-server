@@ -3,7 +3,7 @@ import logging
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Q
-from drf_spectacular.utils import extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -12,7 +12,7 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, ExceptionResponseSerializer, ValidationExceptionSerializer, CreateCalibrationRunSerializer, \
+    ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
@@ -23,15 +23,12 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=None,
     responses={
-        201: GenericMessageResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        201: CreateCalibrationRunSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
+        500: ErrorResponseSerializer
     },
     description="Create a new calibration"
 )
@@ -58,15 +55,11 @@ def create_calibration_run(request):
     request=GageIdOptionalSerializer,
     responses={
         200: GetJobsResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
 
     description="Get all jobs"
@@ -116,7 +109,7 @@ def get_jobs(request):
     request=None,
     responses={
         200: FooterResponseSerializer,
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Load gage tab data"
 )
@@ -136,9 +129,12 @@ def get_footer(request):
 @extend_schema(
     request=None,
     responses={
-        200: CalibrationRunSerializer,
-        400: LoadCalibrationRunResponseSerializer,
-        500: ExceptionResponseSerializer
+        200: LoadCalibrationRunResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
     },
     description="Load all data for a previously saved calibration"
 )
@@ -159,7 +155,7 @@ def load_calibration_run(request):
     if errorReturn:
         return errorReturn
 
-    calibration_run_data = load_calibration_run_data(run)
+    calibration_run_data = load_calibration_run_data(run, export=False)
 
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
     if error_response:
@@ -167,4 +163,3 @@ def load_calibration_run(request):
     logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
-

@@ -3,223 +3,32 @@ import logging
 
 from django.db import transaction
 from django.db.models import Prefetch
-from drf_spectacular.utils import OpenApiParameter, extend_schema, PolymorphicProxySerializer
+from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
     CalibrationParameter, ModuleOutputVariable
-from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, ModuleHydrofabricListSerializer, \
-    GenericResponseSerializer, LoadFormulationResponseSerializer, ErrorResponseSerializer, ExceptionResponseSerializer, \
-    ValidationExceptionSerializer
+from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, GenericResponseSerializer, \
+    LoadFormulationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.hydrofabric import get_modules_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
 SLOTH = 'SLoTH'
-
-# For testing
-module_sample_data = {"modules": [
-    {
-        "module_name": "GC2D",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Glacier"
-        ]
-    },
-    {
-        "module_name": "Noah-OWP-Modular",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Snowmelt",
-            "Evapotranspiration"
-        ],
-    },
-    {
-        "module_name": "Snow-17",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Snowmelt"
-        ]
-    },
-    {
-        "module_name": "UEB",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Snowmelt",
-            "Evapotranspiration"
-        ]
-    },
-    {
-        "module_name": "CFE-S",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Rainfall Runoff"
-        ],
-    },
-    {
-        "module_name": "CFE-X",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Rainfall Runoff"
-        ],
-    },
-    {
-        "module_name": "PET",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Evapotranspiration"
-        ]
-    },
-    {
-        "module_name": "TopModel",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Rainfall Runoff"
-        ]
-    },
-    {
-        "module_name": "Sac-SMA",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Rainfall Runoff"
-        ]
-    },
-    {
-        "module_name": "LASAM",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Rainfall Runoff"
-        ]
-    },
-    {
-        "module_name": "SMP",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Soil Moisture"
-        ]
-    },
-    {
-        "module_name": "SFT",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Snowmelt"
-        ]
-    },
-    {
-        "module_name": "T-Route",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Routing"
-        ],
-    },
-    {
-        "module_name": "SCHISM",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Coastal"
-        ]
-    },
-    {
-        "module_name": "SFINCS",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Coastal"
-        ]
-    }
-]
-}
 
 
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
         200: LoadFormulationResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -244,7 +53,6 @@ def load_formulation_tab(request):
     if errorReturn:
         return errorReturn
 
-
     get_modules_from_hydrofabric(run)
 
     modules = get_all_modules(run)
@@ -253,7 +61,6 @@ def load_formulation_tab(request):
     for m in modules:
         m['groups'] = json.loads(m['groups'])
     module_list = list(modules)
-
 
     ngen_cal_input.ready_to_run(run)
 
@@ -295,68 +102,15 @@ def get_sloth_parameters(run):
     return sloth_parameters
 
 
-def get_modules_from_hydrofabric(run):
-    print('calling hydrofabric')
-
-    # Get this from hydrofabric
-    # modules_request = {}
-    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_data = response.json()
-
-    current_module_names = set(
-        CalibrationFormulation.objects.filter(calibration_run=run)
-        .values_list('name', flat=True)
-    )
-
-    print('current_module_names', current_module_names)
-
-    validator = ModuleHydrofabricListSerializer(data=module_sample_data)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
-
-    module_data = validator.data.get('modules')
-    new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
-    print('new_modules_names', new_modules_names)
-
-    with transaction.atomic():
-        if current_module_names != new_modules_names:
-            # Delete only if the modules names have changed
-            to_be_deleted = current_module_names - new_modules_names
-
-            if to_be_deleted:
-                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
-
-            # Create the new ones, if they don't already exist
-            new_modules = []
-            for m in module_data:
-                if m['module_name'] not in current_module_names:
-                    new_modules.append(CalibrationFormulation(
-                        name=m['module_name'],
-                        calibration_run=run,
-                        groups=json.dumps(m['groups']),
-                        description=m['description']
-                    ))
-            # Use bulk_create to minimize the number of insert queries
-            if new_modules:
-                CalibrationFormulation.objects.bulk_create(new_modules)
-
-    return
-
-
 @extend_schema(
     request=SaveFormulationRequestSerializer,
     responses={
         200: GenericResponseSerializer,
-        400: PolymorphicProxySerializer(
-            component_name='MultipleErrorResponse',
-            serializers=[
-                ValidationExceptionSerializer,
-                ErrorResponseSerializer,
-            ],
-            resource_type_field_name=None
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
         ),
-        500: ExceptionResponseSerializer
+        500: ErrorResponseSerializer
     },
     description="Save formulation tab data"
 )
@@ -421,7 +175,7 @@ def save_formulation_tab(request):
             # Set them to be unused and delete any parameters and output variables
             CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
             CalibrationParameter.objects.all().filter(calibration_formulation__calibration_run=run,
-                                                          calibration_formulation__name__in=to_be_unused).delete()
+                                                      calibration_formulation__name__in=to_be_unused).delete()
             ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
 
             # Create any new formulations

@@ -3,7 +3,7 @@ import re
 from datetimerange import DateTimeRange
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
-from rest_framework.fields import empty
+from rest_framework.fields import empty, DictField
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
@@ -225,6 +225,7 @@ class ModuleParametersSerializer(serializers.Serializer):
     minimum = serializers.FloatField(required=False, allow_null=True)
     maximum = serializers.FloatField(required=False, allow_null=True)
     initial_value = serializers.FloatField(required=False, allow_null=True)
+    user_selected_for_tuning = serializers.BooleanField(required=False)
 
 
 class ModuleMetadataStaticSerializer(BaseSerializer):
@@ -263,16 +264,13 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    observational_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
-    module_metadata = ModuleMetadataStaticSerializer(many=True, required=False, allow_null=True)
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
     use_sloth = serializers.BooleanField(default=False)
-    sloth_parameters = SlothParameters(many=True, default={})
+    sloth_parameters = SlothParameters(many=True, default=[])
     automatic_validation = serializers.BooleanField(default=False)
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControlsAllowEmpty(required=False)
@@ -283,7 +281,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[optimizationValidator])
-    optimization_inputs = OptimizationInputsSerializer(many=True, default={})
+    optimization_inputs = OptimizationInputsSerializer(many=True, default=[])
     plot_frequency = serializers.IntegerField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
@@ -617,14 +615,10 @@ class ImportResponseSerializer(BaseSerializer):
 class ExportResponseSerializer(BaseSerializer):
     metadata = serializers.JSONField(required=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
-    # run_date = serializers.DateTimeField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    observational_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    geopackage = serializers.CharField(required=True, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
     use_sloth = serializers.BooleanField(default=False)
@@ -653,7 +647,6 @@ class ImportSerializer(serializers.Serializer):
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    geopackage = serializers.CharField(required=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False)
@@ -683,10 +676,6 @@ class ReportIterationSerializer(BaseSerializer):
     worker_name = serializers.CharField(required=True)
 
 
-class ErrorResponseSerializer(BaseSerializer):
-    error = serializers.CharField(required=True)
-
-
 class ErrorDetailListField(serializers.ListField):
     child = serializers.CharField()
 
@@ -702,10 +691,17 @@ class ErrorDetailListField(serializers.ListField):
         return [ErrorDetail(item) for item in data]
 
 
-class ValidationExceptionSerializer(BaseSerializer):
-    # validation_error = serializers.DictField(child=ErrorDetailListField(), required=True)
-    validation_error = serializers.JSONField(required=True)
+# class ValidationExceptionSerializer(BaseSerializer):
+#     # validation_error = serializers.DictField(child=ErrorDetailListField(), required=True)
+#     validation_error = serializers.JSONField(required=True)
 
 
-class ExceptionResponseSerializer(BaseSerializer):
-    exception = serializers.CharField(required=True)
+class ErrorResponseSerializer(BaseSerializer):
+    response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    validation_errors = serializers.JSONField(required=False, allow_null=True)
+
+#
+#
+# class ExceptionResponseSerializer(BaseSerializer):
+#     exception = serializers.CharField(required=True)
