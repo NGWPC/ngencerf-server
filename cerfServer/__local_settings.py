@@ -33,8 +33,8 @@ HYDROFABRIC_URL = 'http://localhost:8888'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres',
+        'NAME': os.getenv('CERF_SERVER_DATABASE_NAME', 'postgres'),
+        'USER': os.getenv('CERF_SERVER_DATABASE_USER', 'postgres'),
         'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
         'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
         'PORT': 5432,

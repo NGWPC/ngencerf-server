@@ -3,28 +3,55 @@
 ## Requirements
 
 To build and run the ngenCERF-server container, you will need the following software installed and running on your system:
-- Docker
-- PostgreSQL (recommend version 16), listening on port 5432
+- Docker Enginer
+- Docker Compose 
 
-## Building ngenCERF-server Container
+You will also need a file containing your NGWPC gitlab Personal Access Token (PAT) written at ~/.gitlab_token.
 
-To build the ngenCERF-server container, execute the following command:
+This will also create directories to persist data for the database and a directory to store initialization data for the ngencerf-server applicatoin. Your directory structure should look like this:
 ```
-docker build --add-host host.docker.internal:host-gateway --tag=ngencerf-server .
+$ tree -L 1
+.
+├── data
+└── ngencerf-server
 ```
-This will load all necessary static data in the database and create a Django superuser account admin with the password admin.
 
-## Running ngenCERF-server Container
+## Running ngenCERF-server
 
-To run the ngenCERF-server container, execute the following command:
+It is recommended to use the [ngencerf-docker](https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngencerf-docker/) project to run the full ngenCERF application stack at once. However if you would like to just run the backsend services in isolation, execute the following command:
 ```
-docker run -it  --add-host host.docker.internal:host-gateway -p 8000:8000 ngencerf-server
+docker compose up
 ```
-This will give you an instance of the ngenCERF-server application running on your system listening on local port 8000.
+
+This will start instances of the following:
+- ngencerf-server, running at the address http://localhost:8000
+- PostgreSQL, running at the address localhost:5432
+
+## Troubleshooting
+
+### Forcing static data loads
+
+By default, the first time this container is run it will perform a load of all the necessary static data into the database. When complete it will write the file ../data/.ngencerf-init/.load_static. You can delete this file to force the data to be reloaded the next time your start the application.
+
+### Executing custom commands in a running container
+
+If there is a need to connect to a container to issue commands from a terminal, perform the following steps:
+1. Get a list of the running containers by executing the following command:
+```
+docker container ls
+```
+2. Attach a terminal to that container:
+```
+docker exec -it <container_id> bash
+```
+3. Execute any needed commands from that terminal.
+4. Issue the following command to disconnect:
+```
+exit
+```
 
 ## Future Improvements 
 
-- Install necessary packages from ngen-cal repo.
 - Data mounts for ngen-cal-work directory
-- Docker compose project that launces all necessary containers simultaneously.
+- Separate configuration to allow discrete production and development environments.
 
