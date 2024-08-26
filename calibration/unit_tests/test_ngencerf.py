@@ -14,9 +14,7 @@ from calibration.management.commands.init_sql import Command
 from calibration.models.gage import Gage
 from calibration.models.status import Status
 from calibration.views.common import get_run
-from rest_framework.test import force_authenticate
-from rest_framework.test import APIRequestFactory
-from rest_framework.test import force_authenticate
+from rest_framework.test import APIClient, APITestCase, force_authenticate, APIRequestFactory
 
 from calibration.enums import StatusEnum
 from calibration.models.plot_definitions import PlotDefinitions
@@ -34,7 +32,11 @@ class CerfUnitTest(TestCase):
     this by importing Import_test_data/import_complete.json file. 
     """
 
-    def setUp(self):
+    #def setUp(self):
+    @classmethod
+    def setUpClass(self):
+        super(CerfUnitTest, self).setUpClass()
+
         user = User.objects.create_user('admin', 'admin@...', 'admin')
         print(f"Username: {user.username}, email: {user.email}")
         # initialize DB static tables (call init_sql and init_gages commands)
@@ -66,6 +68,34 @@ class CerfUnitTest(TestCase):
         run.save()
 
     # Tests the /calibration/get_plot_names/ end-point
+    def test_plot_definitions_endpoint(self):
+        calibration_run_id = self.run_id
+        print(f"Executing test_plot_definitions_endpoint(): Calibration run ID = {self.run_id}")
+        client = APIClient()
+        user = User.objects.get(username='admin')
+        client.force_authenticate(user=user)
+        response = client.get(f"/calibration/get_plot_names/?calibration_run_id={calibration_run_id}")
+        # check if transaction was successful
+        self.assertEqual(response.status_code, 200)
+         
+        # assemble the expected response data
+        run, errorReturn = get_run(calibration_run_id, user, run_status=[StatusEnum.RUNNING])
+        if errorReturn:
+            return errorReturn
+
+        gage_id = run.gage.gage_id
+        print(f"test_plot_definitions_view(): Gage ID: {gage_id}")
+        plots = (
+            PlotDefinitions.objects.filter(is_active=True)
+            .annotate(filename=Concat(Value(gage_id), 'filename_mask', output_field=CharField()))
+            .values('name', 'description', 'filename')
+        )
+        expected_response = {f"calibration_run_id": calibration_run_id, "plot_list": list(plots)}
+
+        self.assertEqual(json.loads(response.content), expected_response)
+        print("test_plot_definitions_endpoint() Passed!!")
+
+    # Tests directly the calibration_plot_views.get_plot_names() view
     def test_plot_definitions_view(self):
         calibration_run_id = self.run_id
         print(f"Executing test_plot_definitions_view(): Calibration run ID = {self.run_id}")
@@ -96,4 +126,4 @@ class CerfUnitTest(TestCase):
         # verify content
         self.maxDiff = None
         self.assertEqual(json.loads(response.content), expected_response)
-        print("Test Passed!!")
+        print("test_plot_definitions_view() Passed!!")
