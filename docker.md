@@ -3,7 +3,7 @@
 ## Requirements
 
 To build and run the ngenCERF-server container, you will need the following software installed and running on your system:
-- Docker Enginer
+- Docker Engine
 - Docker Compose 
 
 You will also need files with the following credentials:
@@ -20,7 +20,7 @@ $ tree -L 1
 
 ## Running ngenCERF-server
 
-It is recommended to use the [ngencerf-docker](https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngencerf-docker/) project to run the full ngenCERF application stack at once. However if you would like to just run the backsend services in isolation, execute the following command:
+It is recommended to use the [ngencerf-docker](https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngencerf-docker/) project to run the full ngenCERF application stack at once. However, if you would like to just run the back-end services in isolation, execute the following command:
 ```
 docker compose up
 ```
@@ -42,7 +42,7 @@ After the rebuild is complete it will restart all the necessary services.
 
 ### Forcing static data loads
 
-By default, the first time this container is run it will perform a load of all the necessary static data into the database. When complete it will write the file ../data/.ngencerf-init/.load_static. You can delete this file to force the data to be reloaded the next time your start the application.
+By default, the first time this container is run it will perform a load of all the necessary static data into the database. When complete it will write the file `../data/.ngencerf-init/.load_static`. You can delete this file to force the data to be reloaded the next time your start the application.
 
 ### Executing custom commands in a running container
 
