@@ -73,7 +73,7 @@ def import_job(request):
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
         run.forcing_user_dir = validator.data.get('forcing_user_dir')
         run.forcing_dir_path = validator.data.get('forcing_dir_path')
-        observational_source_name =  validator.data.get('observational_source')
+        observational_source_name = validator.data.get('observational_source')
         run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
         run.observational_user_filename = validator.data.get('observational_user_filename')
         run.observational_file_path = validator.data.get('observational_file_path')
@@ -210,15 +210,10 @@ def import_job(request):
         run.save()
 
         imported_and_submitted = 'imported'
-<<<<<<< HEAD
-       
-        errors = None
-=======
 
         errors, config_file = ngen_cal_input.ready_to_run(run)
         errors.extend(warnings)
 
->>>>>>> f3b3390 (Testing import/export)
         if run_after_import:
             errors, config_file = ngen_cal_input.ready_to_run(run)
             if not errors:
