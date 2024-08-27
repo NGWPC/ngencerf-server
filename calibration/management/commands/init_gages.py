@@ -1,6 +1,5 @@
 import csv
 import os.path
-from pprint import pprint
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -47,7 +46,8 @@ class Command(BaseCommand):
 
         # need to get a user that is guaranteed to be there, such as admin
         user = get_user_model().objects.get(username='admin')
-        pprint(user)
+        print(f"In init_gages: username: {user.username}, email: {user.email}")
+
 
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_CONUS.csv'), conus_domain)
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_AK.csv'), alaska_domain)
@@ -158,6 +158,7 @@ class Command(BaseCommand):
         print('Creating objects.... this will take a minute or two')
         row_num = 0
         for gage in gages.values():
+            gage['created_by'] = user
             try:
                 Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
                                               **{unique_field: gage[unique_field]})
