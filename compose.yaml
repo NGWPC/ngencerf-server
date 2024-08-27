@@ -16,6 +16,7 @@ services:
       context: .
       secrets:
         - gitlab_token
+        - aws_token
     ports:
       - "8000:8000"
     volumes:
@@ -31,3 +32,6 @@ services:
 secrets:
   gitlab_token:
     file: ~/.gitlab_token
+  aws_token:
+    file: ./.aws_credentials
+

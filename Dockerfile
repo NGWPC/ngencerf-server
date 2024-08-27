@@ -47,5 +47,11 @@ COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
 COPY ./cerfServer/__.env-docker /ngencerf/ngencerf-server/cerfServer/.env
 COPY ./cerfServer/__local_settings.py /ngencerf/ngencerf-server/cerfServer/local_settings.py
 
+RUN --mount=type=secret,id=aws_token \ 
+    set -eux; \
+    \
+    mkdir --parents ~/.aws/ ; \
+    cp /run/secrets/aws_token ~/.aws/credentials 
+
 ENTRYPOINT [ "/ngencerf/ngencerf-server/runCerf.sh" ] 
 EXPOSE 8000
