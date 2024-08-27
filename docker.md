@@ -25,7 +25,7 @@ docker compose up
 
 This will start instances of the following:
 - ngencerf-server, running at the address http://localhost:8000
-- PostgreSQL, running at the address http://localhost:5432
+- PostgreSQL, running at the address localhost:5432
 
 ## Troubleshooting
 
