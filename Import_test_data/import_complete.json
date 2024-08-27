@@ -6,7 +6,7 @@
     "gage_id": "01123000",
     "forcing_source": "AORC",
     "forcing_user_dir": "/mydir/hello",
-    "observational_source": "USGS",
+    "observational_source": "Agency",
     "observational_user_filename": "01123000_hourly_discharge.csv",
     "modules": [
         "Noah-OWP-Modular",

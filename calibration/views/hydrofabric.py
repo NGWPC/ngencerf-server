@@ -11,7 +11,7 @@ from calibration.models import CalibrationParameter, ModuleOutputVariable, Calib
 from calibration.util.aws_util import download_s3, download_all_s3
 from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
     ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer
-from calibration.util.ngen_locations import observation_from_hydrofabric_dir, forcing_from_hydrofabric_dir, geopackage_dir
+from calibration.util.ngen_locations import get_observation_from_hydrofabric_dir, get_forcing_from_hydrofabric_dir, get_geopackage_directory
 from calibration.views.common import CerfException
 from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_metadata_sample_data, \
     module_sample_data, forcing_sample_data
@@ -19,8 +19,8 @@ from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, 
 logger = logging.getLogger(__name__)
 
 
-def get_geopackage_from_hydrofabric(gage_id):
-    # Get this from hydrofabric
+def get_geopackage_from_hydrofabric(run):
+    # Get this from hydrofabric and store in standard location
     # modules_request = {"gage_id": gage_id
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
     # module_data = response.json()
@@ -32,16 +32,14 @@ def get_geopackage_from_hydrofabric(gage_id):
         raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
     uri = geopackage_data['uri']
-    file_path = download_s3(uri, geopackage_dir)
-
-    return file_path
+    download_s3(uri, get_geopackage_directory(run))
 
 
 # TODO Throw exception for AWS errors and Hydrofabric errors
-def get_observational_data_from_hydrofabric(observational_source):
+def get_observational_data_from_hydrofabric(run):
     print('Getting observational data from Hydrofabric')
     # Get this from hydrofabric
-    request = {"source": observational_source.name}
+    request = {"source": run.observational_source.name}
     headers = {
         "Content-Type": "application/json"
     }
@@ -70,10 +68,10 @@ def get_observational_data_from_hydrofabric(observational_source):
     # This is a path to a single file, which we just need to download
     # bucket, key = parse_s3_uri(s3_uri)
     # filename = key.split('/')[-1]
-    download_s3(s3_uri, observation_from_hydrofabric_dir)
+    download_s3(s3_uri, get_observation_from_hydrofabric_dir(run))
 
 
-def get_forcing_data_from_hydrofabric(forcing_source):
+def get_forcing_data_from_hydrofabric(run):
     print('Getting forcing data from Hydrofabric')
     # Get this from hydrofabric
     # request = {"source": forcing_source
@@ -91,7 +89,7 @@ def get_forcing_data_from_hydrofabric(forcing_source):
     # bucket, key = parse_s3_uri(s3_uri)
     # subdir = key.split('/')[-1]
 
-    download_all_s3(s3_uri, forcing_from_hydrofabric_dir)
+    download_all_s3(s3_uri, get_forcing_from_hydrofabric_dir(run))
 
 
 def get_module_data_from_hydrofabric(run, modules):

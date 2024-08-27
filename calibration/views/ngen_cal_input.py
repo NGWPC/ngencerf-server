@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 
@@ -9,10 +10,14 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    PARQUET_DIR, get_main_dir, get_forcing_directory, get_observation_directory, forcing_from_hydrofabric_dir, observation_from_hydrofabric_dir
-from calibration.views.calibration_run_views import subset_by_time_range
+    PARQUET_DIR, get_main_dir, get_forcing_dir, get_observation_dir, \
+    get_observation_from_hydrofabric_file, get_forcing_from_hydrofabric_dir, get_geopackage_directory, get_geopackage_file, get_observation_file
+from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
-from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
+from calibration.views.hydrofabric import get_geopackage_from_hydrofabric
+
+logger = logging.getLogger(__name__)
+
 
 config_template = {
 
@@ -116,11 +121,11 @@ def ready_to_run(run, build=None):
                 if not is_forcing_upload:
                     if build:
                         # for non-uploaded data, we need to subset
-                        source_dir = os.path.join(forcing_from_hydrofabric_dir, f'Gage_{run.gage.gage_id}')
-                        subset_by_time_range(source_dir, get_forcing_directory(run),
-                                             DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                        source_dir = get_forcing_from_hydrofabric_dir(run)
+                        subset_directory_by_time_range(source_dir, get_forcing_dir(run),
+                                                       DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
-                datafile['forcing_dir'] = get_forcing_directory(run)
+                datafile['forcing_dir'] = get_forcing_dir(run)
 
         if not run.observational_source:
             messages.append('observational source must be specified')
@@ -132,18 +137,18 @@ def ready_to_run(run, build=None):
                 if not is_observational_upload:
                     if build:
                         # For non-uploaded data, we need to subset
-                        source_dir = os.path.join(observation_from_hydrofabric_dir, f'{run.gage_gage_id}_hourly_discharge.csv')
-                        subset_by_time_range(source_dir, get_observation_directory(run),
+                        source_file = get_observation_from_hydrofabric_file(run)
+                        subset_by_time_range(source_file, get_observation_file(run),
                                              DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
-                datafile['obs_dir'] = get_observation_directory(run)
+                datafile['obs_dir'] = get_observation_dir(run)
 
-        if not run.hydrofabric_gpkg_path:
+        if not os.path.exists(get_geopackage_file(run)):
             # Might have been imported so we never called hydrofabric, or perhaps got an error
             get_geopackage_from_hydrofabric(run.gage.gage_id)
             # messages.append('Error getting geopackage from Hydrofabric')
         else:
-            datafile['hydrofab_dir'] = os.path.dirname(run.hydrofabric_gpkg_path)
+            datafile['hydrofab_dir'] = get_geopackage_directory(run)
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
@@ -300,7 +305,7 @@ def ready_to_run(run, build=None):
 def build_config(config, directory):
     config_file = os.path.join(directory, 'input.config')
 
-    print('saving config to', config_file)
+    logger.info('saving config to', config_file)
     toml_string = toml.dumps(config)
 
     # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
@@ -310,5 +315,3 @@ def build_config(config, directory):
         file.write(modified_toml_string)
 
     return config_file
-
-

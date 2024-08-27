@@ -14,7 +14,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_forcing_directory, get_observation_directory
+from calibration.util.ngen_locations import get_forcing_dir, get_observation_dir, get_observation_file, get_geopackage_file
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -80,31 +80,31 @@ def import_job(request):
 
         get_geopackage_from_hydrofabric(gage_id)
         if run.observational_source and run.observational_source != ObservationalSourceEnum.UPLOAD.value:
-            get_observational_data_from_hydrofabric(run.observational_source)
+            get_observational_data_from_hydrofabric(run)
 
         if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
-            get_forcing_data_from_hydrofabric(run.forcing_source)
+            get_forcing_data_from_hydrofabric(run)
 
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
+            # This is the location of the forcing data on the job we exported from
             if forcing_dir_path and os.path.exists(forcing_dir_path):
                 # Need to copy user-loaded files to our instance directory
-                new_forcing_dir = get_forcing_directory(run)
+                new_forcing_dir = get_forcing_dir(run)
                 copy_directory(run.forcing_dir_path, new_forcing_dir)
             else:
                 warnings.append(f"Unable to access user uploaded forcing data from '{forcing_dir_path}'")
-                run.forcing_dir_path = None
                 run.forcing_user_dir = None
 
         if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
+            # This is the location of the observation data on the job we exported from
             if observational_file_path and os.path.exists(observational_file_path):
                 # Need to copy user-loaded files to our instance directory
-                new_observational_dir = get_observation_directory(run)
+                new_observational_dir = get_observation_dir(run)
                 copy_file_to_directory(run.observational_file_path, new_observational_dir)
             else:
                 warnings.append(f"Unable to access user uploaded observational data from '{observational_file_path}'")
 
                 run.observational_file_path = None
-                run.observational_user_dir = None
 
         #############################
         # Formulations
@@ -272,27 +272,6 @@ def export_job(request):
     return Response(response_validator.data)
 
 
-# def export_job2(run, data):
-#     # calibration_run_data = load_calibration_run_data(run)
-#     calibration_run_data = data.copy()
-#
-#     # Certain things don't need to be returned to the user and are only for the UI
-#     # I want the output of export to also be valid input for import.
-#     # Certain information that is useful to the user is not valid input, so we'll put that in the metaata
-#     metadata = {'source_calibration_run_id': calibration_run_data.pop('calibration_run_id'),
-#                 'time_range': calibration_run_data.pop('time_range')}
-#     calibration_run_data['metadata'] = metadata
-#
-#     calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
-#     calibration_run_data.pop('gage')
-#     calibration_run_data.pop('status')
-#
-#     calibration_run_data['parameters'] = get_parameters_for_export(calibration_run_data['modules'])
-#     calibration_run_data.pop('module_metadata')
-#
-#     return calibration_run_data
-
-
 def load_calibration_run_data(run, export: bool = None):
     if export is None:
         export = False
@@ -310,6 +289,9 @@ def load_calibration_run_data(run, export: bool = None):
         metadata['time_range'] = time_range
         calibration_run_data['gage_id'] = run.gage.gage_id
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
+        calibration_run_data['forcing_dir_path'] = get_forcing_dir(run)
+        calibration_run_data['observational_file_path'] = get_observation_file(run)
+        calibration_run_data['geopackage_path'] = get_geopackage_file(run)
 
     else:
         calibration_run_data['calibration_run_id'] = run.id
@@ -320,8 +302,8 @@ def load_calibration_run_data(run, export: bool = None):
         calibration_run_data['status'] = run.status.name
 
         # TODO This should be the map file, which might need to be regenerated
-        if run.hydrofabric_gpkg_path:
-            geopackage_png = gpkg_to_png_selected_layers(run.hydrofabric_gpkg_path)
+        if os.path.exists(get_geopackage_file(run)):
+            geopackage_png = gpkg_to_png_selected_layers(get_geopackage_file(run))
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
             geopackage_image_url = f'data:image/png;base64,{base64_str}'
             calibration_run_data['geopackage_image_url'] = geopackage_image_url

@@ -327,7 +327,7 @@ class UploadForcingSerializer(BaseSerializer):
 
     def validate_forcing_files(self, value):
         request = self.context.get('request')
-        files = request.FILES.getlist('observational_file')
+        files = request.FILES.getlist('forcing_files')
         if len(files) == 0:
             raise serializers.ValidationError("Forcing files must be uploaded")
         return value
@@ -335,6 +335,7 @@ class UploadForcingSerializer(BaseSerializer):
 
 class UploadObservationalSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+    observational_user_filename = serializers.CharField(required=True)
     observational_file = serializers.FileField(required=True)
 
     def validate_observational_file(self, value):
@@ -642,8 +643,11 @@ class ExportResponseSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[observationSourceValidator])
     observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
     use_sloth = serializers.BooleanField(default=False)

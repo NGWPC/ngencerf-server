@@ -31,7 +31,7 @@ def download_s3(uri, save_dir):
 
     # Parse the S3 URI to extract the bucket and key
     bucket, key = parse_s3_uri(uri)
-    logger.info(f'download_s3: downloading {bucket} {key} to {save_dir}')
+    logger.info(f'download_s3: downloading {uri} to {save_dir}')
 
     filename = key.split('/')[-1]
     local_file_path = os.path.join(save_dir, filename)
@@ -60,7 +60,7 @@ def download_all_s3(uri, save_dir):
 
     # Parse the S3 URI to extract the bucket and key
     bucket, key = parse_s3_uri(uri)
-    logger.info(f'download_all_s3: downloading {bucket} {key} to {save_dir}')
+    logger.info(f'download_all_s3: downloading {uri} to {save_dir}')
 
     # Extract the subdirectory name from the key and update save_dir
     subdir = key.split('/')[-2]
