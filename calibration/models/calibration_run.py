@@ -1,8 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
-from django.db.models import RESTRICT
 
-from calibration.models.status import Status
 from calibration.models.base_model import BaseModel
 from calibration.models.gage import Gage
 from calibration.models.module_output_variable import ModuleOutputVariable

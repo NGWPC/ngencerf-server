@@ -3,7 +3,7 @@ import re
 from datetimerange import DateTimeRange
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
-from rest_framework.fields import empty, DictField
+from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \

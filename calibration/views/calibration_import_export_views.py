@@ -23,7 +23,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
-    save_parameters, get_module_data_from_hydrofabric, get_time_range, get_parameters_and_output_variables
+    save_parameters, get_module_data_from_hydrofabric, get_time_range
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_geopackage_from_hydrofabric, get_observational_data_from_hydrofabric, get_forcing_data_from_hydrofabric
 

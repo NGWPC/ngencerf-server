@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.models.status import Status
-from calibration.util.calibration_validators import GenericMessageResponseSerializer, GetJobsResponseSerializer, FooterResponseSerializer, \
+from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data
