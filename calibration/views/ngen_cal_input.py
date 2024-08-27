@@ -9,7 +9,7 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    PARQUET_DIR, get_main_dir
+    PARQUET_DIR, get_main_dir, get_forcing_directory, get_observation_directory, forcing_from_hydrofabric_dir, observation_from_hydrofabric_dir
 from calibration.views.calibration_run_views import subset_by_time_range
 from calibration.views.common import CerfException
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
@@ -109,43 +109,34 @@ def ready_to_run(run, build=None):
         if not run.forcing_source:
             messages.append('forcing source must be specified')
         else:
-            if run.forcing_source.name == ForcingSourceEnum.UPLOAD.value and (not run.forcing_dir_path or not run.forcing_user_dir):
+            is_forcing_upload = run.forcing_source.name == ForcingSourceEnum.UPLOAD.value
+            if is_forcing_upload and not run.forcing_user_dir:
                 messages.append('forcing data must be uploaded')
-            elif run.forcing_source.name != ForcingSourceEnum.UPLOAD.value and not run.forcing_dir_path:
-                # TODO need to fix this up after Hydrofabric stuff is done
-                # Might have been imported so we never called hydrofabric, or perhaps got an error
-                get_forcing_data_from_hydrofabric(run.forcing_source)
-                # messages.append('Error getting forcing path from Hydrofabric')
             else:
-                if run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
+                if not is_forcing_upload:
                     if build:
                         # for non-uploaded data, we need to subset
-                        output_file_path = os.path.join(get_main_dir(run), 'forcing', run.gage.gage_id)
-                        # TODO The paths here are not right
-                        subset_by_time_range(run.observational_file_path, output_file_path,
+                        source_dir = os.path.join(forcing_from_hydrofabric_dir, f'Gage_{run.gage.gage_id}')
+                        subset_by_time_range(source_dir, get_forcing_directory(run),
                                              DateTimeRange(run.calibration_start_period, run.calibration_end_period))
-                datafile['forcing_dir'] = run.forcing_dir_path
+
+                datafile['forcing_dir'] = get_forcing_directory(run)
 
         if not run.observational_source:
             messages.append('observational source must be specified')
         else:
-            if run.observational_source.name == ObservationalSourceEnum.UPLOAD.value and (
-                    not run.observational_file_path or not run.observational_user_filename):
+            is_observational_upload = run.observational_source.name == ObservationalSourceEnum.UPLOAD.value
+            if is_observational_upload:
                 messages.append('observational data must be uploaded')
-            elif run.observational_source.name != ObservationalSourceEnum.UPLOAD.value and not run.observational_file_path:
-                # TODO need to fix this up after Hydrofabric stuff is done
-                # Might have been imported so we never called hydrofabric, or perhaps got an error
-                get_observational_data_from_hydrofabric(run.observational_source)
-                # messages.append('Error getting observational path from Hydrofabric')
             else:
-                if run.observational_source.name != ObservationalSourceEnum.UPLOAD.value:
+                if not is_observational_upload:
                     if build:
                         # For non-uploaded data, we need to subset
-                        output_file_path = os.path.join(get_main_dir(run), 'observation')
-                        # TODO The paths here are not right
-                        subset_by_time_range(run.observational_file_path, output_file_path,
+                        source_dir = os.path.join(observation_from_hydrofabric_dir, f'{run.gage_gage_id}_hourly_discharge.csv')
+                        subset_by_time_range(source_dir, get_observation_directory(run),
                                              DateTimeRange(run.calibration_start_period, run.calibration_end_period))
-                datafile['obs_dir'] = os.path.dirname(run.observational_file_path)
+
+                datafile['obs_dir'] = get_observation_directory(run)
 
         if not run.hydrofabric_gpkg_path:
             # Might have been imported so we never called hydrofabric, or perhaps got an error

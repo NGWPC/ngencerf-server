@@ -72,11 +72,11 @@ def import_job(request):
         forcing_source_name = validator.data.get('forcing_source')
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
         run.forcing_user_dir = validator.data.get('forcing_user_dir')
-        run.forcing_dir_path = validator.data.get('forcing_dir_path')
+        forcing_dir_path = validator.data.get('forcing_dir_path')
         observational_source_name = validator.data.get('observational_source')
         run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
         run.observational_user_filename = validator.data.get('observational_user_filename')
-        run.observational_file_path = validator.data.get('observational_file_path')
+        observational_file_path = validator.data.get('observational_file_path')
 
         get_geopackage_from_hydrofabric(gage_id)
         if run.observational_source and run.observational_source != ObservationalSourceEnum.UPLOAD.value:
@@ -86,22 +86,22 @@ def import_job(request):
             get_forcing_data_from_hydrofabric(run.forcing_source)
 
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
-            if run.forcing_dir_path and os.path.exists(run.forcing_dir_path):
+            if forcing_dir_path and os.path.exists(forcing_dir_path):
                 # Need to copy user-loaded files to our instance directory
                 new_forcing_dir = get_forcing_directory(run)
                 copy_directory(run.forcing_dir_path, new_forcing_dir)
             else:
-                warnings.append(f"Unable to access user uploaded forcing data from '{run.forcing_dir_path}'")
+                warnings.append(f"Unable to access user uploaded forcing data from '{forcing_dir_path}'")
                 run.forcing_dir_path = None
                 run.forcing_user_dir = None
 
         if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
-            if run.observational_file_path and os.path.exists(run.observational_file_path):
+            if observational_file_path and os.path.exists(observational_file_path):
                 # Need to copy user-loaded files to our instance directory
                 new_observational_dir = get_observation_directory(run)
                 copy_file_to_directory(run.observational_file_path, new_observational_dir)
             else:
-                warnings.append(f"Unable to access user uploaded observational data from '{run.observational_file_path}'")
+                warnings.append(f"Unable to access user uploaded observational data from '{observational_file_path}'")
 
                 run.observational_file_path = None
                 run.observational_user_dir = None
