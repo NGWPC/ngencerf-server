@@ -6,7 +6,9 @@ To build and run the ngenCERF-server container, you will need the following soft
 - Docker Enginer
 - Docker Compose 
 
-You will also need a file containing your NGWPC gitlab Personal Access Token (PAT) written at ~/.gitlab_token.
+You will also need files with the following credentials:
+- AWS S3 credentials: saved to .aws_credentials
+- NGWPC gitlab Personal Access Token (PAT): saved to ~/.gitlab_token.
 
 This will also create directories to persist data for the database and a directory to store initialization data for the ngencerf-server applicatoin. Your directory structure should look like this:
 ```
@@ -28,6 +30,15 @@ This will start instances of the following:
 - PostgreSQL, running at the address localhost:5432
 
 ## Troubleshooting
+
+### Forcing a container rebuild
+
+If for some reason you don't see code updates being pulled into your ngencerf-server container run the following command to force a rebuild of the container:
+```
+docker compose up --build
+```
+
+After the rebuild is complete it will restart all the necessary services.
 
 ### Forcing static data loads
 

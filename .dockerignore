@@ -1,3 +1,7 @@
 .git
 .gitignore
+
+.aws_credentials
+.gitlab_token
+
 data

@@ -19,4 +19,7 @@ Thumbs_db
 # Pyenv file
 .python-version
 
+# docker artifacts
 data
+.aws_credentials
+.gitlab_token
