@@ -173,7 +173,7 @@ def save_gage_tab(request):
             geopackage_path = save_geopackage_path(run, gage_id)
         except ClientError as e:
             # TODO Check for other errors
-            return Response(f'Error downloading geopackage from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
 
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
@@ -188,13 +188,13 @@ def save_gage_tab(request):
             if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
                 get_observational_data_from_hydrofabric(observational_source_name)
         except ClientError as e:
-            return Response(f'Error downloading observational data from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading observational data from AWS.  Check your AWS credentials - {e}')
 
         try:
             if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
                 get_forcing_data_from_hydrofabric(forcing_source_name)
         except ClientError as e:
-            return Response(f'Error downloading forcing data from AWS.  Check your credentials - {e}')
+            return Response(f'Error downloading forcing data from AWS.  Check your AWS credentials - {e}')
 
     with transaction.atomic():
         run.save()
@@ -270,8 +270,7 @@ def upload_observational_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.observational_source and run.observational_source.name != ObservationalSourceEnum.UPLOAD.value:
-        return ResponseError('Observational file upload only allowed if ObservationalSource is set to UPLOAD')
+    run.observational_source = ObservationalSource.objects.get(ObservationalSourceEnum.UPLOAD)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
     observational_dir = get_observation_directory(run)
@@ -335,8 +334,7 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
-        return ResponseError('Forcing files upload only allowed if ForcingSource is set to UPLOAD')
+    run.forcing_source = ForcingSource.objects.get(ForcingSourceEnum.UPLOAD)
 
     # Validate the file keys and how many there are
     key = 'forcing_files'

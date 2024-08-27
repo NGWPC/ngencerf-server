@@ -23,7 +23,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
-    save_parameters, get_module_data_from_hydrofabric, get_time_range, get_parameters_and_output_variables
+    save_parameters, get_module_data_from_hydrofabric, get_time_range
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_geopackage_from_hydrofabric, get_observational_data_from_hydrofabric, get_forcing_data_from_hydrofabric
 
@@ -73,7 +73,7 @@ def import_job(request):
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
         run.forcing_user_dir = validator.data.get('forcing_user_dir')
         run.forcing_dir_path = validator.data.get('forcing_dir_path')
-        observational_source_name =  validator.data.get('observational_source')
+        observational_source_name = validator.data.get('observational_source')
         run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
         run.observational_user_filename = validator.data.get('observational_user_filename')
         run.observational_file_path = validator.data.get('observational_file_path')
@@ -210,15 +210,10 @@ def import_job(request):
         run.save()
 
         imported_and_submitted = 'imported'
-<<<<<<< HEAD
-       
-        errors = None
-=======
 
         errors, config_file = ngen_cal_input.ready_to_run(run)
         errors.extend(warnings)
 
->>>>>>> f3b3390 (Testing import/export)
         if run_after_import:
             errors, config_file = ngen_cal_input.ready_to_run(run)
             if not errors:

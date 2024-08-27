@@ -54,15 +54,15 @@ def handle_exceptions(view_func):
         try:
             return view_func(request, *args, **kwargs)
         except ParseError as e:
-            message = f"{str(e)} - while running {view_func.__module__}.{view_func.__name__}"
+            message = f"{type(e).__name__} - {str(e)} - while running {view_func.__module__}.{view_func.__name__}"
             original_logger.exception(message)
             return ResponseError(message, response_type='parse_error')
         except CerfException as e:
-            message = f"{str(e)} - while running {view_func.__module__}.{view_func.__name__}"
+            message = f"{type(e).__name__} - {str(e)} - while running {view_func.__module__}.{view_func.__name__}"
             original_logger.exception(message)
             return ResponseError(message, response_type='error')
         except Exception as e:
-            message = f"{str(e)} - while running {view_func.__module__}.{view_func.__name__}"
+            message = f"{type(e).__name__} - {str(e)} - while running {view_func.__module__}.{view_func.__name__}"
             original_logger.exception(message)
             return ResponseError(message, response_type='exception')
 

@@ -2,28 +2,20 @@ import json
 import os
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.db.models import Value, CharField
 from django.db.models.functions import Concat
 from django.forms import CharField
 from django.test import TestCase
-import json
-
-from requests import Response
-from calibration.enums import StatusEnum
-from calibration.management.commands.init_sql import Command
-from calibration.models.gage import Gage
-from calibration.models.status import Status
-from calibration.views.common import get_run
-from rest_framework.test import APIClient, APITestCase, force_authenticate, APIRequestFactory
+from rest_framework.test import APIClient, force_authenticate, APIRequestFactory
 
 from calibration.enums import StatusEnum
 from calibration.models.plot_definitions import PlotDefinitions
 from calibration.models.status import Status
 from calibration.views import calibration_import_export_views, calibration_plot_views
-from django.db.models.functions import Concat
-from django.db.models import Value, CharField
-from cerfServer import settings 
-from django.core.management import call_command
+from calibration.views.common import get_run
+from cerfServer import settings
+
 
 class CerfUnitTest(TestCase):
     """
@@ -32,7 +24,7 @@ class CerfUnitTest(TestCase):
     this by importing Import_test_data/import_complete.json file. 
     """
 
-    #def setUp(self):
+    # def setUp(self):
     @classmethod
     def setUpClass(self):
         super(CerfUnitTest, self).setUpClass()
@@ -77,7 +69,7 @@ class CerfUnitTest(TestCase):
         response = client.get(f"/calibration/get_plot_names/?calibration_run_id={calibration_run_id}")
         # check if transaction was successful
         self.assertEqual(response.status_code, 200)
-         
+
         # assemble the expected response data
         run, errorReturn = get_run(calibration_run_id, user, run_status=[StatusEnum.RUNNING])
         if errorReturn:
@@ -101,7 +93,7 @@ class CerfUnitTest(TestCase):
         print(f"Executing test_plot_definitions_view(): Calibration run ID = {self.run_id}")
         factory = APIRequestFactory()
         user = User.objects.get(username='admin')
-        if (user == None):
+        if not user:
             user = User.objects.create_user('admin', 'test@...', 'tester')
         request = factory.get(f"/calibration/get_plot_names/?calibration_run_id={calibration_run_id}")
         force_authenticate(request, user=user)
