@@ -477,10 +477,18 @@ class UploadUserParameterFile(BaseSerializer):
         return value
 
 
+class ParameterFileSerializer(BaseSerializer):
+    param = serializers.CharField(required=True)
+    min = serializers.FloatField(required=True)
+    max = serializers.FloatField(required=True)
+    init = serializers.FloatField(required=True)
+    model = serializers.CharField(required=True)
+
+
 class UserParameterFileUploadResponse(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
-    user_parameter_file = serializers.ListField(required=True)
+    user_parameter_file = serializers.ListField(child=ParameterFileSerializer(), required=True)
 
 
 # Output variables from Hydrofabric
