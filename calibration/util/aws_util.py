@@ -3,6 +3,9 @@ import os
 
 import boto3
 
+from calibration.views.common import CerfException
+from cerfServer.local_settings import HYDROFABRIC_BUCKET, HYDROFABRIC_BUCKET_MOUNT_POINT
+
 logger = logging.getLogger(__name__)
 logging.getLogger('boto').setLevel(logging.INFO)
 
@@ -87,3 +90,16 @@ def download_all_s3(uri, save_dir):
             logger.info(f'download_all_s3: {uri} downloaded to {local_file_path}')
             s3_client.download_file(bucket, s3_file, local_file_path)
     logger.info(f"Downloaded files to {save_dir}: {', '.join(os.listdir(save_dir))}")
+
+
+def convert_s3_uri_to_fs(uri):
+    """
+    Until Hydrofabric gives ua a file path, convert the S3 uri to filepath
+    :param uri:
+    :return:file spec of the locally mounted bucket
+    """
+    bucket, key = parse_s3_uri(uri)
+    if bucket != HYDROFABRIC_BUCKET:
+        raise CerfException(f'Unexpected bucket {bucket}')
+
+    return os.path.join(HYDROFABRIC_BUCKET_MOUNT_POINT, key)

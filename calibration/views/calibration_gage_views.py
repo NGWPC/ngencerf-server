@@ -170,7 +170,7 @@ def save_gage_tab(request):
             return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
         try:
-            get_geopackage_from_hydrofabric(gage_id)
+            get_geopackage_from_hydrofabric(run)
         except ClientError as e:
             # TODO Check for other errors
             return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')

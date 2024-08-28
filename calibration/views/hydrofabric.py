@@ -8,7 +8,7 @@ from django.db import transaction
 from rest_framework import status
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation
-from calibration.util.aws_util import download_s3, download_all_s3
+from calibration.util.aws_util import download_s3, download_all_s3, convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
     ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer
 from calibration.util.ngen_locations import get_observation_from_hydrofabric_dir, get_forcing_from_hydrofabric_dir, get_geopackage_directory
@@ -31,8 +31,10 @@ def get_geopackage_from_hydrofabric(run):
         logger.debug(validator.errors)
         raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    uri = geopackage_data['uri']
-    download_s3(uri, get_geopackage_directory(run))
+    s3_uri = geopackage_data['uri']
+    run.hydrofabric_gpkg_path = convert_s3_uri_to_fs(s3_uri)
+    print('setting run.hydrofabric_gpkg_path to', run.hydrofabric_gpkg_path)
+    # download_s3(s3_uri, get_geopackage_directory(run))
 
 
 # TODO Throw exception for AWS errors and Hydrofabric errors
@@ -65,10 +67,9 @@ def get_observational_data_from_hydrofabric(run):
 
     s3_uri = validator.data.get('uri')
 
-    # This is a path to a single file, which we just need to download
-    # bucket, key = parse_s3_uri(s3_uri)
-    # filename = key.split('/')[-1]
-    download_s3(s3_uri, get_observation_from_hydrofabric_dir(run))
+    run.observational_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
+    print('setting run.observational_hydrofabric_file_path to', run.observational_hydrofabric_file_path)
+    # download_s3(s3_uri, get_observation_from_hydrofabric_dir(run))
 
 
 def get_forcing_data_from_hydrofabric(run):
@@ -89,7 +90,9 @@ def get_forcing_data_from_hydrofabric(run):
     # bucket, key = parse_s3_uri(s3_uri)
     # subdir = key.split('/')[-1]
 
-    download_all_s3(s3_uri, get_forcing_from_hydrofabric_dir(run))
+    run.forcing_hydrofabric_dir_path = convert_s3_uri_to_fs(s3_uri)
+    print('setting run.forcing_hydrofabric_dir_path to', run.forcing_hydrofabric_dir_path)
+    # download_all_s3(s3_uri, get_forcing_from_hydrofabric_dir(run))
 
 
 def get_module_data_from_hydrofabric(run, modules):
