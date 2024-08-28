@@ -32,17 +32,18 @@ def get_geopackage_file(run):
     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage', f'gauge_{run.gage.gage_id}.gpkg')
 
 
-def get_forcing_from_hydrofabric_dir(run):
-    return os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing_from_hydrofabric')
-
-
-def get_observation_from_hydrofabric_dir(run):
-    return os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation_from_hydrofabric')
-
-
-def get_observation_from_hydrofabric_file(run):
-    return os.path.join(get_observation_from_hydrofabric_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')
-
+#
+# def get_forcing_from_hydrofabric_dir(run):
+#     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing_from_hydrofabric')
+#
+#
+# def get_observation_from_hydrofabric_dir(run):
+#     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation_from_hydrofabric')
+#
+#
+# def get_observation_from_hydrofabric_file(run):
+#     return os.path.join(get_observation_from_hydrofabric_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')
+#
 
 def get_main_dir(run: CalibrationRun) -> str:
     return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')

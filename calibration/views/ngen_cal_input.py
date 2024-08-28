@@ -11,13 +11,12 @@ from calibration.models import CalibrationOptimizationInput, Status, Calibration
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_main_dir, get_forcing_dir, get_observation_dir, \
-    get_observation_from_hydrofabric_file, get_forcing_from_hydrofabric_dir, get_geopackage_directory, get_geopackage_file, get_observation_file
+    get_geopackage_directory, get_geopackage_file, get_observation_file
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
 from calibration.views.hydrofabric import get_geopackage_from_hydrofabric
 
 logger = logging.getLogger(__name__)
-
 
 config_template = {
 
@@ -121,7 +120,7 @@ def ready_to_run(run, build=None):
                 if not is_forcing_upload:
                     if build:
                         # for non-uploaded data, we need to subset
-                        source_dir = get_forcing_from_hydrofabric_dir(run)
+                        source_dir = run.forcing_hydrofabric_dir_path
                         subset_directory_by_time_range(source_dir, get_forcing_dir(run),
                                                        DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
@@ -137,7 +136,7 @@ def ready_to_run(run, build=None):
                 if not is_observational_upload:
                     if build:
                         # For non-uploaded data, we need to subset
-                        source_file = get_observation_from_hydrofabric_file(run)
+                        source_file = run.observational_hydrofabric_file_path
                         subset_by_time_range(source_file, get_observation_file(run),
                                              DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 

@@ -15,10 +15,8 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import CalibrationFormulation, CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
-    GenericResponseSerializer, ErrorResponseSerializer, \
-    UploadUserParameterFile, UserParameterFileUploadResponse
-from calibration.util.ngen_locations import get_observation_file, \
-    get_observation_from_hydrofabric_file, get_forcing_dir, get_forcing_from_hydrofabric_dir
+    GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
+from calibration.util.ngen_locations import get_observation_file, get_forcing_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
@@ -132,15 +130,15 @@ def get_time_range(run):
     observation_path = (
         get_observation_file(run) if run.observational_source.name == ObservationalSourceEnum.UPLOAD.name and os.path.exists(
             get_observation_file(run))
-        else get_observation_from_hydrofabric_file(run) if run.observational_source.name != ObservationalSourceEnum.UPLOAD.name and os.path.exists(
-            get_observation_from_hydrofabric_file(run))
+        else run.observational_hydrofabric_file_path if run.observational_source.name != ObservationalSourceEnum.UPLOAD.name and os.path.exists(
+            run.observational_hydrofabric_file_path)
         else None
     )
 
     forcing_path = (
         get_forcing_dir(run) if run.forcing_source.name == ForcingSourceEnum.UPLOAD.name and os.path.exists(get_forcing_dir(run))
-        else get_forcing_from_hydrofabric_dir(run) if run.forcing_source.name != ForcingSourceEnum.UPLOAD.name and os.path.exists(
-            get_forcing_from_hydrofabric_dir(run))
+        else run.forcing_hydrofabric_dir_path if run.forcing_source.name != ForcingSourceEnum.UPLOAD.name and os.path.exists(
+            run.forcing_hydrofabric_dir_path)
         else None
     )
 
