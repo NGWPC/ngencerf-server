@@ -112,9 +112,9 @@ Use these recommended directory names to avoid having to change your settings.
 
 
 * Create the ngen-cal virtual environment.  This directory goes into `settings.py` as `NGEN_CAL_VENV`.   Suggested location is `~/ngen-cal-work/venv`
-* Clone ngen-cal from Gitlab.  This directory goes into `settings.py` as `NGEN_CAL_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen`
+* Clone ngen-cal from Gitlab.  This directory goes into `settings.py` as `NGEN_CAL_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen-cal`
 * Follow instructions for installing ngen-cal
-* Clone ngen from Gitlab.  This directory goes into `settings.py` as `NGEN_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen-cal`
+* Clone ngen from Gitlab.  This directory goes into `settings.py` as `NGEN_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen`
 * Follow instructions for installing ngen
 * It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
 * Define a directory in `settings.py` where all the ngen-cal runs will live called `NGEN_CAL_RUN_DIR`.  Suggested location is `~/ngen-cal-work/run_calib`

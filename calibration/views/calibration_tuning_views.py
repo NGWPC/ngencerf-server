@@ -216,7 +216,7 @@ def save_tuning_tab(request):
 @extend_schema(
     request=UploadUserParameterFile,
     responses={
-        200: GenericResponseSerializer,
+        200: UserParameterFileUploadResponse,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
