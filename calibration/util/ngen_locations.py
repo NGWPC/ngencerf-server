@@ -55,10 +55,10 @@ def get_forcing_dir(run: CalibrationRun) -> str:
 
 
 # Job-specific observation directory
-def get_observation_dir(run: CalibrationRun) -> str:
+def get_observational_dir(run: CalibrationRun) -> str:
     return os.path.join(get_main_dir(run), 'observation')
 
 
 # Job-specific observation file
-def get_observation_file(run: CalibrationRun) -> str:
-    return os.path.join(get_observation_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')
+def get_observational_file(run: CalibrationRun) -> str:
+    return os.path.join(get_observational_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')

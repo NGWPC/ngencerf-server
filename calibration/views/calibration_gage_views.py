@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_observation_dir, get_forcing_dir, get_observation_file, get_geopackage_file
+from calibration.util.ngen_locations import get_observational_dir, get_forcing_dir, get_observational_file, get_geopackage_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
@@ -223,8 +223,8 @@ def save_gage(run, gage_id):
                 run.forcing_user_dir = None
 
                 if run.observational_file_path:
-                    os.remove(get_observation_file(run))
-                run.observational_user_filename = None
+                    os.remove(get_observational_file(run))
+                run.observational_user_file_path = None
 
             run.gage = gage
     return gage
@@ -254,7 +254,7 @@ def upload_observational_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    observational_user_filename = validator.data.get('observational_user_filename')
+    observational_user_file_path = validator.data.get('observational_user_file_path')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -263,14 +263,14 @@ def upload_observational_data(request):
     run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
-    observational_dir = get_observation_dir(run)
+    observational_dir = get_observational_dir(run)
     fs = FileSystemStorage(location=observational_dir)
 
     # Make sure file doesn't exist
     files = request.FILES.getlist('observational_file')
 
     observational_file = files[0]
-    run.observational_user_filename = observational_user_filename
+    run.observational_user_file_path = observational_user_file_path
 
     fs.save(observational_file.name, observational_file)
 

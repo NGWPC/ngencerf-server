@@ -32,7 +32,7 @@ fusermount -u ~/s3-ngwpc-dev
 Enter this information in local_settings.py
 ```
 HYDROFABRIC_BUCKET = 'ngwpc-dev'
-HYDROFABRIC_BUCKET_MOUNT_POINT = '~/s3/ngwpc-dev'
+HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
 ```
 
 

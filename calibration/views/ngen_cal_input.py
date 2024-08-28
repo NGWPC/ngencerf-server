@@ -10,8 +10,8 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    PARQUET_DIR, get_main_dir, get_forcing_dir, get_observation_dir, \
-    get_geopackage_directory, get_geopackage_file, get_observation_file
+    PARQUET_DIR, get_main_dir, get_forcing_dir, get_observational_dir, \
+    get_geopackage_directory, get_geopackage_file, get_observational_file
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
 from calibration.views.hydrofabric import get_geopackage_from_hydrofabric
@@ -137,10 +137,10 @@ def ready_to_run(run, build=None):
                     if build:
                         # For non-uploaded data, we need to subset
                         source_file = run.observational_hydrofabric_file_path
-                        subset_by_time_range(source_file, get_observation_file(run),
+                        subset_by_time_range(source_file, get_observational_file(run),
                                              DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
-                datafile['obs_dir'] = get_observation_dir(run)
+                datafile['obs_dir'] = get_observational_dir(run)
 
         if not os.path.exists(get_geopackage_file(run)):
             # Might have been imported so we never called hydrofabric, or perhaps got an error

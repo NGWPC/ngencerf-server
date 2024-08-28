@@ -35,7 +35,7 @@ class CalibrationRun(BaseModel):
     forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT)
     # observational_file_path = models.TextField(null=True)
     observational_hydrofabric_file_path = models.TextField(null=True)
-    observational_user_filename = models.TextField(null=True)
+    observational_user_file_path = models.TextField(null=True)
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
     user_parameter_filename = models.TextField(null=True)
     realization_filename = models.TextField(null=True)
