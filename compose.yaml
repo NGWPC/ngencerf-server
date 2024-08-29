@@ -21,6 +21,7 @@ services:
       - "8000:8000"
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
+      - ../data/ngen-cal-data:/ngencerf/data/
     environment:
       - CERF_SERVER_DATABASE_NAME=postgres
       - CERF_SERVER_DATABASE_USER=postgres

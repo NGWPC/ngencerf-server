@@ -10,11 +10,18 @@ You will also need files with the following credentials:
 - AWS S3 credentials: saved to .aws_credentials
 - NGWPC gitlab Personal Access Token (PAT): saved to ~/.gitlab_token.
 
-This will also create directories to persist data for the database and a directory to store initialization data for the ngencerf-server applicatoin. Your directory structure should look like this:
+This will also create directories to persist data for:
+1. the PostgreSQL database
+1. initialization data for the ngencerf-server application. 
+1. data from the ngen-cal tool
+Your directory structure should look like this:
 ```
-$ tree -L 1
+$ tree
 .
 ├── data
+│   ├── db
+│   ├── ngen-cal-data
+|   └── .ngencerf-init
 └── ngencerf-server
 ```
 
