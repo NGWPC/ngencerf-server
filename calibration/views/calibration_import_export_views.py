@@ -10,6 +10,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria, ForcingSource, ObservationalSource
+from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
@@ -310,9 +311,18 @@ def load_calibration_run_data(run, export: bool = None):
         metadata['time_range'] = time_range
         calibration_run_data['gage_id'] = run.gage.gage_id
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
-        calibration_run_data['forcing_user_dir'] = get_forcing_dir(run)
-        calibration_run_data['observational_user_file_path'] = get_observational_file(run)
+        # There fields are exported so we can import them later
+        # Note that it makes sense to export the unsubsetted Hydrofabric files
+        # We will subset them again with the new job, when it is imported
         calibration_run_data['geopackage_path'] = run.hydrofabric_gpkg_path
+        calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
+        calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
+
+        # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
+        user_uploaded_observational_file = ngen_locations.get_observational_file(run)
+        calibration_run_data['observational_file_path'] = user_uploaded_observational_file if os.path.exists(user_uploaded_observational_file) else None
+        user_uploaded_forcing_dir = ngen_locations.get_forcing_dir(run)
+        calibration_run_data['forcing_dir_path'] = user_uploaded_forcing_dir if os.path.exists(user_uploaded_forcing_dir) else None
 
     else:
         calibration_run_data['calibration_run_id'] = run.id
@@ -322,6 +332,7 @@ def load_calibration_run_data(run, export: bool = None):
                                         'longitude': run.gage.longitude, 'altitude': run.gage.altitude} if run.gage else None
         calibration_run_data['status'] = run.status.name
 
+        # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
         if os.path.exists(get_geopackage_file(run)):
             geopackage_png = gpkg_to_png_selected_layers(get_geopackage_file(run))
@@ -333,13 +344,12 @@ def load_calibration_run_data(run, export: bool = None):
     # Gage
     #############################
 
+    # For both export and the UI, we need the user upload name just for display purposes
     calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
     calibration_run_data['forcing_user_dir'] = run.forcing_user_dir
-    calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
 
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['observational_user_file_path'] = run.observational_user_file_path
-    calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
 
     #############################
     # Formulation
