@@ -23,14 +23,14 @@ def get_geopackage_from_hydrofabric(run):
     # modules_request = {"gage_id": gage_id
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
     # module_data = response.json()
-    geopackage_data = geopackage_sample_data
+    geopackage_json = geopackage_sample_data
 
-    validator = GeopackageSerializer(data=geopackage_data)
+    validator = GeopackageSerializer(data=geopackage_json)
     if not validator.is_valid():
         logger.debug(validator.errors)
         raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    s3_uri = geopackage_data['uri']
+    s3_uri = geopackage_json['uri']
     run.hydrofabric_gpkg_path = convert_s3_uri_to_fs(s3_uri)
     print('setting run.hydrofabric_gpkg_path to', run.hydrofabric_gpkg_path)
     # download_s3(s3_uri, get_geopackage_directory(run))
@@ -75,10 +75,10 @@ def get_forcing_data_from_hydrofabric(run):
     print('Getting forcing data from Hydrofabric')
     # Get this from hydrofabric
     # request = {"source": forcing_source
-    # response = requests.post(settings.HYDROFABRIC_URL, json=request)
-    # response = response.json()
-    response = forcing_sample_data
-    validator = ForcingHydrofabricSerializer(data=response)
+    # forcing_json = requests.post(settings.HYDROFABRIC_URL, json=request)
+    # forcing_json = forcing_json.json()
+    forcing_json = forcing_sample_data
+    validator = ForcingHydrofabricSerializer(data=forcing_json)
     if not validator.is_valid():
         logger.debug(validator.errors)
         raise CerfException(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
@@ -106,12 +106,12 @@ def get_module_data_from_hydrofabric(run, modules):
         raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
     # print('getting metadata from hydrofabric')
-    module_data = module_metadata_sample_data.get("modules")
+    module_json = module_metadata_sample_data.get("modules")
 
     # Save the output variables and parameters for each module
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
     with transaction.atomic():
-        for m in module_data:
+        for m in module_json:
             # Get the modules object from our list
             module = modules.filter(name=m['module_name']).first()
             # print('module', module)
@@ -120,17 +120,23 @@ def get_module_data_from_hydrofabric(run, modules):
             outputs = m['module_output_variables']
             o: dict
             for o in outputs:
-                ModuleOutputVariable.objects.update_or_create(name=o['name'], calibration_formulation=module,
-                                                              defaults={'description': o['description']})
+                ModuleOutputVariable.objects.update_or_create(
+                    name=o['name'],
+                    calibration_formulation=module,
+                    defaults={'description': o['description']}
+                )
             # Save parameters
             # print('getting parameters for', m)
             parameters = m['module_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
-                CalibrationParameter.objects.update_or_create(name=p['name'], calibration_formulation=module,
-                                                              defaults={'data_type': p['data_type'],
-                                                                        'description': p['description'], 'minimum': p['minimum'],
-                                                                        'maximum': p['maximum']})
+                CalibrationParameter.objects.update_or_create(
+                    name=p['name'],
+                    calibration_formulation=module,
+                    defaults={'data_type': p['data_type'],
+                              'description': p['description'], 'minimum': p['minimum'],
+                              'maximum': p['maximum']}
+                )
 
         # run.got_module_data_from_hydrofabric = True
         run.save()
