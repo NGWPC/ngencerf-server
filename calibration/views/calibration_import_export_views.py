@@ -85,7 +85,7 @@ def import_job(request):
         if os.path.exists(geopackage_user_uploaded_file_path):
             # Copy from original location to our job-specific path
             copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
-            run.geopackage_user_file_path = validator.data.get('geopackage_user_file_path')
+            # run.geopackage_user_file_path = validator.data.get('geopackage_user_file_path')
 
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
@@ -335,7 +335,7 @@ def load_calibration_run_data(run, export: bool = None):
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['observational_user_file_path'] = run.observational_user_file_path
 
-    calibration_run_data['geopackage_user_file_path'] = run.geopackage_user_file_path
+    # calibration_run_data['geopackage_user_file_path'] = run.geopackage_user_file_path
 
     #############################
     # Formulation

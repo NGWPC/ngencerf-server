@@ -147,7 +147,7 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     if source:
         if source.name == upload_enum.name:
             hydrofabric_path = get_path_func()
-        if os.path.exists(hydrofabric_path):
+        if hydrofabric_path and os.path.exists(hydrofabric_path):
             return hydrofabric_path
     return None
 

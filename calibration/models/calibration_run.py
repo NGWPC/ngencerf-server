@@ -29,7 +29,7 @@ class CalibrationRun(BaseModel):
     streamflow_threshold = models.FloatField(null=True)
     peak_flow_threshold = models.FloatField(null=True)
     geopackage_hydrofabric_path = models.TextField(null=True)
-    geopackage_user_file_path = models.TextField(null=True)
+    # geopackage_user_file_path = models.TextField(null=True)
     forcing_hydrofabric_dir_path = models.TextField(null=True)
     forcing_user_dir = models.TextField(null=True)
     forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT)

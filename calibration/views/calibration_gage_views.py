@@ -415,7 +415,7 @@ def upload_geopackage_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    geopackage_user_file_path = validator.data.get('geopackage_user_file_path')
+    # geopackage_user_file_path = validator.data.get('geopackage_user_file_path')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -427,7 +427,7 @@ def upload_geopackage_data(request):
     files = request.FILES.getlist('geopackage_file')
 
     geopackage_file = files[0]
-    run.geopackage_user_file_path = geopackage_user_file_path
+    # run.geopackage_user_file_path = geopackage_user_file_path
     run.geopackage_hydrofabric_path = None
 
     if fs.exists(geopackage_file.name):
