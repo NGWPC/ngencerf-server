@@ -184,8 +184,6 @@ def save_gage_tab(request):
 
         """
         Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
-        run.forcing_user_dir and run.observational_user_file_path are *only* used with user-uploaded data.
-        These paths are not used for anything except as a reference for the user, so he knows where the data came from.
         
         run.forcing_hydrofabric_dir_path and observational_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
         These paths are also not really used for anything, except as a reference for the unsubsetted data
@@ -251,11 +249,9 @@ def save_gage(run, gage_id):
                 # Delete any user uploaded files
                 if run.forcing_user_dir:
                     shutil.rmtree(get_forcing_dir_for_job(run))
-                run.forcing_user_dir = None
 
                 if run.observational_file_path:
                     os.remove(get_observational_file_for_job(run))
-                run.observational_user_file_path = None
 
             run.gage = gage
     return gage
@@ -285,7 +281,6 @@ def upload_observational_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    observational_user_file_path = validator.data.get('observational_user_file_path')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -299,7 +294,6 @@ def upload_observational_data(request):
     files = request.FILES.getlist('observational_file')
 
     observational_file = files[0]
-    run.observational_user_file_path = observational_user_file_path
     run.observational_hydrofabric_file_path = None
 
     if fs.exists(observational_file.name):
@@ -349,7 +343,6 @@ def upload_forcing_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    forcing_user_dir = validator.data.get('forcing_user_dir')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -361,7 +354,6 @@ def upload_forcing_data(request):
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    run.forcing_user_dir = forcing_user_dir
     run.forcing_hydrofabric_dir_path = None
 
     # Save to the run-specific forcing directory
@@ -415,7 +407,6 @@ def upload_geopackage_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    # geopackage_user_file_path = validator.data.get('geopackage_user_file_path')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -427,7 +418,6 @@ def upload_geopackage_data(request):
     files = request.FILES.getlist('geopackage_file')
 
     geopackage_file = files[0]
-    # run.geopackage_user_file_path = geopackage_user_file_path
     run.geopackage_hydrofabric_path = None
 
     if fs.exists(geopackage_file.name):
