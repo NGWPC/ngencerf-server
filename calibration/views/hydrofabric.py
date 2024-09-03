@@ -9,21 +9,27 @@ from rest_framework import status
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
-from calibration.util.calibration_validators import ForcingHydrofabricSerializer, ObservationalHydrofabricSerializer, \
-    ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer, GeopackageHydrofabricSerializer
+from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
+    ModuleDataHydrofabricListSerializer
 from calibration.views.common import CerfException
-from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_metadata_sample_data, \
-    module_sample_data, forcing_sample_data
+from cerfServer.local_settings import HYDROFABRIC_URL, HYDROFABRIC_GEOPACKAGE_ENDPOINT, HYDROFABRIC_MODULE_METADATA_ENDPOINT
+from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_sample_data, forcing_sample_data
 
 logger = logging.getLogger(__name__)
 
 
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
-    # Get this from hydrofabric and store in standard location
-    # modules_request = {"gage_id": gage_id
-    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_data = response.json()
+    print('Getting geopackage from Hydrofabric')
+
+    url = urljoin(HYDROFABRIC_URL, HYDROFABRIC_GEOPACKAGE_ENDPOINT.format(gage_id=gage_id))
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    geopackage_json = response.json()
     geopackage_json = geopackage_sample_data
+
+    print('geopackage_data', geopackage_data)
+
+    validator = GeopackageSerializer(data=geopackage_json)
 
     hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
                                               'Geopackage data from Hydrofabric is not in the expected format')
@@ -32,6 +38,11 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
     run.geopackage_hydrofabric_path = convert_s3_uri_to_fs(s3_uri)
     print('setting run.geopackage_hydrofabric_path to', run.geopackage_hydrofabric_path)
     # download_s3(s3_uri, get_geopackage_directory(run))
+
+
+headers = {
+    "Content-Type": "application/json"
+}
 
 
 # TODO Throw exception for AWS errors and Hydrofabric errors
@@ -61,10 +72,6 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
     observational_data = validate_response_data(ObservationalHydrofabricSerializer, observational_json,
                                                 'Observational data from Hydrofabric is not in the expected format')
-    # validator = ObservationalHydrofabricSerializer(data=response)
-    # if not validator.is_valid():
-    #     logger.debug(validator.errors)
-    #     raise CerfException(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
 
     s3_uri = observational_data.get('uri')
 
@@ -80,6 +87,9 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     # forcing_json = requests.post(settings.HYDROFABRIC_URL, json=request)
     # forcing_json = forcing_json.json()
     forcing_json = forcing_sample_data
+    validator = ForcingHydrofabricSerializer(data=forcing_json)
+
+    s3_uri = forcing_data.get('uri')
 
     forcing_data = validate_response_data(ForcingHydrofabricSerializer, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
 
@@ -90,13 +100,16 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     # download_all_s3(s3_uri, get_forcing_from_hydrofabric_dir(run))
 
 
-def get_module_data_from_hydrofabric(run: CalibrationRun, modules):
-    # Get this from hydrofabric
-    # modules_request = {"modules":modules}
-    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_json = response.json()
+def get_module_data_from_hydrofabric(run, modules):
+    print('Getting module metadata from Hydrofabric')
 
-    module_json = module_metadata_sample_data
+    url = urljoin(HYDROFABRIC_URL, HYDROFABRIC_MODULE_METADATA_ENDPOINT)
+    payload = {"gage_id": run.gage.gage_id, "modules": modules}
+    response = requests.post(url, data=payload, headers=headers)
+    response.raise_for_status()
+    module_json = response.json()
+    # module_json = module_metadata_sample_data.get("modules")
+    print('module_json', module_json)
 
     module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                          'Module metadata from Hydrofabric is not in the expected format')
@@ -155,6 +168,8 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
     )
 
     print('current_module_names', current_module_names)
+    module_json = module_sample_data
+
 
     module_data = validate_response_data(ModuleHydrofabricListSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
 

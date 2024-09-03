@@ -1,0 +1,52 @@
+{
+  "modules": [
+    {
+      "name": "CFE-S",
+      "parameter_file": {
+        "url": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
+      }
+      "calibrate_parameters": [
+        {
+          "name": "soil_params.b",
+          "initial_value": "5.3179178237915",
+          "description": "param b",
+          "min": "0",
+          "max": "100",
+          "data_type": "double",
+          "units": "meters/second [m s-1]",
+          "calibratable": "true"
+        },
+        {
+          "name": "soil_params.satdk",
+          "initial_value": "3.1252143344318e-06",
+          "description": "param satdk",
+          "min": "0",
+          "max": "100",
+          "data_type": "double",
+          "units": "meters/second [m s-1]",
+          "calibratable": "true"
+        },
+        {
+          "name": "soil_params.slop",
+          "initial_value": "",
+          "description": "param slop",
+          "min": "0",
+          "max": "100",
+          "data_type": "double",
+          "units": "meters/second [m s-1]",
+          "calibratable": "true"
+        }
+      ],
+      "module_output_variables": [
+        {
+          "name": "outputVariable1",
+          "description": "decsription for var 1"
+        },
+        {
+          "name": "outputVariable2",
+          "description": "decsription for var 2"
+        }
+      ]
+    }
+  ]
+  }
