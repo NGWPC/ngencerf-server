@@ -15,7 +15,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_forcing_dir, get_observational_dir, get_geopackage_file, get_observational_file
+from calibration.util.ngen_locations import get_forcing_dir, get_observational_dir, get_geopackage_file
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -76,18 +76,10 @@ def import_job(request):
 
         observational_source_name = validator.data.get('observational_source')
         run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
-        run.observational_user_file_path= validator.data.get('observational_user_file_path')
+        run.observational_user_file_path = validator.data.get('observational_user_file_path')
         run.observational_hydrofabric_file_path = validator.data.get('observational_hydrofabric_file_path')
 
         run.hydrofabric_gpkg_path = validator.data.get('geopackage_path')
-
-        if run.observational_source and run.observational_source != ObservationalSourceEnum.UPLOAD.value:
-            run.observational_hydrofabric_file_path = validator.data.get('observational_hydrofabric_file_path')
-            # get_observational_data_from_hydrofabric(run)
-
-        if run.forcing_source and run.forcing_source.name != ForcingSourceEnum.UPLOAD.value:
-            run.forcing_hydrofabric_dir_path = validator.data.get('forcing_hydrofabric_dir_path')
-            # get_forcing_data_from_hydrofabric(run)
 
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
@@ -99,15 +91,6 @@ def import_job(request):
                 warnings.append(f"Unable to access user uploaded forcing data from '{run.forcing_hydrofabric_dir_path}'")
                 run.forcing_user_dir = None
 
-            # # This is the location of the forcing data on the job we exported from
-            # if run.forcing_hydrofabric_dir_path and os.path.exists(run.forcing_hydrofabric_dir_path):
-            #     # Need to copy user-loaded files to our instance directory
-            #     new_forcing_dir = get_forcing_dir(run)
-            #     copy_directory(run.forcing_dir_path, new_forcing_dir)
-            # else:
-            #     warnings.append(f"Unable to access user uploaded forcing data from '{run.forcing_hydrofabric_dir_path}'")
-            #     run.forcing_user_dir = None
-
         if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
             observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
@@ -117,16 +100,6 @@ def import_job(request):
             else:
                 warnings.append(f"Unable to access user uploaded observational data from '{run.observational_hydrofabric_file_path}'")
                 run.observational_user_filepath = None
-
-            # This is the location of the observation data on the job we exported from
-            if run.observational_hydrofabric_file_path and os.path.exists(run.observational_hydrofabric_file_path):
-                # Need to copy user-loaded files to our instance directory
-                new_observational_dir = get_observational_dir(run)
-                copy_file_to_directory(run.observational_file_path, new_observational_dir)
-            else:
-                warnings.append(f"Unable to access user uploaded observational data from '{run.observational_hydrofabric_file_path}'")
-
-                run.observational_file_path = None
 
     #############################
     # Formulations
@@ -305,7 +278,6 @@ def load_calibration_run_data(run, export: bool = None):
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
     if export:
-        # TODO Need obs, forcing, geopackage paths
         calibration_run_data['metadata'] = metadata
         metadata['source_calibration_run_id'] = run.id
         metadata['time_range'] = time_range
@@ -320,9 +292,10 @@ def load_calibration_run_data(run, export: bool = None):
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_observational_file = ngen_locations.get_observational_file(run)
-        calibration_run_data['observational_file_path'] = user_uploaded_observational_file if os.path.exists(user_uploaded_observational_file) else None
+        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if os.path.exists(
+            user_uploaded_observational_file) else None
         user_uploaded_forcing_dir = ngen_locations.get_forcing_dir(run)
-        calibration_run_data['forcing_dir_path'] = user_uploaded_forcing_dir if os.path.exists(user_uploaded_forcing_dir) else None
+        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if os.path.exists(user_uploaded_forcing_dir) else None
 
     else:
         calibration_run_data['calibration_run_id'] = run.id

@@ -213,7 +213,6 @@ def save_gage_tab(request):
                 return Response(f'Error downloading observational data from AWS.  Check your AWS credentials - {e}')
             run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
 
-
         if run.forcing_source and forcing_source_name != run.forcing_source.name:
             try:
                 if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
@@ -226,7 +225,6 @@ def save_gage_tab(request):
             except ClientError as e:
                 return Response(f'Error downloading forcing data from AWS.  Check your AWS credentials - {e}')
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
-
 
     with transaction.atomic():
         run.save()

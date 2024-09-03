@@ -670,16 +670,19 @@ class ExportResponseSerializer(BaseSerializer):
     stop_criteria = serializers.IntegerField(required=True, allow_null=True)
 
 
-class ImportSerializer(serializers.Serializer):
+class ImportSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(required=False, default=False)
     metadata = serializers.JSONField(required=False)
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     forcing_hydrofabric_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[observationSourceValidator])
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    geopackage_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False)
