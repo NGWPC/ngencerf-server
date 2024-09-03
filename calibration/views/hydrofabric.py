@@ -25,12 +25,14 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
     # module_data = response.json()
     geopackage_json = geopackage_sample_data
 
-    validator = GeopackageSerializer(data=geopackage_json)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
+    hydrofabric_data = validate_response_data(ObservationalHydrofabricSerializer, geopackage_json,
+                                                'Geopackage data from Hydrofabric is not in the expected format')
+    # validator = GeopackageSerializer(data=geopackage_json)
+    # if not validator.is_valid():
+    #     logger.debug(validator.errors)
+    #     raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    s3_uri = geopackage_json['uri']
+    s3_uri = hydrofabric_data.get('uri')
     run.geopackage_hydrofabric_path = convert_s3_uri_to_fs(s3_uri)
     print('setting run.geopackage_hydrofabric_path to', run.geopackage_hydrofabric_path)
     # download_s3(s3_uri, get_geopackage_directory(run))
@@ -48,6 +50,9 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
     path = '/todos/1'
     url = urljoin(base_url, path)
     response = requests.get(url, json=request, headers=headers)
+
+    observational_json = observational_sample_data
+
     # Check if the request was successful
     if response.status_code == rest_framework.status.HTTP_200_OK:
         # Parse and print the response JSON
@@ -58,13 +63,14 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
         logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.  Will try again when before job is submitted")
         print("Response from Hydrofabric:", response.text)
 
-    response = observational_sample_data
-    validator = ObservationalHydrofabricSerializer(data=response)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
+    observational_data = validate_response_data(ObservationalHydrofabricSerializer, observational_json,
+                                                'Observational data from Hydrofabric is not in the expected format')
+    # validator = ObservationalHydrofabricSerializer(data=response)
+    # if not validator.is_valid():
+    #     logger.debug(validator.errors)
+    #     raise CerfException(f'Observational data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    s3_uri = validator.data.get('uri')
+    s3_uri = observational_data.get('uri')
 
     run.observational_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
     print('setting run.observational_hydrofabric_file_path to', run.observational_hydrofabric_file_path)
@@ -78,12 +84,14 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     # forcing_json = requests.post(settings.HYDROFABRIC_URL, json=request)
     # forcing_json = forcing_json.json()
     forcing_json = forcing_sample_data
-    validator = ForcingHydrofabricSerializer(data=forcing_json)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
 
-    s3_uri = validator.data.get('uri')
+    forcing_data = validate_response_data(ForcingHydrofabricSerializer, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
+    # validator = ForcingHydrofabricSerializer(data=forcing_json)
+    # if not validator.is_valid():
+    #     logger.debug(validator.errors)
+    #     raise CerfException(f'Forcing data from Hydrofabric is not in the expected format - {validator.errors}')
+
+    s3_uri = forcing_data.get('uri')
 
     # This is a path to a directory, so we want to download all files
     # bucket, key = parse_s3_uri(s3_uri)
@@ -98,15 +106,18 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules):
     # Get this from hydrofabric
     # modules_request = {"modules":modules}
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_data = response.json()
+    # module_json = response.json()
 
-    validator = ModuleDataHydrofabricListSerializer(data=module_metadata_sample_data)
-    if not validator.is_valid():
-        logger.error(validator.errors)
-        raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
+    module_json = module_metadata_sample_data.get("modules")
+
+    module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
+                                         'Module metadata from Hydrofabric is not in the expected format')
+    # validator = ModuleDataHydrofabricListSerializer(data=module_metadata_sample_data)
+    # if not validator.is_valid():
+    #     logger.error(validator.errors)
+    #     raise CerfException(f'Module metadata from Hydrofabric is not in the expected format - {validator.errors}')
 
     # print('getting metadata from hydrofabric')
-    module_json = module_metadata_sample_data.get("modules")
 
     # Save the output variables and parameters for each module
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
@@ -150,7 +161,8 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
     # Get this from hydrofabric
     # modules_request = {}
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_data = response.json()
+    # module_json = response.json()
+    module_json = module_sample_data
 
     current_module_names = set(
         CalibrationFormulation.objects.filter(calibration_run=run)
@@ -159,12 +171,14 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
 
     print('current_module_names', current_module_names)
 
-    validator = ModuleHydrofabricListSerializer(data=module_sample_data)
-    if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
+    module_data = validate_response_data(GeopackageSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
 
-    module_data = validator.data.get('modules')
+    # validator = ModuleHydrofabricListSerializer(data=module_sample_data)
+    # if not validator.is_valid():
+    #     logger.debug(validator.errors)
+    #     raise CerfException(f'Module data from Hydrofabric is not in the expected format - {validator.errors}')
+
+    module_data = module_data.get('modules')
     new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
     print('new_modules_names', new_modules_names)
 
@@ -191,3 +205,12 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
                 CalibrationFormulation.objects.bulk_create(new_modules)
 
     return
+
+def validate_response_data(serializer_class, data, error_message):
+    validator = serializer_class(data=data)
+    if not validator.is_valid():
+        logger.debug(validator.errors)
+        raise CerfException(f'{error_message} - {validator.errors}')
+    return validator.data
+
+
