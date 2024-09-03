@@ -126,21 +126,11 @@ def get_time_range(run):
     :param run:
     :return:
     """
-    # Determine observation and forcing paths based on source type and existence
-    observation_path = (
-        get_observational_file_for_job(run) if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.name and os.path.exists(
-            get_observational_file_for_job(run))
-        else run.observational_hydrofabric_file_path if run.observational_source.name != ObservationalSourceEnum.UPLOAD.name and os.path.exists(
-            run.observational_hydrofabric_file_path)
-        else None
-    )
+    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path, ObservationalSourceEnum.UPLOAD,
+                                      lambda: get_observational_file_for_job(run))
 
-    forcing_path = (
-        get_forcing_dir_for_job(run) if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.name and os.path.exists(get_forcing_dir_for_job(run))
-        else run.forcing_hydrofabric_dir_path if run.forcing_source.name != ForcingSourceEnum.UPLOAD.name and os.path.exists(
-            run.forcing_hydrofabric_dir_path)
-        else None
-    )
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path, ForcingSourceEnum.UPLOAD,
+                                  lambda: get_forcing_dir_for_job(run))
 
     # If both paths and time range are available, calculate intersection and update run
     if observation_path and forcing_path and run.time_range_start and run.time_range_end:
@@ -150,6 +140,15 @@ def get_time_range(run):
         run.save()
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
+    return None
+
+
+def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
+    if source:
+        if source.name == upload_enum.name:
+            hydrofabric_path = get_path_func()
+        if os.path.exists(hydrofabric_path):
+            return hydrofabric_path
     return None
 
 
