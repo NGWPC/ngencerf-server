@@ -40,7 +40,7 @@ def get_observational_dir_for_job(run: CalibrationRun) -> str:
 
 # Job-specific observation file
 def get_observational_file_for_job(run: CalibrationRun) -> str:
-    return os.path.join(get_observational_dir_for_job(run), f'{run.gage.gage_id}_hourly_discharge.csv')
+    return os.path.join(get_observational_dir_for_job(run), f'{run.gage.gage_id}_hourly_discharge.csv') if run.gage else None
 
 
 # TODO This is temporary while we are allowing uploading of Geopackage files
@@ -50,4 +50,4 @@ def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
 
 
 def get_geopackage_file_for_job(run: CalibrationRun) -> str:
-    return os.path.join(get_geopackage_dir_for_job(run), f'gauge_{run.gage.gage_id}.gpkg')
+    return os.path.join(get_geopackage_dir_for_job(run), f'gauge_{run.gage.gage_id}.gpkg') if run.gage else None
