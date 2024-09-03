@@ -96,7 +96,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules):
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
     # module_json = response.json()
 
-    module_json = module_metadata_sample_data.get("modules")
+    module_json = module_metadata_sample_data
 
     module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                          'Module metadata from Hydrofabric is not in the expected format')
@@ -106,7 +106,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules):
     # Save the output variables and parameters for each module
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
     with transaction.atomic():
-        for m in module_data:
+        for m in module_data.get('modules'):
             # Get the modules object from our list
             module = modules.filter(name=m['module_name']).first()
             # print('module', module)
@@ -155,7 +155,7 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
 
     print('current_module_names', current_module_names)
 
-    module_data = validate_response_data(GeopackageSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
+    module_data = validate_response_data(ModuleHydrofabricListSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
 
     module_data = module_data.get('modules')
     new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
