@@ -31,8 +31,8 @@ def get_geopackage_from_hydrofabric(run):
         raise CerfException(f'Geopackage data from Hydrofabric is not in the expected format - {validator.errors}')
 
     s3_uri = geopackage_json['uri']
-    run.hydrofabric_gpkg_path = convert_s3_uri_to_fs(s3_uri)
-    print('setting run.hydrofabric_gpkg_path to', run.hydrofabric_gpkg_path)
+    run.geopackage_hydrofabric_path = convert_s3_uri_to_fs(s3_uri)
+    print('setting run.geopackage_hydrofabric_path to', run.geopackage_hydrofabric_path)
     # download_s3(s3_uri, get_geopackage_directory(run))
 
 

@@ -15,7 +15,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_forcing_dir, get_observational_dir, get_geopackage_file
+from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job,  \
+    get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
     validate_formulation, SLOTH, add_sloth_parameters
@@ -79,13 +80,18 @@ def import_job(request):
         run.observational_user_file_path = validator.data.get('observational_user_file_path')
         run.observational_hydrofabric_file_path = validator.data.get('observational_hydrofabric_file_path')
 
-        run.hydrofabric_gpkg_path = validator.data.get('geopackage_path')
+        run.geopackage_hydrofabric_path = validator.data.get('geopackage_path_from_hydrofabric')
+        geopackage_user_uploaded_file_path = validator.data.get('geopackage_user_uploaded_file_path')
+        if os.path.exists(geopackage_user_uploaded_file_path):
+            # Copy from original location to our job-specific path
+            copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
+            run.geopackage_user_file_path = validator.data.get('geopackage_user_file_path')
 
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
-                copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir(run))
+                copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
                 run.forcing_user_dir = validator.data.get('forcing_user_dir')
             else:
                 warnings.append(f"Unable to access user uploaded forcing data from '{run.forcing_hydrofabric_dir_path}'")
@@ -95,7 +101,7 @@ def import_job(request):
             observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy from original location to our job-specific path
-                copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir(run))
+                copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
                 run.observational_user_file_path = validator.data.get('observational_user_file_path')
             else:
                 warnings.append(f"Unable to access user uploaded observational data from '{run.observational_hydrofabric_file_path}'")
@@ -286,15 +292,19 @@ def load_calibration_run_data(run, export: bool = None):
         # There fields are exported so we can import them later
         # Note that it makes sense to export the unsubsetted Hydrofabric files
         # We will subset them again with the new job, when it is imported
-        calibration_run_data['geopackage_path'] = run.hydrofabric_gpkg_path
+
+        # Only one of these geopackage paths should be populated
+        calibration_run_data['geopackage_path_from_hydrofabric'] = run.geopackage_hydrofabric_path
+        calibration_run_data['geopackage_user_uploaded_file_path'] = get_geopackage_file_for_job(run)
+
         calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
         calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
-        user_uploaded_observational_file = ngen_locations.get_observational_file(run)
+        user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
         calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if os.path.exists(
             user_uploaded_observational_file) else None
-        user_uploaded_forcing_dir = ngen_locations.get_forcing_dir(run)
+        user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
         calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if os.path.exists(user_uploaded_forcing_dir) else None
 
     else:
@@ -307,8 +317,9 @@ def load_calibration_run_data(run, export: bool = None):
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        if os.path.exists(get_geopackage_file(run)):
-            geopackage_png = gpkg_to_png_selected_layers(get_geopackage_file(run))
+        geopackage_path = run.geopackage_hydrofabric_path if os.path.exists(run.geopackage_hydrofabric_path) else get_geopackage_dir_for_job(run)
+        if os.path.exists(geopackage_path):
+            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
             geopackage_image_url = f'data:image/png;base64,{base64_str}'
             calibration_run_data['geopackage_image_url'] = geopackage_image_url
@@ -323,6 +334,8 @@ def load_calibration_run_data(run, export: bool = None):
 
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['observational_user_file_path'] = run.observational_user_file_path
+
+    calibration_run_data['geopackage_user_file_path'] = run.geopackage_user_file_path
 
     #############################
     # Formulation

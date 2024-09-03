@@ -10,11 +10,11 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    PARQUET_DIR, get_main_dir, get_forcing_dir, get_observational_dir, \
-    get_geopackage_directory, get_geopackage_file, get_observational_file
+    PARQUET_DIR, get_main_dir, get_forcing_dir_for_job, get_observational_dir_for_job, \
+    get_observational_file_for_job, get_geopackage_dir_for_job, \
+    get_geopackage_file_for_job
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
-from calibration.views.hydrofabric import get_geopackage_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +121,10 @@ def ready_to_run(run, build=None):
                     if build:
                         # for non-uploaded data, we need to subset
                         source_dir = run.forcing_hydrofabric_dir_path
-                        subset_directory_by_time_range(source_dir, get_forcing_dir(run),
+                        subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
                                                        DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
-                datafile['forcing_dir'] = get_forcing_dir(run)
+                datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         if not run.observational_source:
             messages.append('observational source must be specified')
@@ -137,17 +137,18 @@ def ready_to_run(run, build=None):
                     if build:
                         # For non-uploaded data, we need to subset
                         source_file = run.observational_hydrofabric_file_path
-                        subset_by_time_range(source_file, get_observational_file(run),
+                        subset_by_time_range(source_file, get_observational_file_for_job(run),
                                              DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
-                datafile['obs_dir'] = get_observational_dir(run)
+                datafile['obs_dir'] = get_observational_dir_for_job(run)
 
-        if not os.path.exists(get_geopackage_file(run)):
-            # Might have been imported so we never called hydrofabric, or perhaps got an error
-            get_geopackage_from_hydrofabric(run.gage.gage_id)
-            # messages.append('Error getting geopackage from Hydrofabric')
+        if run.geopackage_hydrofabric_path and not os.path.exists(run.geopackage_hydrofabric_path):
+            datafile['hydrofab_dir'] = run.geopackage_hydrofabric_path
         else:
-            datafile['hydrofab_dir'] = get_geopackage_directory(run)
+            if os.path.exists(get_geopackage_file_for_job(run)):
+                datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+            else:
+                messages.append('geopackage data must be uploaded')
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')

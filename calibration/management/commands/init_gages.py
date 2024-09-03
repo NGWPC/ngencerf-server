@@ -48,7 +48,6 @@ class Command(BaseCommand):
         user = get_user_model().objects.get(username='admin')
         print(f"In init_gages: username: {user.username}, email: {user.email}")
 
-
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_CONUS.csv'), conus_domain)
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_AK.csv'), alaska_domain)
         add_usgs_gages(os.path.join(data_dir, 'USGS_gages_HI.csv'), hawaii_domain)
