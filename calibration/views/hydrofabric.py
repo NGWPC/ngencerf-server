@@ -7,7 +7,7 @@ import rest_framework
 from django.db import transaction
 from rest_framework import status
 
-from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation
+from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
     ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer
@@ -18,7 +18,7 @@ from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, 
 logger = logging.getLogger(__name__)
 
 
-def get_geopackage_from_hydrofabric(run):
+def get_geopackage_from_hydrofabric(run: CalibrationRun):
     # Get this from hydrofabric and store in standard location
     # modules_request = {"gage_id": gage_id
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
@@ -37,7 +37,7 @@ def get_geopackage_from_hydrofabric(run):
 
 
 # TODO Throw exception for AWS errors and Hydrofabric errors
-def get_observational_data_from_hydrofabric(run):
+def get_observational_data_from_hydrofabric(run: CalibrationRun):
     print('Getting observational data from Hydrofabric')
     # Get this from hydrofabric
     request = {"source": run.observational_source.name}
@@ -71,7 +71,7 @@ def get_observational_data_from_hydrofabric(run):
     # download_s3(s3_uri, get_observation_from_hydrofabric_dir(run))
 
 
-def get_forcing_data_from_hydrofabric(run):
+def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     print('Getting forcing data from Hydrofabric')
     # Get this from hydrofabric
     # request = {"source": forcing_source
@@ -94,7 +94,7 @@ def get_forcing_data_from_hydrofabric(run):
     # download_all_s3(s3_uri, get_forcing_from_hydrofabric_dir(run))
 
 
-def get_module_data_from_hydrofabric(run, modules):
+def get_module_data_from_hydrofabric(run: CalibrationRun, modules):
     # Get this from hydrofabric
     # modules_request = {"modules":modules}
     # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
@@ -144,7 +144,7 @@ def get_module_data_from_hydrofabric(run, modules):
     return
 
 
-def get_modules_from_hydrofabric(run):
+def get_modules_from_hydrofabric(run: CalibrationRun):
     print('calling hydrofabric')
 
     # Get this from hydrofabric
