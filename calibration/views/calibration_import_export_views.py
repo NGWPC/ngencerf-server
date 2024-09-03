@@ -317,7 +317,7 @@ def load_calibration_run_data(run, export: bool = None):
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        geopackage_path = run.geopackage_hydrofabric_path if os.path.exists(run.geopackage_hydrofabric_path) else get_geopackage_dir_for_job(run)
+        geopackage_path = run.geopackage_hydrofabric_path if run.geopackage_hydrofabric_path and os.path.exists(run.geopackage_hydrofabric_path) else get_geopackage_file_for_job(run)
         if os.path.exists(geopackage_path):
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
