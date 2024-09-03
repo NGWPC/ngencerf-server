@@ -128,7 +128,7 @@ def get_time_range(run):
     """
     # Determine observation and forcing paths based on source type and existence
     observation_path = (
-        get_observational_file_for_job(run) if run.observational_source.name == ObservationalSourceEnum.UPLOAD.name and os.path.exists(
+        get_observational_file_for_job(run) if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.name and os.path.exists(
             get_observational_file_for_job(run))
         else run.observational_hydrofabric_file_path if run.observational_source.name != ObservationalSourceEnum.UPLOAD.name and os.path.exists(
             run.observational_hydrofabric_file_path)
@@ -136,7 +136,7 @@ def get_time_range(run):
     )
 
     forcing_path = (
-        get_forcing_dir_for_job(run) if run.forcing_source.name == ForcingSourceEnum.UPLOAD.name and os.path.exists(get_forcing_dir_for_job(run))
+        get_forcing_dir_for_job(run) if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.name and os.path.exists(get_forcing_dir_for_job(run))
         else run.forcing_hydrofabric_dir_path if run.forcing_source.name != ForcingSourceEnum.UPLOAD.name and os.path.exists(
             run.forcing_hydrofabric_dir_path)
         else None
