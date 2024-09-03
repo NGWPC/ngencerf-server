@@ -7,7 +7,10 @@
 
 import os
 
+from pathlib import Path
+
 from cerfServer.settings import LOGGING
+
 
 print('Loading local settings from', __name__)
 
@@ -49,3 +52,27 @@ DATABASES = {
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
+
+## FIXME: Do we still need the 3 settings below??? 
+#  we should be using the ngen-cal container but are these path useful for other reasons???
+## FIXME FIXME
+# Locations for running ngen-cal
+REPO_ROOT = os.getenv('REPO_ROOT', os.path.join(Path.home(), 'noaa-owp'))
+# Directory that Ngen is cloned into
+NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
+# directory that Ngen-cal is cloned into
+NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+
+# This is the mount point for docker containers
+NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', os.path.join(Path.home(), 'ngwpc/data'))
+
+NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
+# Directory where all the output runs are stored
+NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+
+## FIXME: Can we remove this setting???
+# We should be using the ngen-cal container to run ngen-cal...
+# is there another reason we would need this???
+## FIXME FIXME
+# Directory containing the ngen-cal virtual environment
+NGEN_CAL_VENV = os.getenv('NGEN_CAL_VENV', None)
