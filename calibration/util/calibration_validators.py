@@ -626,6 +626,10 @@ class ForcingHydrofabricSerializer(BaseSerializer):
     uri = serializers.CharField(required=True, validators=[s3DirectoryValidator])
 
 
+class GeopackageHydrofabricSerializer(serializers.Serializer):
+    uri = serializers.CharField(required=True, validators=[s3FileValidator])
+
+
 ##################################
 # Run Tab
 ##################################

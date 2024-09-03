@@ -10,7 +10,7 @@ from rest_framework import status
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
-    ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer
+    ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer, GeopackageHydrofabricSerializer
 from calibration.views.common import CerfException
 from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_metadata_sample_data, \
     module_sample_data, forcing_sample_data
@@ -25,7 +25,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
     # module_data = response.json()
     geopackage_json = geopackage_sample_data
 
-    hydrofabric_data = validate_response_data(ObservationalHydrofabricSerializer, geopackage_json,
+    hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
                                               'Geopackage data from Hydrofabric is not in the expected format')
 
     s3_uri = hydrofabric_data.get('uri')
