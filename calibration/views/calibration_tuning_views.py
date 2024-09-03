@@ -12,10 +12,11 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import CalibrationFormulation, CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
-    GenericResponseSerializer, ErrorResponseSerializer, \
-    UploadUserParameterFile, UserParameterFileUploadResponse
+    GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
+from calibration.util.ngen_locations import get_observational_file, get_forcing_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
@@ -120,17 +121,36 @@ def get_parameters_for_export(modules):
 
 
 def get_time_range(run):
-    # Get data range intersection of observational and forcing data if we don't already have it
-    time_range = None
-    if (run.observational_file_path and run.forcing_dir_path
-            and run.time_range_start and run.time_range_end):
-        daterange = get_date_range_intersection(run.observational_file_path, run.forcing_dir_path)
+    """
+    Get data range intersection of observational and forcing data if we don't already have it
+    :param run:
+    :return:
+    """
+    # Determine observation and forcing paths based on source type and existence
+    observation_path = (
+        get_observational_file(run) if run.observational_source.name == ObservationalSourceEnum.UPLOAD.name and os.path.exists(
+            get_observational_file(run))
+        else run.observational_hydrofabric_file_path if run.observational_source.name != ObservationalSourceEnum.UPLOAD.name and os.path.exists(
+            run.observational_hydrofabric_file_path)
+        else None
+    )
+
+    forcing_path = (
+        get_forcing_dir(run) if run.forcing_source.name == ForcingSourceEnum.UPLOAD.name and os.path.exists(get_forcing_dir(run))
+        else run.forcing_hydrofabric_dir_path if run.forcing_source.name != ForcingSourceEnum.UPLOAD.name and os.path.exists(
+            run.forcing_hydrofabric_dir_path)
+        else None
+    )
+
+    # If both paths and time range are available, calculate intersection and update run
+    if observation_path and forcing_path and run.time_range_start and run.time_range_end:
+        daterange = get_date_range_intersection(observation_path, forcing_path)
         run.time_range_start = daterange.start_datetime
         run.time_range_end = daterange.end_datetime
-        time_range = {'start_time': run.time_range_start, 'end_time': run.time_range_end}
         run.save()
+        return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
-    return time_range
+    return None
 
 
 def get_times(run):

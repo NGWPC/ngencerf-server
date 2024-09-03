@@ -98,6 +98,7 @@ class ObservationalSourceEnum(StrEnum):
     TX_DOT = 'TX DoT'
     RFC = 'RFC'
     SNOTEL = 'SNOTEL'
+    AGENCY = 'Agency'
     UPLOAD = 'Upload'
 
     @classmethod

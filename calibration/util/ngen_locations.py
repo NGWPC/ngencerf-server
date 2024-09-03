@@ -4,11 +4,6 @@ from django.conf import settings
 
 from calibration.models import CalibrationRun
 
-# Forcing,  obs and geopackage directories will be created as needed
-forcing_from_hydrofabric_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing_from_hydrofabric')
-observation_from_hydrofabric_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation_from_hydrofabric')
-geopackage_dir = os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')
-
 dirs = [CALIB_VALID_DIR := os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python/runCalibValid'),
         NOAH_PARAMETER_DIR := os.path.join(settings.NGEN_CAL_WORK_DIR, 'bmi_config/Noah-OWP'),
         PARQUET_DIR := os.path.join(settings.NGEN_CAL_WORK_DIR, 'parquet')]
@@ -29,15 +24,41 @@ files = [NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen'),
          VALIDATION_PY := os.path.join(CALIB_VALID_DIR, 'validation.py')]
 
 
+def get_geopackage_directory(run):
+    return os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')
+
+
+def get_geopackage_file(run):
+    return os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage', f'gauge_{run.gage.gage_id}.gpkg')
+
+
+#
+# def get_forcing_from_hydrofabric_dir(run):
+#     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing_from_hydrofabric')
+#
+#
+# def get_observation_from_hydrofabric_dir(run):
+#     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation_from_hydrofabric')
+#
+#
+# def get_observation_from_hydrofabric_file(run):
+#     return os.path.join(get_observation_from_hydrofabric_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')
+#
+
 def get_main_dir(run: CalibrationRun) -> str:
     return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
 
 
+# Job-specific forcing directory
+def get_forcing_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_main_dir(run), 'forcing')
+
+
 # Job-specific observation directory
-def get_observation_directory(run: CalibrationRun) -> str:
+def get_observational_dir(run: CalibrationRun) -> str:
     return os.path.join(get_main_dir(run), 'observation')
 
 
-# Job-specific forcing directory
-def get_forcing_directory(run: CalibrationRun) -> str:
-    return os.path.join(get_main_dir(run), 'forcing', run.gage.gage_id)
+# Job-specific observation file
+def get_observational_file(run: CalibrationRun) -> str:
+    return os.path.join(get_observational_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')

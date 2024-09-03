@@ -281,8 +281,10 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[observationSourceValidator])
-    observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_user_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
@@ -327,7 +329,7 @@ class UploadForcingSerializer(BaseSerializer):
 
     def validate_forcing_files(self, value):
         request = self.context.get('request')
-        files = request.FILES.getlist('observational_file')
+        files = request.FILES.getlist('forcing_files')
         if len(files) == 0:
             raise serializers.ValidationError("Forcing files must be uploaded")
         return value
@@ -335,6 +337,7 @@ class UploadForcingSerializer(BaseSerializer):
 
 class UploadObservationalSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+    observational_user_file_path = serializers.CharField(required=True)
     observational_file = serializers.FileField(required=True)
 
     def validate_observational_file(self, value):
@@ -642,8 +645,13 @@ class ExportResponseSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[observationSourceValidator])
-    observational_user_filename = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_user_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    geopackage_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
     use_sloth = serializers.BooleanField(default=False)
@@ -662,16 +670,19 @@ class ExportResponseSerializer(BaseSerializer):
     stop_criteria = serializers.IntegerField(required=True, allow_null=True)
 
 
-class ImportSerializer(serializers.Serializer):
+class ImportSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(required=False, default=False)
     metadata = serializers.JSONField(required=False)
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[forcingSourceValidator])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    forcing_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    forcing_hydrofabric_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[observationSourceValidator])
-    observational_user_filename = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    observational_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    observational_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    geopackage_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False)

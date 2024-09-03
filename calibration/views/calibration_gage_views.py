@@ -13,12 +13,13 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
 from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_observation_directory, get_forcing_directory
+from calibration.util.ngen_locations import get_observational_dir, get_forcing_dir, get_observational_file, get_geopackage_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
@@ -155,9 +156,8 @@ def save_gage_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
     gage_id = validator.data.get('gage_id')
-    forcing_source_name = validator.data.get('forcing_source_name')
-    observational_source_name = validator.data.get('observational_source_name')
-    # TODO Sources should be foreign keys
+    forcing_source_name = validator.data.get('forcing_source')
+    observational_source_name = validator.data.get('observational_source')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -170,31 +170,61 @@ def save_gage_tab(request):
             return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
         try:
-            geopackage_path = save_geopackage_path(run, gage_id)
+            get_geopackage_from_hydrofabric(run)
         except ClientError as e:
             # TODO Check for other errors
             return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
 
-        geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+        geopackage_png = gpkg_to_png_selected_layers(get_geopackage_file(run))
 
         # Convert ByteIO image to base64
         base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
         geopackage_image_url = f'data:image/png;base64,{base64_str}'
 
+        """
+        Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
+        run.forcing_user_dir and run.observational_user_file_path are *only* used with user-uploaded data.
+        These paths are not used for anything except as a reference for the user, so he knows where the data came from.
+        
+        run.forcing_hydrofabric_dir_path and observational_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
+        These paths are also not really used for anything, except as a reference for the unsubsetted data
+        
+        The actual paths that are eventually put in the input.config are not stored in the calibration_run object.
+        This path is deterministic and can be derived at the time we create input.config.  They are referred to use the job-specific paths.
+        It is obtained by ngen_locations.get_forcing_dir() and ngen_locations_get_observational_dir()
+        Files that are uploaded by the user are immediately saved in the job-specific path.  If the files are obtained from Hydrofabric,
+        the job specific path remains empty, until we build the config, at which point the Hydrofabric data is subsetted by time-range and the 
+        resulting files placed in the job-specific paths.
+        
+        run.hydrofabric_gpkg_path is the path of the geopackage file from Hydrofabric.  
+        This field is always used, since the geopackage files can't be uploaded.
+        """
         # Get forcing and observational data
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
-        try:
-            if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
-                get_observational_data_from_hydrofabric(observational_source_name)
-        except ClientError as e:
-            return Response(f'Error downloading observational data from AWS.  Check your AWS credentials - {e}')
 
-        try:
-            if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
-                get_forcing_data_from_hydrofabric(forcing_source_name)
-        except ClientError as e:
-            return Response(f'Error downloading forcing data from AWS.  Check your AWS credentials - {e}')
+        if run.observational_source and observational_source_name != run.observational_source.name:
+            try:
+                if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
+                    # Delete any user-upload, if there
+                    observational_file = ngen_locations.get_observational_file(run)
+                    if os.path.exists(observational_file):
+                        os.remove(observational_file)
+                    get_observational_data_from_hydrofabric(run)
+            except ClientError as e:
+                return Response(f'Error downloading observational data from AWS.  Check your AWS credentials - {e}')
+            run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
+
+        if run.forcing_source and forcing_source_name != run.forcing_source.name:
+            try:
+                if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
+                    # Delete any user-upload, if there
+                    forcing_dir = ngen_locations.get_forcing_dir(run)
+                    if os.path.exists(forcing_dir):
+                        os.remove(forcing_dir)
+                        shutil.rmtree(forcing_dir)
+                    get_forcing_data_from_hydrofabric(run)
+            except ClientError as e:
+                return Response(f'Error downloading forcing data from AWS.  Check your AWS credentials - {e}')
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
 
     with transaction.atomic():
         run.save()
@@ -216,27 +246,18 @@ def save_gage(run, gage_id):
     if gage:
         if run.gage != gage:
 
-            # Delete any user uploaded files
-            if run.gage and run.forcing_user_dir:
-                shutil.rmtree(run.forcing_dir_path)
-            run.forcing_user_dir = None
-            run.forcing_dir_path = None
+            if run.gage:
+                # Delete any user uploaded files
+                if run.forcing_user_dir:
+                    shutil.rmtree(get_forcing_dir(run))
+                run.forcing_user_dir = None
 
-            if run.gage and run.observational_file_path:
-                os.remove(run.observational_file_path)
-            run.observational_file_path = None
-            run.observational_user_filename = None
-
-            run.hydrofabric_gpkg_path = None
+                if run.observational_file_path:
+                    os.remove(get_observational_file(run))
+                run.observational_user_file_path = None
 
             run.gage = gage
     return gage
-
-
-def save_geopackage_path(run, gage_id):
-    geopackage_path = get_geopackage_from_hydrofabric(gage_id)
-    run.hydrofabric_gpkg_path = geopackage_path
-    return geopackage_path
 
 
 @extend_schema(
@@ -261,27 +282,25 @@ def upload_observational_data(request):
     validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
         return error_return
-    print('data', data)
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    observational_user_filepath = validator.data.get('observational_user_filepath')
+    observational_user_file_path = validator.data.get('observational_user_file_path')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
         return errorReturn
 
-    run.observational_source = ObservationalSource.objects.get(ObservationalSourceEnum.UPLOAD)
+    run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
 
     # Need to upload to the run-specific observational directory, as opposed to the global directory
-    observational_dir = get_observation_directory(run)
+    observational_dir = get_observational_dir(run)
     fs = FileSystemStorage(location=observational_dir)
 
     # Make sure file doesn't exist
     files = request.FILES.getlist('observational_file')
 
     observational_file = files[0]
-    run.observational_file_path = os.path.join(observational_dir, observational_file.name)
-    run.observational_user_filename = observational_user_filepath
+    run.observational_user_file_path = observational_user_file_path
 
     fs.save(observational_file.name, observational_file)
 
@@ -334,17 +353,16 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    run.forcing_source = ForcingSource.objects.get(ForcingSourceEnum.UPLOAD)
+    run.forcing_source = ForcingSource.objects.get(name=ForcingSourceEnum.UPLOAD.value)
 
     # Validate the file keys and how many there are
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
     # Upload to the run-specific forcing directory
-    run.forcing_dir_path = get_forcing_directory(run)
     run.forcing_user_dir = forcing_user_dir
 
-    fs = FileSystemStorage(location=run.forcing_dir_path)
+    fs = FileSystemStorage(location=get_forcing_dir(run))
 
     # Note that this will replace files that already exist
     for forcing_file in files:

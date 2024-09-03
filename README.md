@@ -15,11 +15,32 @@ $ source $cerfServer/.venv-cerf/bin/activate
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
+# AWS Access
+In order to not have any AWS specific code, AWS buckets are mounted as a regular file system using s3fs.  Create a directory to contain the contents of a specific S3 bucket.
+For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  Then install s3fs and mount the bucket
+```
+$ sudo apt update
+$ sudo apt install s3fs
+$ mkdir -p ~/s3/ngwpc-dev
+$ s3fs mount ngwpc-dev ~/s3/ngwpc-dev
+
+```
+To unmount it at some later point (which should rarely be necessary), use
+```
+fusermount -u ~/s3-ngwpc-dev
+```
+Enter this information in local_settings.py
+```
+HYDROFABRIC_BUCKET = 'ngwpc-dev'
+HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
+```
+
+
 # Setup local configuration
 There are 2 files which need to be copied in order to provide custom settings for this installation.
 The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
 
-You should make copies of `__locall_settings.py` and `__.env`. 
+You should make copies of `__local_settings.py` and `__.env`. 
 ```
 (.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
 (.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env

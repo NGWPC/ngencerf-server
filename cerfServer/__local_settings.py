@@ -6,6 +6,7 @@
 # you can reference os.getenv and store the value in the .env file or in the environment
 
 import os
+from pathlib import Path
 
 from cerfServer.settings import LOGGING
 
@@ -28,7 +29,12 @@ LOGGING['root']['level'] = 'INFO'
 VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
 
-HYDROFABRIC_URL = 'http://localhost:8888'
+HYDROFABRIC_URL = 'http://localhost:8001'
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/get_geopackage/get_parameters/'
+HYDROFABRIC_BUCKET = 'ngwpc-dev'
+HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
+
 
 DATABASES = {
     'default': {

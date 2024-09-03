@@ -98,14 +98,15 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ObservationalSource.objects.all().delete()
 
-        values = [{"name": "USGS", "description": "US Geological Society", "is_active": True},
-                  {"name": "USACE", "description": "US Army Corp of Engineers", "is_active": True},
+        values = [{"name": "USGS", "description": "US Geological Society", "is_active": False},
+                  {"name": "USACE", "description": "US Army Corp of Engineers", "is_active": False},
                   {"name": "BOR", "description": "Bureau of Reclamation", "is_active": False},
-                  {"name": "ENV", "description": "Environmental Canada", "is_active": True},
-                  {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": True},
+                  {"name": "ENV", "description": "Environmental Canada", "is_active": False},
+                  {"name": "CA DWR", "description": "California Department of Water Resources", "is_active": False},
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
+                  {"name": "Agency", "description": "From the owning agency", "is_active": True},
                   {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 

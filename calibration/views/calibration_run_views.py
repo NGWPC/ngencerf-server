@@ -529,7 +529,21 @@ def get_iteration(request):
     return Response(response_validator.data)
 
 
+def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory, exist_ok=True)
+
+    for filename in os.listdir(input_directory):
+        input_file_path = os.path.join(input_directory, filename)
+        output_file_path = os.path.join(output_directory, filename)
+
+        if os.path.isfile(input_file_path):  # Ensure it's a file
+            subset_by_time_range(input_file_path, output_file_path, date_time_range)
+
+
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
+    print(f'Subsetting file {input_file} to {output_file}')
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(input_file, 'r') as infile, open(output_file, 'w', newline='') as outfile:
         reader = csv.reader(infile)
         writer = csv.writer(outfile)
