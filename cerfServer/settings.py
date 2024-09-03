@@ -222,6 +222,22 @@ LOGGING = {
     }
 }
 
+# Locations for running ngen-cal
+REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
+# Directory that Ngen is cloned into
+NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
+# directory that Ngen-cal is cloned into
+NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+
+# This is the mount point for docker containers
+NGEN_CAL_MOUNT_POINT = os.path.join(Path.home(), 'ngwpc/data')
+
+NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
+# Directory where all the output runs are stored
+NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+# Directory containing the ngen-cal virtual environment
+NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
+
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
