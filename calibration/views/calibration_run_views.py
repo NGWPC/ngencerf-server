@@ -20,10 +20,9 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer
-from calibration.util.ngen_locations import CALIBRATION_PY
-from calibration.views import ngen_cal_input, spawn_process
+from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR, NGEN_CAL_VENV
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +99,9 @@ def run_calibration(request):
     if errorReturn:
         return errorReturn
 
-    message = submit_job(run)
-    if message:
-        return ResponseError(message)
+    response = submit_job(run)
+    if response:
+        return response
 
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name}
@@ -129,16 +128,14 @@ def submit_job(run, config_file=None):
     run.run_date = datetime.now(timezone.utc)
     run.save()
 
-    message = create_input(config_file)
-    if message:
-        return message
+    try:
+        create_input(config_file)
+    except Exception as e:
+        return ResponseError(f'Exception from create_input - {str(e)}')
 
-    # TODO Do something here to kick it off
-
-    calibration_input = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
-    print('calibration_input', calibration_input)
-    cmd = [os.path.join(NGEN_CAL_VENV, 'bin/python'), CALIBRATION_PY, calibration_input]
-    spawn_process.execute(cmd)
+    calibration_input_file = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
+    print('calibration_input_file', calibration_input_file)
+    run('calibration', calibration_input_file)
 
     return None
 

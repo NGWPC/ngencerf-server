@@ -12,7 +12,7 @@ from calibration.models import CalibrationOptimizationInput, Status, Calibration
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_main_dir, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    get_geopackage_file_for_job
+    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
 
@@ -83,7 +83,10 @@ config_template = {
         "noah_lib": NOAH_LIB,
         "sft_lib": SFT_LIB,
         "smp_lib": SMP_LIB,
-        "lasam_lib": LASAM_LIB
+        "lasam_lib": LASAM_LIB,
+        "pet_lib": PET_LIB,
+        "snow17_lib": SNOW17_LIB,
+        "sac_lib": SAC_LIB
     }
 }
 
@@ -305,7 +308,7 @@ def ready_to_run(run, build=None):
 def build_config(config, directory):
     config_file = os.path.join(directory, 'input.config')
 
-    logger.info('saving config to', config_file)
+    logger.info(f'saving config to {config_file}')
     toml_string = toml.dumps(config)
 
     # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
