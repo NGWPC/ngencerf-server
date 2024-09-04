@@ -24,41 +24,30 @@ files = [NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen'),
          VALIDATION_PY := os.path.join(CALIB_VALID_DIR, 'validation.py')]
 
 
-def get_geopackage_directory(run):
-    return os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage')
-
-
-def get_geopackage_file(run):
-    return os.path.join(settings.NGEN_CAL_WORK_DIR, 'geopackage', f'gauge_{run.gage.gage_id}.gpkg')
-
-
-#
-# def get_forcing_from_hydrofabric_dir(run):
-#     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'forcing_from_hydrofabric')
-#
-#
-# def get_observation_from_hydrofabric_dir(run):
-#     return os.path.join(settings.NGEN_CAL_WORK_DIR, 'observation_from_hydrofabric')
-#
-#
-# def get_observation_from_hydrofabric_file(run):
-#     return os.path.join(get_observation_from_hydrofabric_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')
-#
-
 def get_main_dir(run: CalibrationRun) -> str:
     return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
 
 
 # Job-specific forcing directory
-def get_forcing_dir(run: CalibrationRun) -> str:
+def get_forcing_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_main_dir(run), 'forcing')
 
 
 # Job-specific observation directory
-def get_observational_dir(run: CalibrationRun) -> str:
+def get_observational_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_main_dir(run), 'observation')
 
 
 # Job-specific observation file
-def get_observational_file(run: CalibrationRun) -> str:
-    return os.path.join(get_observational_dir(run), f'{run.gage.gage_id}_hourly_discharge.csv')
+def get_observational_file_for_job(run: CalibrationRun) -> str:
+    return os.path.join(get_observational_dir_for_job(run), f'{run.gage.gage_id}_hourly_discharge.csv') if run.gage else None
+
+
+# TODO This is temporary while we are allowing uploading of Geopackage files
+# Job-specific geopackage directory
+def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
+    return os.path.join(get_main_dir(run), 'geopackage')
+
+
+def get_geopackage_file_for_job(run: CalibrationRun) -> str:
+    return os.path.join(get_geopackage_dir_for_job(run), f'gauge_{run.gage.gage_id}.gpkg') if run.gage else None

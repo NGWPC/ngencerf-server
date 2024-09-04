@@ -17,9 +17,10 @@ from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
-    UploadObservationalSerializer
+    UploadObservationalSerializer, UploadGeopackageSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_observational_dir, get_forcing_dir, get_observational_file, get_geopackage_file
+from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
+    get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
@@ -175,7 +176,7 @@ def save_gage_tab(request):
             # TODO Check for other errors
             return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
 
-        geopackage_png = gpkg_to_png_selected_layers(get_geopackage_file(run))
+        geopackage_png = gpkg_to_png_selected_layers(run.geopackage_hydrofabric_path)
 
         # Convert ByteIO image to base64
         base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
@@ -183,8 +184,6 @@ def save_gage_tab(request):
 
         """
         Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
-        run.forcing_user_dir and run.observational_user_file_path are *only* used with user-uploaded data.
-        These paths are not used for anything except as a reference for the user, so he knows where the data came from.
         
         run.forcing_hydrofabric_dir_path and observational_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
         These paths are also not really used for anything, except as a reference for the unsubsetted data
@@ -196,7 +195,7 @@ def save_gage_tab(request):
         the job specific path remains empty, until we build the config, at which point the Hydrofabric data is subsetted by time-range and the 
         resulting files placed in the job-specific paths.
         
-        run.hydrofabric_gpkg_path is the path of the geopackage file from Hydrofabric.  
+        run.geopackage_hydrofabric_path is the path of the geopackage file from Hydrofabric.  
         This field is always used, since the geopackage files can't be uploaded.
         """
         # Get forcing and observational data
@@ -205,7 +204,7 @@ def save_gage_tab(request):
             try:
                 if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
                     # Delete any user-upload, if there
-                    observational_file = ngen_locations.get_observational_file(run)
+                    observational_file = ngen_locations.get_observational_file_for_job(run)
                     if os.path.exists(observational_file):
                         os.remove(observational_file)
                     get_observational_data_from_hydrofabric(run)
@@ -217,7 +216,7 @@ def save_gage_tab(request):
             try:
                 if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
                     # Delete any user-upload, if there
-                    forcing_dir = ngen_locations.get_forcing_dir(run)
+                    forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
                     if os.path.exists(forcing_dir):
                         os.remove(forcing_dir)
                         shutil.rmtree(forcing_dir)
@@ -249,12 +248,10 @@ def save_gage(run, gage_id):
             if run.gage:
                 # Delete any user uploaded files
                 if run.forcing_user_dir:
-                    shutil.rmtree(get_forcing_dir(run))
-                run.forcing_user_dir = None
+                    shutil.rmtree(get_forcing_dir_for_job(run))
 
                 if run.observational_file_path:
-                    os.remove(get_observational_file(run))
-                run.observational_user_file_path = None
+                    os.remove(get_observational_file_for_job(run))
 
             run.gage = gage
     return gage
@@ -284,7 +281,6 @@ def upload_observational_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    observational_user_file_path = validator.data.get('observational_user_file_path')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -292,16 +288,16 @@ def upload_observational_data(request):
 
     run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
 
-    # Need to upload to the run-specific observational directory, as opposed to the global directory
-    observational_dir = get_observational_dir(run)
-    fs = FileSystemStorage(location=observational_dir)
+    # Save to the run-specific observational directory
+    fs = FileSystemStorage(location=get_observational_dir_for_job(run))
 
-    # Make sure file doesn't exist
     files = request.FILES.getlist('observational_file')
 
     observational_file = files[0]
-    run.observational_user_file_path = observational_user_file_path
+    run.observational_hydrofabric_file_path = None
 
+    if fs.exists(observational_file.name):
+        os.remove(os.path.join(fs.location, observational_file.name))
     fs.save(observational_file.name, observational_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
@@ -347,7 +343,6 @@ def upload_forcing_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
-    forcing_user_dir = validator.data.get('forcing_user_dir')
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -359,13 +354,14 @@ def upload_forcing_data(request):
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    # Upload to the run-specific forcing directory
-    run.forcing_user_dir = forcing_user_dir
+    run.forcing_hydrofabric_dir_path = None
 
-    fs = FileSystemStorage(location=get_forcing_dir(run))
+    # Save to the run-specific forcing directory
+    fs = FileSystemStorage(location=get_forcing_dir_for_job(run))
 
-    # Note that this will replace files that already exist
     for forcing_file in files:
+        if fs.exists(forcing_file.name):
+            os.remove(os.path.join(fs.location, forcing_file.name))
         fs.save(forcing_file.name, forcing_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
@@ -384,4 +380,60 @@ def upload_forcing_data(request):
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=UploadGeopackageSerializer,
+    responses={
+        200: GenericResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
+    },
+    description="Allow user to upload geopackage data"
+)
+@api_view(['POST'])
+# @permission_classes([AllowAny])
+@handle_exceptions
+def upload_geopackage_data(request):
+    data = request.data
+    logger.debug(f'upload_geopackage_data() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(UploadGeopackageSerializer, data, context={'request': request})
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.data.get('calibration_run_id')
+
+    run, errorReturn = get_run(calibration_run_id, request.user)
+    if errorReturn:
+        return errorReturn
+
+    # Save to the run-specific geopackage directory
+    fs = FileSystemStorage(location=get_geopackage_dir_for_job(run))
+
+    files = request.FILES.getlist('geopackage_file')
+
+    geopackage_file = files[0]
+    run.geopackage_hydrofabric_path = None
+
+    if fs.exists(geopackage_file.name):
+        os.remove(os.path.join(fs.location, geopackage_file.name))
+    fs.save(geopackage_file.name, geopackage_file)
+
+    with transaction.atomic():
+        run.save()
+
+    ngen_cal_input.ready_to_run(run)
+
+    response = {'message': f"Geopackage file '{geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+                'status': run.status.name}
+
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from upload_geopackage_data() - {response_validator.data}')
     return Response(response_validator.data)

@@ -24,11 +24,15 @@ class Command(BaseCommand):
     # For Development oly
     DELETE_FLAG = False
 
+    def __init__(self):
+        super().__init__()
+        self.user = None  # Define the attribute here
+
     def handle(self, *args, **options):
         self.stdout.write('Initializing static tables')
         # need to get a user that is guaranteed to be there, such as admin
         self.user = get_user_model().objects.get(username='admin')
-        print(f"In init_sql: username: {self.user.username}, email: {self.user.email}")
+        self.stdout.write(f"In init_sql: username: {self.user.username}, email: {self.user.email}")
 
         self.define_domains()
         self.define_rfc()
