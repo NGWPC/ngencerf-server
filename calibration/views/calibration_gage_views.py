@@ -247,11 +247,13 @@ def save_gage(run, gage_id):
 
             if run.gage:
                 # Delete any user uploaded files
-                if run.forcing_user_dir:
-                    shutil.rmtree(get_forcing_dir_for_job(run))
+                uploaded_forcing_dir = get_forcing_dir_for_job(run)
+                if os.path.exists(uploaded_forcing_dir):
+                    shutil.rmtree(uploaded_forcing_dir)
 
-                if run.observational_file_path:
-                    os.remove(get_observational_file_for_job(run))
+                uploaded_observational_file = get_observational_file_for_job(run)
+                if os.path.exists(uploaded_observational_file):
+                    os.remove(uploaded_observational_file)
 
             run.gage = gage
     return gage
