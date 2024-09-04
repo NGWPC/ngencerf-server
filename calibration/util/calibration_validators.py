@@ -654,6 +654,7 @@ class ImportResponseSerializer(BaseSerializer):
 # Scalers will be set to None
 class ExportResponseSerializer(BaseSerializer):
     metadata = serializers.JSONField(required=False)
+    run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)

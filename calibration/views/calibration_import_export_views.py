@@ -258,6 +258,10 @@ def export_job(request):
 
     calibration_run_data = load_calibration_run_data(run, export=True)
 
+    errors, _ = ngen_cal_input.ready_to_run(run)
+    if errors:
+        calibration_run_data['metadata']['errors'] = errors
+
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
@@ -272,15 +276,16 @@ def load_calibration_run_data(run, export: bool = None):
 
     calibration_run_data = {}
 
-    metadata = {}
     time_range = get_time_range(run) or {}
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
     if export:
+        metadata = {'source_calibration_run_id': run.id, 'time_range': time_range}
         calibration_run_data['metadata'] = metadata
-        metadata['source_calibration_run_id'] = run.id
-        metadata['time_range'] = time_range
-        calibration_run_data['gage_id'] = run.gage.gage_id
+
+        calibration_run_data['run_after_import'] = False
+
+        calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
         # There fields are exported so we can import them later
         # Note that it makes sense to export the unsubsetted Hydrofabric files
@@ -292,10 +297,10 @@ def load_calibration_run_data(run, export: bool = None):
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
-        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if os.path.exists(
+        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
             user_uploaded_observational_file) else None
         user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
-        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if os.path.exists(user_uploaded_forcing_dir) else None
+        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir) else None
 
     else:
         calibration_run_data['calibration_run_id'] = run.id
