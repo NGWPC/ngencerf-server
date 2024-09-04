@@ -528,6 +528,8 @@ def get_iteration(request):
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+    logger.info(f'Subsetting directory {input_directory}')
+
     if not os.path.exists(output_directory):
         os.makedirs(output_directory, exist_ok=True)
 
@@ -538,11 +540,13 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
         if os.path.isfile(input_file_path):  # Ensure it's a file
             subset_by_time_range(input_file_path, output_file_path, date_time_range)
 
+    logger.info(f'Done subsetting directory {input_directory}')
+
 
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
-    print(f'Subsetting file {input_file} to {output_file}')
+    logger.info(f'Subsetting file {input_file} to {output_file}')
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(input_file, 'r') as infile, open(output_file, 'w', newline='') as outfile:
+    with open(input_file, 'r', buffering=16384) as infile, open(output_file, 'w', newline='', buffering=16384) as outfile:
         reader = csv.reader(infile)
         writer = csv.writer(outfile)
 
@@ -553,3 +557,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             if row_date in date_time_range:
                 writer.writerow(row)
+
+    logger.info(f'Done subsetting file {input_file} to {output_file}')
+
+

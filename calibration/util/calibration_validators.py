@@ -97,11 +97,6 @@ class SlothParameters(BaseSerializer):
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
 
-class TimeRangeSerializer(BaseSerializer):
-    start_time = serializers.DateTimeField(required=True)
-    end_time = serializers.DateTimeField(required=True)
-
-
 class TimeRangeSerializerAllowEmpty(BaseSerializer):
     start_time = serializers.DateTimeField(required=False)
     end_time = serializers.DateTimeField(required=False)
@@ -559,6 +554,7 @@ class SaveTuningRequestSerializer(BaseSerializer):
 class LoadTuningResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
+    time_range = TimeRangeSerializerAllowEmpty(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 

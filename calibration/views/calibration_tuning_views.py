@@ -63,6 +63,8 @@ def load_tuning_tab(request):
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
+    time_range = get_time_range(run)
+
     module_list = []
     if modules:
         # Only do this if modules have been saved in the formulation tab
@@ -75,7 +77,7 @@ def load_tuning_tab(request):
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list, 'time_range': time_range}
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
@@ -132,15 +134,15 @@ def get_time_range(run):
     forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path, ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    # If both paths and time range are available, calculate intersection and update run
-    if observation_path and forcing_path and run.time_range_start and run.time_range_end:
+    # If both paths are available, calculate intersection and update run
+    if observation_path and forcing_path:
         daterange = get_date_range_intersection(observation_path, forcing_path)
         run.time_range_start = daterange.start_datetime
         run.time_range_end = daterange.end_datetime
         run.save()
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
-    return None
+    return {}
 
 
 def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
