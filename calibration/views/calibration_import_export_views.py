@@ -276,7 +276,7 @@ def load_calibration_run_data(run, export: bool = None):
 
     calibration_run_data = {}
 
-    time_range = get_time_range(run) or {}
+    time_range = get_time_range(run)
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
     if export:

@@ -1,6 +1,6 @@
 
 geopackage_sample_data = {
-    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/camels1/gauge_01123000.gpkg",
     "creation_date": "2024-07-30T12:33:00.001Z"
 }
 

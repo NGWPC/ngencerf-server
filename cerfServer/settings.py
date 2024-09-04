@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import logging
 import os
 from datetime import timedelta
+from enum import StrEnum, auto
 from pathlib import Path
 import re
 
@@ -237,6 +238,15 @@ NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 # Directory containing the ngen-cal virtual environment
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
+
+
+class RunTypeEnum(StrEnum):
+    LOCAL = auto()
+    DOCKER = auto()
+
+
+# TODO Right now we only support LOCAL.  Need to see if we can dynamically figure out which environment we're in, or set an ENV variable
+RUN_TYPE = RunTypeEnum.LOCAL
 
 # This needs to be at the end of settings.py
 try:

@@ -27,7 +27,7 @@ $ s3fs ngwpc-dev ~/s3/ngwpc-dev
 ```
 To unmount it at some later point (which should rarely be necessary), use
 ```
-fusermount -u ~/s3-ngwpc-dev
+fusermount -u ~/s3/ngwpc-dev
 ```
 Enter this information in local_settings.py
 ```

@@ -5,18 +5,17 @@
     },
     "gage_id": "01123000",
     "forcing_source": "AORC",
-    "forcing_user_dir": "/mydir/hello",
     "forcing_hydrofabric_dir_path": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/",
     "forcing_user_uploaded_dir_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/1_peter/forcing",
     "observational_source": "Agency",
-    "observational_user_file_path": "a filepath",
     "observational_hydrofabric_file_path": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv",
-    "observational_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/1_peter/observation/01123000_hourly_discharge.csv",
-    "geopackage_path": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
+    "observational_user_uploaded_file_path": null,
+    "geopackage_path_from_hydrofabric": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",
+    "geopackage_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/1_peter/geopackage/gauge_01123000.gpkg",
     "modules": [
-        "T-Route",
         "Noah-OWP-Modular",
-        "CFE-S"
+        "CFE-S",
+        "T-Route"
     ],
     "formulation_name": "my-cfe-noah",
     "use_sloth": true,
@@ -58,16 +57,16 @@
         "module": "Noah-OWP-Modular"
     },
     "calibration_times": {
-        "calibration_start_time": "2017-01-01T00:00:00Z",
+        "calibration_start_time": "2017-12-31T00:00:00Z",
         "calibration_end_time": "2019-12-31T23:00:00Z",
         "simulation_start_time": "2018-01-01T00:00:00Z",
         "simulation_end_time": "2019-12-30T23:00:00Z"
     },
     "validation_times": {
-        "validation_start_time": "2017-01-31T00:00:00Z",
-        "validation_end_time": "2019-12-31T23:00:00Z",
-        "simulation_start_time": "2018-01-01T00:00:00Z",
-        "simulation_end_time": "2019-12-31T23:00:00Z"
+        "validation_start_time": "2020-01-31T00:00:00Z",
+        "validation_end_time": "2021-12-31T23:00:00Z",
+        "simulation_start_time": "2020-02-01T00:00:00Z",
+        "simulation_end_time": "2021-12-31T23:00:00Z"
     },
     "streamflow_threshold": 1.0,
     "peak_flow_threshold": 2.0,

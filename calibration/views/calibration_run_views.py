@@ -20,10 +20,10 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer
-from calibration.util.ngen_locations import CALIBRATION_PY
-from calibration.views import ngen_cal_input, spawn_process
+from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR, NGEN_CAL_VENV
+from calibration.views.run_ngen_cal import run_job
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +100,9 @@ def run_calibration(request):
     if errorReturn:
         return errorReturn
 
-    message = submit_job(run)
-    if message:
-        return ResponseError(message)
+    response = submit_job(run)
+    if response:
+        return response
 
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name}
@@ -129,16 +129,14 @@ def submit_job(run, config_file=None):
     run.run_date = datetime.now(timezone.utc)
     run.save()
 
-    message = create_input(config_file)
-    if message:
-        return message
+    try:
+        create_input(config_file)
+    except Exception as e:
+        return ResponseError(f'Exception from create_input - {str(e)}')
 
-    # TODO Do something here to kick it off
-
-    calibration_input = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
-    print('calibration_input', calibration_input)
-    cmd = [os.path.join(NGEN_CAL_VENV, 'bin/python'), CALIBRATION_PY, calibration_input]
-    spawn_process.execute(cmd)
+    calibration_input_file = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
+    print('calibration_input_file', calibration_input_file)
+    run_job('calibration', calibration_input_file)
 
     return None
 
@@ -530,6 +528,8 @@ def get_iteration(request):
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+    logger.info(f'Subsetting directory {input_directory}')
+
     if not os.path.exists(output_directory):
         os.makedirs(output_directory, exist_ok=True)
 
@@ -540,11 +540,13 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
         if os.path.isfile(input_file_path):  # Ensure it's a file
             subset_by_time_range(input_file_path, output_file_path, date_time_range)
 
+    logger.info(f'Done subsetting directory {input_directory}')
+
 
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
-    print(f'Subsetting file {input_file} to {output_file}')
+    logger.info(f'Subsetting file {input_file} to {output_file}')
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(input_file, 'r') as infile, open(output_file, 'w', newline='') as outfile:
+    with open(input_file, 'r', buffering=16384) as infile, open(output_file, 'w', newline='', buffering=16384) as outfile:
         reader = csv.reader(infile)
         writer = csv.writer(outfile)
 
@@ -555,3 +557,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
             if row_date in date_time_range:
                 writer.writerow(row)
+
+    logger.info(f'Done subsetting file {input_file} to {output_file}')
+
+
