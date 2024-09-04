@@ -117,7 +117,7 @@ def ready_to_run(run, build=None):
             messages.append('forcing source must be specified')
         else:
             is_forcing_upload = run.forcing_source.name == ForcingSourceEnum.UPLOAD.value
-            if is_forcing_upload and not run.forcing_user_dir:
+            if is_forcing_upload:
                 messages.append('forcing data must be uploaded')
             else:
                 if not is_forcing_upload:
