@@ -135,8 +135,7 @@ def submit_job(run, config_file=None):
         return ResponseError(f'Exception from create_input - {str(e)}')
 
     calibration_input_file = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
-    print('calibration_input_file', calibration_input_file)
-    run_job('calibration', calibration_input_file)
+    run_job(run, 'calibration', calibration_input_file)
 
     return None
 

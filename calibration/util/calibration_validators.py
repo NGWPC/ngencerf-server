@@ -295,7 +295,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[optimizationValidator])
     optimization_inputs = OptimizationInputsSerializer(many=True, default=[])
     plot_frequency = serializers.IntegerField(required=True, allow_null=True)
-    stop_criteria = serializers.IntegerField(required=True, allow_null=True)
+    stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
@@ -570,7 +570,7 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     objective_function = serializers.CharField(allow_blank=False, required=False)
     streamflow_threshold = serializers.FloatField(required=False)
     peak_flow_threshold = serializers.FloatField(required=False)
-    stop_criteria = serializers.IntegerField(required=False)
+    stop_criteria = serializers.IntegerField(required=False, min_value=2)
     plot_frequency = serializers.IntegerField(required=False)
 
 
@@ -675,7 +675,7 @@ class ExportResponseSerializer(BaseSerializer):
     optimization_inputs = OptimizationInputsSerializer(many=True, default={})
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[optimizationValidator])
     plot_frequency = serializers.IntegerField(required=True, allow_null=True)
-    stop_criteria = serializers.IntegerField(required=True, allow_null=True)
+    stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
 
 
 class ImportSerializer(BaseSerializer):
@@ -708,7 +708,7 @@ class ImportSerializer(BaseSerializer):
     optimization = serializers.CharField(allow_blank=False, allow_null=True, required=False, validators=[optimizationValidator])
 
     plot_frequency = serializers.IntegerField(required=False, allow_null=True)
-    stop_criteria = serializers.IntegerField(required=False, allow_null=True)
+    stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
 
 
 ##################################

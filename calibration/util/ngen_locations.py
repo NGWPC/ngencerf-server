@@ -54,3 +54,7 @@ def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
 
 def get_geopackage_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_geopackage_dir_for_job(run), f'gauge_{run.gage.gage_id}.gpkg') if run.gage else None
+
+
+def get_stdout_file(run: CalibrationRun) -> str:
+    return os.path.join(get_main_dir(run), 'ngen-cal-stdout.log')

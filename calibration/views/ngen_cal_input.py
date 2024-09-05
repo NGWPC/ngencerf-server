@@ -235,9 +235,9 @@ def ready_to_run(run, build=None):
         messages.append('stop criteria (number of iterations) must be specified')
     else:
         # We're assuming there is only 1 stop criteria record for now
-        calibration['number_iterations'] = stop_criteria.value
+        calibration['number_iteration'] = stop_criteria.value
 
-    calibration['start_iterations'] = 0  # TODO ????'
+    calibration['start_iteration'] = 0  # TODO ????'
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
