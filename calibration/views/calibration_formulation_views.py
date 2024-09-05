@@ -184,7 +184,8 @@ def save_formulation_tab(request):
 
         # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
         CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-        message = add_sloth_parameters(run, sloth_parameters)
+        if use_sloth:
+            message = add_sloth_parameters(run, sloth_parameters)
         if message:
             return ResponseError(message)
 

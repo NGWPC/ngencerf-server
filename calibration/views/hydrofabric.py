@@ -125,7 +125,8 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules):
             parameters = m['module_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
-                CalibrationParameter.objects.update_or_create(
+                # Using get_or_create because we don't want to override any values the user has already entered
+                CalibrationParameter.objects.get_or_create(
                     name=p['name'],
                     calibration_formulation=module,
                     defaults={'data_type': p['data_type'],

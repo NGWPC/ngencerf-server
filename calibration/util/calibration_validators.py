@@ -453,7 +453,7 @@ class SaveFormulationRequestSerializer(BaseSerializer):
     formulation_name = serializers.CharField(required=False, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=True), min_length=2)
     use_sloth = serializers.BooleanField(required=True)
-    sloth_parameters = SlothParameters(required=False, many=True, min_length=1)
+    sloth_parameters = SlothParameters(required=False, many=True)
 
 
 class ModuleStaticSerializer(BaseSerializer):
