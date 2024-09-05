@@ -28,7 +28,14 @@ files = [NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen'),
 
 
 def get_main_dir(run: CalibrationRun) -> str:
-    return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner}')
+    return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
+
+
+# Construct the directory where the Input/Output is
+def get_gage_dir(run: CalibrationRun) -> str | bytes:
+    return os.path.join(get_main_dir(run),
+                        f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}',
+                        run.ngen_formulation_name, run.gage.gage_id)
 
 
 # Job-specific forcing directory
@@ -54,3 +61,19 @@ def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
 
 def get_geopackage_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_geopackage_dir_for_job(run), f'gauge_{run.gage.gage_id}.gpkg') if run.gage else None
+
+
+def get_calibration_stdout_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output', 'Calibration_Run', 'ngen-cal_calibration_stdout.log')
+
+
+def get_validation_stdout_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', 'ngen-cal_validation_stdout.log')
+
+
+def get_calibration_input_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
+
+
+def get_validation_input_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', f'{run.gage.gage_id}_config_valid_best.yaml')

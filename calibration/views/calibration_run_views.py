@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from itertools import groupby
 from operator import attrgetter
@@ -20,10 +21,11 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer
+from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
-from calibration.views.run_ngen_cal import run_job
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
+from calibration.views.run_ngen_cal import run_job, CalibOrValid
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -134,9 +136,7 @@ def submit_job(run, config_file=None):
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')
 
-    calibration_input_file = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
-    print('calibration_input_file', calibration_input_file)
-    run_job('calibration', calibration_input_file)
+    run_job(run, CalibOrValid.CALIBRATION)
 
     return None
 
@@ -408,13 +408,6 @@ def read_last_line(filename):
         return last_line
 
 
-# Construct the directory where the Input/Output is
-def get_gage_dir(run) -> str | bytes:
-    return os.path.join(NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}',
-                        f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}',
-                        run.ngen_formulation_name, run.gage.gage_id)
-
-
 @extend_schema(
     request=ReportIterationSerializer,
     responses={
@@ -527,18 +520,42 @@ def get_iteration(request):
     return Response(response_validator.data)
 
 
+# def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+#     logger.info(f'Subsetting directory {input_directory}')
+#
+#     if not os.path.exists(output_directory):
+#         os.makedirs(output_directory, exist_ok=True)
+#
+#     for filename in os.listdir(input_directory):
+#         input_file_path = os.path.join(input_directory, filename)
+#         output_file_path = os.path.join(output_directory, filename)
+#
+#         if os.path.isfile(input_file_path):  # Ensure it's a file
+#             subset_by_time_range(input_file_path, output_file_path, date_time_range)
+#
+#     logger.info(f'Done subsetting directory {input_directory}')
+
+
+# I changed this to use multiprocessing in the hopes of speeding it up a bit, but did not seem to have any affect
+# mostly likely because the S3 file processing is the bottleneck
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
     logger.info(f'Subsetting directory {input_directory}')
 
     if not os.path.exists(output_directory):
         os.makedirs(output_directory, exist_ok=True)
 
-    for filename in os.listdir(input_directory):
-        input_file_path = os.path.join(input_directory, filename)
-        output_file_path = os.path.join(output_directory, filename)
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for filename in os.listdir(input_directory):
+            input_file_path = os.path.join(input_directory, filename)
+            output_file_path = os.path.join(output_directory, filename)
 
-        if os.path.isfile(input_file_path):  # Ensure it's a file
-            subset_by_time_range(input_file_path, output_file_path, date_time_range)
+            if os.path.isfile(input_file_path):
+                future = executor.submit(subset_by_time_range, input_file_path, output_file_path, date_time_range)
+                futures.append(future)
+
+        for future in as_completed(futures):
+            future.result()  # Propagate any exceptions
 
     logger.info(f'Done subsetting directory {input_directory}')
 
@@ -546,7 +563,7 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     logger.info(f'Subsetting file {input_file} to {output_file}')
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(input_file, 'r', buffering=16384) as infile, open(output_file, 'w', newline='', buffering=16384) as outfile:
+    with open(input_file, 'r', buffering=32768) as infile, open(output_file, 'w', newline='', buffering=32768) as outfile:
         reader = csv.reader(infile)
         writer = csv.writer(outfile)
 
@@ -559,5 +576,3 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
                 writer.writerow(row)
 
     logger.info(f'Done subsetting file {input_file} to {output_file}')
-
-
