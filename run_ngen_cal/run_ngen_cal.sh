@@ -41,3 +41,6 @@ source "$VENV_PATH/bin/activate"
 # Run the Python script, redirecting its output to the specified file
 echo "Running $(basename "$SCRIPT_PATH")"
 python "$SCRIPT_PATH" "$@" > "$PYTHON_OUTPUT_FILE" 2>&1
+
+echo "Output from running $(basename "$SCRIPT_PATH")"
+cat "$PYTHON_OUTPUT_FILE"

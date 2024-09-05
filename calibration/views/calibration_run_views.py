@@ -21,10 +21,11 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer
+from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
-from calibration.views.run_ngen_cal import run_job
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT, NGEN_CAL_RUN_DIR
+from calibration.views.run_ngen_cal import run_job, CalibOrValid
+from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +136,7 @@ def submit_job(run, config_file=None):
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')
 
-    calibration_input_file = os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
-    run_job(run, 'calibration', calibration_input_file)
+    run_job(run, CalibOrValid.CALIBRATION)
 
     return None
 
@@ -408,13 +408,6 @@ def read_last_line(filename):
         return last_line
 
 
-# Construct the directory where the Input/Output is
-def get_gage_dir(run) -> str | bytes:
-    return os.path.join(NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}',
-                        f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}',
-                        run.ngen_formulation_name, run.gage.gage_id)
-
-
 @extend_schema(
     request=ReportIterationSerializer,
     responses={
@@ -583,5 +576,3 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
                 writer.writerow(row)
 
     logger.info(f'Done subsetting file {input_file} to {output_file}')
-
-

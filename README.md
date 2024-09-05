@@ -22,15 +22,23 @@ For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ng
 $ sudo apt update
 $ sudo apt install s3fs
 $ mkdir -p ~/s3/ngwpc-dev
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
-
+$ s3fs ngwpc-dev ~/s3/ngwpc-dev 
 ```
 To unmount it at some later point use
 ```
 fusermount -u ~/s3/ngwpc-dev
 ```
+When refreshing your AWS credentials, you might have to unmount and re-mount
+```
+fusermount -u ~/s3/ngwpc-dev
+$ s3fs ngwpc-dev ~/s3/ngwpc-dev 
+```
 
-When refreshing your AWS credentials, it might be necessary to unmount and then remount the AWS directory.
+There are some additional options for performance that I've played with.  At the very least, we should probably cache the results to avoid multiple round-trips to AWS.
+But this might be moot on other environments.
+```
+$ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
+```
 
 Enter this information in local_settings.py
 ```

@@ -9,7 +9,7 @@ from rest_framework import status
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
-from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
+from calibration.util.calibration_validators import ForcingHydrofabricSerializer, ObservationalHydrofabricSerializer, \
     ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer, GeopackageHydrofabricSerializer
 from calibration.views.common import CerfException
 from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_metadata_sample_data, \
