@@ -296,11 +296,11 @@ def ready_to_run(run, build=None):
     run.status = Status.objects.get(name=(StatusEnum.SAVED if messages else StatusEnum.READY))
     run.save()
 
-    if messages:
-        print('There are validation errors. Normally, we would stop here and not try to build the config')
+    # if messages:
+    #     print('There are validation errors. Normally, we would stop here and not try to build the config')
     # TODO Only build if no messages
-    # config_file = build_config(config, main_dir) if build and not messages else None
-    config_file = build_config(config, main_dir) if build else None
+    config_file = build_config(config, main_dir) if build and not messages else None
+    # config_file = build_config(config, main_dir) if build else None
 
     return messages, config_file
 

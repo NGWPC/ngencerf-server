@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+from datetime import datetime, timezone
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -15,7 +16,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job,  \
+from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_my_modules, get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
@@ -277,6 +278,9 @@ def load_calibration_run_data(run, export: bool = None):
     calibration_run_data = {}
 
     time_range = get_time_range(run)
+    # Since we're not using a serializer for metadata, we need to serialize the datetime objects manually
+    time_range['start_time'] = time_range['start_time'].isoformat()
+    time_range['end_time'] = time_range['end_time'].isoformat()
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
     if export:
