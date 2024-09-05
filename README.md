@@ -25,10 +25,13 @@ $ mkdir -p ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev
 
 ```
-To unmount it at some later point (which should rarely be necessary), use
+To unmount it at some later point use
 ```
 fusermount -u ~/s3/ngwpc-dev
 ```
+
+When refreshing your AWS credentials, it might be necessary to unmount and then remount the AWS directory.
+
 Enter this information in local_settings.py
 ```
 HYDROFABRIC_BUCKET = 'ngwpc-dev'
