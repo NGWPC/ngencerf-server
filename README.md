@@ -22,7 +22,7 @@ For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ng
 $ sudo apt update
 $ sudo apt install s3fs
 $ mkdir -p ~/s3/ngwpc-dev
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev
+$ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
 
 ```
 To unmount it at some later point use
