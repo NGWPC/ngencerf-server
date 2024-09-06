@@ -24,6 +24,7 @@ from calibration.util.ngen_locations import get_observational_dir_for_job, get_f
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
+from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -170,11 +171,13 @@ def save_gage_tab(request):
         if not gage:
             return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
 
-        try:
-            get_geopackage_from_hydrofabric(run)
-        except ClientError as e:
-            # TODO Check for other errors
-            return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
+        # We don't even want fake data
+        if not settings.HYDROFABRIC:
+            try:
+                get_geopackage_from_hydrofabric(run)
+            except ClientError as e:
+                # TODO Check for other errors
+                return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
 
         geopackage_png = gpkg_to_png_selected_layers(run.geopackage_hydrofabric_path)
 

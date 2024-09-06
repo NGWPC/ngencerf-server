@@ -89,7 +89,7 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ForcingSource.objects.all().delete()
 
-        values = [{"name": "AORC", "description": "Analysis of Record For Calibration"},
+        values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": False},
                   {"name": "Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
@@ -110,7 +110,7 @@ class Command(BaseCommand):
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Agency", "description": "From the owning agency", "is_active": True},
+                  {"name": "Agency", "description": "From the owning agency", "is_active": False},
                   {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
