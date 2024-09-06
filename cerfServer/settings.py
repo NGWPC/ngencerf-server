@@ -245,19 +245,21 @@ HYDROFABRIC = False
 # Locations
 # -----------------------------
 # Locations for running ngen-cal
-REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
+REPO_ROOT = os.getenv('REPO_ROOT', os.path.join(Path.home(), 'noaa-owp'))
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
 
 # This is the mount point for docker containers
-NGEN_CAL_MOUNT_POINT = os.path.join(Path.home(), 'ngwpc/data')
+NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', os.path.join(Path.home(), 'ngwpc/data'))
 
 NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+
 # Directory containing the ngen-cal virtual environment
+# This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 

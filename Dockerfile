@@ -19,11 +19,11 @@ RUN set -eux; \
         python3.11 python3.11-libs python3.11-devel \
         python3.11-pip \
         python3.11-setuptools \
-        which \ 
+        which \
     ; \
     dnf clean all
 
-RUN --mount=type=secret,id=gitlab_token \ 
+RUN --mount=type=secret,id=gitlab_token \
     set -eux; \
     \
     git config --global url."https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
@@ -47,7 +47,7 @@ COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
 COPY ./cerfServer/__.env-docker /ngencerf/ngencerf-server/cerfServer/.env
 COPY ./cerfServer/__local_settings.py /ngencerf/ngencerf-server/cerfServer/local_settings.py
 
-RUN --mount=type=secret,id=aws_token \ 
+RUN --mount=type=secret,id=aws_token \
     set -eux; \
     \
     mkdir --parents ~/.aws/ ; \

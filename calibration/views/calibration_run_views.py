@@ -484,7 +484,7 @@ def report_iteration(request):
         ),
         500: ErrorResponseSerializer
     },
-    description="Report iteration of a running calibration"
+    description="Get iteration of a running calibration"
 )
 # Called by ngen_cal
 @api_view(['POST'])
