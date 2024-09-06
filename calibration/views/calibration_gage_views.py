@@ -199,30 +199,20 @@ def save_gage_tab(request):
         This field is always used, since the geopackage files can't be uploaded.
         """
         # Get forcing and observational data
+        if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
+            # Delete any user-upload, if there
+            observational_file = ngen_locations.get_observational_file_for_job(run)
+            if os.path.exists(observational_file):
+                os.remove(observational_file)
+            get_observational_data_from_hydrofabric(run)
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
 
-        if run.observational_source and observational_source_name != run.observational_source.name:
-            try:
-                if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
-                    # Delete any user-upload, if there
-                    observational_file = ngen_locations.get_observational_file_for_job(run)
-                    if os.path.exists(observational_file):
-                        os.remove(observational_file)
-                    get_observational_data_from_hydrofabric(run)
-            except ClientError as e:
-                return Response(f'Error downloading observational data from AWS.  Check your AWS credentials - {e}')
-            run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
-
-        if run.forcing_source and forcing_source_name != run.forcing_source.name:
-            try:
-                if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
-                    # Delete any user-upload, if there
-                    forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
-                    if os.path.exists(forcing_dir):
-                        os.remove(forcing_dir)
-                        shutil.rmtree(forcing_dir)
-                    get_forcing_data_from_hydrofabric(run)
-            except ClientError as e:
-                return Response(f'Error downloading forcing data from AWS.  Check your AWS credentials - {e}')
+        if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
+            # Delete any user-upload, if there
+            forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
+            if os.path.exists(forcing_dir):
+                shutil.rmtree(forcing_dir)
+            get_forcing_data_from_hydrofabric(run)
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
 
     with transaction.atomic():

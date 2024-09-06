@@ -1,7 +1,6 @@
 import base64
 import logging
 import os
-from datetime import datetime, timezone
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse

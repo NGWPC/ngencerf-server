@@ -3,72 +3,66 @@ import logging
 from urllib.parse import urljoin
 
 import requests
-import rest_framework
 from django.db import transaction
-from rest_framework import status
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
-from calibration.util.calibration_validators import ForcingHydrofabricSerializer, GeopackageSerializer, ObservationalHydrofabricSerializer, \
-    ModuleDataHydrofabricListSerializer
+from calibration.util.calibration_validators import ForcingHydrofabricSerializer, ObservationalHydrofabricSerializer, \
+    ModuleDataHydrofabricListSerializer, GeopackageHydrofabricSerializer, ModuleHydrofabricListSerializer
 from calibration.views.common import CerfException
-from cerfServer.local_settings import HYDROFABRIC_URL, HYDROFABRIC_GEOPACKAGE_ENDPOINT, HYDROFABRIC_MODULE_METADATA_ENDPOINT
-from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_sample_data, forcing_sample_data
+from cerfServer import settings
+from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_sample_data, forcing_sample_data, \
+    module_metadata_sample_data
 
 logger = logging.getLogger(__name__)
-
-
-def get_geopackage_from_hydrofabric(run: CalibrationRun):
-    print('Getting geopackage from Hydrofabric')
-
-    url = urljoin(HYDROFABRIC_URL, HYDROFABRIC_GEOPACKAGE_ENDPOINT.format(gage_id=gage_id))
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    geopackage_json = response.json()
-    geopackage_json = geopackage_sample_data
-
-    print('geopackage_data', geopackage_data)
-
-    validator = GeopackageSerializer(data=geopackage_json)
-
-    hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
-                                              'Geopackage data from Hydrofabric is not in the expected format')
-
-    s3_uri = hydrofabric_data.get('uri')
-    run.geopackage_hydrofabric_path = convert_s3_uri_to_fs(s3_uri)
-    print('setting run.geopackage_hydrofabric_path to', run.geopackage_hydrofabric_path)
-    # download_s3(s3_uri, get_geopackage_directory(run))
-
 
 headers = {
     "Content-Type": "application/json"
 }
 
 
+def get_geopackage_from_hydrofabric(run: CalibrationRun):
+    print('Getting geopackage from Hydrofabric')
+
+    if settings.HYDROFABRIC:
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT.format(gage_id=run.gage.gage_id))
+        response = requests.get(url, headers=headers)
+        try:
+            response.raise_for_status()
+            geopackage_json = response.json()
+        except requests.exceptions.HTTPError:
+            logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
+            print("Response from Hydrofabric:", response.text)
+            return
+    else:
+        geopackage_json = geopackage_sample_data
+
+    print('geopackage_data', geopackage_json)
+
+    hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
+                                              'Geopackage data from Hydrofabric is not in the expected format')
+
+    s3_uri = hydrofabric_data.get('uri')
+    run.geopackage_hydrofabric_path = convert_s3_uri_to_fs(s3_uri)
+    logger.info(f'Setting run.geopackage_hydrofabric_path to {run.geopackage_hydrofabric_path}')
+
+
 # TODO Throw exception for AWS errors and Hydrofabric errors
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
     print('Getting observational data from Hydrofabric')
-    # Get this from hydrofabric
-    request = {"source": run.observational_source.name}
-    headers = {
-        "Content-Type": "application/json"
-    }
-    base_url = 'https://jsonplaceholder.typicode.com'
-    path = '/todos/1'
-    url = urljoin(base_url, path)
-    response = requests.get(url, json=request, headers=headers)
-
-    observational_json = observational_sample_data
-
-    # Check if the request was successful
-    if response.status_code == rest_framework.status.HTTP_200_OK:
-        # Parse and print the response JSON
-        response_data = response.json()
-        print("Success:", response_data)
+    if settings.HYDROFABRIC:
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT.format(gage_id=run.gage.gage_id))
+        # Need to send source
+        response = requests.get(url, headers=headers)
+        try:
+            response.raise_for_status()
+            observational_json = response.json()
+        except requests.exceptions.HTTPError:
+            logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
+            print("Response from Hydrofabric:", response.text)
+            return
     else:
-        # Print the error
-        logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.  Will try again when before job is submitted")
-        print("Response from Hydrofabric:", response.text)
+        observational_json = observational_sample_data
 
     observational_data = validate_response_data(ObservationalHydrofabricSerializer, observational_json,
                                                 'Observational data from Hydrofabric is not in the expected format')
@@ -76,40 +70,48 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
     s3_uri = observational_data.get('uri')
 
     run.observational_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
-    print('setting run.observational_hydrofabric_file_path to', run.observational_hydrofabric_file_path)
-    # download_s3(s3_uri, get_observation_from_hydrofabric_dir(run))
+    logger.info(f'Setting run.observational_hydrofabric_file_path to {run.observational_hydrofabric_file_path}')
 
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     print('Getting forcing data from Hydrofabric')
-    # Get this from hydrofabric
-    # request = {"source": forcing_source
-    # forcing_json = requests.post(settings.HYDROFABRIC_URL, json=request)
-    # forcing_json = forcing_json.json()
-    forcing_json = forcing_sample_data
-    validator = ForcingHydrofabricSerializer(data=forcing_json)
-
-    s3_uri = forcing_data.get('uri')
+    if settings.HYDROFABRIC:
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT.format(gage_id=run.gage.gage_id))
+        # Need to send source
+        response = requests.get(url, headers=headers)
+        try:
+            response.raise_for_status()
+            forcing_json = response.json()
+        except requests.exceptions.HTTPError:
+            logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
+            print("Response from Hydrofabric:", response.text)
+            return
+    else:
+        forcing_json = forcing_sample_data
 
     forcing_data = validate_response_data(ForcingHydrofabricSerializer, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
 
     s3_uri = forcing_data.get('uri')
 
     run.forcing_hydrofabric_dir_path = convert_s3_uri_to_fs(s3_uri)
-    print('setting run.forcing_hydrofabric_dir_path to', run.forcing_hydrofabric_dir_path)
-    # download_all_s3(s3_uri, get_forcing_from_hydrofabric_dir(run))
+    logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
 
 
 def get_module_data_from_hydrofabric(run, modules):
     print('Getting module metadata from Hydrofabric')
-
-    url = urljoin(HYDROFABRIC_URL, HYDROFABRIC_MODULE_METADATA_ENDPOINT)
-    payload = {"gage_id": run.gage.gage_id, "modules": modules}
-    response = requests.post(url, data=payload, headers=headers)
-    response.raise_for_status()
-    module_json = response.json()
-    # module_json = module_metadata_sample_data.get("modules")
-    print('module_json', module_json)
+    if settings.HYDROFABRIC:
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT.format(gage_id=run.gage.gage_id))
+        # Need to send list of modules
+        response = requests.get(url, headers=headers)
+        try:
+            response.raise_for_status()
+            module_json = response.json()
+        except requests.exceptions.HTTPError:
+            logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
+            print("Response from Hydrofabric:", response.text)
+            return
+    else:
+        module_json = module_metadata_sample_data
 
     module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                          'Module metadata from Hydrofabric is not in the expected format')
@@ -154,13 +156,19 @@ def get_module_data_from_hydrofabric(run, modules):
 
 
 def get_modules_from_hydrofabric(run: CalibrationRun):
-    print('calling hydrofabric')
-
-    # Get this from hydrofabric
-    # modules_request = {}
-    # response = requests.post(settings.HYDROFABRIC_URL, json=modules_request)
-    # module_json = response.json()
-    module_json = module_sample_data
+    print('Getting module data from Hydrofabric')
+    if settings.HYDROFABRIC:
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULES_ENDPOINT.format(gage_id=run.gage.gage_id))
+        response = requests.get(url, headers=headers)
+        try:
+            response.raise_for_status()
+            module_json = response.json()
+        except requests.exceptions.HTTPError:
+            logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
+            print("Response from Hydrofabric:", response.text)
+            return
+    else:
+        module_json = module_sample_data
 
     current_module_names = set(
         CalibrationFormulation.objects.filter(calibration_run=run)
@@ -168,8 +176,6 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
     )
 
     print('current_module_names', current_module_names)
-    module_json = module_sample_data
-
 
     module_data = validate_response_data(ModuleHydrofabricListSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
 

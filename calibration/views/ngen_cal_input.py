@@ -8,7 +8,7 @@ from django.db.models import F
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationParameter, OptimizationInput, CalibrationFormulation
+    CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_main_dir, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
@@ -93,7 +93,7 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def ready_to_run(run, build=None):
+def ready_to_run(run: CalibrationRun, build=None):
     config = dict(config_template)
     general = config['General']
     calibration = config['Calibration']
@@ -145,7 +145,7 @@ def ready_to_run(run, build=None):
 
                 datafile['obs_dir'] = get_observational_dir_for_job(run)
 
-        if run.geopackage_hydrofabric_path and not os.path.exists(run.geopackage_hydrofabric_path):
+        if run.geopackage_hydrofabric_path and os.path.exists(run.geopackage_hydrofabric_path):
             datafile['hydrofab_dir'] = run.geopackage_hydrofabric_path
         else:
             if os.path.exists(get_geopackage_file_for_job(run)):
@@ -291,7 +291,7 @@ def ready_to_run(run, build=None):
 
         datafile['calib_parameter_file'] = parameter_file
 
-    print('validation messages from ngen_cal_input:', messages)
+    # print('validation messages from ngen_cal_input:', messages)
 
     run.status = Status.objects.get(name=(StatusEnum.SAVED if messages else StatusEnum.READY))
     run.save()

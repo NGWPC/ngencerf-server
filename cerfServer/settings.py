@@ -165,6 +165,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# -----------------------------
+# Logging
+# -----------------------------
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -223,6 +226,24 @@ LOGGING = {
     }
 }
 
+# -----------------------------
+# Hydrofabric
+# -----------------------------
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
+HYDROFABRIC_MODULES_ENDPOINT = 'api/module_metadata/'
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/get_geopackage/get_parameters/'
+HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = 'api/observation_data/{gage_id}'
+HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
+
+HYDROFABRIC_URL = 'http://localhost:8001'
+HYDROFABRIC_BUCKET = 'ngwpc-dev'
+HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
+
+HYDROFABRIC = False
+
+# -----------------------------
+# Locations
+# -----------------------------
 # Locations for running ngen-cal
 REPO_ROOT = os.path.join(Path.home(), 'noaa-owp')
 # Directory that Ngen is cloned into
