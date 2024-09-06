@@ -1,7 +1,6 @@
 import csv
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from itertools import groupby
 from operator import attrgetter
