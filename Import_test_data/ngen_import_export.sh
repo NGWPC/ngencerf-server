@@ -84,9 +84,8 @@ if [ "$operation" == "import" ]; then
 elif [ "$operation" == "export" ]; then
     calibration_run_id="$argument"
 
-    echo "calibration_run_id: $calibration_run_id"
     # Send export request, capture the HTTP status and response
-    response=$(curl --location --write-out "%{http_code}" --silent -v --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
     --header 'Content-Type: application/json' \
     --header "Authorization: Bearer $ACCESS_TOKEN" \
     "http://localhost:8000/calibration/export/?calibration_run_id=$calibration_run_id")

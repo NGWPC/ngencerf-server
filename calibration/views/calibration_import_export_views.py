@@ -242,7 +242,8 @@ def import_job(request):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def export_job(request):
-    data = request.data
+    data = request.data if request.method == 'POST' else request.query_params
+
     logger.debug(f'export() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
