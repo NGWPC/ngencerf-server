@@ -238,12 +238,11 @@ def import_job(request):
     },
     description="Export a job"
 )
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])
 @handle_exceptions
 def export_job(request):
     data = request.data
-
     logger.debug(f'export() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
