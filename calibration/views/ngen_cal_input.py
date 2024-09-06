@@ -10,7 +10,7 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
-    PARQUET_DIR, get_job_data_dir, get_forcing_dir_for_job, get_observational_dir_for_job, \
+    PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
@@ -167,8 +167,7 @@ def ready_to_run(run: CalibrationRun, build=None):
     else:
         messages.append('modules must be specified')
 
-    job_data_dir = get_job_data_dir(run)
-    general['job_data_dir'] = job_data_dir
+    job_data_dir = run.job_data_dir
 
     if build:
         os.makedirs(job_data_dir, exist_ok=True)

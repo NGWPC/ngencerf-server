@@ -1,4 +1,5 @@
 import logging
+import os
 
 from django.conf import settings
 from django.db import transaction
@@ -40,6 +41,7 @@ def create_calibration_run(request):
 
     with transaction.atomic():
         run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+        run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
 
         response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
 
