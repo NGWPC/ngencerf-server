@@ -4,10 +4,10 @@
         "time_range": {}
     },
     "gage_id": "01123000",
-    "forcing_source": "AORC",
+    "forcing_source": "Upload",
     "forcing_hydrofabric_dir_path": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/",
     "forcing_user_uploaded_dir_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/1_peter/forcing",
-    "observational_source": "Agency",
+    "observational_source": "Upload",
     "observational_hydrofabric_file_path": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv",
     "observational_user_uploaded_file_path": null,
     "geopackage_path_from_hydrofabric": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/gauge_01073000.gpkg",

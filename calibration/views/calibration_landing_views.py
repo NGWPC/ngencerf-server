@@ -43,6 +43,9 @@ def create_calibration_run(request):
         run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
         run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
 
+        run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
+        run.save(update_fields=['job_data_dir'])
+
         response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
 
         response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)

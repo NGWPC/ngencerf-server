@@ -80,7 +80,7 @@ class UnitsEnum(StrEnum):
 
 
 class ForcingSourceEnum(StrEnum):
-    AORC = 'AORC'
+    # AORC = 'AORC'
     UPLOAD = 'Upload'
 
     @classmethod
@@ -90,15 +90,15 @@ class ForcingSourceEnum(StrEnum):
 
 
 class ObservationalSourceEnum(StrEnum):
-    USGS = 'USGS'
-    USACE = 'USACE'
-    BOR = 'BOR'
-    ENV = 'ENV'
-    CA_DWR = 'CA DWR'
-    TX_DOT = 'TX DoT'
-    RFC = 'RFC'
-    SNOTEL = 'SNOTEL'
-    AGENCY = 'Agency'
+    # USGS = 'USGS'
+    # USACE = 'USACE'
+    # BOR = 'BOR'
+    # ENV = 'ENV'
+    # CA_DWR = 'CA DWR'
+    # TX_DOT = 'TX DoT'
+    # RFC = 'RFC'
+    # SNOTEL = 'SNOTEL'
+    # AGENCY = 'Agency'
     UPLOAD = 'Upload'
 
     @classmethod

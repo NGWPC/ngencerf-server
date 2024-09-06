@@ -71,11 +71,11 @@ def import_job(request):
                 return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
 
         forcing_source_name = validator.data.get('forcing_source')
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
         run.forcing_hydrofabric_dir_path = validator.data.get('forcing_hydrofabric_dir_path')
 
         observational_source_name = validator.data.get('observational_source')
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name, is_active=True) if observational_source_name else None
         run.observational_hydrofabric_file_path = validator.data.get('observational_hydrofabric_file_path')
 
         run.geopackage_hydrofabric_path = validator.data.get('geopackage_path_from_hydrofabric')
@@ -84,13 +84,15 @@ def import_job(request):
             # Copy from original location to our job-specific path
             copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
 
+        print(run.forcing_source.name, ForcingSourceEnum.UPLOAD.value)
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
                 copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
             else:
-                warnings.append(f"Unable to access user uploaded forcing data from '{run.forcing_hydrofabric_dir_path}'")
+                if forcing_user_uploaded_dir_path:
+                    warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
 
         if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
             observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
@@ -98,7 +100,8 @@ def import_job(request):
                 # Copy from original location to our job-specific path
                 copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
             else:
-                warnings.append(f"Unable to access user uploaded observational data from '{run.observational_hydrofabric_file_path}'")
+                if observational_user_uploaded_file_path:
+                    warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
 
     #############################
     # Formulations

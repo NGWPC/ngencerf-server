@@ -208,7 +208,7 @@ def save_gage_tab(request):
             if os.path.exists(observational_file):
                 os.remove(observational_file)
             get_observational_data_from_hydrofabric(run)
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name, is_active=True) if observational_source_name else None
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
@@ -216,7 +216,7 @@ def save_gage_tab(request):
             if os.path.exists(forcing_dir):
                 shutil.rmtree(forcing_dir)
             get_forcing_data_from_hydrofabric(run)
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
 
     with transaction.atomic():
         run.save()
@@ -283,6 +283,7 @@ def upload_observational_data(request):
 
     run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
 
+    print('observational_dir', get_observational_dir_for_job(run))
     # Save to the run-specific observational directory
     fs = FileSystemStorage(location=get_observational_dir_for_job(run))
 
@@ -291,6 +292,7 @@ def upload_observational_data(request):
     observational_file = files[0]
     run.observational_hydrofabric_file_path = None
 
+    print('saving observational file')
     if fs.exists(observational_file.name):
         os.remove(os.path.join(fs.location, observational_file.name))
     fs.save(observational_file.name, observational_file)
