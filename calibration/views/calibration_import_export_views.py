@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria, ForcingSource, ObservationalSource
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
@@ -26,7 +26,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, create_calibration_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def import_job(request):
         return error_return
 
     with transaction.atomic():
-        run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+        run = create_calibration_run_internal(request)
 
         run_after_import = validator.data.get('run_after_import', False)
 
@@ -84,7 +84,6 @@ def import_job(request):
             # Copy from original location to our job-specific path
             copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
 
-        print(run.forcing_source.name, ForcingSourceEnum.UPLOAD.value)
         if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):

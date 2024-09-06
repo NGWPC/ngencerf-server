@@ -1,5 +1,6 @@
 import inspect
 import logging
+import os
 from functools import wraps
 
 from rest_framework import status
@@ -7,8 +8,9 @@ from rest_framework.exceptions import ValidationError, ParseError
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, Status
 from calibration.util.calibration_validators import ErrorResponseSerializer
+from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,15 @@ def join(items):
         return items[0].lower()
     else:
         return ', '.join(items[:-1]) + ' or ' + items[-1]
+
+
+def create_calibration_run_internal(request) -> CalibrationRun:
+    run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+    run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
+
+    run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
+    run.save(update_fields=['job_data_dir'])
+    return run
 
 
 # Function wrapper to implement common exception handling

@@ -1,5 +1,4 @@
 import logging
-import os
 
 from django.conf import settings
 from django.db import transaction
@@ -11,12 +10,11 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
-from calibration.models.status import Status
 from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data
-from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
+from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run, create_calibration_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +38,7 @@ def create_calibration_run(request):
     logger.debug(f'create_calibration_run() request from {request.user}')
 
     with transaction.atomic():
-        run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
-        run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
-
-        run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
-        run.save(update_fields=['job_data_dir'])
+        run = create_calibration_run_internal(request)
 
         response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
 

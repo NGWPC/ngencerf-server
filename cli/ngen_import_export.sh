@@ -199,14 +199,6 @@ if [ -n "$forcing_data_dir" ]; then
 fi
 
 
-
-# For debugging purposes, print out the parsed arguments
-echo "operation: $operation"
-echo "argument: $argument"
-echo "observational_data_filepath: $observational_data_filepath"
-echo "forcing_data_dir: $forcing_data_dir"
-echo "geopackage_filepath: $geopackage_filepath"
-
 source ./ngen_login.sh
 
 # Check if ACCESS_TOKEN is set

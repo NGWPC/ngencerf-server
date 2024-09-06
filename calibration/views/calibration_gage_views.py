@@ -283,7 +283,6 @@ def upload_observational_data(request):
 
     run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
 
-    print('observational_dir', get_observational_dir_for_job(run))
     # Save to the run-specific observational directory
     fs = FileSystemStorage(location=get_observational_dir_for_job(run))
 
@@ -292,7 +291,6 @@ def upload_observational_data(request):
     observational_file = files[0]
     run.observational_hydrofabric_file_path = None
 
-    print('saving observational file')
     if fs.exists(observational_file.name):
         os.remove(os.path.join(fs.location, observational_file.name))
     fs.save(observational_file.name, observational_file)
