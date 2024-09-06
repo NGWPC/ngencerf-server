@@ -27,25 +27,25 @@ files = [NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build/ngen'),
          VALIDATION_PY := os.path.join(CALIB_VALID_DIR, 'validation.py')]
 
 
-def get_main_dir(run: CalibrationRun) -> str:
+def get_job_data_dir(run: CalibrationRun) -> str:
     return os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
 
 
 # Construct the directory where the Input/Output is
 def get_gage_dir(run: CalibrationRun) -> str | bytes:
-    return os.path.join(get_main_dir(run),
+    return os.path.join(get_job_data_dir(run),
                         f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}',
                         run.ngen_formulation_name, run.gage.gage_id)
 
 
 # Job-specific forcing directory
 def get_forcing_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(get_main_dir(run), 'forcing')
+    return os.path.join(get_job_data_dir(run), 'forcing')
 
 
 # Job-specific observation directory
 def get_observational_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(get_main_dir(run), 'observation')
+    return os.path.join(get_job_data_dir(run), 'observation')
 
 
 # Job-specific observation file
@@ -56,7 +56,7 @@ def get_observational_file_for_job(run: CalibrationRun) -> str:
 # TODO This is temporary while we are allowing uploading of Geopackage files
 # Job-specific geopackage directory
 def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(get_main_dir(run), 'geopackage')
+    return os.path.join(get_job_data_dir(run), 'geopackage')
 
 
 def get_geopackage_file_for_job(run: CalibrationRun) -> str:
