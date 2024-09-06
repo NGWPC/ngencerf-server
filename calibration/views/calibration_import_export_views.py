@@ -1,7 +1,6 @@
 import base64
 import logging
 import os
-from datetime import datetime, timezone
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -279,8 +278,9 @@ def load_calibration_run_data(run, export: bool = None):
 
     time_range = get_time_range(run)
     # Since we're not using a serializer for metadata, we need to serialize the datetime objects manually
-    time_range['start_time'] = time_range['start_time'].isoformat()
-    time_range['end_time'] = time_range['end_time'].isoformat()
+    if time_range:
+        time_range['start_time'] = time_range['start_time'].isoformat()
+        time_range['end_time'] = time_range['end_time'].isoformat()
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
     if export:

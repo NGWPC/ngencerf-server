@@ -6,6 +6,7 @@ from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
 
+import pandas as pd
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -101,7 +102,6 @@ def get_parameters_and_output_variables(modules):
 
         parameters = list(
             calibrationParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
-        print('parameters', parameters)
         module_entry = {'name': m.name, 'parameters': parameters,
                         'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
 
@@ -335,25 +335,46 @@ def save_parameters(run, parameters):
              .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value'], user_selected_for_tuning=True))
 
 
-# Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
+# Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
 def get_csv_daterange(file):
-    max_time = MAX_TIME
-    min_time = MIN_TIME
-    with open(file, 'r') as f:
-        csv_reader = csv.reader(f, delimiter=',')
-        # skip the header
-        next(csv_reader, None)
-        for row in csv_reader:
-            timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-            max_time = max(max_time, timestamp)
-            min_time = min(min_time, timestamp)
+    # Read the CSV file, assuming the first column contains date information
+    df = pd.read_csv(file, delimiter=',', parse_dates=[0])
+
+    # Ensure the first column is datetime without timezone initially
+    df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handles invalid dates gracefully
+
+    # Find the min and max date (without timezone info)
+    min_time = df.iloc[:, 0].min()
+    max_time = df.iloc[:, 0].max()
+
+    # Convert the min and max times to UTC after computation
+    min_time = min_time.replace(tzinfo=timezone.utc)
+    max_time = max_time.replace(tzinfo=timezone.utc)
 
     return DateTimeRange(min_time, max_time)
 
 
+#
+# # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
+# def get_csv_daterange(file):
+#     logger.info(f'getting date range for file {file}')
+#     max_time = MAX_TIME
+#     min_time = MIN_TIME
+#     with open(file, 'r', buffering=32768) as f:
+#         csv_reader = csv.reader(f, delimiter=',')
+#         # skip the header
+#         next(csv_reader, None)
+#         for row in csv_reader:
+#             timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+#             max_time = max(max_time, timestamp)
+#             min_time = min(min_time, timestamp)
+#
+#     logger.info(f'Returning date range for {file}')
+#     return DateTimeRange(min_time, max_time)
+
+
 def get_forcing_date_range(forcing_dir_path):
-    # dir = '/home/peter.a.kronenberg/ngen-cal-work/forcing/Gage_01123000/'
-    # Get all files in the dir
+    # Get all files in the directory
     timerange = None
     for file in os.listdir(forcing_dir_path):
         new_range = get_csv_daterange(os.path.join(forcing_dir_path, file))
