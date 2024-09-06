@@ -7,6 +7,7 @@ from itertools import groupby
 from operator import attrgetter
 from typing import Dict
 
+import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
 from django.db import transaction
@@ -520,59 +521,80 @@ def get_iteration(request):
     return Response(response_validator.data)
 
 
-# def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
-#     logger.info(f'Subsetting directory {input_directory}')
-#
-#     if not os.path.exists(output_directory):
-#         os.makedirs(output_directory, exist_ok=True)
-#
-#     for filename in os.listdir(input_directory):
-#         input_file_path = os.path.join(input_directory, filename)
-#         output_file_path = os.path.join(output_directory, filename)
-#
-#         if os.path.isfile(input_file_path):  # Ensure it's a file
-#             subset_by_time_range(input_file_path, output_file_path, date_time_range)
-#
-#     logger.info(f'Done subsetting directory {input_directory}')
-
-
-# I changed this to use multiprocessing in the hopes of speeding it up a bit, but did not seem to have any affect
-# mostly likely because the S3 file processing is the bottleneck
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
     logger.info(f'Subsetting directory {input_directory}')
 
     if not os.path.exists(output_directory):
         os.makedirs(output_directory, exist_ok=True)
 
-    with ThreadPoolExecutor() as executor:
-        futures = []
-        for filename in os.listdir(input_directory):
-            input_file_path = os.path.join(input_directory, filename)
-            output_file_path = os.path.join(output_directory, filename)
+    for filename in os.listdir(input_directory):
+        input_file_path = os.path.join(input_directory, filename)
+        output_file_path = os.path.join(output_directory, filename)
 
-            if os.path.isfile(input_file_path):
-                future = executor.submit(subset_by_time_range, input_file_path, output_file_path, date_time_range)
-                futures.append(future)
-
-        for future in as_completed(futures):
-            future.result()  # Propagate any exceptions
+        if os.path.isfile(input_file_path):  # Ensure it's a file
+            subset_by_time_range(input_file_path, output_file_path, date_time_range)
 
     logger.info(f'Done subsetting directory {input_directory}')
 
 
+# I changed this to use multiprocessing in the hopes of speeding it up a bit, but did not seem to have any affect
+# mostly likely because the S3 file processing is the bottleneck
+# def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+#     logger.info(f'Subsetting directory {input_directory}')
+#
+#     if not os.path.exists(output_directory):
+#         os.makedirs(output_directory, exist_ok=True)
+#
+#     with ThreadPoolExecutor() as executor:
+#         futures = []
+#         for filename in os.listdir(input_directory):
+#             input_file_path = os.path.join(input_directory, filename)
+#             output_file_path = os.path.join(output_directory, filename)
+#
+#             if os.path.isfile(input_file_path):
+#                 future = executor.submit(subset_by_time_range, input_file_path, output_file_path, date_time_range)
+#                 futures.append(future)
+#
+#         for future in as_completed(futures):
+#             future.result()  # Propagate any exceptions
+#
+#     logger.info(f'Done subsetting directory {input_directory}')
+
+
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     logger.info(f'Subsetting file {input_file} to {output_file}')
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    with open(input_file, 'r', buffering=32768) as infile, open(output_file, 'w', newline='', buffering=32768) as outfile:
-        reader = csv.reader(infile)
-        writer = csv.writer(outfile)
 
-        header = next(reader)  # Read the header
-        writer.writerow(header)  # Write the header to the output file
+    # Read the CSV into a DataFrame, parsing dates in the first column
+    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0])
 
-        for row in reader:
-            row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-            if row_date in date_time_range:
-                writer.writerow(row)
+    # Ensure the first column is converted to UTC and timezone aware
+    df['dateTime'] = pd.to_datetime(df.iloc[:, 0], errors='coerce')
 
-    logger.info(f'Done subsetting file {input_file} to {output_file}')
+    # If the datetime is naive, localize it to UTC
+    if df['dateTime'].dt.tz is None:
+        df['dateTime'] = df['dateTime'].dt.tz_localize('UTC', ambiguous='NaT', nonexistent='shift_forward')
+
+    # Filter the rows based on the date range
+    mask = (df['dateTime'] >= date_time_range.start_datetime) & (df['dateTime'] <= date_time_range.end_datetime)
+    subset_df = df[mask]
+
+    # Write the filtered DataFrame to the output CSV file
+    subset_df.to_csv(output_file, index=False)
+
+
+# def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
+#     logger.info(f'Subsetting file {input_file} to {output_file}')
+#     os.makedirs(os.path.dirname(output_file), exist_ok=True)
+#     with open(input_file, 'r', buffering=32768) as infile, open(output_file, 'w', newline='', buffering=32768) as outfile:
+#         reader = csv.reader(infile)
+#         writer = csv.writer(outfile)
+#
+#         header = next(reader)  # Read the header
+#         writer.writerow(header)  # Write the header to the output file
+#
+#         for row in reader:
+#             row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+#             if row_date in date_time_range:
+#                 writer.writerow(row)
+#
+#     logger.info(f'Done subsetting file {input_file} to {output_file}')
