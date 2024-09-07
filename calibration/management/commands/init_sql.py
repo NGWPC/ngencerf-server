@@ -196,7 +196,7 @@ class Command(BaseCommand):
                   {"name": "Cancelled"},
                   {"name": "Failed"},
                   {"name": "Resumed"},
-                  {"name": "Server Error"}
+                  {"name": "Server error"}
                   ]
 
         for v in values:

@@ -60,6 +60,7 @@ def import_job(request):
         run_after_import = validator.data.get('run_after_import', False)
 
         warnings = []
+        info_messages = []
 
         #############################
         # Gage
@@ -88,7 +89,7 @@ def import_job(request):
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
-                copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
+                info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
             else:
                 if forcing_user_uploaded_dir_path:
                     warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
@@ -97,7 +98,7 @@ def import_job(request):
             observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy from original location to our job-specific path
-                copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
+                info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
             else:
                 if observational_user_uploaded_file_path:
                     warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
@@ -110,9 +111,9 @@ def import_job(request):
     modules_list = validator.data.get('modules')
     module_names = set(modules_list) if modules_list else set()
 
-    message = validate_modules(run, module_names)
-    if message:
-        return ResponseError(message)
+    error_message = validate_modules(run, module_names)
+    if error_message:
+        return ResponseError(error_message)
 
     if module_names:
         if not validate_formulation(run, module_names):
@@ -134,9 +135,9 @@ def import_job(request):
         CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
     if sloth_parameters:
-        message = add_sloth_parameters(run, sloth_parameters)
-        if message:
-            return ResponseError(message)
+        error_message = add_sloth_parameters(run, sloth_parameters)
+        if error_message:
+            return ResponseError(error_message)
 
     #############################
     # Tuning
@@ -161,13 +162,13 @@ def import_job(request):
     if parameters and not modules:
         return ResponseError('Parameters cannot be specified without modules')
 
-    message = validate_parameters(run, parameters)
-    if message is not None:
-        return ResponseError(message)
+    error_message = validate_parameters(run, parameters)
+    if error_message is not None:
+        return ResponseError(error_message)
 
-    message = save_output_variable(run, output_variable_to_calibrate)
-    if message is not None:
-        return ResponseError(message)
+    error_message = save_output_variable(run, output_variable_to_calibrate)
+    if error_message is not None:
+        return ResponseError(error_message)
 
     save_parameters(run, parameters)
 
@@ -186,14 +187,14 @@ def import_job(request):
         if optimization_inputs:
             return ResponseError('Optimization inputs cannot be specified without an optimization name')
     else:
-        optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
-        if message:
-            return ResponseError(message)
+        optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
+        if error_message:
+            return ResponseError(error_message)
         write_optimization_inputs(run, optimization, optimization_inputs)
 
-    message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
-    if message:
-        return ResponseError(message)
+    error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
+    if error_message:
+        return ResponseError(error_message)
 
     run.plot_frequency = validator.data.get('plot_frequency')
     run.streamflow_threshold = streamflow_threshold
@@ -219,6 +220,8 @@ def import_job(request):
     response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id}
     if errors:
         response['errors'] = errors
+    if info_messages:
+        response['messages'] = info_messages
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:

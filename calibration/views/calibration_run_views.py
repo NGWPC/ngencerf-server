@@ -119,11 +119,9 @@ def submit_job(run, config_file=None):
     # If config is passed, then don't need to validate
     if not config_file:
         messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
-        print('config file', config_file)
 
-        # TODO Normally, we return if not ready, but for testing, we'll skip this test
-        # if messages:
-        #     return f'Calibration Run {calibration_run_id} is not ready'
+        if messages:
+            return ResponseError(f'Calibration Run {run.id} is not ready', validation_errors=messages)
 
     # Save the latest git hash or ngen and ngen-cal
     run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
