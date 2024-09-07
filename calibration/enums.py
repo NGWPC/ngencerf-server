@@ -1,21 +1,23 @@
 from enum import StrEnum
 from typing import List
 
+from calibration.models import Status
+from calibration.util.AbstractEnum import AbstractEnum
 
-class StatusEnum(StrEnum):
+
+class StatusEnum(AbstractEnum):
     SAVED = 'Saved'
     READY = 'Ready'
     RUNNING = 'Running'
     DONE = 'Done'
-    CANCELLED = 'Cancelled'
     FAILED = 'Failed'
-    RESUMED = 'Resumed'
     SERVER_ERROR = 'Server error'
 
     @classmethod
-    def values(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
+    def get_model(cls):
+        return Status
+
+# Usage in code
 
 
 class CalibrationRunType(StrEnum):
@@ -80,7 +82,7 @@ class UnitsEnum(StrEnum):
 
 
 class ForcingSourceEnum(StrEnum):
-    # AORC = 'AORC'
+    AORC = 'AORC'
     UPLOAD = 'Upload'
 
     @classmethod
@@ -90,15 +92,15 @@ class ForcingSourceEnum(StrEnum):
 
 
 class ObservationalSourceEnum(StrEnum):
-    # USGS = 'USGS'
-    # USACE = 'USACE'
-    # BOR = 'BOR'
-    # ENV = 'ENV'
-    # CA_DWR = 'CA DWR'
-    # TX_DOT = 'TX DoT'
-    # RFC = 'RFC'
-    # SNOTEL = 'SNOTEL'
-    # AGENCY = 'Agency'
+    USGS = 'USGS'
+    USACE = 'USACE'
+    BOR = 'BOR'
+    ENV = 'ENV'
+    CA_DWR = 'CA DWR'
+    TX_DOT = 'TX DoT'
+    RFC = 'RFC'
+    SNOTEL = 'SNOTEL'
+    AGENCY = 'Agency'
     UPLOAD = 'Upload'
 
     @classmethod

@@ -16,9 +16,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         with transaction.atomic():
-            server_error = Status.objects.get(name=StatusEnum.SERVER_ERROR.value)
-            count = CalibrationRun.objects.filter(status__name=StatusEnum.RUNNING).update(status=server_error)
+            running_status = StatusEnum.from_enum(StatusEnum.RUNNING)
+            error_status = StatusEnum.from_enum(StatusEnum.SERVER_ERROR)
+
+            count = CalibrationRun.objects.filter(status=running_status).update(status=error_status)
             logger.info(f'Updated {count} calibration run records')
 
-            count = ValidationRun.objects.filter(status__name=StatusEnum.RUNNING).update(status=server_error)
+            count = ValidationRun.objects.filter(status=running_status).update(status=error_status)
             logger.info(f'Updated {count} validation run records')

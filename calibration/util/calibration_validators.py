@@ -59,8 +59,12 @@ def locationValidator(value):
 
 
 def statusValidator(value):
-    if value not in StatusEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {StatusEnum.values()}")
+    # Fetch the valid statuses from the cached StatusEnum values
+    valid_statuses = StatusEnum.get_names()
+
+    # Check if the provided value is in the list of valid status names
+    if value not in valid_statuses:
+        raise serializers.ValidationError(f"This field must be one of {valid_statuses}")
 
 
 def s3FileValidator(value):

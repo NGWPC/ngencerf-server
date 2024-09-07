@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 from functools import wraps
+from typing import List, cast
 
 from rest_framework import status
 from rest_framework.exceptions import ValidationError, ParseError
@@ -16,26 +17,72 @@ logger = logging.getLogger(__name__)
 
 
 # Get an instance of a run by id, but only if owned by the user and is one of the passed in Statuses
-def get_run(calibration_run_id, user, run_status=None):
-    run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
-    status_names = [s.name.lower() for s in run_status]
+# def get_run(calibration_run_id, user, run_status=None):
+#     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
+#     status_names = [s.name.lower() for s in run_status]
+#
+#     run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user)
+#            .select_related('status', 'gage')
+#            .only('id', 'status', 'gage', 'owner')
+#            .first())
+#
+#     if not run:
+#         return None, Response(
+#             {'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user.username}'},
+#             status=status.HTTP_400_BAD_REQUEST)
+#
+#     if run.status.name.lower() not in status_names:
+#         return run, Response(
+#             {'error': f'Calibration Run {calibration_run_id} is not in the allowed statuses ({join(status_names)}). '
+#                       f'Current status: {run.status.name}'},
+#             status=status.HTTP_400_BAD_REQUEST)
+#
+#     return run, None
 
+
+
+
+
+def get_run(calibration_run_id, user, run_status=None):
+    """
+    Get an instance of a CalibrationRun by id, but only if it's owned by the user
+    and is one of the passed-in statuses. If the CalibrationRun exists but has a
+    disallowed status, return a specific error message.
+
+    :param calibration_run_id: The ID of the CalibrationRun to retrieve.
+    :param user: The user requesting the run.
+    :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
+    :return: The CalibrationRun instance and an optional error Response.
+    """
+    # Default to READY and SAVED statuses if no run_status is passed
+    run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
+
+    # Convert the StatusEnum instances to Status model instances - we cast explicitly to avoid PyCharm warnings
+    allowed_statuses: List[Status] = [cast(Status, StatusEnum.from_enum(status_enum)) for status_enum in run_status]
+
+    # Query the CalibrationRun without filtering by status
     run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user)
            .select_related('status', 'gage')
            .only('id', 'status', 'gage', 'owner')
            .first())
 
     if not run:
+        # Return error if no CalibrationRun is found for the given ID and user
         return None, Response(
             {'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user.username}'},
             status=status.HTTP_400_BAD_REQUEST)
 
-    if run.status.name.lower() not in status_names:
+    # Check if the status of the run is in the allowed statuses
+    if run.status not in allowed_statuses:
+        print(type(allowed_statuses[0]))  # This should print <class 'calibration.models.Status'>
+        allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
         return run, Response(
-            {'error': f'Calibration Run {calibration_run_id} is not in the allowed statuses ({join(status_names)}). '
-                      f'Current status: {run.status.name}'},
+            {'error': (f'Calibration Run {calibration_run_id} is not in the allowed statuses '
+                       f'({", ".join(allowed_status_names)}). '
+                       f'Current status: {run.status.name}')},
             status=status.HTTP_400_BAD_REQUEST)
 
+    # If the status matches, return the run with no errors
     return run, None
 
 

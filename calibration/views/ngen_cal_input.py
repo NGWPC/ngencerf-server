@@ -292,7 +292,8 @@ def ready_to_run(run: CalibrationRun, build=None):
 
     # print('validation messages from ngen_cal_input:', messages)
 
-    run.status = Status.objects.get(name=(StatusEnum.SAVED if messages else StatusEnum.READY))
+    run.status = StatusEnum.from_enum(StatusEnum.SAVED if messages else StatusEnum.READY)
+
     run.save()
 
     # if messages:

@@ -376,8 +376,8 @@ def load_calibration_run_data(run, export: bool = None):
     calibration_run_data['stop_criteria'] = stop_criteria
 
     # calibration_run_data['run_date'] = run.run_date
-
-    if not export and run.status.name in [StatusEnum.RUNNING.value, StatusEnum.DONE.value]:
+    # Compare run.status against the actual instances from StatusEnum
+    if not export and run.status in [StatusEnum.from_enum(StatusEnum.RUNNING), StatusEnum.from_enum(StatusEnum.DONE)]:
         # Other stuff we need for Running/Done jobs
         pass
 

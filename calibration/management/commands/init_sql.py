@@ -189,9 +189,18 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Status.objects.all().delete()
 
-        e: StatusEnum
-        for e in StatusEnum:
-            Status.objects.update_or_create(name=e.value, defaults={"created_by": self.user})
+        values = [{"name": "Saved"},
+                  {"name": "Ready"},
+                  {"name": "Running"},
+                  {"name": "Done"},
+                  {"name": "Cancelled"},
+                  {"name": "Failed"},
+                  {"name": "Resumed"},
+                  {"name": "Server Error"}
+                  ]
+
+        for v in values:
+            Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
         if self.DELETE_FLAG:
