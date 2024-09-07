@@ -40,9 +40,6 @@ logger = logging.getLogger(__name__)
 #     return run, None
 
 
-
-
-
 def get_run(calibration_run_id, user, run_status=None):
     """
     Get an instance of a CalibrationRun by id, but only if it's owned by the user

@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from calibration.enums import StatusEnum, DataTypeEnum
+from calibration.enums import DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinitions
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc

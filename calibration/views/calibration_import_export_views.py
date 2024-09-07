@@ -84,7 +84,7 @@ def import_job(request):
             # Copy from original location to our job-specific path
             copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
 
-        if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
+        if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
@@ -93,7 +93,7 @@ def import_job(request):
                 if forcing_user_uploaded_dir_path:
                     warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
 
-        if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
+        if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
             observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy from original location to our job-specific path

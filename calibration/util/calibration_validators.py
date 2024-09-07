@@ -24,18 +24,18 @@ class BaseSerializer(serializers.Serializer):
 
 
 def forcingSourceValidator(value):
-    if value not in ForcingSourceEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
+    if value not in ForcingSourceEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.get_names()}")
+
+
+def observationSourceValidator(value):
+    if value not in ObservationalSourceEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.get_names()}")
 
 
 def domainNameValidator(value):
     if value not in DomainEnum.values():
         raise serializers.ValidationError(f'This field must be one of {DomainEnum.values()}')
-
-
-def observationSourceValidator(value):
-    if value not in ObservationalSourceEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
 
 
 def optimizationValidator(value):
@@ -59,12 +59,9 @@ def locationValidator(value):
 
 
 def statusValidator(value):
-    # Fetch the valid statuses from the cached StatusEnum values
-    valid_statuses = StatusEnum.get_names()
-
     # Check if the provided value is in the list of valid status names
-    if value not in valid_statuses:
-        raise serializers.ValidationError(f"This field must be one of {valid_statuses}")
+    if value not in StatusEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {StatusEnum.get_names()}")
 
 
 def s3FileValidator(value):
@@ -372,6 +369,13 @@ class UploadGeopackageSerializer(BaseSerializer):
         return value
 
 
+class UploadGeopackageResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[statusValidator], required=True)
+    geopackage_image_url = serializers.CharField(required=False)
+
+
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
@@ -383,7 +387,7 @@ class SaveGageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
-    geopackage_image = serializers.CharField(required=False)
+    geopackage_image_url = serializers.CharField(required=False)
 
 
 class DomainResponseSerializer(BaseSerializer):

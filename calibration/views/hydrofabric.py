@@ -37,8 +37,6 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
     else:
         geopackage_json = geopackage_sample_data
 
-    print('geopackage_data', geopackage_json)
-
     hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
                                               'Geopackage data from Hydrofabric is not in the expected format')
 

@@ -4,7 +4,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Status, ValidationRun
+from calibration.models import CalibrationRun, ValidationRun
 
 logger = logging.getLogger(__name__)
 

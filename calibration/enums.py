@@ -1,7 +1,7 @@
 from enum import StrEnum
-from typing import List
+from typing import List, Dict, Any
 
-from calibration.models import Status
+from calibration.models import Status, ForcingSource, ObservationalSource
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -17,7 +17,31 @@ class StatusEnum(AbstractEnum):
     def get_model(cls):
         return Status
 
-# Usage in code
+
+class ForcingSourceEnum(AbstractEnum):
+    UPLOAD = 'Upload'
+
+    @classmethod
+    def get_model(cls):
+        return ForcingSource
+
+    @classmethod
+    def get_filter(cls) -> Dict[str, Any]:
+        # Apply the filter to only return active statuses
+        return {'is_active': True}
+
+
+class ObservationalSourceEnum(AbstractEnum):
+    UPLOAD = 'Upload'
+
+    @classmethod
+    def get_model(cls):
+        return ObservationalSource
+
+    @classmethod
+    def get_filter(cls) -> Dict[str, Any]:
+        # Apply the filter to only return active statuses
+        return {'is_active': True}
 
 
 class CalibrationRunType(StrEnum):
@@ -74,34 +98,6 @@ class LocationEnum(StrEnum):
 class UnitsEnum(StrEnum):
     M = 'm'
     NONE = 'none'
-
-    @classmethod
-    def values(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
-
-
-class ForcingSourceEnum(StrEnum):
-    AORC = 'AORC'
-    UPLOAD = 'Upload'
-
-    @classmethod
-    def values(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
-
-
-class ObservationalSourceEnum(StrEnum):
-    USGS = 'USGS'
-    USACE = 'USACE'
-    BOR = 'BOR'
-    ENV = 'ENV'
-    CA_DWR = 'CA DWR'
-    TX_DOT = 'TX DoT'
-    RFC = 'RFC'
-    SNOTEL = 'SNOTEL'
-    AGENCY = 'Agency'
-    UPLOAD = 'Upload'
 
     @classmethod
     def values(cls) -> List[str]:

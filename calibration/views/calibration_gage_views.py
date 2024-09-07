@@ -12,17 +12,17 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from calibration.models import Gage, ForcingSource, ObservationalSource, Domain, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
-    UploadObservationalSerializer, UploadGeopackageSerializer
+    UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 from cerfServer import settings
 
@@ -179,11 +179,7 @@ def save_gage_tab(request):
                 # TODO Check for other errors
                 return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
 
-        geopackage_png = gpkg_to_png_selected_layers(run.geopackage_hydrofabric_path)
-
-        # Convert ByteIO image to base64
-        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-        geopackage_image_url = f'data:image/png;base64,{base64_str}'
+        geopackage_image_url = get_geopackage_image_url(run)
 
         """
         Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
@@ -208,7 +204,7 @@ def save_gage_tab(request):
             if os.path.exists(observational_file):
                 os.remove(observational_file)
             get_observational_data_from_hydrofabric(run)
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name, is_active=True) if observational_source_name else None
+        run.observational_source = ObservationalSourceEnum.from_enum(ObservationalSourceEnum(observational_source_name)) if observational_source_name else None
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
@@ -216,7 +212,7 @@ def save_gage_tab(request):
             if os.path.exists(forcing_dir):
                 shutil.rmtree(forcing_dir)
             get_forcing_data_from_hydrofabric(run)
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
+        run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
 
     with transaction.atomic():
         run.save()
@@ -224,13 +220,27 @@ def save_gage_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
-                'geopackage_image': geopackage_image_url}
+                'geopackage_image_url': geopackage_image_url}
 
     response_validator, error_response = validate_response(SaveGageResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from save_gage_tab() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+def get_geopackage_image_url(run: CalibrationRun):
+    if run.geopackage_hydrofabric_path:
+        if os.path.exists(run.geopackage_hydrofabric_path):
+            geopackage_png = gpkg_to_png_selected_layers(run.geopackage_hydrofabric_path)
+
+            # Convert ByteIO image to base64
+            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+            return f'data:image/png;base64,{base64_str}'
+        else:
+            raise CerfException(f'Cannot find geopackage file at {run.geopackage_hydrofabric_path}')
+    else:
+        return None
 
 
 def save_gage(run, gage_id):
@@ -281,7 +291,7 @@ def upload_observational_data(request):
     if errorReturn:
         return errorReturn
 
-    run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
+    run.observational_source = ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
 
     # Save to the run-specific observational directory
     fs = FileSystemStorage(location=get_observational_dir_for_job(run))
@@ -343,7 +353,7 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    run.forcing_source = ForcingSource.objects.get(name=ForcingSourceEnum.UPLOAD.value)
+    run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
 
     # Validate the file keys and how many there are
     key = 'forcing_files'
@@ -415,19 +425,25 @@ def upload_geopackage_data(request):
     geopackage_file = files[0]
     run.geopackage_hydrofabric_path = None
 
+    geopackage_hydrofabric_path = os.path.join(fs.location, geopackage_file.name)
     if fs.exists(geopackage_file.name):
-        os.remove(os.path.join(fs.location, geopackage_file.name))
+        os.remove(geopackage_hydrofabric_path)
     fs.save(geopackage_file.name, geopackage_file)
+
+    run.geopackage_hydrofabric_path = geopackage_hydrofabric_path
+
+    geopackage_image_url = get_geopackage_image_url(run)
 
     with transaction.atomic():
         run.save()
 
     ngen_cal_input.ready_to_run(run)
 
+    # TODO Need to return geopackage_png
     response = {'message': f"Geopackage file '{geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
-                'status': run.status.name}
+                'status': run.status.name, 'geopackage_image_url': geopackage_image_url}
 
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from upload_geopackage_data() - {response_validator.data}')

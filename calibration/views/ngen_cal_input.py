@@ -7,7 +7,7 @@ from datetimerange import DateTimeRange
 from django.db.models import F
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationOptimizationInput, Status, CalibrationStopCriteria, CalibrationSlothParam, \
+from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
@@ -116,32 +116,28 @@ def ready_to_run(run: CalibrationRun, build=None):
         if not run.forcing_source:
             messages.append('forcing source must be specified')
         else:
-            is_forcing_upload = run.forcing_source.name == ForcingSourceEnum.UPLOAD.value
+            is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
                 messages.append('forcing data must be uploaded')
-            else:
-                if not is_forcing_upload:
-                    if build:
-                        # for non-uploaded data, we need to subset
-                        source_dir = run.forcing_hydrofabric_dir_path
-                        subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
-                                                       DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+            elif build:
+                # for non-uploaded data, subset the data by time range
+                source_dir = run.forcing_hydrofabric_dir_path
+                subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
+                                               DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
                 datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         if not run.observational_source:
             messages.append('observational source must be specified')
         else:
-            is_observational_upload = run.observational_source.name == ObservationalSourceEnum.UPLOAD.value
+            is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
                 messages.append('observational data must be uploaded')
-            else:
-                if not is_observational_upload:
-                    if build:
-                        # For non-uploaded data, we need to subset
-                        source_file = run.observational_hydrofabric_file_path
-                        subset_by_time_range(source_file, get_observational_file_for_job(run),
-                                             DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+            elif build:
+                # For non-uploaded data, subset the data by time range
+                source_file = run.observational_hydrofabric_file_path
+                subset_by_time_range(source_file, get_observational_file_for_job(run),
+                                     DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
                 datafile['obs_dir'] = get_observational_dir_for_job(run)
 
