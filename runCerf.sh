@@ -2,12 +2,16 @@
 
 # Run ngenCerf outside of Pycharm
 
-source ./cerfserver.env
+source "./cerfserver.env"
+
 
 cerfServer="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
 if [ -n "${CERF_VENV}" ] ; then
-    source "$cerfServer"/.venv/bin/activate
+    # shellcheck disable=SC1090
+    source "$cerfServer/${CERF_VENV}/bin/activate"
+else
+    echo "CERF_VENV is not set.  PLease set the virtual environment variable."
 fi
 
 echo

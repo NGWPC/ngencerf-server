@@ -91,6 +91,10 @@ class AbstractEnum(Generic[T], Enum):
         (e.g., 'Running') from the cache. If the cache is empty, it reloads the active
         items from the database. If the value doesn't exist in the cache, a ValueError is raised.
 
+        This function is not recommended, due to the risk of passing in a string (e.g., typos, etc)
+        Instead, any enums that are referenced in the code should be defined in the enum and then use
+        from_enum() to get the model instance.
+
         :param name: The name of the item to retrieve (e.g., 'Running')
         :return: The model instance corresponding to the value
         :raises: ValueError if the value does not exist in the cache
