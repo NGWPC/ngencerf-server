@@ -29,4 +29,8 @@ class Gage(BaseModel):
             models.UniqueConstraint(fields=['gage_id', 'agency'], name='gage__gage_id__agency__unique')
         ]
 
+    def __str__(self):
+        return f"Gage {self.gage_id} - {self.agency} station name: {self.station_name} domain: {self.domain})"
+
+
 
