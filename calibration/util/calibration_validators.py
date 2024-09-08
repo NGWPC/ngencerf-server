@@ -34,8 +34,8 @@ def observationSourceValidator(value):
 
 
 def domainNameValidator(value):
-    if value not in DomainEnum.values():
-        raise serializers.ValidationError(f'This field must be one of {DomainEnum.values()}')
+    if value not in DomainEnum.get_names():
+        raise serializers.ValidationError(f'This field must be one of {DomainEnum.get_names()}')
 
 
 def optimizationValidator(value):
@@ -393,7 +393,6 @@ class SaveGageResponseSerializer(BaseSerializer):
 class DomainResponseSerializer(BaseSerializer):
     name = serializers.CharField(validators=[domainNameValidator], required=True)
     description = serializers.CharField(required=True, allow_blank=False)
-    is_active = serializers.BooleanField(required=True)
 
 
 class GagesSerializer(BaseSerializer):
@@ -406,13 +405,11 @@ class GagesSerializer(BaseSerializer):
 class ForcingSourceSerializer(BaseSerializer):
     name = serializers.CharField(validators=[forcingSourceValidator], required=True)
     description = serializers.CharField(required=True)
-    is_active = serializers.BooleanField(required=True)
 
 
 class ObservationalSourceSerializer(BaseSerializer):
     name = serializers.CharField(validators=[observationSourceValidator], required=True)
     description = serializers.CharField(required=True)
-    is_active = serializers.BooleanField(required=True)
 
 
 class LoadGageResponseSerializer(BaseSerializer):

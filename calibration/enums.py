@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import List, Dict, Any
 
-from calibration.models import Status, ForcingSource, ObservationalSource
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -50,16 +50,11 @@ class CalibrationRunType(StrEnum):
     VALID_BEST = 'valid_best'
 
 
-class DomainEnum(StrEnum):
-    ALASKA = 'Alaska'
-    HAWAII = 'Hawaii'
-    CONUS = 'CONUS'
-    PUERTO_RICO = 'Puerto Rico'
+class DomainEnum(AbstractEnum):
 
     @classmethod
-    def values(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
+    def get_model(cls):
+        return Domain
 
 
 class OptimizationEnum(StrEnum):

@@ -11,8 +11,8 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import Gage, ForcingSource, ObservationalSource, Domain, CalibrationRun
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum
+from calibration.models import Gage, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
@@ -66,11 +66,11 @@ def load_gage_tab(request):
     if errorReturn:
         return errorReturn
 
-    forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
-    observational_source_values = list(ObservationalSource.objects
-                                       .values('name', 'description', 'is_active'))
-    domain_values = list(Domain.objects
-                         .values('name', 'description', 'is_active'))
+    # Use cached enum values for forcing and observational source
+    forcing_source_values = ForcingSourceEnum.active_choices_with_fields(fields=['name', 'description'])
+    observational_source_values = ObservationalSourceEnum.active_choices_with_fields(fields=['name', 'description'])
+
+    domain_values = DomainEnum.active_choices_with_fields(fields=['name', 'description'])
 
     gages = list(Gage.objects.filter(is_active=True)
                  .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
