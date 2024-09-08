@@ -76,8 +76,6 @@ class OptimizationEnum(AbstractEnum):
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=3600)
 
 
-
-####  These enums are used in validators
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'

@@ -15,6 +15,7 @@ class AbstractEnum(Generic[T], Enum):
 
     - The class allows you to define specific enum members for values that are explicitly referenced
       in the code, ensuring they are easy to access and reducing the risk of typos or case mismatches.
+      It is important to ensure that these specific enum members are in the database.
 
     - In addition to the explicitly defined enum members, the class dynamically loads values
       from the corresponding database table and stores them in cache.

@@ -59,7 +59,6 @@ def locationValidator(value):
 
 
 def statusValidator(value):
-    # Check if the provided value is in the list of valid status names
     if value not in StatusEnum.get_names():
         raise serializers.ValidationError(f"This field must be one of {StatusEnum.get_names()}")
 
