@@ -39,8 +39,8 @@ def domainNameValidator(value):
 
 
 def optimizationValidator(value):
-    if value not in OptimizationEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {OptimizationEnum.values()}")
+    if value not in OptimizationEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {OptimizationEnum.get_names()}")
 
 
 def dataTypeValidator(value):

@@ -6,6 +6,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import OptimizationEnum
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer
@@ -81,11 +82,18 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    optimizations = Optimization.objects.filter(is_active=True).prefetch_related('inputs')
-    optimization_list = []
-    for o in optimizations:
-        inputs = list(o.inputs.all().values('name', 'description', 'data_type', 'is_active'))
-        optimization_list.append({'name': o.name, 'description': o.description, 'is_active': o.is_active, 'inputs': inputs})
+    # Use the enum to fetch optimizations with prefetched inputs
+    optimization_list = OptimizationEnum.active_choices_with_fields(
+        fields=['name', 'description', 'is_active']
+    )
+
+    for optimization in optimization_list:
+        optimization_obj: Optimization = OptimizationEnum.get_instance(optimization['name'])
+
+        # Fetch the prefetched inputs
+        inputs = list(optimization_obj.inputs.all().values('name', 'description', 'data_type', 'is_active'))
+        optimization['inputs'] = inputs
+
     return optimization_list
 
 

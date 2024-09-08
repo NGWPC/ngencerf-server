@@ -1,7 +1,9 @@
 from enum import StrEnum
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Type
 
-from calibration.models import Status, ForcingSource, ObservationalSource, Domain
+from django.core.cache import cache
+
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -14,7 +16,7 @@ class StatusEnum(AbstractEnum):
     SERVER_ERROR = 'Server error'
 
     @classmethod
-    def get_model(cls):
+    def get_model(cls) -> Type[Status]:
         return Status
 
 
@@ -22,7 +24,7 @@ class ForcingSourceEnum(AbstractEnum):
     UPLOAD = 'Upload'
 
     @classmethod
-    def get_model(cls):
+    def get_model(cls) -> Type[ForcingSource]:
         return ForcingSource
 
     @classmethod
@@ -35,7 +37,7 @@ class ObservationalSourceEnum(AbstractEnum):
     UPLOAD = 'Upload'
 
     @classmethod
-    def get_model(cls):
+    def get_model(cls) -> Type[ObservationalSource]:
         return ObservationalSource
 
     @classmethod
@@ -44,28 +46,35 @@ class ObservationalSourceEnum(AbstractEnum):
         return {'is_active': True}
 
 
-class CalibrationRunType(StrEnum):
-    CALIB = 'calib'
-    VALID_CONTROL = 'valid_control'
-    VALID_BEST = 'valid_best'
-
-
 class DomainEnum(AbstractEnum):
-
     @classmethod
-    def get_model(cls):
+    def get_model(cls) -> Type[Domain]:
         return Domain
 
 
-class OptimizationEnum(StrEnum):
+class OptimizationEnum(AbstractEnum):
     DDS = 'DDS'
     GWO = 'GWO'
     PSO = 'PSO'
 
     @classmethod
-    def values(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
+    def get_model(cls) -> Type[Optimization]:
+        return Optimization
+
+    @classmethod
+    def load_items(cls) -> None:
+        model = cls.get_model()
+        filter_criteria = cls.get_filter() or {}
+
+        # Use prefetch_related to prefetch OptimizationInput
+        items = model.objects.filter(**filter_criteria).prefetch_related('inputs')
+
+        # Store the results in a dictionary with the item's name as the key
+        item_dict = {item.name: item for item in items}
+
+        # Store the dictionary in the cache with a 1-hour timeout
+        cache.set(f'{cls.__name__}_cache', item_dict, timeout=3600)
+
 
 
 ####  These enums are used in validators

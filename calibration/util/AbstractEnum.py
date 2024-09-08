@@ -1,11 +1,15 @@
 from enum import Enum
-from typing import Type, Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Generic
+from typing import Type, TypeVar
 
 from django.core.cache import cache
 from django.db import models
 
+# Create a generic type variable for models
+T = TypeVar('T', bound=models.Model)
 
-class AbstractEnum(Enum):
+
+class AbstractEnum(Generic[T], Enum):
     """
     This abstract class provides an enum-like interface that is dynamically synced with the database.
 
@@ -25,11 +29,11 @@ class AbstractEnum(Enum):
     """
 
     @classmethod
-    def get_model(cls) -> Type[models.Model]:
+    def get_model(cls) -> Type[T]:
         """
-        This method should be overridden in subclasses to return the model class
-        associated with the enum. For example, StatusEnum would return the Status model.
-        """
+          This method should be overridden in subclasses to return the model class
+          associated with the enum. For example, StatusEnum would return the Status model.
+          """
         raise NotImplementedError("Subclasses must define a 'get_model' method")
 
     @classmethod
@@ -80,7 +84,7 @@ class AbstractEnum(Enum):
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=3600)
 
     @classmethod
-    def get_instance(cls, name: str) -> models.Model:
+    def get_instance(cls, name: str) -> T:
         """
         This method retrieves the model instance corresponding to the given value
         (e.g., 'Running') from the cache. If the cache is empty, it reloads the active

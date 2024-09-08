@@ -203,7 +203,7 @@ def read_output(gage_dir, run):
 
     # TODO Read best params for GWO and PSO
     global_best_params_list = {}
-    if run.optimization.name != 'DDS':
+    if run.optimization.name != OptimizationEnum.DDS.value:
         global_best_params_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_global_best_params.csv')
         if not os.path.exists(global_best_params_file):
             raise CerfException(f"{global_best_params_file} does not exist")
@@ -435,7 +435,7 @@ def report_iteration(request):
     iteration_number = validator.data.get('iteration')
     worker_name = validator.data.get('worker_name')
 
-    starting_iteration = 0 if optimization == OptimizationEnum.DDS else 1
+    starting_iteration = 0 if optimization == OptimizationEnum.DDS.value else 1
 
     run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
     # run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
