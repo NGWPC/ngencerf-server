@@ -9,7 +9,7 @@ print_usage() {
     echo "      observational_data_filepath=<path>"
     echo "      forcing_data_dir=<path>"
     echo "      geopackage_filepath=<path>"
-    echo "      output_filepath=<path>"
+    echo "      output=<path>"
     echo "      run_after_import=true|false"
     exit 1
 }
@@ -165,7 +165,7 @@ shift 2  # Shift past the first two positional arguments
 observational_data_filepath=""
 forcing_data_dir=""
 geopackage_filepath=""
-output_filepath=""
+output=""
 run_after_import=false
 
 # Parse the keyword arguments
@@ -180,8 +180,8 @@ for arg in "$@"; do
         geopackage_filepath=*)
             geopackage_filepath="${arg#*=}"
             ;;
-        output_filepath=*)
-            output_filepath="${arg#*=}"
+        output=*)
+            output="${arg#*=}"
             ;;
         run_after_import=*)
         run_after_import="${arg#*=}"
@@ -202,6 +202,23 @@ fi
 # Ensure all specified files and directories exist before proceeding
 if [ "$operation" == "import" ] && [ ! -f "$argument" ]; then
     echo "Error: Import file '$argument' not found."
+    exit 1
+fi
+
+echo checking output
+echo [ -f "$output" ]
+if [ "$operation" == "import" ] && [ -f "$output" ]; then
+    echo "Error; The output option is not valid for import."f
+    exit 1
+fi
+
+if [ "$operation" == "output" ] && ([ -f "observational_data_filepath" ] || [ -f "forcing_data_dir" ] || [ -f "geopackage_filepath" ] ); then
+    echo "Error: Upload files can only be specified for import"
+    exit 1
+fi
+
+if [ "$operation" == "output" ] && [ -f "run_after_import" ]; then
+    echo "Error: The run_after_import option is only valid for import."
     exit 1
 fi
 
@@ -334,16 +351,16 @@ elif [ "$operation" == "export" ]; then
 
     check_http_error "$http_status" "$response"
 
-     # Check if output_filepath is specified, otherwise use the default name
-    if [ -z "$output_filepath" ]; then
-        output_filepath="calibration_run_$calibration_run_id.json"
+     # Check if output is specified, otherwise use the default name
+    if [ -z "$output" ]; then
+        output="calibration_run_$calibration_run_id.json"
     fi
 
     # Save the response to a JSON file
-    if ! echo "$response" | jq . --indent 3 > "$output_filepath" 2>/dev/null; then
+    if ! echo "$response" | jq . --indent 3 > "$output" 2>/dev/null; then
        echo "Error parsing response or saving to file."
     else
-       full_path="$(realpath "$output_filepath")"
+       full_path="$(realpath "$output")"
        echo "Exported calibration run data to $full_path"
     fi
 
