@@ -105,7 +105,7 @@ def ready_to_run(run: CalibrationRun, build=None):
         raise CerfException('Must pass a run instance to validate')
 
     general['calibration_run_id'] = run.id
-    general['user'] = run.owner
+    general['user'] = run.owner.username
 
     if not run.gage:
         errors.append('gage_id must be specified')
@@ -166,6 +166,7 @@ def ready_to_run(run: CalibrationRun, build=None):
         errors.append('modules must be specified')
 
     job_data_dir = run.job_data_dir
+    general['main_dir'] = job_data_dir
 
     if build:
         os.makedirs(job_data_dir, exist_ok=True)
