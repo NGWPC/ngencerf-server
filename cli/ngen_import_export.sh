@@ -9,6 +9,8 @@ print_usage() {
     echo "      observational_data_filepath=<path>"
     echo "      forcing_data_dir=<path>"
     echo "      geopackage_filepath=<path>"
+    echo "      output_filepath=<path>"
+    echo "      run_after_import=true|false"
     exit 1
 }
 
@@ -34,7 +36,7 @@ upload_geopackage_data() {
     check_http_error "$http_status" "$response"
 
     # Print the response
-    if ! echo "$response" | jq . 2>/dev/null; then
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
        echo "Error parsing response."
     fi
 
@@ -64,7 +66,7 @@ upload_observational_data() {
     check_http_error "$http_status" "$response"
 
     # Print the response
-    if ! echo "$response" | jq . 2>/dev/null; then
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
        echo "Error parsing response."
     fi
 
@@ -77,12 +79,7 @@ upload_forcing_data() {
     local forcing_data_dir=$1
     local calibration_run_id=$2
 
-    if [ ! -d "$forcing_data_dir" ]; then
-        echo "Error: Forcing data directory $forcing_data_dir not found."
-        exit 1
-    fi
-
-    echo "Uploading forcing data from directory: $forcing_data_dir for calibration_run_id: $calibration_run_id"
+    echo "Uploading forcing data from directory: '$forcing_data_dir' for calibration_run_id: $calibration_run_id"
 
     # Initialize an array to hold all the --form arguments
     form_files=()
@@ -114,13 +111,45 @@ upload_forcing_data() {
     check_http_error "$http_status" "$response"
 
     # Print the response
-    if ! echo "$response" | jq . 2>/dev/null; then
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
        echo "Error parsing response."
     fi
 
     # Clean up the temporary file
     rm -f /tmp/curl_response
 }
+
+
+# Function to run the job
+run_job() {
+    local calibration_run_id=$1
+
+    echo "Submitting calibration run job $calibration_run_id"
+
+    # Prepare the JSON payload
+    json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
+
+    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    --header 'Content-Type: application/json'\
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --data "$json_payload" \
+    "http://localhost:8000/calibration/run_calibration/")
+
+    # Extract HTTP status and response
+    http_status=$(tail -n1 <<< "$response")
+    response=$(cat /tmp/curl_response)
+
+    check_http_error "$http_status" "$response"
+
+    # Print the response
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
+       echo "Error parsing response."
+    fi
+
+    # Clean up the temporary file
+    rm -f /tmp/curl_response
+}
+
 
 # Check if operation and argument are provided
 if [ -z "$1" ] || [ -z "$2" ]; then
@@ -136,6 +165,8 @@ shift 2  # Shift past the first two positional arguments
 observational_data_filepath=""
 forcing_data_dir=""
 geopackage_filepath=""
+output_filepath=""
+run_after_import=false
 
 # Parse the keyword arguments
 for arg in "$@"; do
@@ -149,6 +180,12 @@ for arg in "$@"; do
         geopackage_filepath=*)
             geopackage_filepath="${arg#*=}"
             ;;
+        output_filepath=*)
+            output_filepath="${arg#*=}"
+            ;;
+        run_after_import=*)
+        run_after_import="${arg#*=}"
+            ;;
         *)
             echo "Unknown argument: $arg"
             print_usage
@@ -156,15 +193,21 @@ for arg in "$@"; do
     esac
 done
 
+# Ensure run_after_import is either true or false
+if [[ "$run_after_import" != "true" && "$run_after_import" != "false" ]]; then
+    echo "Error: run_after_import must be either 'true' or 'false'."
+    exit 1
+fi
+
 # Ensure all specified files and directories exist before proceeding
 if [ "$operation" == "import" ] && [ ! -f "$argument" ]; then
-    echo "Error: Import file $argument not found."
+    echo "Error: Import file '$argument' not found."
     exit 1
 fi
 
 if [ -n "$observational_data_filepath" ]; then
     if [ ! -f "$observational_data_filepath" ]; then
-        echo "Error: Observational file $observational_data_filepath not found."
+        echo "Error: Observational file '$observational_data_filepath' not found."
         exit 1
     elif [[ "$observational_data_filepath" != *.csv ]]; then
         echo "Error: Observational file must have a .csv extension."
@@ -174,7 +217,7 @@ fi
 
 if [ -n "$geopackage_filepath" ]; then
     if [ ! -f "$geopackage_filepath" ]; then
-        echo "Error: Geopackage file $geopackage_filepath not found."
+        echo "Error: Geopackage file '$geopackage_filepath' not found."
         exit 1
     elif [[ "$geopackage_filepath" != *.gpkg ]]; then
         echo "Error: Geopackage file must have a .gpkg extension."
@@ -184,12 +227,12 @@ fi
 
 if [ -n "$forcing_data_dir" ]; then
     if [ ! -d "$forcing_data_dir" ]; then
-        echo "Error: Forcing data directory $forcing_data_dir not found."
+        echo "Error: Forcing data directory '$forcing_data_dir' not found."
         exit 1
     fi
     for file in "$forcing_data_dir"/*; do
         if [ ! -f "$file" ]; then
-            echo "Error: No files found in the forcing data directory."
+            echo "Error: No files found in the forcing data directory, '$forcing_data_dir'."
             exit 1
         elif [[ "$file" != *.csv ]]; then
             echo "Error: All forcing files must have a .csv extension. Invalid file: $file"
@@ -216,7 +259,7 @@ check_http_error() {
         exit 1
     elif [ "$http_status" -eq 400 ]; then
         echo "Server returned HTTP 400 Bad Request. Response:"
-        echo "$response"  # Print the actual server response
+        echo "$response" | jq --indent 3 # Print the actual server response
         rm -f /tmp/curl_response  # Clean up the temp file
         exit 1
     elif [ "$http_status" -ne 200 ]; then
@@ -249,7 +292,7 @@ if [ "$operation" == "import" ]; then
     check_http_error "$http_status" "$response"
 
     # Print the response
-    if ! echo "$response" | jq . 2>/dev/null; then
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
        echo "Error parsing response."
     fi
 
@@ -265,6 +308,10 @@ if [ "$operation" == "import" ]; then
 
     if [ -n "$forcing_data_dir" ]; then
         upload_forcing_data "$forcing_data_dir" "$calibration_run_id"
+    fi
+
+    if [ "$run_after_import" = true ]; then
+        run_job "$calibration_run_id"
     fi
 
     # Clean up the temporary file
@@ -287,16 +334,24 @@ elif [ "$operation" == "export" ]; then
 
     check_http_error "$http_status" "$response"
 
+     # Check if output_filepath is specified, otherwise use the default name
+    if [ -z "$output_filepath" ]; then
+        output_filepath="calibration_run_$calibration_run_id.json"
+    fi
+
     # Save the response to a JSON file
-    if ! echo "$response" | jq . > "calibration_run_$calibration_run_id.json" 2>/dev/null; then
+    if ! echo "$response" | jq . --indent 3 > "$output_filepath" 2>/dev/null; then
        echo "Error parsing response or saving to file."
     else
-       echo "Exported calibration run data to calibration_run_$calibration_run_id.json"
+       full_path="$(realpath "$output_filepath")"
+       echo "Exported calibration run data to $full_path"
     fi
 
     # Clean up the temporary file
     rm -f /tmp/curl_response
 
 else
+    echo You must enter 'import' or 'export'
+    echo
     print_usage
 fi

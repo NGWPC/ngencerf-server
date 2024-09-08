@@ -3,6 +3,7 @@
 # Before running, you need to set your USERNAME and PASSWORD
 # export NGEN_USERNAME="your_username"
 # export NGEN_PASSWORD="your_password"
+# or you can put them at the bottom of ~/.bashrc
 
 # Check if the USERNAME and PASSWORD environment variables are set
 if [ -z "$NGEN_USERNAME" ] || [ -z "$NGEN_PASSWORD" ]; then
@@ -57,6 +58,6 @@ if ! echo "$response" | jq -e '.access' >/dev/null 2>&1 || [ -z "$access_token" 
     exit 1
 else
     export ACCESS_TOKEN="$access_token"
-    echo "Login successful. Access token saved to ACCESS_TOKEN environment variable."
+    echo "'$NGEN_USERNAME' login successful."
 fi
 
