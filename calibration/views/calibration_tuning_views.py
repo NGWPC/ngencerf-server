@@ -19,7 +19,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -146,10 +146,14 @@ def get_time_range(run):
 
 
 def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
+    print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
     if source:
         if source == upload_enum.from_enum(upload_enum):
-            hydrofabric_path = get_path_func()
+            # Get uploaded data from job-specific path
+            print('get_valid_path returning', get_path_func())
+            return get_path_func()
         if hydrofabric_path and os.path.exists(hydrofabric_path):
+            print('get_valid_path returning', hydrofabric_path)
             return hydrofabric_path
     return None
 
@@ -337,6 +341,8 @@ def save_parameters(run, parameters):
 
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
 def get_csv_daterange(file):
+    if not os.path.exists(file):
+        raise CerfException(f"File {file} does not exist")
     # Read the CSV file, assuming the first column contains date information
     df = pd.read_csv(file, delimiter=',', parse_dates=[0])
 

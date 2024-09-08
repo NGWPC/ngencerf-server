@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource, Gage
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
@@ -67,9 +67,10 @@ def import_job(request):
         #############################
         gage_id = validator.data.get('gage_id')
         if gage_id:
-            gage = save_gage(run, gage_id)
-            if not gage:
-                return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+            try:
+                save_gage(run, gage_id)
+            except Gage.DoesNotExist:
+                return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
         forcing_source_name = validator.data.get('forcing_source')
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
@@ -81,9 +82,12 @@ def import_job(request):
 
         run.geopackage_hydrofabric_path = validator.data.get('geopackage_path_from_hydrofabric')
         geopackage_user_uploaded_file_path = validator.data.get('geopackage_user_uploaded_file_path')
-        if os.path.exists(geopackage_user_uploaded_file_path):
+        if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
             # Copy from original location to our job-specific path
-            copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
+            info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
+        else:
+            if geopackage_user_uploaded_file_path:
+                warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
