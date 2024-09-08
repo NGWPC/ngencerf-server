@@ -272,7 +272,6 @@ def get_geopackage_image_url(run: CalibrationRun):
 
 def save_gage(run, gage_id):
     gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
-    print('found gage', gage)
 
     if run.gage != gage:
         if run.gage:

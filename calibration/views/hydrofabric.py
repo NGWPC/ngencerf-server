@@ -22,9 +22,9 @@ headers = {
 
 
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
-    print('Getting geopackage from Hydrofabric')
 
     if settings.HYDROFABRIC:
+        print('Getting geopackage from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT.format(gage_id=run.gage.gage_id))
         response = requests.get(url, headers=headers)
         try:
@@ -35,6 +35,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
             print("Response from Hydrofabric:", response.text)
             return
     else:
+        print('Getting dummy geopackage data')
         geopackage_json = geopackage_sample_data
 
     hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
@@ -47,8 +48,8 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
 
 # TODO Throw exception for AWS errors and Hydrofabric errors
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
-    print('Getting observational data from Hydrofabric')
     if settings.HYDROFABRIC:
+        print('Getting observational data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send source
         response = requests.get(url, headers=headers)
@@ -60,6 +61,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
             print("Response from Hydrofabric:", response.text)
             return
     else:
+        print('Getting dummy observational data')
         observational_json = observational_sample_data
 
     observational_data = validate_response_data(ObservationalHydrofabricSerializer, observational_json,
@@ -72,8 +74,8 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
-    print('Getting forcing data from Hydrofabric')
     if settings.HYDROFABRIC:
+        print('Getting forcing data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send source
         response = requests.get(url, headers=headers)
@@ -85,6 +87,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
             print("Response from Hydrofabric:", response.text)
             return
     else:
+        print('Getting dummy forcing data')
         forcing_json = forcing_sample_data
 
     forcing_data = validate_response_data(ForcingHydrofabricSerializer, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
@@ -96,8 +99,8 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
 
 
 def get_module_data_from_hydrofabric(run, modules):
-    print('Getting module metadata from Hydrofabric')
     if settings.HYDROFABRIC:
+        print('Getting module metadata from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send list of modules
         response = requests.get(url, headers=headers)
@@ -109,12 +112,11 @@ def get_module_data_from_hydrofabric(run, modules):
             print("Response from Hydrofabric:", response.text)
             return
     else:
+        print('Getting dummy module metadata data')
         module_json = module_metadata_sample_data
 
     module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                          'Module metadata from Hydrofabric is not in the expected format')
-
-    # print('getting metadata from hydrofabric')
 
     # Save the output variables and parameters for each module
     # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
@@ -154,8 +156,8 @@ def get_module_data_from_hydrofabric(run, modules):
 
 
 def get_modules_from_hydrofabric(run: CalibrationRun):
-    print('Getting module data from Hydrofabric')
     if settings.HYDROFABRIC:
+        print('Getting module data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULES_ENDPOINT.format(gage_id=run.gage.gage_id))
         response = requests.get(url, headers=headers)
         try:
@@ -166,6 +168,7 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
             print("Response from Hydrofabric:", response.text)
             return
     else:
+        print('Getting dummy module data')
         module_json = module_sample_data
 
     current_module_names = set(
