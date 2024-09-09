@@ -354,6 +354,7 @@ class UploadObservationalSerializer(BaseSerializer):
 class UploadGeopackageSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     geopackage_file = serializers.FileField(required=True)
+    return_geopackage_url = serializers.BooleanField(default=True)
 
     def validate_geopackage_file(self, value):
         request = self.context.get('request')
@@ -659,6 +660,7 @@ class IsReadyResponseSerializer(BaseSerializer):
 class ImportResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
+    status = serializers.CharField(required=True, validators=[statusValidator])
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 

@@ -438,6 +438,7 @@ def upload_geopackage_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
+    return_geopackage_url = validator.data.get('return_geopackage_url')  # default=True
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -456,16 +457,17 @@ def upload_geopackage_data(request):
         os.remove(geopackage_hydrofabric_path)
     fs.save(geopackage_file.name, geopackage_file)
 
-    geopackage_image_url = get_geopackage_image_url(run)
+    geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
 
     with transaction.atomic():
         run.save()
 
     ngen_cal_input.ready_to_run(run)
 
-    # TODO Need to return geopackage_png
     response = {'message': f"Geopackage file '{geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
-                'status': run.status.name, 'geopackage_image_url': geopackage_image_url}
+                'status': run.status.name}
+    if geopackage_image_url:
+        response['geopackage_image_url'] = geopackage_image_url
 
     response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response)
     if error_response:

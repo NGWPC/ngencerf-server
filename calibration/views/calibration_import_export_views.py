@@ -221,7 +221,7 @@ def import_job(request):
             submit_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 
-    response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id}
+    response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
     if errors:
         response['errors'] = errors
     if info_messages:

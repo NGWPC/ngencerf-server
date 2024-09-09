@@ -123,16 +123,17 @@ def submit_job(run, config_file=None):
         if messages:
             return ResponseError(f'Calibration Run {run.id} is not ready', validation_errors=messages)
 
-    # Save the latest git hash or ngen and ngen-cal
-    run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
-    run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
-    run.run_date = datetime.now(timezone.utc)
-    run.save()
-
     try:
         create_input(config_file)
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')
+
+        # Save the latest git hash or ngen and ngen-cal
+    run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
+    run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+    run.run_date = datetime.now(timezone.utc)
+    run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+    run.save()
 
     run_job(run, CalibOrValid.CALIBRATION)
 
