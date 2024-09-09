@@ -654,6 +654,8 @@ class GeopackageHydrofabricSerializer(serializers.Serializer):
 
 class IsReadyResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
+    status = serializers.CharField(required=True, validators=[statusValidator])
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
