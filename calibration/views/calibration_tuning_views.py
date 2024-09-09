@@ -148,10 +148,10 @@ def get_time_range(run):
 def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
     if source:
-        if source == upload_enum.from_enum(upload_enum):
+        if source == upload_enum.from_enum(upload_enum) and (os.path.exists(job_specific_file := get_path_func)):
             # Get uploaded data from job-specific path
-            print('get_valid_path returning', get_path_func())
-            return get_path_func()
+            print('get_valid_path returning' job_specific_file)
+            return job_specific_file
         if hydrofabric_path and os.path.exists(hydrofabric_path):
             print('get_valid_path returning', hydrofabric_path)
             return hydrofabric_path
