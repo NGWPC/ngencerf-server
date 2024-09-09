@@ -215,7 +215,7 @@ def import_job(request):
     errors, config_file = ngen_cal_input.ready_to_run(run)
     errors.extend(warnings)
 
-    if run_after_import:
+    if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
             submit_job(run, config_file=config_file)

@@ -71,7 +71,6 @@ def get_run(calibration_run_id, user, run_status=None):
 
     # Check if the status of the run is in the allowed statuses
     if run.status not in allowed_statuses:
-        print(type(allowed_statuses[0]))  # This should print <class 'calibration.models.Status'>
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
         return run, Response(
             {'error': (f'Calibration Run {calibration_run_id} is not in the allowed statuses '
