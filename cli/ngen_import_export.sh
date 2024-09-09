@@ -6,10 +6,10 @@ print_usage() {
     echo "  import <file> : Import the provided JSON file."
     echo "  export <calibration_run_id> : Export the JSON data for the given calibration_run_id."
     echo "  Optional keyword arguments:"
-    echo "      observational_data_filepath=<path>"
-    echo "      forcing_data_dir=<path>"
-    echo "      geopackage_filepath=<path>"
-    echo "      output=<path>"
+    echo "      observational_data_filepath=<file path>"
+    echo "      forcing_data_dir=<directory path>"
+    echo "      geopackage_filepath=<file path>"
+    echo "      output=<directory or file path>"
     echo "      run_after_import=true|false"
     exit 1
 }
@@ -351,9 +351,13 @@ elif [ "$operation" == "export" ]; then
 
     check_http_error "$http_status" "$response"
 
-     # Check if output is specified, otherwise use the default name
+    # Determine if output is a directory or a file
     if [ -z "$output" ]; then
+        # If output is not specified, use the default filename
         output="calibration_run_$calibration_run_id.json"
+    elif [ -d "$output" ]; then
+        # If output is a directory, append the default filename
+        output="$output/calibration_run_$calibration_run_id.json"
     fi
 
     # Save the response to a JSON file
