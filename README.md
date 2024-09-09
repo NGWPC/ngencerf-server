@@ -28,7 +28,6 @@ The 2 template files are suitable for development and no changes need to be made
 Note that these files are not checked in to Git
 
 
-
 # Access to AWS
 Some endpoints require access to AWS and therefore you must update your credentials.
 The credentials only last a few hours, so be prepared to refresh them at least once a day.
@@ -72,16 +71,33 @@ But this might be moot on other environments.
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
 ```
 
-This information shoiuld already be in local_settings.py, which defines the mount point that has just been created
+This information should already be in local_settings.py, which defines the mount point that has just been created
 ```
 HYDROFABRIC_BUCKET = 'ngwpc-dev'
 HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
 ```
+Some of these might only be needed temporarily, until Hydrofabric returns file system urls and not S3 urls
+
+**Note:** There are other tools that perform the same functionally as `s3fs`,  and 
+environments, such as Parallel Works 
+might have other ways of implementing this functionality.  There is nothing in the server code
+that is dependant on `s3fs`.  All that matters is that the bucket is mounted as a file space
+and that there is agreement between NgenServer and Hydrofabric on the mount point.
 
 
 # Initial Set-up of database
 
-Install Postgres if not already done.
+Install Postgres if not already done so.
+
+The `runCerf.sh` script will handle initialization of the database the 
+first time it runs and will then  `manage.py runServer` to start up the server.  
+For subsequent runs, it will run `migrate` and `runServer`.
+
+In those cases where you need to re-initialize the data, after dropping all the tables you should
+delete the file called `.load-static`.  If this file is missing, that tells `runCert.sh` to re-initialize the database
+
+## Manual Steps
+These are the steps the `runCert` is performing.  You can skip them if you've successfully run `runCerf`.
 
 Ensure that you are still in the `.venv-cerf` virtual environment
 Run `manage.py migrate` to create all the tables
