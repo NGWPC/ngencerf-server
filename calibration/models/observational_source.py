@@ -10,3 +10,6 @@ class ObservationalSource(BaseModel):
 
     class Meta:
         db_table = 'observational_source'
+
+    def __str__(self):
+        return f"{self.name}"

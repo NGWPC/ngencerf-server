@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationFormulation, Status, CalibrationRun, CalibrationStopCriteria, ForcingSource, ObservationalSource
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource, Gage
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
@@ -26,7 +26,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, create_calibration_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -55,50 +55,57 @@ def import_job(request):
         return error_return
 
     with transaction.atomic():
-        run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+        run = create_calibration_run_internal(request)
 
         run_after_import = validator.data.get('run_after_import', False)
 
         warnings = []
+        info_messages = []
 
         #############################
         # Gage
         #############################
         gage_id = validator.data.get('gage_id')
         if gage_id:
-            gage = save_gage(run, gage_id)
-            if not gage:
-                return ResponseError("Gage '{}' does not exist".format(gage_id), status.HTTP_404_NOT_FOUND)
+            try:
+                save_gage(run, gage_id)
+            except Gage.DoesNotExist:
+                return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
         forcing_source_name = validator.data.get('forcing_source')
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
         run.forcing_hydrofabric_dir_path = validator.data.get('forcing_hydrofabric_dir_path')
 
         observational_source_name = validator.data.get('observational_source')
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name, is_active=True) if observational_source_name else None
         run.observational_hydrofabric_file_path = validator.data.get('observational_hydrofabric_file_path')
 
         run.geopackage_hydrofabric_path = validator.data.get('geopackage_path_from_hydrofabric')
         geopackage_user_uploaded_file_path = validator.data.get('geopackage_user_uploaded_file_path')
-        if os.path.exists(geopackage_user_uploaded_file_path):
+        if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
             # Copy from original location to our job-specific path
-            copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
+            info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
+        else:
+            if geopackage_user_uploaded_file_path:
+                warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
 
-        if run.forcing_source and run.forcing_source.name == ForcingSourceEnum.UPLOAD.value:
+        if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
-                copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
+                info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
             else:
-                warnings.append(f"Unable to access user uploaded forcing data from '{run.forcing_hydrofabric_dir_path}'")
+                if forcing_user_uploaded_dir_path:
+                    warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
 
-        if run.observational_source and run.observational_source.name == ObservationalSourceEnum.UPLOAD.value:
+        if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
             observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy from original location to our job-specific path
-                copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
+                info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
             else:
-                warnings.append(f"Unable to access user uploaded observational data from '{run.observational_hydrofabric_file_path}'")
+                if observational_user_uploaded_file_path:
+                    warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
 
     #############################
     # Formulations
@@ -108,9 +115,9 @@ def import_job(request):
     modules_list = validator.data.get('modules')
     module_names = set(modules_list) if modules_list else set()
 
-    message = validate_modules(run, module_names)
-    if message:
-        return ResponseError(message)
+    error_message = validate_modules(run, module_names)
+    if error_message:
+        return ResponseError(error_message)
 
     if module_names:
         if not validate_formulation(run, module_names):
@@ -132,9 +139,9 @@ def import_job(request):
         CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
     if sloth_parameters:
-        message = add_sloth_parameters(run, sloth_parameters)
-        if message:
-            return ResponseError(message)
+        error_message = add_sloth_parameters(run, sloth_parameters)
+        if error_message:
+            return ResponseError(error_message)
 
     #############################
     # Tuning
@@ -159,13 +166,13 @@ def import_job(request):
     if parameters and not modules:
         return ResponseError('Parameters cannot be specified without modules')
 
-    message = validate_parameters(run, parameters)
-    if message is not None:
-        return ResponseError(message)
+    error_message = validate_parameters(run, parameters)
+    if error_message is not None:
+        return ResponseError(error_message)
 
-    message = save_output_variable(run, output_variable_to_calibrate)
-    if message is not None:
-        return ResponseError(message)
+    error_message = save_output_variable(run, output_variable_to_calibrate)
+    if error_message is not None:
+        return ResponseError(error_message)
 
     save_parameters(run, parameters)
 
@@ -184,14 +191,14 @@ def import_job(request):
         if optimization_inputs:
             return ResponseError('Optimization inputs cannot be specified without an optimization name')
     else:
-        optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
-        if message:
-            return ResponseError(message)
+        optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
+        if error_message:
+            return ResponseError(error_message)
         write_optimization_inputs(run, optimization, optimization_inputs)
 
-    message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
-    if message:
-        return ResponseError(message)
+    error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
+    if error_message:
+        return ResponseError(error_message)
 
     run.plot_frequency = validator.data.get('plot_frequency')
     run.streamflow_threshold = streamflow_threshold
@@ -214,9 +221,11 @@ def import_job(request):
             submit_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 
-    response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id}
+    response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
     if errors:
         response['errors'] = errors
+    if info_messages:
+        response['messages'] = info_messages
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
@@ -238,11 +247,11 @@ def import_job(request):
     },
     description="Export a job"
 )
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])
 @handle_exceptions
 def export_job(request):
-    data = request.data
+    data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'export() request from {request.user} - {data}')
 
@@ -374,8 +383,8 @@ def load_calibration_run_data(run, export: bool = None):
     calibration_run_data['stop_criteria'] = stop_criteria
 
     # calibration_run_data['run_date'] = run.run_date
-
-    if not export and run.status.name in [StatusEnum.RUNNING.value, StatusEnum.DONE.value]:
+    # Compare run.status against the actual instances from StatusEnum
+    if not export and run.status in [StatusEnum.from_enum(StatusEnum.RUNNING), StatusEnum.from_enum(StatusEnum.DONE)]:
         # Other stuff we need for Running/Done jobs
         pass
 

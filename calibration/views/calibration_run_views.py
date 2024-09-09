@@ -119,22 +119,21 @@ def submit_job(run, config_file=None):
     # If config is passed, then don't need to validate
     if not config_file:
         messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
-        print('config file', config_file)
 
-        # TODO Normally, we return if not ready, but for testing, we'll skip this test
-        # if messages:
-        #     return f'Calibration Run {calibration_run_id} is not ready'
-
-    # Save the latest git hash or ngen and ngen-cal
-    run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
-    run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
-    run.run_date = datetime.now(timezone.utc)
-    run.save()
+        if messages:
+            return ResponseError(f'Calibration Run {run.id} is not ready', validation_errors=messages)
 
     try:
         create_input(config_file)
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')
+
+        # Save the latest git hash or ngen and ngen-cal
+    run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
+    run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+    run.run_date = datetime.now(timezone.utc)
+    run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+    run.save()
 
     run_job(run, CalibOrValid.CALIBRATION)
 
@@ -205,7 +204,7 @@ def read_output(gage_dir, run):
 
     # TODO Read best params for GWO and PSO
     global_best_params_list = {}
-    if run.optimization.name != 'DDS':
+    if run.optimization.name != OptimizationEnum.DDS.value:
         global_best_params_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_global_best_params.csv')
         if not os.path.exists(global_best_params_file):
             raise CerfException(f"{global_best_params_file} does not exist")
@@ -437,7 +436,7 @@ def report_iteration(request):
     iteration_number = validator.data.get('iteration')
     worker_name = validator.data.get('worker_name')
 
-    starting_iteration = 0 if optimization == OptimizationEnum.DDS else 1
+    starting_iteration = 0 if optimization == OptimizationEnum.DDS.value else 1
 
     run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
     # run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])

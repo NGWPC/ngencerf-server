@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 
-from botocore.exceptions import ClientError
+from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -11,19 +11,20 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import Gage, ForcingSource, ObservationalSource, Domain
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum
+from calibration.models import Gage, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
-    UploadObservationalSerializer, UploadGeopackageSerializer
+    UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
-    get_geopackage_dir_for_job
+    get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
+from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -65,15 +66,22 @@ def load_gage_tab(request):
     if errorReturn:
         return errorReturn
 
-    forcing_source_values = list(ForcingSource.objects.values('name', 'description', 'is_active'))
-    observational_source_values = list(ObservationalSource.objects
-                                       .values('name', 'description', 'is_active'))
-    domain_values = list(Domain.objects
-                         .values('name', 'description', 'is_active'))
+    # Use cached enum values for forcing and observational source
+    forcing_source_values = ForcingSourceEnum.active_choices_with_fields(fields=['name', 'description'])
+    observational_source_values = ObservationalSourceEnum.active_choices_with_fields(fields=['name', 'description'])
 
-    gages = list(Gage.objects.filter(is_active=True)
-                 .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
-    [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
+    domain_values = DomainEnum.active_choices_with_fields(fields=['name', 'description'])
+
+    # Check if gages data is cached
+    gages = cache.get('cached_gages')
+    if gages is None:
+        # If not cached, query the database and cache the result
+        gages = list(Gage.objects.filter(is_active=True)
+                     .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
+        [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
+
+        # Cache the gages data indefinitely (timeout=None)
+        cache.set('cached_gages', gages, timeout=None)
 
     ngen_cal_input.ready_to_run(run)
 
@@ -122,9 +130,16 @@ def get_gage(request):
 
     gage_id = validator.data.get('gage_id')
 
-    gage = Gage.objects.filter(gage_id=gage_id).values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').first()
-    if not gage:
-        return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
+    # Try to get the gage from the cache
+    gage = cache.get(f'cached_gage_{gage_id}')
+    if gage is None:
+        try:
+            # If not cached, query the database and cache the result
+            gage = Gage.objects.values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').get(gage_id=gage_id)
+
+            cache.set(f'cached_gage_{gage_id}', gage, timeout=None)
+        except Gage.DoesNotExist:
+            return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
@@ -166,21 +181,20 @@ def save_gage_tab(request):
 
     geopackage_image_url = None
     if gage_id:
-        gage = save_gage(run, gage_id)
-        if not gage:
-            return ResponseError("Gage '{}' does not exist".format(gage_id), http_status=status.HTTP_404_NOT_FOUND)
-
         try:
-            get_geopackage_from_hydrofabric(run)
-        except ClientError as e:
-            # TODO Check for other errors
-            return Response(f'Error downloading geopackage from AWS.  Check your AWS credentials - {e}')
+            save_gage(run, gage_id)
+        except Gage.DoesNotExist:
+            return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
-        geopackage_png = gpkg_to_png_selected_layers(run.geopackage_hydrofabric_path)
+        # We don't even want fake data
+        if not settings.HYDROFABRIC:
+            try:
+                get_geopackage_from_hydrofabric(run)
+            except Exception as e:
+                # TODO Probably just want to catch the HTTPError
+                return Response(f'Error retrieving geopackage from Hydrofabric.- {e}')
 
-        # Convert ByteIO image to base64
-        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-        geopackage_image_url = f'data:image/png;base64,{base64_str}'
+        geopackage_image_url = get_geopackage_image_url(run)
 
         """
         Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
@@ -204,16 +218,26 @@ def save_gage_tab(request):
             observational_file = ngen_locations.get_observational_file_for_job(run)
             if os.path.exists(observational_file):
                 os.remove(observational_file)
-            get_observational_data_from_hydrofabric(run)
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name) if observational_source_name else None
+            try:
+                get_observational_data_from_hydrofabric(run)
+            except Exception as e:
+                # TODO Probably just want to catch the HTTPError
+                return Response(f'Error retrieving observation data from Hydrofabric.- {e}')
+
+        run.observational_source = ObservationalSourceEnum.from_enum(
+            ObservationalSourceEnum(observational_source_name)) if observational_source_name else None
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
             forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
             if os.path.exists(forcing_dir):
                 shutil.rmtree(forcing_dir)
-            get_forcing_data_from_hydrofabric(run)
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name) if forcing_source_name else None
+            try:
+                get_forcing_data_from_hydrofabric(run)
+            except Exception as e:
+                # TODO Probably just want to catch the HTTPError
+                return Response(f'Error retrieving forcing data from Hydrofabric.- {e}')
+        run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
 
     with transaction.atomic():
         run.save()
@@ -221,7 +245,7 @@ def save_gage_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
-                'geopackage_image': geopackage_image_url}
+                'geopackage_image_url': geopackage_image_url}
 
     response_validator, error_response = validate_response(SaveGageResponseSerializer, response)
     if error_response:
@@ -230,23 +254,38 @@ def save_gage_tab(request):
     return Response(response_validator.data)
 
 
+def get_geopackage_image_url(run: CalibrationRun):
+    geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_path
+
+    if geopackage_path:
+        if os.path.exists(geopackage_path):
+            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+
+            # Convert ByteIO image to base64
+            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+            return f'data:image/png;base64,{base64_str}'
+        else:
+            raise CerfException(f'Cannot find geopackage file at {geopackage_path}')
+    else:
+        return None
+
+
 def save_gage(run, gage_id):
-    gage = Gage.objects.only('gage_id').filter(gage_id=gage_id).first()
-    if gage:
-        if run.gage != gage:
+    gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
 
-            if run.gage:
-                # Delete any user uploaded files
-                uploaded_forcing_dir = get_forcing_dir_for_job(run)
-                if os.path.exists(uploaded_forcing_dir):
-                    shutil.rmtree(uploaded_forcing_dir)
+    if run.gage != gage:
+        if run.gage:
+            # Delete any user uploaded files
+            uploaded_forcing_dir = get_forcing_dir_for_job(run)
+            if os.path.exists(uploaded_forcing_dir):
+                shutil.rmtree(uploaded_forcing_dir)
 
-                uploaded_observational_file = get_observational_file_for_job(run)
-                if os.path.exists(uploaded_observational_file):
-                    os.remove(uploaded_observational_file)
+            uploaded_observational_file = get_observational_file_for_job(run)
+            if os.path.exists(uploaded_observational_file):
+                os.remove(uploaded_observational_file)
 
-            run.gage = gage
-    return gage
+        # Update the run.gage field
+        run.gage = gage
 
 
 @extend_schema(
@@ -278,7 +317,7 @@ def upload_observational_data(request):
     if errorReturn:
         return errorReturn
 
-    run.observational_source = ObservationalSource.objects.get(name=ObservationalSourceEnum.UPLOAD.value)
+    run.observational_source = ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
 
     # Save to the run-specific observational directory
     fs = FileSystemStorage(location=get_observational_dir_for_job(run))
@@ -340,7 +379,7 @@ def upload_forcing_data(request):
     if errorReturn:
         return errorReturn
 
-    run.forcing_source = ForcingSource.objects.get(name=ForcingSourceEnum.UPLOAD.value)
+    run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
 
     # Validate the file keys and how many there are
     key = 'forcing_files'
@@ -399,6 +438,7 @@ def upload_geopackage_data(request):
         return error_return
 
     calibration_run_id = validator.data.get('calibration_run_id')
+    return_geopackage_url = validator.data.get('return_geopackage_url')  # default=True
 
     run, errorReturn = get_run(calibration_run_id, request.user)
     if errorReturn:
@@ -412,9 +452,12 @@ def upload_geopackage_data(request):
     geopackage_file = files[0]
     run.geopackage_hydrofabric_path = None
 
+    geopackage_hydrofabric_path = os.path.join(fs.location, geopackage_file.name)
     if fs.exists(geopackage_file.name):
-        os.remove(os.path.join(fs.location, geopackage_file.name))
+        os.remove(geopackage_hydrofabric_path)
     fs.save(geopackage_file.name, geopackage_file)
+
+    geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
 
     with transaction.atomic():
         run.save()
@@ -423,8 +466,10 @@ def upload_geopackage_data(request):
 
     response = {'message': f"Geopackage file '{geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                 'status': run.status.name}
+    if geopackage_image_url:
+        response['geopackage_image_url'] = geopackage_image_url
 
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from upload_geopackage_data() - {response_validator.data}')

@@ -3,7 +3,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
-from calibration.enums import StatusEnum, DataTypeEnum
+from calibration.enums import DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinitions
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc
@@ -89,7 +89,7 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ForcingSource.objects.all().delete()
 
-        values = [{"name": "AORC", "description": "Analysis of Record For Calibration"},
+        values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": False},
                   {"name": "Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
@@ -110,7 +110,7 @@ class Command(BaseCommand):
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Agency", "description": "From the owning agency", "is_active": True},
+                  {"name": "Agency", "description": "From the owning agency", "is_active": False},
                   {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
@@ -189,9 +189,18 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             Status.objects.all().delete()
 
-        e: StatusEnum
-        for e in StatusEnum:
-            Status.objects.update_or_create(name=e.value, defaults={"created_by": self.user})
+        values = [{"name": "Saved"},
+                  {"name": "Ready"},
+                  {"name": "Running"},
+                  {"name": "Done"},
+                  {"name": "Cancelled"},
+                  {"name": "Failed"},
+                  {"name": "Resumed"},
+                  {"name": "Server error"}
+                  ]
+
+        for v in values:
+            Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})
 
     def define_ngen_formulations(self):
         if self.DELETE_FLAG:

@@ -15,10 +15,10 @@ from cerfServer.settings import BASE_DIR
 # 4 Additional gages
 
 domains = list(Domain.objects.only('id', 'name').values('id', 'name'))
-alaska_domain = next(item for item in domains if item['name'] == DomainEnum.ALASKA.value)
-hawaii_domain = next(item for item in domains if item['name'] == DomainEnum.HAWAII.value)
-puerto_rico_domain = next(item for item in domains if item['name'] == DomainEnum.PUERTO_RICO.value)
-conus_domain = next(item for item in domains if item['name'] == DomainEnum.CONUS.value)
+alaska_domain = DomainEnum.get_instance('Alaska')
+hawaii_domain = DomainEnum.get_instance('Hawaii')
+puerto_rico_domain = DomainEnum.get_instance('Puerto Rico')
+conus_domain = DomainEnum.get_instance('CONUS')
 
 rfc_dict = {rfc['name']: rfc['id'] for rfc in list(Rfc.objects.only('id', 'name').values('id', 'name'))}
 
@@ -73,7 +73,7 @@ class Command(BaseCommand):
                 # These are all new gages
                 gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
                         'station_name': row.get('station_name'), 'is_active': True,
-                        'nwm_v3_calibrated': False, 'domain_id': alaska_domain['id']}
+                        'nwm_v3_calibrated': False, 'domain_id': alaska_domain.id}
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
 
@@ -94,7 +94,7 @@ class Command(BaseCommand):
                 # We'll create it, just in case it doesn't
                 if not gage:
                     new_count += 1
-                    gage = {'gage_id': gage_id, 'is_active': True, 'domain_id': conus_domain['id']}
+                    gage = {'gage_id': gage_id, 'is_active': True, 'domain_id': conus_domain.id}
                     gages[gage_id] = gage
                 else:
                     existing_count += 1
@@ -191,7 +191,7 @@ def add_additional_gages(gage_file, domain):
                     continue
                 gage_count += 1
                 gage['rfc_id'] = rfc_id
-                gage['domain_id'] = domain['id']
+                gage['domain_id'] = domain.id
     print(f'Processed {gage_count} gages from {file.name}.')
 
 
@@ -232,7 +232,7 @@ def add_usgs_gages(usgs_file, domain):
             gage.update({'agency': agency, 'station_name': station_name, 'site_type': site_type,
                          'lat_long_accuracy': lat_long_accuracy, 'lat_long_datum': lat_long_datum,
                          'altitude': altitude, 'altitude_accuracy': altitude_accuracy, 'altitude_datum': altitude_datum, 'huc': huc,
-                         'drainage_area': drainage_area, 'latitude': latitude, 'longitude': longitude, 'domain_id': domain['id']})
+                         'drainage_area': drainage_area, 'latitude': latitude, 'longitude': longitude, 'domain_id': domain.id})
 
     print(f'Processed {gage_count} gages from {file.name}.')
 
@@ -253,7 +253,7 @@ def add_nwm_v3(nwm_v3_file, domain):
                 longitude = None if row.get('longitd') == 'NA' else float(row.get('longitd'))
                 latitude = None if row.get('latitud') == 'NA' else float(row.get('latitud'))
                 gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
-                        'domain_id': domain['id']}
+                        'domain_id': domain.id}
                 gages[gage_id] = gage
             else:
                 existing_count += 1

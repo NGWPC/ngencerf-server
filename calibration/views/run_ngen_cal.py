@@ -2,6 +2,7 @@ import functools
 import os
 from enum import StrEnum, auto
 
+from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, get_calibration_input_file, get_validation_input_file, \
     get_calibration_stdout_file, get_validation_stdout_file
@@ -18,6 +19,7 @@ class CalibOrValid(StrEnum):
 def run_job(run: CalibrationRun, cmd: CalibOrValid):
     input_file = get_calibration_input_file(run) if cmd == CalibOrValid.CALIBRATION else get_validation_input_file(run)
     output_file = get_calibration_stdout_file(run) if cmd == CalibOrValid.CALIBRATION else get_validation_stdout_file(run)
+    run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
     match settings.RUN_TYPE:
         case settings.RUN_TYPE.LOCAL:
             run_local(run, cmd, input_file, output_file)

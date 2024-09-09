@@ -10,12 +10,11 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
-from calibration.models.status import Status
 from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data
-from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
+from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run, create_calibration_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ def create_calibration_run(request):
     logger.debug(f'create_calibration_run() request from {request.user}')
 
     with transaction.atomic():
-        run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+        run = create_calibration_run_internal(request)
 
         response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
 
@@ -79,8 +78,11 @@ def get_jobs(request):
     gage_id = validator.data.get('gage_id')
 
     query = Q(owner=request.user)
+
     if gage_id:
-        query &= Q(gage__gage_id=gage_id) & Q(status__name__in=[StatusEnum.DONE, StatusEnum.FAILED])
+        done_status = StatusEnum.from_enum(StatusEnum.DONE)
+        failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
+        query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
 
     jobs = CalibrationRun.objects.filter(query)
 
@@ -88,6 +90,7 @@ def get_jobs(request):
     runs = list(jobs
                 .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
                         'status__name', 'owner__username', formulation_name=F('user_formulation_name')))
+
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
@@ -95,7 +98,6 @@ def get_jobs(request):
         r['owner'] = r.pop('owner__username')
 
     response = {'jobs': runs}
-    print('response', response)
 
     response_validator, error_response = validate_response(GetJobsResponseSerializer, response)
     if error_response:

@@ -24,23 +24,23 @@ class BaseSerializer(serializers.Serializer):
 
 
 def forcingSourceValidator(value):
-    if value not in ForcingSourceEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.values()}")
-
-
-def domainNameValidator(value):
-    if value not in DomainEnum.values():
-        raise serializers.ValidationError(f'This field must be one of {DomainEnum.values()}')
+    if value not in ForcingSourceEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {ForcingSourceEnum.get_names()}")
 
 
 def observationSourceValidator(value):
-    if value not in ObservationalSourceEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.values()}")
+    if value not in ObservationalSourceEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {ObservationalSourceEnum.get_names()}")
+
+
+def domainNameValidator(value):
+    if value not in DomainEnum.get_names():
+        raise serializers.ValidationError(f'This field must be one of {DomainEnum.get_names()}')
 
 
 def optimizationValidator(value):
-    if value not in OptimizationEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {OptimizationEnum.values()}")
+    if value not in OptimizationEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {OptimizationEnum.get_names()}")
 
 
 def dataTypeValidator(value):
@@ -59,8 +59,8 @@ def locationValidator(value):
 
 
 def statusValidator(value):
-    if value not in StatusEnum.values():
-        raise serializers.ValidationError(f"This field must be one of {StatusEnum.values()}")
+    if value not in StatusEnum.get_names():
+        raise serializers.ValidationError(f"This field must be one of {StatusEnum.get_names()}")
 
 
 def s3FileValidator(value):
@@ -322,8 +322,15 @@ class UploadForcingSerializer(BaseSerializer):
     def validate_forcing_files(self, value):
         request = self.context.get('request')
         files = request.FILES.getlist('forcing_files')
+
         if len(files) == 0:
             raise serializers.ValidationError("Forcing files must be uploaded")
+
+        # Check that each file has a .csv extension
+        for file in files:
+            if not file.name.lower().endswith('.csv'):
+                raise serializers.ValidationError(f"All forcing files must have a .csv extension. Invalid file: {file.name}")
+
         return value
 
 
@@ -336,19 +343,37 @@ class UploadObservationalSerializer(BaseSerializer):
         files = request.FILES.getlist('observational_file')
         if len(files) != 1:
             raise serializers.ValidationError("Only one observational file should be uploaded.")
+
+        # Check file extension
+        if not files[0].name.lower().endswith('.csv'):
+            raise serializers.ValidationError("The observational file must have a .csv extension.")
+
         return value
 
 
 class UploadGeopackageSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     geopackage_file = serializers.FileField(required=True)
+    return_geopackage_url = serializers.BooleanField(default=True)
 
     def validate_geopackage_file(self, value):
         request = self.context.get('request')
         files = request.FILES.getlist('geopackage_file')
         if len(files) != 1:
             raise serializers.ValidationError("Only one geopackage file should be uploaded.")
+
+        # Check file extension
+        if not files[0].name.lower().endswith('.gpkg'):
+            raise serializers.ValidationError("The geopackage file must have a .gpkg extension.")
+
         return value
+
+
+class UploadGeopackageResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[statusValidator], required=True)
+    geopackage_image_url = serializers.CharField(required=False)
 
 
 class SaveGageRequestSerializer(BaseSerializer):
@@ -362,13 +387,12 @@ class SaveGageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[statusValidator], required=True)
-    geopackage_image = serializers.CharField(required=False)
+    geopackage_image_url = serializers.CharField(required=False)
 
 
 class DomainResponseSerializer(BaseSerializer):
     name = serializers.CharField(validators=[domainNameValidator], required=True)
     description = serializers.CharField(required=True, allow_blank=False)
-    is_active = serializers.BooleanField(required=True)
 
 
 class GagesSerializer(BaseSerializer):
@@ -381,13 +405,11 @@ class GagesSerializer(BaseSerializer):
 class ForcingSourceSerializer(BaseSerializer):
     name = serializers.CharField(validators=[forcingSourceValidator], required=True)
     description = serializers.CharField(required=True)
-    is_active = serializers.BooleanField(required=True)
 
 
 class ObservationalSourceSerializer(BaseSerializer):
     name = serializers.CharField(validators=[observationSourceValidator], required=True)
     description = serializers.CharField(required=True)
-    is_active = serializers.BooleanField(required=True)
 
 
 class LoadGageResponseSerializer(BaseSerializer):
@@ -638,7 +660,9 @@ class IsReadyResponseSerializer(BaseSerializer):
 class ImportResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
+    status = serializers.CharField(required=True, validators=[statusValidator])
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
 ##################################
@@ -736,9 +760,7 @@ class ErrorDetailListField(serializers.ListField):
         return [ErrorDetail(item) for item in data]
 
 
-
 class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=True)
-

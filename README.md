@@ -15,7 +15,37 @@ $ source $cerfServer/.venv-cerf/bin/activate
 (.venv-cerf) $ pip install -r requirements.txt
 ```
 
-# AWS Access
+# Setup local configuration
+There are 2 files which need to be copied in order to provide custom settings for this installation.
+The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
+
+You should make copies of `__local_settings.py` and `__.env`. 
+```
+(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
+(.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env
+```
+The 2 template files are suitable for development and no changes need to be made.
+Note that these files are not checked in to Git
+
+
+# Access to AWS
+Some endpoints require access to AWS and therefore you must update your credentials.
+The credentials only last a few hours, so be prepared to refresh them at least once a day.
+Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI, 
+to get your credentials.
+Add them to your `~/.aws/credentials` file (create the file if it doesn't exist)
+You should manually add the region.  The file will look something like this
+
+```
+[default]
+region=us-east-1
+
+aws_access_key_id = <key_id>
+aws_secret_access_key = <access_key>
+aws_session_token = <token>
+```
+
+
 In order to not have any AWS specific code, AWS buckets are mounted as a regular file system using s3fs.  Create a directory to contain the contents of a specific S3 bucket.
 For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  Then install s3fs and mount the bucket
 ```
@@ -23,6 +53,7 @@ $ sudo apt update
 $ sudo apt install s3fs
 $ mkdir -p ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev 
+$ ls ~/s3/ngwpc-dev
 ```
 To unmount it at some later point use
 ```
@@ -40,28 +71,33 @@ But this might be moot on other environments.
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
 ```
 
-Enter this information in local_settings.py
+This information should already be in local_settings.py, which defines the mount point that has just been created
 ```
 HYDROFABRIC_BUCKET = 'ngwpc-dev'
 HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
 ```
+Some of these might only be needed temporarily, until Hydrofabric returns file system urls and not S3 urls
 
+**Note:** There are other tools that perform the same functionally as `s3fs`,  and 
+environments, such as Parallel Works 
+might have other ways of implementing this functionality.  There is nothing in the server code
+that is dependant on `s3fs`.  All that matters is that the bucket is mounted as a file space
+and that there is agreement between NgenServer and Hydrofabric on the mount point.
 
-# Setup local configuration
-There are 2 files which need to be copied in order to provide custom settings for this installation.
-The `settings.py` file contains settings that are applicable to all environments and should normally not be changed.
-
-You should make copies of `__local_settings.py` and `__.env`. 
-```
-(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
-(.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env
-```
-The 2 template files are suitable for development and no changes need to be made.
-Note that these files are not checked in to Git
 
 # Initial Set-up of database
 
-Install Postgres if not already done.
+Install Postgres if not already done so.
+
+The `runCerf.sh` script will handle initialization of the database the 
+first time it runs and will then  `manage.py runServer` to start up the server.  
+For subsequent runs, it will run `migrate` and `runServer`.
+
+In those cases where you need to re-initialize the data, after dropping all the tables you should
+delete the file called `.load-static`.  If this file is missing, that tells `runCert.sh` to re-initialize the database
+
+## Manual Steps
+These are the steps the `runCert` is performing.  You can skip them if you've successfully run `runCerf`.
 
 Ensure that you are still in the `.venv-cerf` virtual environment
 Run `manage.py migrate` to create all the tables
@@ -117,22 +153,6 @@ in order to clean up any  Calibrations or Validations that were running at the t
 You will get warnings about `ngen` and `ngen-cal` files that don't exist.  That is fine if you haven't installed them yet.
 The server will still run.  You just won't be able to actually run a Calibration.
 
-# Access to AWS
-Some endpoints require access to AWS and therefore you must update your credentials.
-The credentials only last a few hours, so no need to get them until you're ready.
-Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI, 
-to get your credentials.
-Add them to your `~/.aws/credentials` file (create the file if it doesn't exist)
-You should manually add the region.  The file will look something like this
-
-```
-[default]
-region=us-east-1
-
-aws_access_key_id = <key_id>
-aws_secret_access_key = <access_key>
-aws_session_token = <token>
-```
 
 # Installing ngen and ngen-cal
 
