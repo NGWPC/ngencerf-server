@@ -393,7 +393,7 @@ elif [ "$operation" == "run" ]; then
     run_job "$calibration_run_id"
 
 else
-    echo You must enter 'import' or 'export'
+    echo You must enter 'import', 'export' or 'run'
     echo
     print_usage
 fi

@@ -46,3 +46,14 @@ class CalibrationRun(BaseModel):
 
     class Meta:
         db_table = 'calibration_run'
+
+    def __str__(self):
+        gage_info = f"Gage {self.gage.gage_id}" if self.gage else "No Gage"
+        return (
+            f"CalibrationRun {self.id}, {gage_info}, Owner: {self.owner.username}, "
+            f"Job data directory: {self.job_data_dir},"
+            f"GeoPackage Path: {self.geopackage_hydrofabric_path}, "
+            f"Forcing Dir: {self.forcing_hydrofabric_dir_path}, "
+            f"Observational File: {self.observational_hydrofabric_file_path}, "
+            f"Status: {self.status.name}, "
+        )

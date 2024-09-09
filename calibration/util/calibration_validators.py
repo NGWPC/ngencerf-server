@@ -326,11 +326,6 @@ class UploadForcingSerializer(BaseSerializer):
         if len(files) == 0:
             raise serializers.ValidationError("Forcing files must be uploaded")
 
-        # Check that each file has a .csv extension
-        for file in files:
-            if not file.name.lower().endswith('.csv'):
-                raise serializers.ValidationError(f"All forcing files must have a .csv extension. Invalid file: {file.name}")
-
         return value
 
 
@@ -343,10 +338,6 @@ class UploadObservationalSerializer(BaseSerializer):
         files = request.FILES.getlist('observational_file')
         if len(files) != 1:
             raise serializers.ValidationError("Only one observational file should be uploaded.")
-
-        # Check file extension
-        if not files[0].name.lower().endswith('.csv'):
-            raise serializers.ValidationError("The observational file must have a .csv extension.")
 
         return value
 
@@ -362,11 +353,7 @@ class UploadGeopackageSerializer(BaseSerializer):
         if len(files) != 1:
             raise serializers.ValidationError("Only one geopackage file should be uploaded.")
 
-        # Check file extension
-        if not files[0].name.lower().endswith('.gpkg'):
-            raise serializers.ValidationError("The geopackage file must have a .gpkg extension.")
-
-        return value
+            return value
 
 
 class UploadGeopackageResponseSerializer(BaseSerializer):
