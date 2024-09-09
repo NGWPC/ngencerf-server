@@ -148,10 +148,10 @@ def get_time_range(run):
 def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
     if source:
-        if source == upload_enum.from_enum(upload_enum):
+        if source == upload_enum.from_enum(upload_enum) and (os.path.exists(job_specific_file := get_path_func())):
             # Get uploaded data from job-specific path
-            print('get_valid_path returning', get_path_func())
-            return get_path_func()
+            print('get_valid_path returning', job_specific_file)
+            return job_specific_file
         if hydrofabric_path and os.path.exists(hydrofabric_path):
             print('get_valid_path returning', hydrofabric_path)
             return hydrofabric_path
@@ -341,42 +341,27 @@ def save_parameters(run, parameters):
 
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
 def get_csv_daterange(file):
-    if not os.path.exists(file):
-        raise CerfException(f"File {file} does not exist")
-    # Read the CSV file, assuming the first column contains date information
-    df = pd.read_csv(file, delimiter=',', parse_dates=[0])
+    try:
+        if not os.path.exists(file):
+            raise CerfException(f"File {file} does not exist")
+        # Read the CSV file, assuming the first column contains date information
+        df = pd.read_csv(file, delimiter=',', parse_dates=[0])
 
-    # Ensure the first column is datetime without timezone initially
-    df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handles invalid dates gracefully
+        # Ensure the first column is datetime without timezone initially
+        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handles invalid dates gracefully
 
-    # Find the min and max date (without timezone info)
-    min_time = df.iloc[:, 0].min()
-    max_time = df.iloc[:, 0].max()
+        # Find the min and max date (without timezone info)
+        min_time = df.iloc[:, 0].min()
+        max_time = df.iloc[:, 0].max()
 
-    # Convert the min and max times to UTC after computation
-    min_time = min_time.replace(tzinfo=timezone.utc)
-    max_time = max_time.replace(tzinfo=timezone.utc)
+        # Convert the min and max times to UTC after computation
+        min_time = min_time.replace(tzinfo=timezone.utc)
+        max_time = max_time.replace(tzinfo=timezone.utc)
 
-    return DateTimeRange(min_time, max_time)
-
-
-#
-# # Reads a CSV file and gets the date field from the first column.  Then computes the min/max to construct a date range
-# def get_csv_daterange(file):
-#     logger.info(f'getting date range for file {file}')
-#     max_time = MAX_TIME
-#     min_time = MIN_TIME
-#     with open(file, 'r', buffering=32768) as f:
-#         csv_reader = csv.reader(f, delimiter=',')
-#         # skip the header
-#         next(csv_reader, None)
-#         for row in csv_reader:
-#             timestamp = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-#             max_time = max(max_time, timestamp)
-#             min_time = min(min_time, timestamp)
-#
-#     logger.info(f'Returning date range for {file}')
-#     return DateTimeRange(min_time, max_time)
+        return DateTimeRange(min_time, max_time)
+    except Exception as e:
+        # This was happening in dev because people were uploading bogus files.  Shouldn't really happen in prod
+        raise CerfException(f'Error reading file {file}: {e}')
 
 
 def get_forcing_date_range(forcing_dir_path):

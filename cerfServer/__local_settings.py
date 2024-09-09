@@ -21,7 +21,7 @@ DEBUG = True
 LOGGING['loggers']['django.db.backends']['level'] = 'INFO'
 
 # Calibration logging
-LOGGING['loggers']['calibration']['level'] = 'INFO'
+LOGGING['loggers']['calibration']['level'] = 'DEBUG'
 
 # Regular logging
 LOGGING['root']['level'] = 'INFO'
