@@ -296,7 +296,8 @@ def load_calibration_run_data(run, export: bool = None):
         metadata = {'source_calibration_run_id': run.id, 'time_range': time_range}
         calibration_run_data['metadata'] = metadata
 
-        calibration_run_data['run_after_import'] = False
+        # Not supporting this flag right now until Hydrofabric is ready.
+        # calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)

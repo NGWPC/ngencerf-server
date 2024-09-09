@@ -124,7 +124,7 @@ def submit_job(run, config_file=None):
             return ResponseError(f'Calibration Run {run.id} is not ready', validation_errors=messages)
 
     try:
-        print(f'Running create_input for Calibration Run{run.id}')
+        print(f'Running create_input for Calibration Run {run.id}')
         create_input(config_file)
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')

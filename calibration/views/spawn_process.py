@@ -19,6 +19,7 @@ def execute(run: CalibrationRun, args, validation_callback=None):
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
         future.add_done_callback(functools.partial(callback, run, process_id, validation_callback))
+        validation_callback=None
     except Exception as e:
         print(f"Failed to execute command: {e}")
         raise

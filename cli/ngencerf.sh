@@ -2,17 +2,31 @@
 
 # Function to print usage
 print_usage() {
-    echo "Usage: $0 [import|export] <file|calibration_run_id> [keyword arguments]"
-    echo "  import <file> : Import the provided JSON file."
-    echo "  export <calibration_run_id> : Export the JSON data for the given calibration_run_id."
-    echo "  Optional keyword arguments:"
-    echo "      observational_file=<file path>"
-    echo "      forcing_dir=<directory path>"
-    echo "      geopackage_file=<file path>"
-    echo "      output=<directory or file path>"
-    echo "      run_after_import=true|false"
+    echo "Usage: $0 [import|export|run] <file|calibration_run_id> [keyword arguments]"
+    echo ""
+    echo "  Commands:"
+    echo "    import <file> : Import the provided JSON file."
+    echo "        Arguments:"
+    echo "          observational_file=<file path>    (optional) : Path to the observational data file (CSV format)."
+    echo "          forcing_dir=<directory path>      (optional) : Path to the directory containing forcing data (CSV files)."
+    echo "          geopackage_file=<file path>       (optional) : Path to the geopackage file (GPKG format)."
+    echo "          run_after_import=true|false       (optional) : Whether to run the calibration job after import (default: false)."
+    echo ""
+    echo "    export <calibration_run_id> : Export the JSON data for the given calibration_run_id."
+    echo "        Arguments:"
+    echo "          output=<directory or file path>   (optional) : Path to save the exported file (default filename used if a directory is provided)."
+    echo ""
+    echo "    run <calibration_run_id> : Run the calibration_run_id job."
+    echo "        Arguments:"
+    echo "          <None>"
+    echo ""
+    echo "  Example usage:"
+    echo "    $0 import data.json observational_file=obs.csv forcing_dir=forcing run_after_import=true"
+    echo "    $0 export 123 output=/path/to/exported_data.json"
+    echo "    $0 run 123"
     exit 1
 }
+
 
 # Function to handle the geopackage upload
 upload_geopackage_data() {
@@ -347,7 +361,6 @@ elif [ "$operation" == "export" ]; then
     --header "Authorization: Bearer $ACCESS_TOKEN" \
     "http://localhost:8000/calibration/export/?calibration_run_id=$calibration_run_id")
 
-
     # Extract HTTP status and response
     http_status=$(tail -n1 <<< "$response")
     response=$(cat /tmp/curl_response)
@@ -373,6 +386,11 @@ elif [ "$operation" == "export" ]; then
 
     # Clean up the temporary file
     rm -f /tmp/curl_response
+
+elif [ "$operation" == "run" ]; then
+    calibration_run_id="$argument"
+
+    run_job "$calibration_run_id"
 
 else
     echo You must enter 'import' or 'export'
