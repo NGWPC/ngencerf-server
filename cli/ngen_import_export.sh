@@ -6,9 +6,9 @@ print_usage() {
     echo "  import <file> : Import the provided JSON file."
     echo "  export <calibration_run_id> : Export the JSON data for the given calibration_run_id."
     echo "  Optional keyword arguments:"
-    echo "      observational_data_filepath=<file path>"
-    echo "      forcing_data_dir=<directory path>"
-    echo "      geopackage_filepath=<file path>"
+    echo "      observational_file=<file path>"
+    echo "      forcing_dir=<directory path>"
+    echo "      geopackage_file=<file path>"
     echo "      output=<directory or file path>"
     echo "      run_after_import=true|false"
     exit 1
@@ -16,16 +16,17 @@ print_usage() {
 
 # Function to handle the geopackage upload
 upload_geopackage_data() {
-    local geopackage_filepath=$1
+    local geopackage_file=$1
     local calibration_run_id=$2
 
-    echo "Uploading geopackage: $geopackage_filepath for calibration_run_id: $calibration_run_id"
+    echo "Uploading geopackage: $geopackage_file for calibration_run_id: $calibration_run_id"
 
     # Send upload_geopackage request, capture the HTTP status and response
     response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
     --header 'Content-Type: multipart/form-data' \
     --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --form "geopackage_file=@$geopackage_filepath" \
+    --form "return_geopackage_url=false" \
+    --form "geopackage_file=@$geopackage_file" \
     --form "calibration_run_id=$calibration_run_id" \
     "http://localhost:8000/calibration/upload_geopackage_data/")
 
@@ -35,10 +36,11 @@ upload_geopackage_data() {
 
     check_http_error "$http_status" "$response"
 
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-    fi
+    # Extract the status field
+    # status=$(echo "$response" | jq -r '.status')
+
+    # Print the full response
+    echo "$response" | jq --indent 3
 
     # Clean up the temporary file
     rm -f /tmp/curl_response
@@ -65,10 +67,11 @@ upload_observational_data() {
 
     check_http_error "$http_status" "$response"
 
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-    fi
+    # Extract the status field
+    # status=$(echo "$response" | jq -r '.status')
+
+    # Print the full response
+    echo "$response" | jq --indent 3
 
     # Clean up the temporary file
     rm -f /tmp/curl_response
@@ -76,16 +79,16 @@ upload_observational_data() {
 
 # Function to handle the forcing upload
 upload_forcing_data() {
-    local forcing_data_dir=$1
+    local forcing_dir=$1
     local calibration_run_id=$2
 
-    echo "Uploading forcing data from directory: '$forcing_data_dir' for calibration_run_id: $calibration_run_id"
+    echo "Uploading forcing data from directory: '$forcing_dir' for calibration_run_id: $calibration_run_id"
 
     # Initialize an array to hold all the --form arguments
     form_files=()
 
     # Add the files from the directory to the form data
-    for file in "$forcing_data_dir"/*; do
+    for file in "$forcing_dir"/*; do
         if [ -f "$file" ]; then
             form_files+=("--form" "forcing_files[]=@$file")
         fi
@@ -110,10 +113,11 @@ upload_forcing_data() {
 
     check_http_error "$http_status" "$response"
 
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-    fi
+    # Extract the status field
+    # status=$(echo "$response" | jq -r '.status')
+
+    # Print the full response
+    echo "$response" | jq --indent 3
 
     # Clean up the temporary file
     rm -f /tmp/curl_response
@@ -162,23 +166,23 @@ argument="$2"
 shift 2  # Shift past the first two positional arguments
 
 # Initialize variables for optional keyword arguments
-observational_data_filepath=""
-forcing_data_dir=""
-geopackage_filepath=""
+observational_file=""
+forcing_dir=""
+geopackage_file=""
 output=""
 run_after_import=false
 
 # Parse the keyword arguments
 for arg in "$@"; do
     case $arg in
-        observational_data_filepath=*)
-            observational_data_filepath="${arg#*=}"
+        observational_file=*)
+            observational_file="${arg#*=}"
             ;;
-        forcing_data_dir=*)
-            forcing_data_dir="${arg#*=}"
+        forcing_dir=*)
+            forcing_dir="${arg#*=}"
             ;;
-        geopackage_filepath=*)
-            geopackage_filepath="${arg#*=}"
+        geopackage_file=*)
+            geopackage_file="${arg#*=}"
             ;;
         output=*)
             output="${arg#*=}"
@@ -205,51 +209,50 @@ if [ "$operation" == "import" ] && [ ! -f "$argument" ]; then
     exit 1
 fi
 
-echo checking output
-echo [ -f "$output" ]
 if [ "$operation" == "import" ] && [ -f "$output" ]; then
-    echo "Error; The output option is not valid for import."f
+    echo "Error: The output option is not valid for import."f
     exit 1
 fi
 
-if [ "$operation" == "output" ] && ([ -f "observational_data_filepath" ] || [ -f "forcing_data_dir" ] || [ -f "geopackage_filepath" ] ); then
+if [ "$operation" == "output" ] && { [ -f "$observational_file" ] || [ -f "$forcing_dir" ] || [ -f "$geopackage_file" ]; }; then
     echo "Error: Upload files can only be specified for import"
     exit 1
 fi
+
 
 if [ "$operation" == "output" ] && [ -f "run_after_import" ]; then
     echo "Error: The run_after_import option is only valid for import."
     exit 1
 fi
 
-if [ -n "$observational_data_filepath" ]; then
-    if [ ! -f "$observational_data_filepath" ]; then
-        echo "Error: Observational file '$observational_data_filepath' not found."
+if [ -n "$observational_file" ]; then
+    if [ ! -f "$observational_file" ]; then
+        echo "Error: Observational file '$observational_file' not found."
         exit 1
-    elif [[ "$observational_data_filepath" != *.csv ]]; then
+    elif [[ "$observational_file" != *.csv ]]; then
         echo "Error: Observational file must have a .csv extension."
         exit 1
     fi
 fi
 
-if [ -n "$geopackage_filepath" ]; then
-    if [ ! -f "$geopackage_filepath" ]; then
-        echo "Error: Geopackage file '$geopackage_filepath' not found."
+if [ -n "$geopackage_file" ]; then
+    if [ ! -f "$geopackage_file" ]; then
+        echo "Error: Geopackage file '$geopackage_file' not found."
         exit 1
-    elif [[ "$geopackage_filepath" != *.gpkg ]]; then
+    elif [[ "$geopackage_file" != *.gpkg ]]; then
         echo "Error: Geopackage file must have a .gpkg extension."
         exit 1
     fi
 fi
 
-if [ -n "$forcing_data_dir" ]; then
-    if [ ! -d "$forcing_data_dir" ]; then
-        echo "Error: Forcing data directory '$forcing_data_dir' not found."
+if [ -n "$forcing_dir" ]; then
+    if [ ! -d "$forcing_dir" ]; then
+        echo "Error: Forcing data directory '$forcing_dir' not found."
         exit 1
     fi
-    for file in "$forcing_data_dir"/*; do
+    for file in "$forcing_dir"/*; do
         if [ ! -f "$file" ]; then
-            echo "Error: No files found in the forcing data directory, '$forcing_data_dir'."
+            echo "Error: No files found in the forcing data directory, '$forcing_dir'."
             exit 1
         elif [[ "$file" != *.csv ]]; then
             echo "Error: All forcing files must have a .csv extension. Invalid file: $file"
@@ -315,16 +318,16 @@ if [ "$operation" == "import" ]; then
 
     calibration_run_id=$(echo "$response" | jq -r '.calibration_run_id' 2>/dev/null)
 
-    if [ -n "$geopackage_filepath" ]; then
-        upload_geopackage_data "$geopackage_filepath" "$calibration_run_id"
+    if [ -n "$geopackage_file" ]; then
+        upload_geopackage_data "$geopackage_file" "$calibration_run_id"
     fi
 
-    if [ -n "$observational_data_filepath" ]; then
-        upload_observational_data "$observational_data_filepath" "$calibration_run_id"
+    if [ -n "$observational_file" ]; then
+        upload_observational_data "$observational_file" "$calibration_run_id"
     fi
 
-    if [ -n "$forcing_data_dir" ]; then
-        upload_forcing_data "$forcing_data_dir" "$calibration_run_id"
+    if [ -n "$forcing_dir" ]; then
+        upload_forcing_data "$forcing_dir" "$calibration_run_id"
     fi
 
     if [ "$run_after_import" = true ]; then
