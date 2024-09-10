@@ -24,7 +24,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
 from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_request, validate_response, CerfException
-from calibration.views.run_ngen_cal import run_job, CalibOrValid
+from calibration.views.run_ngen_cal import run_job, JobStage
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
@@ -138,7 +138,7 @@ def submit_job(run, config_file=None):
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
     run.save()
 
-    run_job(run, CalibOrValid.CALIBRATION)
+    run_job(run, JobStage.CALIBRATION)
 
     return None
 

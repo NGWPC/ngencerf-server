@@ -353,7 +353,7 @@ class UploadGeopackageSerializer(BaseSerializer):
         if len(files) != 1:
             raise serializers.ValidationError("Only one geopackage file should be uploaded.")
 
-            return value
+        return value
 
 
 class UploadGeopackageResponseSerializer(BaseSerializer):

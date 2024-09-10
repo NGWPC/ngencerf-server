@@ -104,7 +104,7 @@ upload_forcing_data() {
     # Add the files from the directory to the form data
     for file in "$forcing_dir"/*; do
         if [ -f "$file" ]; then
-            form_files+=("--form" "forcing_files[]=@$file")
+            form_files+=("--form" "forcing_files=@$file")
         fi
     done
 

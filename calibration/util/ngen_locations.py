@@ -83,5 +83,9 @@ def get_calibration_input_file(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
 
 
-def get_validation_input_file(run: CalibrationRun) -> str:
+def get_validation_control_input_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', f'{run.gage.gage_id}_config_valid_control.yaml')
+
+
+def get_validation_best_input_file(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', f'{run.gage.gage_id}_config_valid_best.yaml')

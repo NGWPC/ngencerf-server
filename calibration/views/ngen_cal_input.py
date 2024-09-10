@@ -65,6 +65,7 @@ config_template = {
     "DataFile": {
         "forcing_dir": "",
         "obs_dir": "",
+        "nwmretro_file":"",
         "hydrofab_dir": "",
         "cfe_dir": "",
         "topmd_dir": "",
@@ -142,6 +143,8 @@ def ready_to_run(run: CalibrationRun, build=None):
                                      DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
+
+        datafile['nwmretro_file'] = '' # Not sure what this is yet
 
         if run.geopackage_hydrofabric_path and os.path.exists(run.geopackage_hydrofabric_path):
             datafile['hydrofab_dir'] = os.path.dirname(run.geopackage_hydrofabric_path)

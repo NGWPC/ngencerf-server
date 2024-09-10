@@ -45,12 +45,16 @@ echo "Arguments to Python: $*"
 # Activate the virtual environment
 source "$VENV_PATH/bin/activate"
 
-set -x
 # Run the Python script, redirecting its output to the specified file
 echo "Running $(basename "$SCRIPT_PATH") $*"
 python "$SCRIPT_PATH" "$@" > "$PYTHON_OUTPUT_FILE" 2>&1
+python_exit_code=$?
 
-echo "Output from running $(basename "$SCRIPT_PATH")"
+if [ $python_exit_code -ne 0 ]; then
+  echo "$(basename "$SCRIPT_PATH") exited with code $python_exit_code"
+fi
+
+echo "Output from running $(basename "$SCRIPT_PATH") $*"
 cat "$PYTHON_OUTPUT_FILE"
 
 echo "Done running $(basename "$SCRIPT_PATH") $*"
