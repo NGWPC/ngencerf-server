@@ -1,4 +1,5 @@
 import functools
+import os.path
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, Future
 
@@ -12,7 +13,7 @@ pool = ThreadPoolExecutor()
 
 
 def execute(run: CalibrationRun, current_stage, args, callback_function):
-    process_id = f'{run.id}_{run.owner}'
+    process_id = os.path.basename(run.job_data_dir)
 
     print(f"Spawning process: {process_id} in stage {current_stage.name} with {args}")
     try:
@@ -37,7 +38,7 @@ def callback(run: CalibrationRun, process_id, job_stage, callback_function, futu
 
         print('------------------------------------------------')
         print(f'Running callback function for {process_id} at stage {job_stage.name}')
-        callback_function(run)
+        callback_function()
 
     except Exception as e:
         print(f"Error in callback for process {process_id} at stage {job_stage.name}: {str(e)}")

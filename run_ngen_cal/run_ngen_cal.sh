@@ -55,6 +55,8 @@ if [ $python_exit_code -ne 0 ]; then
 fi
 
 echo "Output from running $(basename "$SCRIPT_PATH") $*"
+echo "-------------- start of $PYTHON_OUTPUT_FILE -----------------------------"
 cat "$PYTHON_OUTPUT_FILE"
+echo "---------------- end of $PYTHON_OUTPUT_FILE -----------------------------"
 
 echo "Done running $(basename "$SCRIPT_PATH") $*"

@@ -143,7 +143,7 @@ Both of these commands can be run multiple times without any harm.
 ```
 
 # Running the server
-To run the server outside of Pycharm, use `runCerf.sh`
+To run the server, use `runCerf.sh`
 
 Running the server in production is likely very different, 
 but it's important to run `pre_start.py` from `manage.py` before the server starts, 

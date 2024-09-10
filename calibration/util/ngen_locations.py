@@ -75,8 +75,12 @@ def get_calibration_stdout_file(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), 'Output', 'Calibration_Run', 'ngen-cal_calibration_stdout.log')
 
 
-def get_validation_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', 'ngen-cal_validation_stdout.log')
+def get_validation_control_stdout_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', 'ngen-cal_validation_control_stdout.log')
+
+
+def get_validation_best_stdout_file(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', 'ngen-cal_validation_best_stdout.log')
 
 
 def get_calibration_input_file(run: CalibrationRun) -> str:
