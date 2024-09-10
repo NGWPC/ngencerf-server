@@ -19,3 +19,11 @@ class CalibrationParameter(BaseModel):
             models.UniqueConstraint(fields=['name', 'calibration_formulation'],
                                     name='calibration_tune_parameter__name__calibration_formulation__unique')
         ]
+
+    def __str__(self):
+        return (
+            f"CalibrationParameter: {self.id}, "
+            f"Name: {self.name:20},"
+            f"User selected for tuning: {str(self.user_selected_for_tuning):<5}, "
+            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
+        )

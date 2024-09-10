@@ -1,7 +1,7 @@
 import functools
 import os
 from enum import auto, Enum
-from typing import Dict, Optional
+from typing import Optional
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
@@ -91,7 +91,7 @@ def run_docker(run: CalibrationRun, cmd, input_file):
 
 def job_stage_callback(current_stage: JobStage, do_validation: bool, run: CalibrationRun):
     process_id = os.path.basename(run.job_data_dir)
-    print(f'Marking job {process_id}, stage: {current_stage} as done')
+    print(f'Job {process_id} completed stage {current_stage}')
 
     # Create a transition manager for the current job, depending on whether validation is enabled
     transition_manager = JobStageTransitionManager(validation_enabled=do_validation)
@@ -100,7 +100,7 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
     next_stage = transition_manager.get_next_stage(current_stage)
 
     if next_stage:
-        print(f'Running job {process_id}, stage: {next_stage}')
+        print(f'Job {process_id} proceeding to stage {next_stage}')
         run_job(run, next_stage)
     else:
         print(f'Job {process_id} complete. No further stages.')

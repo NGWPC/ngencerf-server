@@ -8,6 +8,7 @@ from calibration.models import CalibrationRun
 # Create a global thread pool that will be reused across multiple execute() calls
 pool = ThreadPoolExecutor()
 
+
 # See https://stackoverflow.com/questions/28866651/python-concurrent-futures-using-subprocess-with-a-callback
 # Also see https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future
 
@@ -19,14 +20,14 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
-        future.add_done_callback(functools.partial(callback, run, process_id, current_stage, callback_function))
+        future.add_done_callback(functools.partial(callback, process_id, current_stage, callback_function))
     except Exception as e:
         print(f"Failed to execute command: {str(e)}")
         raise
-    print(f'Submitted process {process_id} in stage {current_stage.name}')
+    print(f'Process {process_id} in stage {current_stage.name} is running in the background')
 
 
-def callback(run: CalibrationRun, process_id, job_stage, callback_function, future: Future) -> None:
+def callback(process_id, job_stage, callback_function, future: Future) -> None:
     # print('filename:', future.temp_file_name)
     try:
         if future.exception() is not None:
@@ -34,10 +35,11 @@ def callback(run: CalibrationRun, process_id, job_stage, callback_function, futu
         else:
             exit_code = future.result()
 
-            print(f'Process {process_id}, stage {job_stage.name}, completed successfully with exit code {exit_code}:', future.result())
+            print(f'Process {process_id}, stage {job_stage.name}, completed successfully with exit code {exit_code}')
 
         print('------------------------------------------------')
         print(f'Running callback function for {process_id} at stage {job_stage.name}')
+        # Arguments have already been defined in functools.partial
         callback_function()
 
     except Exception as e:

@@ -162,7 +162,7 @@ class Command(BaseCommand):
                 Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
                                               **{unique_field: gage[unique_field]})
             except Exception as e:
-                raise Exception(f'Error adding gage - {gage}')
+                raise Exception(f'Error adding gage - {gage} - {str(e)}')
             row_num += 1
             if row_num % 1000 == 0:
                 print(row_num, 'of', len(gages), '...')

@@ -12,6 +12,7 @@ urlpatterns = [
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_jobs/', calibration_landing_views.get_jobs, name="getJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
+    path('calibration/delete_run/', calibration_landing_views.delete_run, name="deleteRun"),
 
 
     ##################################
