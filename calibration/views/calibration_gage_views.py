@@ -63,9 +63,9 @@ def load_gage_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     # Use cached enum values for forcing and observational source
     forcing_source_values = ForcingSourceEnum.active_choices_with_fields(fields=['name', 'description'])
@@ -176,9 +176,9 @@ def save_gage_tab(request):
     forcing_source_name = validator.data.get('forcing_source')
     observational_source_name = validator.data.get('observational_source')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     geopackage_image_url = None
     if gage_id:
@@ -314,9 +314,9 @@ def upload_observational_data(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     if not run.gage:
         return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
@@ -382,9 +382,9 @@ def upload_forcing_data(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     if not run.gage:
         return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
@@ -461,9 +461,9 @@ def upload_geopackage_data(request):
     calibration_run_id = validator.data.get('calibration_run_id')
     return_geopackage_url = validator.data.get('return_geopackage_url')  # default=True
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     if not run.gage:
         return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')

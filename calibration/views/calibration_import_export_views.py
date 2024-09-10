@@ -261,9 +261,9 @@ def export_job(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
 

@@ -55,9 +55,9 @@ def is_ready(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     messages, _ = ngen_cal_input.ready_to_run(run)
 
@@ -98,9 +98,9 @@ def run_calibration(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     response = submit_job(run)
     if response:
@@ -153,12 +153,12 @@ def test_read_output(request):
     # username = data.get('user')
 
     # TODO This should only be for DONE jobs
-    # run, errorReturn = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
-    run, errorReturn = get_run(calibration_run_id, request.user)
+    # run, error_return = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
+    run, error_return = get_run(calibration_run_id, request.user)
     print('run', run)
 
-    if errorReturn:
-        return errorReturn
+    if error_return:
+        return error_return
     # if not run:
     #     # create some dummies
     #     gage = Gage(gage_id='01123000')
@@ -441,10 +441,10 @@ def report_iteration(request):
 
     starting_iteration = 0 if optimization == OptimizationEnum.DDS.value else 1
 
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
-    # run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
+    # run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
 
     with transaction.atomic():
         if iteration_number == starting_iteration:
@@ -505,9 +505,9 @@ def get_iteration(request):
 
     # TODO read output file
 
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    if error_return:
+        return error_return
 
     # TODO Need to figure out iterations with respect to multiple workers
     iteration = 1
