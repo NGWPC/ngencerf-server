@@ -4,7 +4,7 @@
       "name": "CFE-S",
       "parameter_file": {
         "url": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
-      }
+      },
       "calibrate_parameters": [
         {
           "name": "soil_params.b",

@@ -103,61 +103,92 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
 
 
 class CalibrationTimeControls(BaseSerializer):
-    calibration_start_time = serializers.DateTimeField(required=True)
-    calibration_end_time = serializers.DateTimeField(required=True)
-    simulation_start_time = serializers.DateTimeField(required=True)
-    simulation_end_time = serializers.DateTimeField(required=True)
+    calibration_start_time = serializers.DateTimeField()
+    calibration_end_time = serializers.DateTimeField()
+    simulation_start_time = serializers.DateTimeField()
+    simulation_end_time = serializers.DateTimeField()
+
+    def __init__(self, *args, allow_empty=False, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # If allow_empty is True, make the fields not required
+        if allow_empty:
+            self.fields['calibration_start_time'].required = False
+            self.fields['calibration_end_time'].required = False
+            self.fields['simulation_start_time'].required = False
+            self.fields['simulation_end_time'].required = False
+        else:
+            self.fields['calibration_start_time'].required = True
+            self.fields['calibration_end_time'].required = True
+            self.fields['simulation_start_time'].required = True
+            self.fields['simulation_end_time'].required = True
 
     def validate(self, data):
-        calibration_range = DateTimeRange(data['calibration_start_time'], data['calibration_end_time'])
-        if not calibration_range.is_valid_timerange():
-            raise serializers.ValidationError(f'{calibration_range} is not a valid time range')
+        calibration_start_time = data.get('calibration_start_time')
+        calibration_end_time = data.get('calibration_end_time')
+        simulation_start_time = data.get('simulation_start_time')
+        simulation_end_time = data.get('simulation_end_time')
 
-        simulation_range = DateTimeRange(data['simulation_start_time'], data['simulation_end_time'])
-        if not simulation_range.is_valid_timerange():
-            raise serializers.ValidationError(f'{simulation_range} is not a valid time range')
+        # Proceed only if all fields are present
+        if calibration_start_time and calibration_end_time and simulation_start_time and simulation_end_time:
+            calibration_range = DateTimeRange(calibration_start_time, calibration_end_time)
+            if not calibration_range.is_valid_timerange():
+                raise serializers.ValidationError(f'{calibration_range} is not a valid time range')
 
-        if (simulation_range.start_datetime not in calibration_range) or (simulation_range.end_datetime not in calibration_range):
-            raise serializers.ValidationError(f'Simulation range {simulation_range} must be contained within calibration range {calibration_range}')
+            simulation_range = DateTimeRange(simulation_start_time, simulation_end_time)
+            if not simulation_range.is_valid_timerange():
+                raise serializers.ValidationError(f'{simulation_range} is not a valid time range')
+
+            if (calibration_range.start_datetime not in simulation_range) or (calibration_range.end_datetime not in simulation_range):
+                raise serializers.ValidationError(
+                    f'Calibration range {calibration_range} must be contained within simulation range {simulation_range}')
 
         return data
-
-
-class CalibrationTimeControlsAllowEmpty(BaseSerializer):
-    calibration_start_time = serializers.DateTimeField(required=False)
-    calibration_end_time = serializers.DateTimeField(required=False)
-    simulation_start_time = serializers.DateTimeField(required=False)
-    simulation_end_time = serializers.DateTimeField(required=False)
 
 
 class ValidationTimeControls(BaseSerializer):
-    validation_start_time = serializers.DateTimeField(required=True)
-    validation_end_time = serializers.DateTimeField(required=True)
-    simulation_start_time = serializers.DateTimeField(required=True)
-    simulation_end_time = serializers.DateTimeField(required=True)
+    validation_start_time = serializers.DateTimeField()
+    validation_end_time = serializers.DateTimeField()
+    simulation_start_time = serializers.DateTimeField()
+    simulation_end_time = serializers.DateTimeField()
+
+    def __init__(self, *args, allow_empty=False, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # If allow_empty is True, make the fields not required
+        if allow_empty:
+            self.fields['validation_start_time'].required = False
+            self.fields['validation_end_time'].required = False
+            self.fields['simulation_start_time'].required = False
+            self.fields['simulation_end_time'].required = False
+        else:
+            self.fields['validation_start_time'].required = True
+            self.fields['validation_end_time'].required = True
+            self.fields['simulation_start_time'].required = True
+            self.fields['simulation_end_time'].required = True
 
     def validate(self, data):
-        validation_range = DateTimeRange(data['validation_start_time'], data['validation_end_time'])
-        if not validation_range.is_valid_timerange():
-            raise serializers.ValidationError(
-                f'{validation_range} is not a valid time range')
+        validation_start_time = data.get('validation_start_time')
+        validation_end_time = data.get('validation_end_time')
+        simulation_start_time = data.get('simulation_start_time')
+        simulation_end_time = data.get('simulation_end_time')
 
-        simulation_range = DateTimeRange(data['simulation_start_time'], data['simulation_end_time'])
-        if not simulation_range.is_valid_timerange():
-            raise serializers.ValidationError(
-                f'{simulation_range} is not a valid time range')
+        # Proceed with validation if all fields are present
+        if validation_start_time and validation_end_time and simulation_start_time and simulation_end_time:
+            validation_range = DateTimeRange(validation_start_time, validation_end_time)
+            if not validation_range.is_valid_timerange():
+                raise serializers.ValidationError(
+                    f'{validation_range} is not a valid time range')
 
-        if simulation_range.get_start_time_str() not in validation_range or simulation_range.get_end_time_str() not in validation_range:
-            raise serializers.ValidationError(f'Simulation range {simulation_range} must be contained within validation range {validation_range}')
+            simulation_range = DateTimeRange(simulation_start_time, simulation_end_time)
+            if not simulation_range.is_valid_timerange():
+                raise serializers.ValidationError(
+                    f'{simulation_range} is not a valid time range')
+
+            if (validation_range.start_datetime not in simulation_range) or (validation_range.end_datetime not in simulation_range):
+                raise serializers.ValidationError(f'Validation range {validation_range} must be contained within simulation range {simulation_range}')
 
         return data
-
-
-class ValidationTimeControlsAllowEmpty(BaseSerializer):
-    validation_start_time = serializers.DateTimeField(required=False)
-    validation_end_time = serializers.DateTimeField(required=False)
-    simulation_start_time = serializers.DateTimeField(required=False)
-    simulation_end_time = serializers.DateTimeField(required=False)
 
 
 # TODO See if we can eliminate 1 of these after Hydrofabric implementation
@@ -167,16 +198,20 @@ class OutputVariableMetadataSerializer(BaseSerializer):
     description = serializers.CharField(required=True, allow_blank=False)
 
 
-# Used by SaveTuningRequestValidator
 class OutputVariableSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    module = serializers.CharField(required=True, allow_blank=False)
+    name = serializers.CharField(allow_blank=False)
+    module = serializers.CharField(allow_blank=False)
 
+    def __init__(self, *args, allow_empty=False, **kwargs):
+        super().__init__(*args, **kwargs)
 
-# Used by Export
-class OutputVariableSerializerAllowEmpty(BaseSerializer):
-    name = serializers.CharField(required=False, allow_blank=False)
-    module = serializers.CharField(required=False, allow_blank=False)
+        # If allow_empty is True, make the fields not required
+        if allow_empty:
+            self.fields['name'].required = False
+            self.fields['module'].required = False
+        else:
+            self.fields['name'].required = True
+            self.fields['module'].required = True
 
 
 class SaveTuningParametersSerializer(BaseSerializer):
@@ -285,9 +320,9 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     sloth_parameters = SlothParameters(many=True, default=[])
     automatic_validation = serializers.BooleanField(default=False)
     time_range = TimeRangeSerializerAllowEmpty(required=False)
-    calibration_times = CalibrationTimeControlsAllowEmpty(required=False)
-    validation_times = ValidationTimeControlsAllowEmpty(required=False)
-    output_variable_to_calibrate = OutputVariableSerializerAllowEmpty(required=True, )
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
+    validation_times = ValidationTimeControls(required=False, allow_empty=True)
+    output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
 
     objective_function = serializers.CharField(required=True, allow_null=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
@@ -545,10 +580,10 @@ class ModuleHydrofabricListSerializer(BaseSerializer):
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
-    calibration_times = CalibrationTimeControls(required=False)
-    validation_times = ValidationTimeControls(required=False)
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
+    validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(required=True)
-    output_variable_to_calibrate = OutputVariableSerializer(required=False)
+    output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
 
     def validate(self, data):
         if 'calibration_times' in data and 'validation_times' in data:
@@ -678,9 +713,9 @@ class ExportResponseSerializer(BaseSerializer):
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
     automatic_validation = serializers.BooleanField(default=False)
-    output_variable_to_calibrate = OutputVariableSerializerAllowEmpty(required=True)
-    calibration_times = CalibrationTimeControlsAllowEmpty(required=False)
-    validation_times = ValidationTimeControlsAllowEmpty(required=False)
+    output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
+    validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     parameters = SaveTuningParametersSerializer(many=True, required=True)
@@ -710,9 +745,9 @@ class ImportSerializer(BaseSerializer):
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     use_sloth = serializers.BooleanField(required=False, default=False)
     automatic_validation = serializers.BooleanField(required=False, default=False)
-    output_variable_to_calibrate = OutputVariableSerializerAllowEmpty(required=False)
-    calibration_times = CalibrationTimeControlsAllowEmpty(required=False)
-    validation_times = ValidationTimeControlsAllowEmpty(required=False)
+    output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
+    validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     parameters = SaveTuningParametersSerializer(many=True, required=False)

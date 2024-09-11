@@ -1,5 +1,6 @@
 import logging
 
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
@@ -11,7 +12,7 @@ from calibration.models import Optimization, Metric, OptimizationInput, Calibrat
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ def load_optimization_tab(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -82,7 +83,6 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    # Use the enum to fetch optimizations with prefetched inputs
     optimization_list = OptimizationEnum.active_choices_with_fields(
         fields=['name', 'description', 'is_active']
     )
@@ -90,15 +90,22 @@ def get_static_optimizations():
     for optimization in optimization_list:
         optimization_obj: Optimization = OptimizationEnum.get_instance(optimization['name'])
 
-        # Fetch the prefetched inputs
-        inputs = list(optimization_obj.inputs.all().values('name', 'description', 'data_type', 'is_active'))
+        inputs = list(optimization_obj.inputs.values('name', 'description', 'data_type', 'is_active'))
         optimization['inputs'] = inputs
 
     return optimization_list
 
 
 def get_metrics():
-    return list(Metric.objects.filter(is_active=True).values('name', 'description', 'is_active', 'categorical', 'event_based'))
+    cache_key = 'active_metrics'
+    metrics = cache.get(cache_key)
+    if metrics is None:
+        # Fetch metrics from the database if not cached
+        metrics = list(Metric.objects.filter(is_active=True).values(
+            'name', 'description', 'is_active', 'categorical', 'event_based'
+        ))
+        cache.set(cache_key, metrics, timeout=None)
+    return metrics
 
 
 # noinspection PyUnusedLocal
@@ -126,14 +133,14 @@ def save_optimization_tab(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
-    optimization_name = validator.data.get('optimization')
-    objective_function_name = validator.data.get('objective_function')
-    streamflow_threshold = validator.data.get('streamflow_threshold')
-    peak_flow_threshold = validator.data.get('peak_flow_threshold')
-    optimization_inputs = validator.data.get('optimization_inputs')
-    stop_criteria = validator.data.get('stop_criteria')
-    plot_frequency = validator.data.get('plot_frequency')
+    calibration_run_id = validator.get('calibration_run_id')
+    optimization_name = validator.get('optimization')
+    objective_function_name = validator.get('objective_function')
+    streamflow_threshold = validator.get('streamflow_threshold')
+    peak_flow_threshold = validator.get('peak_flow_threshold')
+    optimization_inputs = validator.get('optimization_inputs')
+    stop_criteria = validator.get('stop_criteria')
+    plot_frequency = validator.get('plot_frequency')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -177,19 +184,25 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
     optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
     if not optimization:
         return None, "Invalid optimization - '{}'".format(optimization_name)
+
     run.optimization = optimization
 
-    optimization_inputs_to_create = []
     if optimization_inputs:
+        valid_inputs = OptimizationInput.objects.filter(
+            optimization=optimization, name__in=[o['name'] for o in optimization_inputs], is_active=True
+        )
+        valid_inputs_dict = {input.name: input for input in valid_inputs}
+
+        optimization_inputs_to_create = []
         for o in optimization_inputs:
             name = o['name']
-            # See if parameter is valid for this optimization
-            optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
+            optimization_input = valid_inputs_dict.get(name)
             if not optimization_input:
                 return None, "'{}' is not a valid parameter input for '{}'".format(name, optimization_name)
             optimization_inputs_to_create.append(
                 CalibrationOptimizationInput(optimization_input=optimization_input, calibration_run=run, value=o['value'])
             )
+
         CalibrationOptimizationInput.objects.bulk_create(optimization_inputs_to_create)
 
     return optimization, None

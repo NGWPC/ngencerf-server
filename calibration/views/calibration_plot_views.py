@@ -14,7 +14,7 @@ from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, \
     ErrorResponseSerializer, CalibrationPlotNameSerializer
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
-from calibration.views.common import get_run, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, handle_exceptions, validate_response, validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def get_plot_names(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
@@ -110,7 +110,7 @@ def get_plot(request):
     if error_return:
         return error_return
 
-    plot_file_name = validator.data.get('cal_plot_name')
+    plot_file_name = validator.get('cal_plot_name')
 
     # TODO Need to simply base64-encode the file and return it in a regular response
 

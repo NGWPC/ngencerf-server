@@ -7,12 +7,11 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
-    CalibrationParameter, ModuleOutputVariable
+from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, GenericResponseSerializer, \
     LoadFormulationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 from calibration.views.hydrofabric import get_modules_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -47,7 +46,7 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -78,14 +77,17 @@ def load_formulation_tab(request):
 
 def get_all_modules(run):
     return list(
-        CalibrationFormulation.objects.filter(calibration_run=run).exclude(name=SLOTH)
+        CalibrationFormulation.objects.filter(calibration_run=run)
+        .exclude(name=SLOTH)
         .values('name', 'groups', 'used_by_calibration_run')
     )
 
 
 def get_my_modules(run):
     return list(
-        CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exclude(name=SLOTH)
+        CalibrationFormulation.objects
+        .filter(calibration_run=run, used_by_calibration_run=True)
+        .exclude(name=SLOTH)
         .values_list('name', flat=True)
     )
 
@@ -93,7 +95,7 @@ def get_my_modules(run):
 def get_sloth_parameters(run):
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
-        .prefetch_related(Prefetch('maps_to_module', queryset=CalibrationFormulation.objects.only('name')))
+        .select_related(Prefetch('maps_to_module', queryset=CalibrationFormulation.objects.only('name')))
         .values(
             'param_name', 'param_count', 'param_type', 'param_units', 'param_location', 'param_value', 'maps_to_module__name',
             'maps_to_variable_name')
@@ -126,11 +128,11 @@ def save_formulation_tab(request):
     if error_return:
         return error_return
 
-    new_module_names = set(validator.data.get('modules'))
-    calibration_run_id = validator.data.get('calibration_run_id')
-    user_formulation_name = validator.data.get('formulation_name')
-    use_sloth = validator.data.get('use_sloth')
-    sloth_parameters = validator.data.get('sloth_parameters')
+    new_module_names = set(validator.get('modules'))
+    calibration_run_id = validator.get('calibration_run_id')
+    user_formulation_name = validator.get('formulation_name')
+    use_sloth = validator.get('use_sloth')
+    sloth_parameters = validator.get('sloth_parameters')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -146,8 +148,9 @@ def save_formulation_tab(request):
     if message:
         return ResponseError(message)
 
-    if not validate_formulation(run, new_module_names):
-        return ResponseError(f'Invalid formulation -  {new_module_names}')
+    messages = validate_formulation2(run, new_module_names)
+    if messages:
+        return ResponseError(messages)
 
     if use_sloth:
         new_module_names.add(SLOTH)
@@ -161,35 +164,44 @@ def save_formulation_tab(request):
 
     # Get current new_module_names
     existing_module_names = set(CalibrationFormulation.objects
-                                .filter(calibration_run_id=run.id, used_by_calibration_run=True).values_list('name', flat=True))
+                                .filter(calibration_run_id=run.id, used_by_calibration_run=True)
+                                .values_list('name', flat=True))
 
     print('old existing_module_names', existing_module_names)
     print('new existing_module_names', new_module_names)
 
-    with transaction.atomic():
-        # Only if the module names have changed
-        if new_module_names != existing_module_names:
-            to_be_unused = existing_module_names - new_module_names
-            print('to_be_unused', to_be_unused)
+    # Only if the module names have changed
+    if new_module_names != existing_module_names:
+        to_be_unused = existing_module_names - new_module_names
+        print('to_be_unused', to_be_unused)
 
-            # Set them to be unused and delete any parameters and output variables
+        with transaction.atomic():
+            # Turn off `used_by_calibration_run` for unused modules
             CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
-            CalibrationParameter.objects.all().filter(calibration_formulation__calibration_run=run,
-                                                      calibration_formulation__name__in=to_be_unused).delete()
-            ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
+
+            # Delete associated CalibrationParameters and ModuleOutputVariables explicitly
+            CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run,
+                                                calibration_formulation__name__in=to_be_unused).delete()
+            ModuleOutputVariable.objects.filter(calibration_formulation__name__in=to_be_unused).delete()
 
             # Create any new formulations
-            for name in new_module_names:
-                CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+            # for name in new_module_names:
+            #     CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+            # These objects should already exist.  Not sure why I was using update_or_create
 
-        # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
-        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-        if use_sloth:
-            message = add_sloth_parameters(run, sloth_parameters)
-        if message:
-            return ResponseError(message)
+            # Update existing formulations to set `used_by_calibration_run=True`
+            CalibrationFormulation.objects.filter(
+                calibration_run=run, name__in=new_module_names
+            ).update(used_by_calibration_run=True)
 
-        run.save()
+            # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
+            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+            if use_sloth:
+                message = add_sloth_parameters(run, sloth_parameters)
+            if message:
+                return ResponseError(message)
+
+            run.save()
 
         ngen_cal_input.ready_to_run(run)
 
@@ -223,11 +235,84 @@ def validate_formulation(run, module_names):
     return valid
 
 
+group_requirements = [
+    {
+        "name": "Glacier",
+        "allowed_counts": [0, 1]
+    },
+    {
+        "name": "Snowmelt",
+        "allowed_counts": [0, 1]
+    },
+    {
+        "name": "Evapotranspiration",
+        "allowed_counts": [1]
+    },
+    {
+        "name": "Rainfall Runoff",
+        "allowed_counts": [1]
+    },
+    {
+        "name": "Soil Moisture",
+        "allowed_counts": [0, 2]
+    },
+    {
+        "name": "Routing",
+        "allowed_counts": [1]
+    }
+]
+
+
+def validate_formulation2(run, module_names):
+    calibration_formulations = CalibrationFormulation.objects.filter(
+        name__in=module_names,
+        calibration_run=run
+    )
+
+    # Create the list of dicts
+    formulation_dicts = []
+    for formulation in calibration_formulations:
+        groups = json.loads(formulation.groups)  # Parse the groups JSON string into a list
+        formulation_dicts.append({
+            "name": formulation.name,
+            "groups": groups  # Add the parsed groups list here
+        })
+
+    # Initialize a dictionary to store the count of formulations per group
+    group_counts = {group['name']: 0 for group in group_requirements}
+
+    # Parse the groups for each formulation once and update the group counts
+    for formulation in calibration_formulations:
+        groups = json.loads(formulation.groups)  # Parse the groups JSON string once
+        for group_name in groups:
+            if group_name in group_counts:  # Only update if the group is in group_requirements
+                group_counts[group_name] += 1
+
+    messages = []
+    for group in group_requirements:
+        group_name = group.get('name')
+        allowed_counts = group.get('allowed_counts')
+        count = group_counts[group_name]
+
+        # Validate the count against allowed_counts
+        if count not in allowed_counts:
+            messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
+
+    return messages
+
+
 def add_sloth_parameters(run, sloth_parameters):
+    modules = CalibrationFormulation.objects.filter(
+        name__in=[s['maps_to_module'] for s in sloth_parameters],
+        calibration_run=run,
+        used_by_calibration_run=True
+    )
+
+    module_dict = {module.name: module for module in modules}
+
     sloth_param_objects = []
     for s in sloth_parameters:
-        # Get the module referenced by the sloth parameter
-        module = CalibrationFormulation.objects.filter(name=s['maps_to_module'], calibration_run=run, used_by_calibration_run=True).first()
+        module = module_dict.get(s['maps_to_module'])
         if not module:
             return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
 
@@ -240,5 +325,3 @@ def add_sloth_parameters(run, sloth_parameters):
         )
 
     CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
-
-    return None

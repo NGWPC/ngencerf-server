@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, ErrorResponseSerializer, \
     CalibrationRunSerializer
-from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run
+from calibration.views.common import handle_exceptions, validate_response, get_run, validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def get_job_results(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     # Only Done or Failed
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE, StatusEnum.FAILED])

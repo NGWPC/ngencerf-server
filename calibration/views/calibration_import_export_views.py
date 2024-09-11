@@ -26,7 +26,8 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, create_calibration_run_internal
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
+    validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ def import_job(request):
     with transaction.atomic():
         run = create_calibration_run_internal(request)
 
-        run_after_import = validator.data.get('run_after_import', False)
+        run_after_import = validator.get('run_after_import', False)
 
         warnings = []
         info_messages = []
@@ -65,23 +66,23 @@ def import_job(request):
         #############################
         # Gage
         #############################
-        gage_id = validator.data.get('gage_id')
+        gage_id = validator.get('gage_id')
         if gage_id:
             try:
                 save_gage(run, gage_id)
             except Gage.DoesNotExist:
                 return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
-        forcing_source_name = validator.data.get('forcing_source')
+        forcing_source_name = validator.get('forcing_source')
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
-        run.forcing_hydrofabric_dir_path = validator.data.get('forcing_hydrofabric_dir_path')
+        run.forcing_hydrofabric_dir_path = validator.get('forcing_hydrofabric_dir_path')
 
-        observational_source_name = validator.data.get('observational_source')
+        observational_source_name = validator.get('observational_source')
         run.observational_source = ObservationalSource.objects.get(name=observational_source_name, is_active=True) if observational_source_name else None
-        run.observational_hydrofabric_file_path = validator.data.get('observational_hydrofabric_file_path')
+        run.observational_hydrofabric_file_path = validator.get('observational_hydrofabric_file_path')
 
-        run.geopackage_hydrofabric_path = validator.data.get('geopackage_path_from_hydrofabric')
-        geopackage_user_uploaded_file_path = validator.data.get('geopackage_user_uploaded_file_path')
+        run.geopackage_hydrofabric_path = validator.get('geopackage_path_from_hydrofabric')
+        geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
         if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
             # Copy from original location to our job-specific path
             info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
@@ -90,7 +91,7 @@ def import_job(request):
                 warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
-            forcing_user_uploaded_dir_path = validator.data.get('forcing_user_uploaded_dir_path')
+            forcing_user_uploaded_dir_path = validator.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
@@ -99,7 +100,7 @@ def import_job(request):
                     warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
 
         if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
-            observational_user_uploaded_file_path = validator.data.get('observational_user_uploaded_file_path')
+            observational_user_uploaded_file_path = validator.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
@@ -112,7 +113,7 @@ def import_job(request):
     #############################
     get_modules_from_hydrofabric(run)
     # List of module names
-    modules_list = validator.data.get('modules')
+    modules_list = validator.get('modules')
     module_names = set(modules_list) if modules_list else set()
 
     error_message = validate_modules(run, module_names)
@@ -123,10 +124,10 @@ def import_job(request):
         if not validate_formulation(run, module_names):
             return ResponseError(f'Invalid formulation -  {module_names}')
 
-    run.user_formulation_name = validator.data.get('formulation_name')
+    run.user_formulation_name = validator.get('formulation_name')
 
-    run.use_sloth = validator.data.get('use_sloth')
-    sloth_parameters = validator.data.get('sloth_parameters')
+    run.use_sloth = validator.get('use_sloth')
+    sloth_parameters = validator.get('sloth_parameters')
     if run.use_sloth:
         if module_names:
             module_names.add(SLOTH)
@@ -152,17 +153,17 @@ def import_job(request):
     if modules:
         get_module_data_from_hydrofabric(run, modules)
 
-    run.automatic_validation = validator.data.get('automatic_validation')
+    run.automatic_validation = validator.get('automatic_validation')
 
-    calibration_times = validator.data.get('calibration_times')
-    validation_times = validator.data.get('validation_times')
+    calibration_times = validator.get('calibration_times')
+    validation_times = validator.get('validation_times')
     if not run.automatic_validation and validation_times:
         return ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
     save_times(run, calibration_times, validation_times)
 
-    output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
-    parameters = validator.data.get('parameters')
+    output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
+    parameters = validator.get('parameters')
     if parameters and not modules:
         return ResponseError('Parameters cannot be specified without modules')
 
@@ -180,12 +181,12 @@ def import_job(request):
     # Optimization
     #############################
 
-    optimization_name = validator.data.get('optimization')
-    objective_function_name = validator.data.get('objective_function')
-    streamflow_threshold = validator.data.get('streamflow_threshold')
-    peak_flow_threshold = validator.data.get('peak_flow_threshold')
-    optimization_inputs = validator.data.get('optimization_inputs')
-    stop_criteria = validator.data.get('stop_criteria')
+    optimization_name = validator.get('optimization')
+    objective_function_name = validator.get('objective_function')
+    streamflow_threshold = validator.get('streamflow_threshold')
+    peak_flow_threshold = validator.get('peak_flow_threshold')
+    optimization_inputs = validator.get('optimization_inputs')
+    stop_criteria = validator.get('stop_criteria')
 
     if not optimization_name:
         if optimization_inputs:
@@ -200,7 +201,7 @@ def import_job(request):
     if error_message:
         return ResponseError(error_message)
 
-    run.plot_frequency = validator.data.get('plot_frequency')
+    run.plot_frequency = validator.get('plot_frequency')
     run.streamflow_threshold = streamflow_threshold
     run.peak_flow_threshold = peak_flow_threshold
 
@@ -259,7 +260,7 @@ def export_job(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:

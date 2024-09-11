@@ -66,14 +66,12 @@ class OptimizationEnum(AbstractEnum):
         model = cls.get_model()
         filter_criteria = cls.get_filter() or {}
 
-        # Use prefetch_related to prefetch OptimizationInput
         items = model.objects.filter(**filter_criteria).prefetch_related('inputs')
 
         # Store the results in a dictionary with the item's name as the key
         item_dict = {item.name: item for item in items}
 
-        # Store the dictionary in the cache with a 1-hour timeout
-        cache.set(f'{cls.__name__}_cache', item_dict, timeout=3600)
+        cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
 
 class DataTypeEnum(StrEnum):
