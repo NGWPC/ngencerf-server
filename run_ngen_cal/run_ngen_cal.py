@@ -32,6 +32,7 @@ class JobStageTransitionManager:
      Manages transitions between job stages, controlling whether validation stages are included or not. It determines the next stage
      for a job based on the current stage and whether validation is enabled.
      """
+
     def __init__(self, validation_enabled: bool):
         """
         Initialize the JobStageTransitionManager with validation rules.
@@ -146,18 +147,29 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
     process_id = os.path.basename(run.job_data_dir)
     print(f'Job {process_id} completed stage {current_stage}')
 
+    error = False
+    cancelled = False
     try:
         if future.exception() is not None:
             print(f"Exception occurred in process {process_id} at stage {current_stage.name}: {future.exception()}")
         else:
             exit_code = future.result()
-            print(f"Process {process_id}, stage {current_stage.name}, completed successfully with exit code {exit_code}")
+            print(f"Process {process_id}, stage {current_stage.name}, completed with exit code {exit_code}")
+            error = exit_code != 0
+            cancelled = exit_code == -15
     except Exception as e:
         print(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
         return
 
     # Remove the job from the job registry when it completes
     job_registry.pop(run.id, None)
+
+    if cancelled:
+        print(f'Job {process_id} was cancelled')
+        return
+    elif error:
+        print(f'Job {process_id} ending due to abnormal return code')
+        return
 
     # Create a transition manager for the current job, depending on whether validation is enabled
     transition_manager = JobStageTransitionManager(validation_enabled=do_validation)
@@ -215,8 +227,10 @@ def terminate_job(calibration_run_id: int):
     if process:
         process.terminate()  # Gracefully terminates the process
         print(f"Job {calibration_run_id} has been terminated.")
+        return True
     else:
         print(f"No running job found for Calibration Run: {calibration_run_id}")
+        return False
 
 
 def force_kill_job(calibration_run_id: int):
@@ -229,5 +243,7 @@ def force_kill_job(calibration_run_id: int):
     if process:
         process.kill()  # Forcefully kills the process
         print(f"Job {calibration_run_id} has been forcefully killed.")
+        return True
     else:
         print(f"No running job found for Calibration Run: {calibration_run_id}")
+        return False

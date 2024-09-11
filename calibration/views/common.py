@@ -16,7 +16,7 @@ from cerfServer import settings
 logger = logging.getLogger(__name__)
 
 
-def get_run(calibration_run_id, user, run_status=None):
+def get_run(calibration_run_id, user, run_status=None) -> CalibrationRun:
     """
     Get an instance of a CalibrationRun by id, but only if it's owned by the user
     and is one of the passed-in statuses. If the CalibrationRun exists but has a

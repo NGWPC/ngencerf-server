@@ -218,7 +218,7 @@ def delete_run(request):
     response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from delete_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from delete_run() - {response_validator.data}')
 
     return Response(response_validator.data)
 
