@@ -7,8 +7,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, \
-    CalibrationParameter, ModuleOutputVariable
+from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, GenericResponseSerializer, \
     LoadFormulationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
@@ -149,8 +148,9 @@ def save_formulation_tab(request):
     if message:
         return ResponseError(message)
 
-    if not validate_formulation(run, new_module_names):
-        return ResponseError(f'Invalid formulation -  {new_module_names}')
+    messages = validate_formulation2(run, new_module_names)
+    if messages:
+        return ResponseError(messages)
 
     if use_sloth:
         new_module_names.add(SLOTH)
@@ -170,33 +170,38 @@ def save_formulation_tab(request):
     print('old existing_module_names', existing_module_names)
     print('new existing_module_names', new_module_names)
 
-    with transaction.atomic():
-        # Only if the module names have changed
-        if new_module_names != existing_module_names:
-            to_be_unused = existing_module_names - new_module_names
-            to_be_used = new_module_names - existing_module_names
-            print('to_be_unused', to_be_unused)
+    # Only if the module names have changed
+    if new_module_names != existing_module_names:
+        to_be_unused = existing_module_names - new_module_names
+        print('to_be_unused', to_be_unused)
 
-            # Set them to be unused and delete any parameters and output variables
+        with transaction.atomic():
+            # Turn off `used_by_calibration_run` for unused modules
             CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
-           
-            CalibrationParameter.objects.all().filter(calibration_formulation__calibration_run=run,
-                                                      calibration_formulation__name__in=to_be_unused).delete()
-            ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
+
+            # Delete associated CalibrationParameters and ModuleOutputVariables explicitly
+            CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run,
+                                                calibration_formulation__name__in=to_be_unused).delete()
+            ModuleOutputVariable.objects.filter(calibration_formulation__name__in=to_be_unused).delete()
 
             # Create any new formulations
-            for name in new_module_names:
-                CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+            # for name in new_module_names:
+            #     CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+            # These objects should already exist.  Not sure why I was using update_or_create
 
+            # Update existing formulations to set `used_by_calibration_run=True`
+            CalibrationFormulation.objects.filter(
+                calibration_run=run, name__in=new_module_names
+            ).update(used_by_calibration_run=True)
 
-        # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
-        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
-        if use_sloth:
-            message = add_sloth_parameters(run, sloth_parameters)
-        if message:
-            return ResponseError(message)
+            # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
+            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+            if use_sloth:
+                message = add_sloth_parameters(run, sloth_parameters)
+            if message:
+                return ResponseError(message)
 
-        run.save()
+            run.save()
 
         ngen_cal_input.ready_to_run(run)
 
@@ -230,7 +235,35 @@ def validate_formulation(run, module_names):
     return valid
 
 
-def validate_formuulations2(run, module_names):
+group_requirements = [
+    {
+        "name": "Glacier",
+        "allowed_counts": [0, 1]
+    },
+    {
+        "name": "Snowmelt",
+        "allowed_counts": [0, 1]
+    },
+    {
+        "name": "Evapotranspiration",
+        "allowed_counts": [1]
+    },
+    {
+        "name": "Rainfall Runoff",
+        "allowed_counts": [1]
+    },
+    {
+        "name": "Soil Moisture",
+        "allowed_counts": [0, 2]
+    },
+    {
+        "name": "Routing",
+        "allowed_counts": [1]
+    }
+]
+
+
+def validate_formulation2(run, module_names):
     calibration_formulations = CalibrationFormulation.objects.filter(
         name__in=module_names,
         calibration_run=run
@@ -245,55 +278,27 @@ def validate_formuulations2(run, module_names):
             "groups": groups  # Add the parsed groups list here
         })
 
+    # Initialize a dictionary to store the count of formulations per group
+    group_counts = {group['name']: 0 for group in group_requirements}
+
+    # Parse the groups for each formulation once and update the group counts
+    for formulation in calibration_formulations:
+        groups = json.loads(formulation.groups)  # Parse the groups JSON string once
+        for group_name in groups:
+            if group_name in group_counts:  # Only update if the group is in group_requirements
+                group_counts[group_name] += 1
+
+    messages = []
     for group in group_requirements:
         group_name = group.get('name')
-        min = group.get('min')
-        max = group.get('max')
-        count = 0
-        for formulation in calibration_formulations:
-            groups = json.loads(formulation.groups)  # Parse the groups JSON string into a list
-            if group_name in groups:
-                count += 1
-        if count < min:
-            print(f'At least {min} modules required in {group_name}')
-        if count > max:
-            print(f'Maximum of {max} modules allowed in {group_name}')
-        print(f'Group {group_name} has {count} modules')
+        allowed_counts = group.get('allowed_counts')
+        count = group_counts[group_name]
 
+        # Validate the count against allowed_counts
+        if count not in allowed_counts:
+            messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
 
-
-group_requirements = [
-    {
-        "name": "Glacier",
-        "min": 0,
-        "max": 1
-    },
-    {
-        "name": "Snowmelt",
-        "min": 0,
-        "max": 1
-    },
-    {
-        "name": "Evapotranspiration",
-        "min": 1,
-        "max": 1
-    },
-    {
-        "name": "Rainfall Runoff",
-        "min": 1,
-        "max": 1
-    },
-    {
-        "name": "Soil Moisture",
-        "min": 0,
-        "max": 2
-    },
-    {
-        "name": "Routing",
-        "min": 1,
-        "max": 1
-    }
-]
+    return messages
 
 
 def add_sloth_parameters(run, sloth_parameters):
