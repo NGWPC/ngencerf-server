@@ -3,7 +3,7 @@ import os
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from enum import auto, Enum
-from typing import Optional
+from typing import Optional, Dict
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
@@ -216,7 +216,7 @@ def terminate_job(calibration_run_id: int):
         process.terminate()  # Gracefully terminates the process
         print(f"Job {calibration_run_id} has been terminated.")
     else:
-        print(f"No running job found for CalibrationRun ID: {calibration_run_id}")
+        print(f"No running job found for Calibration Run: {calibration_run_id}")
 
 
 def force_kill_job(calibration_run_id: int):
@@ -230,4 +230,4 @@ def force_kill_job(calibration_run_id: int):
         process.kill()  # Forcefully kills the process
         print(f"Job {calibration_run_id} has been forcefully killed.")
     else:
-        print(f"No running job found for CalibrationRun ID: {calibration_run_id}")
+        print(f"No running job found for Calibration Run: {calibration_run_id}")
