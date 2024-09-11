@@ -204,7 +204,7 @@ def delete_run(request):
 
     run_id = run.id
 
-    if run.status in [StatusEnum.SAVED, StatusEnum.READY]:
+    if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         hard_delete(run)
     else:
         logger.debug(run)
