@@ -1,0 +1,5 @@
+services:
+  ngencerf-services:
+    build: 
+      dockerfile: ./Dockerfile.production-pw
+

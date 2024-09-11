@@ -1,0 +1,6 @@
+name: ngencerf-server
+
+include:
+  - path : 
+      - compose.yaml
+      - production-pw.override.yaml
