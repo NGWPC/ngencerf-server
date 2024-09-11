@@ -46,8 +46,13 @@ aws_session_token = <token>
 ```
 
 
-In order to not have any AWS specific code, AWS buckets are mounted as a regular file system using s3fs.  Create a directory to contain the contents of a specific S3 bucket.
-For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  Then install s3fs and mount the bucket
+In order to not have any AWS specific code, AWS buckets are mounted as a regular file system.  
+There are any number of tools that can do this.  I've tested `s3fs` and `goofys` on AWS Workspace.
+Create a directory to contain the contents of a specific S3 bucket.
+For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  
+Then install  either `s3fs` or `goofys` and mount the bucket
+
+### S3FS
 ```
 $ sudo apt update
 $ sudo apt install s3fs
@@ -55,6 +60,15 @@ $ mkdir -p ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev 
 $ ls ~/s3/ngwpc-dev
 ```
+
+### Goofys
+```
+$ wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
+$ chmod +x /usr/local/bin/goofys
+$ goofys ngwpc-dev ~/s3/ngwpc-dev
+$ ls ~/s3/ngwpc-dev
+```
+
 To unmount it at some later point use
 ```
 fusermount -u ~/s3/ngwpc-dev
@@ -62,7 +76,8 @@ fusermount -u ~/s3/ngwpc-dev
 When refreshing your AWS credentials, you might have to unmount and re-mount
 ```
 fusermount -u ~/s3/ngwpc-dev
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev 
+$ s3fs ngwpc-dev ~/s3/ngwpc-dev or goofys ngwpc-dev ~/s3/ngwpc-dev
+$ ls ~/s3/ngwpc-dev
 ```
 
 There are some additional options for performance that I've played with.  At the very least, we should probably cache the results to avoid multiple round-trips to AWS.
