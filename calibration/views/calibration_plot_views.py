@@ -14,7 +14,7 @@ from calibration.models import PlotDefinitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, \
     ErrorResponseSerializer, CalibrationPlotNameSerializer
 from calibration.util.ngen_locations import CAL_PLOTS_DIR
-from calibration.views.common import get_run, handle_exceptions, validate_response, validate_request2
+from calibration.views.common import get_run, handle_exceptions, validate_response, validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ def get_plot_names(request):
 
     logger.debug(f'get_plot_names() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -106,7 +106,7 @@ def get_plot(request):
 
     logger.debug(f'get_plot() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationPlotNameSerializer, data)
+    validator, error_return = validate_request(CalibrationPlotNameSerializer, data)
     if error_return:
         return error_return
 

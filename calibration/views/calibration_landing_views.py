@@ -17,7 +17,7 @@ from calibration.util.calibration_validators import GetJobsResponseSerializer, F
     GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
-    validate_request2
+    validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def get_jobs(request):
 
     logger.debug(f'get_jobs() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(GageIdOptionalSerializer, data)
+    validator, error_return = validate_request(GageIdOptionalSerializer, data)
     if error_return:
         return error_return
 
@@ -151,7 +151,7 @@ def load_calibration_run(request):
 
     logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -190,7 +190,7 @@ def delete_run(request):
 
     logger.debug(f'delete_run() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 

@@ -23,7 +23,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     ErrorResponseSerializer, ReportIterationSerializer
 from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request2
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request
 from calibration.views.run_ngen_cal import run_job, JobStage
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
@@ -49,7 +49,7 @@ def is_ready(request):
     data = request.data
     logger.debug(f'is_ready() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -92,7 +92,7 @@ def run_calibration(request):
     data = request.data
     logger.debug(f'run_calibration() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -430,7 +430,7 @@ def report_iteration(request):
     data = request.data
     logger.debug(f'report_iteration() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(ReportIterationSerializer, data)
+    validator, error_return = validate_request(ReportIterationSerializer, data)
     if error_return:
         return error_return
 
@@ -496,7 +496,7 @@ def get_iteration(request):
     data = request.data if request.method == 'POST' else request.query_params
     logger.debug(f'get_iteration() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 

@@ -23,7 +23,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_filename, get_geopackage_filename, get_forcing_filename_pattern
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request2
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 from cerfServer import settings
 
@@ -57,7 +57,7 @@ def load_gage_tab(request):
 
     logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -125,7 +125,7 @@ def get_gage(request):
 
     logger.debug(f'get_gage() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(GageIdSerializer, data)
+    validator, error_return = validate_request(GageIdSerializer, data)
     if error_return:
         return error_return
 
@@ -167,7 +167,7 @@ def save_gage_tab(request):
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(SaveGageRequestSerializer, data)
+    validator, error_return = validate_request(SaveGageRequestSerializer, data)
     if error_return:
         return error_return
 
@@ -308,7 +308,7 @@ def upload_observational_data(request):
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(UploadObservationalSerializer, data, context={'request': request})
+    validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
         return error_return
 
@@ -376,7 +376,7 @@ def upload_forcing_data(request):
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(UploadForcingSerializer, data, context={'request': request})
+    validator, error_return = validate_request(UploadForcingSerializer, data, context={'request': request})
     if error_return:
         return error_return
 
@@ -454,7 +454,7 @@ def upload_geopackage_data(request):
     data = request.data
     logger.debug(f'upload_geopackage_data() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(UploadGeopackageSerializer, data, context={'request': request})
+    validator, error_return = validate_request(UploadGeopackageSerializer, data, context={'request': request})
     if error_return:
         return error_return
 

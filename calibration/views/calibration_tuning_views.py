@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request2
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,7 @@ def load_tuning_tab(request):
 
     logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -199,7 +199,7 @@ def save_tuning_tab(request):
     data = request.data
     logger.debug(f'save_tuning_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(SaveTuningRequestSerializer, data)
+    validator, error_return = validate_request(SaveTuningRequestSerializer, data)
     if error_return:
         return error_return
 
@@ -261,7 +261,7 @@ def upload_user_parameters(request):
     data = request.data
     logger.debug(f'upload_user_parameter_file() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(UploadUserParameterFile, data, context={'request': request})
+    validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
     if error_return:
         return error_return
 

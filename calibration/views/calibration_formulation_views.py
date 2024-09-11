@@ -12,7 +12,7 @@ from calibration.models import NgenCalFormulation, CalibrationFormulation, Calib
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, GenericResponseSerializer, \
     LoadFormulationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request2
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 from calibration.views.hydrofabric import get_modules_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def load_formulation_tab(request):
 
     logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -125,7 +125,7 @@ def save_formulation_tab(request):
 
     logger.debug(f'save_formulation_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(SaveFormulationRequestSerializer, data)
+    validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
         return error_return
 

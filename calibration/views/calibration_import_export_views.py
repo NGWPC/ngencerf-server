@@ -27,7 +27,7 @@ from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request2
+    validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def import_job(request):
     data = request.data
     logger.debug(f'export() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(ImportSerializer, data)
+    validator, error_return = validate_request(ImportSerializer, data)
     if error_return:
         return error_return
 
@@ -256,7 +256,7 @@ def export_job(request):
 
     logger.debug(f'export() request from {request.user} - {data}')
 
-    validator, error_return = validate_request2(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
