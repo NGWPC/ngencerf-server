@@ -79,9 +79,10 @@ def get_jobs(request):
 
     gage_id = validator.data.get('gage_id')
 
-    query = Q(owner=request.user)
+    query = Q(owner=request.user) & Q(is_deleted=False)
 
     if gage_id:
+        # If gage_id specified, then return completed jobs for this gage
         done_status = StatusEnum.from_enum(StatusEnum.DONE)
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
         query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
