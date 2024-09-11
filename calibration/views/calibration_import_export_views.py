@@ -26,7 +26,8 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, create_calibration_run_internal
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
+    validate_request2
 
 logger = logging.getLogger(__name__)
 
@@ -50,14 +51,14 @@ def import_job(request):
     data = request.data
     logger.debug(f'export() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(ImportSerializer, data)
+    validator, error_return = validate_request2(ImportSerializer, data)
     if error_return:
         return error_return
 
     with transaction.atomic():
         run = create_calibration_run_internal(request)
 
-        run_after_import = validator.data.get('run_after_import', False)
+        run_after_import = validator.get('run_after_import', False)
 
         warnings = []
         info_messages = []
@@ -255,11 +256,11 @@ def export_job(request):
 
     logger.debug(f'export() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request2(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:

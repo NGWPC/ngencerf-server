@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response, CerfException
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request2
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -50,11 +50,11 @@ def load_tuning_tab(request):
 
     logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request2(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -193,15 +193,15 @@ def save_tuning_tab(request):
     data = request.data
     logger.debug(f'save_tuning_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(SaveTuningRequestSerializer, data)
+    validator, error_return = validate_request2(SaveTuningRequestSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
-    automatic_validation = validator.data.get('automatic_validation')
-    calibration_times = validator.data.get('calibration_times')
-    validation_times = validator.data.get('validation_times')
-    parameters = validator.data.get('parameters')
+    calibration_run_id = validator.get('calibration_run_id')
+    automatic_validation = validator.get('automatic_validation')
+    calibration_times = validator.get('calibration_times')
+    validation_times = validator.get('validation_times')
+    parameters = validator.get('parameters')
 
     output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
 
@@ -255,11 +255,11 @@ def upload_user_parameters(request):
     data = request.data
     logger.debug(f'upload_user_parameter_file() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
+    validator, error_return = validate_request2(UploadUserParameterFile, data, context={'request': request})
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:

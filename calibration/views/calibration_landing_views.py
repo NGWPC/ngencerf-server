@@ -16,7 +16,8 @@ from calibration.util.calibration_validators import GetJobsResponseSerializer, F
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data
-from calibration.views.common import handle_exceptions, validate_request, validate_response, get_run, create_calibration_run_internal, ResponseError
+from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
+    validate_request2
 
 logger = logging.getLogger(__name__)
 
@@ -73,11 +74,11 @@ def get_jobs(request):
 
     logger.debug(f'get_jobs() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(GageIdOptionalSerializer, data)
+    validator, error_return = validate_request2(GageIdOptionalSerializer, data)
     if error_return:
         return error_return
 
-    gage_id = validator.data.get('gage_id')
+    gage_id = validator.get('gage_id')
 
     query = Q(owner=request.user) & Q(is_deleted=False)
 
@@ -150,11 +151,11 @@ def load_calibration_run(request):
 
     logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request2(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -189,11 +190,11 @@ def delete_run(request):
 
     logger.debug(f'delete_run() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request2(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:

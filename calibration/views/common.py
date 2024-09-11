@@ -121,6 +121,19 @@ def validate_request(serializer_class, data, context=None):
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
+def validate_request2(serializer_class, data, context=None):
+    validator = None
+    try:
+        validator = serializer_class(data=data, context=context)
+        validator.is_valid(raise_exception=True)
+        return validator.data, None
+    except ValidationError as e:
+        calling_function = inspect.stack()[1].function  # Get the name of the calling function
+        message = f"called from {calling_function}"
+        validation_errors = validator.errors if validator else str(e)
+        return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
+
+
 def validate_response(serializer_class, data):
     validator = None
     try:

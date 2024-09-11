@@ -11,7 +11,7 @@ from calibration.models import Optimization, Metric, OptimizationInput, Calibrat
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request2
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +39,11 @@ def load_optimization_tab(request):
 
     logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request2(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -122,18 +122,18 @@ def save_optimization_tab(request):
 
     logger.debug(f'save_optimization_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(SaveOptimizationRequestSerializer, data)
+    validator, error_return = validate_request2(SaveOptimizationRequestSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
-    optimization_name = validator.data.get('optimization')
-    objective_function_name = validator.data.get('objective_function')
-    streamflow_threshold = validator.data.get('streamflow_threshold')
-    peak_flow_threshold = validator.data.get('peak_flow_threshold')
-    optimization_inputs = validator.data.get('optimization_inputs')
-    stop_criteria = validator.data.get('stop_criteria')
-    plot_frequency = validator.data.get('plot_frequency')
+    calibration_run_id = validator.get('calibration_run_id')
+    optimization_name = validator.get('optimization')
+    objective_function_name = validator.get('objective_function')
+    streamflow_threshold = validator.get('streamflow_threshold')
+    peak_flow_threshold = validator.get('peak_flow_threshold')
+    optimization_inputs = validator.get('optimization_inputs')
+    stop_criteria = validator.get('stop_criteria')
+    plot_frequency = validator.get('plot_frequency')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:

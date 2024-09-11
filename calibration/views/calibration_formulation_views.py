@@ -12,7 +12,7 @@ from calibration.models import NgenCalFormulation, CalibrationFormulation, Calib
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, GenericResponseSerializer, \
     LoadFormulationResponseSerializer, ErrorResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_request, validate_response
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request2
 from calibration.views.hydrofabric import get_modules_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -43,11 +43,11 @@ def load_formulation_tab(request):
 
     logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request2(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.data.get('calibration_run_id')
+    calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -122,15 +122,15 @@ def save_formulation_tab(request):
 
     logger.debug(f'save_formulation_tab() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
+    validator, error_return = validate_request2(SaveFormulationRequestSerializer, data)
     if error_return:
         return error_return
 
-    new_module_names = set(validator.data.get('modules'))
-    calibration_run_id = validator.data.get('calibration_run_id')
-    user_formulation_name = validator.data.get('formulation_name')
-    use_sloth = validator.data.get('use_sloth')
-    sloth_parameters = validator.data.get('sloth_parameters')
+    new_module_names = set(validator.get('modules'))
+    calibration_run_id = validator.get('calibration_run_id')
+    user_formulation_name = validator.get('formulation_name')
+    use_sloth = validator.get('use_sloth')
+    sloth_parameters = validator.get('sloth_parameters')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
