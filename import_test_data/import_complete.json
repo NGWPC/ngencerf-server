@@ -61,15 +61,15 @@
         "module": "Noah-OWP-Modular"
     },
     "calibration_times": {
-        "calibration_start_time": "2017-12-31T00:00:00Z",
-        "calibration_end_time": "2019-12-31T23:00:00Z",
-        "simulation_start_time": "2018-01-01T00:00:00Z",
-        "simulation_end_time": "2019-12-30T23:00:00Z"
+        "calibration_start_time": "2018-01-01T00:00:00Z",
+        "calibration_end_time": "2019-12-30T23:00:00Z",
+        "simulation_start_time": "2017-12-31T00:00:00Z",
+        "simulation_end_time": "2019-12-31T23:00:00Z"
     },
     "validation_times": {
-        "validation_start_time": "2020-01-31T00:00:00Z",
+        "validation_start_time": "2020-02-01T00:00:00Z",
         "validation_end_time": "2021-12-31T23:00:00Z",
-        "simulation_start_time": "2020-02-01T00:00:00Z",
+        "simulation_start_time": "2020-01-31T00:00:00Z",
         "simulation_end_time": "2021-12-31T23:00:00Z"
     },
     "streamflow_threshold": 1.0,
@@ -106,5 +106,5 @@
     ],
     "optimization": "DDS",
     "plot_frequency": 5,
-    "stop_criteria": 5
+    "stop_criteria": 2
 }
