@@ -580,8 +580,8 @@ class ModuleHydrofabricListSerializer(BaseSerializer):
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
-    calibration_times = CalibrationTimeControls(required=False, allow_emtpy=False)
-    validation_times = ValidationTimeControls(required=False, allow_emtpy=False)
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
+    validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(required=True)
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
 
@@ -747,7 +747,7 @@ class ImportSerializer(BaseSerializer):
     automatic_validation = serializers.BooleanField(required=False, default=False)
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
-    validation_times = ValidationTimeControls(required=False, allow_emtpy=True)
+    validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     parameters = SaveTuningParametersSerializer(many=True, required=False)

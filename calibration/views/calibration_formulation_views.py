@@ -170,59 +170,24 @@ def save_formulation_tab(request):
     print('old existing_module_names', existing_module_names)
     print('new existing_module_names', new_module_names)
 
-    # with transaction.atomic():
-    #     # Only if the module names have changed
-    #     if new_module_names != existing_module_names:
-    #         to_be_unused = existing_module_names - new_module_names
-    #         to_be_used = new_module_names - existing_module_names
-    #         print('to_be_unused', to_be_unused)
-    #
-    #         # Set them to be unused and delete any parameters and output variables
-    #         CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
-    #         CalibrationFormulation.objects.bulk_create([
-    #             CalibrationFormulation(calibration_run=run, name=name, used_by_calibration_run=True)
-    #             for name in to_be_used
-    #         ])
-    #         CalibrationParameter.objects.all().filter(calibration_formulation__calibration_run=run,
-    #                                                   calibration_formulation__name__in=to_be_unused).delete()
-    #         ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
-    #
-    #         # Create any new formulations
-    #         for name in new_module_names:
-    #             CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+    with transaction.atomic():
+        # Only if the module names have changed
+        if new_module_names != existing_module_names:
+            to_be_unused = existing_module_names - new_module_names
+            to_be_used = new_module_names - existing_module_names
+            print('to_be_unused', to_be_unused)
 
-    # Proceed only if there are actual changes to make
-    if new_module_names != existing_module_names:
-        to_be_unused = existing_module_names - new_module_names
-        to_be_used = new_module_names - existing_module_names
+            # Set them to be unused and delete any parameters and output variables
+            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
+           
+            CalibrationParameter.objects.all().filter(calibration_formulation__calibration_run=run,
+                                                      calibration_formulation__name__in=to_be_unused).delete()
+            ModuleOutputVariable.objects.all().filter(calibration_formulation__name__in=to_be_unused).delete()
 
-        with transaction.atomic():
-            # 1. Set unused modules to used_by_calibration_run=False
-            CalibrationFormulation.objects.filter(
-                calibration_run=run, name__in=to_be_unused
-            ).update(used_by_calibration_run=False)
+            # Create any new formulations
+            for name in new_module_names:
+                CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
 
-            # 2. Delete CalibrationParameter and ModuleOutputVariable related to unused modules
-            CalibrationParameter.objects.filter(
-                calibration_formulation__calibration_run=run,
-                calibration_formulation__name__in=to_be_unused
-            ).delete()
-
-            ModuleOutputVariable.objects.filter(
-                calibration_formulation__calibration_run=run,
-                calibration_formulation__name__in=to_be_unused
-            ).delete()
-
-            # 3. Bulk create new modules that are not in existing_module_names
-            CalibrationFormulation.objects.bulk_create([
-                CalibrationFormulation(calibration_run=run, name=name, used_by_calibration_run=True)
-                for name in to_be_used
-            ])
-
-            # 4. Update existing modules that need to be set to used_by_calibration_run=True
-            CalibrationFormulation.objects.filter(
-                calibration_run=run, name__in=to_be_used
-            ).update(used_by_calibration_run=True)
 
         # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
         CalibrationSlothParam.objects.filter(calibration_run=run).delete()
@@ -263,6 +228,72 @@ def validate_formulation(run, module_names):
             run.ngen_formulation_name = valid_formulation['name']
             break
     return valid
+
+
+def validate_formuulations2(run, module_names):
+    calibration_formulations = CalibrationFormulation.objects.filter(
+        name__in=module_names,
+        calibration_run=run
+    )
+
+    # Create the list of dicts
+    formulation_dicts = []
+    for formulation in calibration_formulations:
+        groups = json.loads(formulation.groups)  # Parse the groups JSON string into a list
+        formulation_dicts.append({
+            "name": formulation.name,
+            "groups": groups  # Add the parsed groups list here
+        })
+
+    for group in group_requirements:
+        group_name = group.get('name')
+        min = group.get('min')
+        max = group.get('max')
+        count = 0
+        for formulation in calibration_formulations:
+            groups = json.loads(formulation.groups)  # Parse the groups JSON string into a list
+            if group_name in groups:
+                count += 1
+        if count < min:
+            print(f'At least {min} modules required in {group_name}')
+        if count > max:
+            print(f'Maximum of {max} modules allowed in {group_name}')
+        print(f'Group {group_name} has {count} modules')
+
+
+
+group_requirements = [
+    {
+        "name": "Glacier",
+        "min": 0,
+        "max": 1
+    },
+    {
+        "name": "Snowmelt",
+        "min": 0,
+        "max": 1
+    },
+    {
+        "name": "Evapotranspiration",
+        "min": 1,
+        "max": 1
+    },
+    {
+        "name": "Rainfall Runoff",
+        "min": 1,
+        "max": 1
+    },
+    {
+        "name": "Soil Moisture",
+        "min": 0,
+        "max": 2
+    },
+    {
+        "name": "Routing",
+        "min": 1,
+        "max": 1
+    }
+]
 
 
 def add_sloth_parameters(run, sloth_parameters):
