@@ -46,8 +46,13 @@ aws_session_token = <token>
 ```
 
 
-In order to not have any AWS specific code, AWS buckets are mounted as a regular file system using s3fs.  Create a directory to contain the contents of a specific S3 bucket.
-For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  Then install s3fs and mount the bucket
+In order to not have any AWS specific code, AWS buckets are mounted as a regular file system.  
+There are any number of tools that can do this.  I've tested `s3fs` and `goofys` on AWS Workspace.
+Create a directory to contain the contents of a specific S3 bucket.
+For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  
+Then install  either `s3fs` or `goofys` and mount the bucket
+
+### S3FS
 ```
 $ sudo apt update
 $ sudo apt install s3fs
@@ -55,6 +60,15 @@ $ mkdir -p ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev 
 $ ls ~/s3/ngwpc-dev
 ```
+
+### Goofys
+```
+$ wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
+$ chmod +x /usr/local/bin/goofys
+$ goofys ngwpc-dev ~/s3/ngwpc-dev
+$ ls ~/s3/ngwpc-dev
+```
+
 To unmount it at some later point use
 ```
 fusermount -u ~/s3/ngwpc-dev
@@ -62,7 +76,8 @@ fusermount -u ~/s3/ngwpc-dev
 When refreshing your AWS credentials, you might have to unmount and re-mount
 ```
 fusermount -u ~/s3/ngwpc-dev
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev 
+$ s3fs ngwpc-dev ~/s3/ngwpc-dev or goofys ngwpc-dev ~/s3/ngwpc-dev
+$ ls ~/s3/ngwpc-dev
 ```
 
 There are some additional options for performance that I've played with.  At the very least, we should probably cache the results to avoid multiple round-trips to AWS.
@@ -143,7 +158,7 @@ Both of these commands can be run multiple times without any harm.
 ```
 
 # Running the server
-To run the server outside of Pycharm, use `runCerf.sh`
+To run the server, use `runCerf.sh`
 
 Running the server in production is likely very different, 
 but it's important to run `pre_start.py` from `manage.py` before the server starts, 
@@ -200,14 +215,16 @@ as well as some static files.
 
 The static files are in `ngen-cal-work/bmi_config/Noah-OWP`  and `ngen-cal-work/parquet`.  These directories will be populated automatically at start-up.  Nothing else needs to be done.
 
-`ngen-cal-work/forcing`, `ngen-cal-work/observation` and `ngen-cal-work/geopackage` are used for the forcing, observation and geopackage files that are downloaded from Hydrofabric.  
+Files from Hydrofabric are in `s3/ngwpc-dev`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
 The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal
 
-In the example below, `20_peter/forcing` and `20_peter/observation` contain user-uploaded forcing and observation files.
+Prior to running the job, the Observation and Forcing files from Hydrofabric will be subsetted to confirm to the time range of the job.  These files will be placed in the instance specific directory, as described above.
+So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Hydrofabric or User upload
+
 
 ```
 peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
@@ -218,24 +235,12 @@ peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
     │       ├── GENPARM.TBL
     │       ├── MPTABLE.TBL
     │       └── SOILPARM.TBL
-    ├── forcing
-    │   └── Gage_01123000
-    │       ├── cat-10617.csv
-    │       ├── cat-10618.csv
-    │       ├── cat-10619.csv
-    │       ├── cat-10620.csv
-    │       ├── cat-10625.csv
-    │       └── cat-10626.csv
-    ├── geopackage
-    │   ├── gauge_01073000.gpkg
-    │   └── gauge_01123000.gpkg
-    ├── observation
-    │   └── 01123000_hourly_discharge.csv
     ├── parquet
     │   └── conus_model_attributes.parquet
     └── run_calib
         ├── 19_peter
-        │   └── forcing
+        │   ├── forcing
+        │   └── observation
         ├── 1_peter
         │   ├── forcing
         │   └── observation
@@ -246,26 +251,27 @@ peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
             ├── observation
             ├── parameters.txt
             └── sloth_parameters.txt
+   
+   
+.
+└── s3
+    └── ngwpc-dev   
 ```
 
 # Importing test data
 
-There is an import command that allows you to import data and create a calibration run job without having to go though the UI.  
-This is intended to facilitate testing (and eventually, provide a CLI interface to the user)
+The `cli` directory contains an ngencerf.sh command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
 
-In the `Import_test_data` directory, there are several scripts.  First, make sure they are executable.  Then, set environment variables with your username and password
+In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your username and password (or put them in ~/.bashrc)
 ```
-$ chmod +x *.sh
 $ export NGEN_USERNAME="your_username"
 $ export NGEN_PASSWORD="your_password"
 ```
 
-You can then run the `ngen_import.sh` script with one of the sample input files.  Everytime you run `ngen_import.sh`, a new Calibration Run job will be created.  
+You can then run the `ngencerft.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.  
 The different data files will create jobs will various amounts of data imported.
 The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
 
-Note that the `run_after_import` flag is not yet supported.
-
 The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
 
-
+See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterprediction.com/pages/viewpage.action?pageId=20056845)

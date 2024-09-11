@@ -26,6 +26,13 @@ echo "Virtual environment: $VENV_PATH"
 PYTHON_OUTPUT_FILE=$2
 echo "Python output file: $PYTHON_OUTPUT_FILE"
 
+# Get the directory for the output file and create it if it doesn't exist
+OUTPUT_DIR=$(dirname "$PYTHON_OUTPUT_FILE")
+if [ ! -d "$OUTPUT_DIR" ]; then
+  echo "Creating output directory: $OUTPUT_DIR"
+  mkdir -p "$OUTPUT_DIR"
+fi
+
 # Get the Python script path from the third argument
 SCRIPT_PATH=$3
 echo "Python script: $SCRIPT_PATH"
@@ -39,8 +46,17 @@ echo "Arguments to Python: $*"
 source "$VENV_PATH/bin/activate"
 
 # Run the Python script, redirecting its output to the specified file
-echo "Running $(basename "$SCRIPT_PATH")"
+echo "Running $(basename "$SCRIPT_PATH") $*"
 python "$SCRIPT_PATH" "$@" > "$PYTHON_OUTPUT_FILE" 2>&1
+python_exit_code=$?
 
-echo "Output from running $(basename "$SCRIPT_PATH")"
+if [ $python_exit_code -ne 0 ]; then
+  echo "$(basename "$SCRIPT_PATH") exited with code $python_exit_code"
+fi
+
+echo "Output from running $(basename "$SCRIPT_PATH") $*"
+echo "-------------- start of $PYTHON_OUTPUT_FILE -----------------------------"
 cat "$PYTHON_OUTPUT_FILE"
+echo "---------------- end of $PYTHON_OUTPUT_FILE -----------------------------"
+
+echo "Done running $(basename "$SCRIPT_PATH") $*"

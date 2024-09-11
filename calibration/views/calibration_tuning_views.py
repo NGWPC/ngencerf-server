@@ -1,4 +1,3 @@
-import csv
 import io
 import logging
 import os
@@ -57,9 +56,9 @@ def load_tuning_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
@@ -206,9 +205,9 @@ def save_tuning_tab(request):
 
     output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     run.automatic_validation = automatic_validation
 
@@ -251,7 +250,6 @@ def save_tuning_tab(request):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def upload_user_parameters(request):
     data = request.data
@@ -263,30 +261,75 @@ def upload_user_parameters(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     files = request.FILES.getlist('user_parameter_file')
 
     parameter_file = files[0]
     file_contents = parameter_file.read().decode('utf-8')
 
-    # Strip trailing whitespace from each line
-    file_contents = "\n".join([line.strip() for line in file_contents.splitlines()])
+    # Detect delimiter type (space or comma) by checking the first few rows
+    if ',' in file_contents.splitlines()[1]:
+        delimiter = ','
+        logger.debug("Detected comma delimiter.")
+    else:
+        delimiter = r'\s+'
+        logger.debug("Detected space delimiter.")
 
-    # Read the CSV data
-    parsed_data = list(csv.DictReader(io.StringIO(file_contents), delimiter=' ', skipinitialspace=True))
+    try:
+        # Handle file parsing based on detected delimiter
+        df = pd.read_csv(io.StringIO(file_contents), sep=delimiter, engine='python', skipinitialspace=True)
+    except pd.errors.ParserError:
+        return Response({'error': 'The uploaded file could not be parsed as space-separated or comma-separated.'}, status=400)
+
+    # Strip any leading/trailing whitespace in the column headers
+    df.columns = df.columns.str.strip()
+
+    # Log detected columns for debugging
+    logger.debug(f"Detected columns: {df.columns.tolist()}")
+
+    # Ensure that the DataFrame contains the correct columns
+    required_columns = ['param', 'min', 'max', 'init', 'model']
+    missing_cols = [col for col in required_columns if col not in df.columns]
+
+    if missing_cols:
+        # Log the actual DataFrame to inspect it
+        logger.debug(f"DataFrame content:\n{df.head()}")
+        return ResponseError(f'Missing required columns: {missing_cols}')
+
+    # Ensure numeric columns are properly converted to floats and validate values
+    invalid_values = {}
+    for col in ['min', 'max', 'init']:
+        df[col] = pd.to_numeric(df[col], errors='coerce')  # Coerce invalid values to NaN
+        invalid_rows = df[df[col].isna()]
+        if not invalid_rows.empty:
+            invalid_values[col] = invalid_rows.index.tolist()
+
+    if invalid_values:
+        error_message = f"Invalid values found in columns: {invalid_values}"
+        logger.debug(error_message)
+        return Response({'error': error_message}, status=400)
+
+    logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n{df}")
+
+    # Convert DataFrame to a list of dictionaries
+    parsed_data = df.to_dict(orient='records')
 
     run.user_parameter_filename = parameter_file.name
     run.save()
 
-    response = {'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
-                'user_parameter_file': list(parsed_data)}
+    response = {
+        'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}",
+        'calibration_run_id': run.id,
+        'user_parameter_file': parsed_data
+    }
 
     response_validator, error_response = validate_response(UserParameterFileUploadResponse, response)
     if error_response:
         return error_response
+
     logger.debug(f'Returning to {request.user} from upload_user_parameter_file() - {response_validator.data}')
     return Response(response_validator.data)
 

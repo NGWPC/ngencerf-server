@@ -14,3 +14,12 @@ class ModuleOutputVariable(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=['name', 'calibration_formulation'], name='module_output_variable__name__calibration_formulation__unique')
         ]
+
+    def __str__(self):
+        return (
+            f"ModuleOutputVariable: {self.id}, "
+            f"Name: {self.name:20}, "
+            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
+        )
+
+

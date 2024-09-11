@@ -40,9 +40,9 @@ def get_job_results(request):
     calibration_run_id = validator.data.get('calibration_run_id')
 
     # Only Done or Failed
-    run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE, StatusEnum.FAILED])
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE, StatusEnum.FAILED])
+    if error_return:
+        return error_return
 
     # Return metrics and parameters from results
 

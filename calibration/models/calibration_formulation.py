@@ -17,3 +17,10 @@ class CalibrationFormulation(BaseModel):
             models.UniqueConstraint(fields=['name', 'calibration_run'], name='calibration_formulation__name__calibration_run__unique')
         ]
 
+    def __str__(self):
+        return (
+            f"CalibrationFormulation: {self.id}, "
+            f"Name: {self.name:20}, "
+            f"Used by calibration run: {str(self.used_by_calibration_run):<5}, "
+            f"Calibration Run: {self.calibration_run.id}"
+        )

@@ -45,9 +45,9 @@ def load_optimization_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     metrics = get_metrics()
 
@@ -135,9 +135,9 @@ def save_optimization_tab(request):
     stop_criteria = validator.data.get('stop_criteria')
     plot_frequency = validator.data.get('plot_frequency')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     if optimization_inputs and not optimization_name:
         return ResponseError('Optimization inputs cannot be specified without an optimization name')

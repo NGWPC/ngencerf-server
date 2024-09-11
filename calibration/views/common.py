@@ -16,30 +16,6 @@ from cerfServer import settings
 logger = logging.getLogger(__name__)
 
 
-# Get an instance of a run by id, but only if owned by the user and is one of the passed in Statuses
-# def get_run(calibration_run_id, user, run_status=None):
-#     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
-#     status_names = [s.name.lower() for s in run_status]
-#
-#     run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user)
-#            .select_related('status', 'gage')
-#            .only('id', 'status', 'gage', 'owner')
-#            .first())
-#
-#     if not run:
-#         return None, Response(
-#             {'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user.username}'},
-#             status=status.HTTP_400_BAD_REQUEST)
-#
-#     if run.status.name.lower() not in status_names:
-#         return run, Response(
-#             {'error': f'Calibration Run {calibration_run_id} is not in the allowed statuses ({join(status_names)}). '
-#                       f'Current status: {run.status.name}'},
-#             status=status.HTTP_400_BAD_REQUEST)
-#
-#     return run, None
-
-
 def get_run(calibration_run_id, user, run_status=None):
     """
     Get an instance of a CalibrationRun by id, but only if it's owned by the user
@@ -58,7 +34,7 @@ def get_run(calibration_run_id, user, run_status=None):
     allowed_statuses: List[Status] = [cast(Status, StatusEnum.from_enum(status_enum)) for status_enum in run_status]
 
     # Query the CalibrationRun without filtering by status
-    run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user)
+    run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user, is_deleted=False)
            .select_related('status', 'gage')
            .only('id', 'status', 'gage', 'owner')
            .first())

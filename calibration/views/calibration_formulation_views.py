@@ -49,9 +49,9 @@ def load_formulation_tab(request):
 
     calibration_run_id = validator.data.get('calibration_run_id')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     get_modules_from_hydrofabric(run)
 
@@ -132,9 +132,9 @@ def save_formulation_tab(request):
     use_sloth = validator.data.get('use_sloth')
     sloth_parameters = validator.data.get('sloth_parameters')
 
-    run, errorReturn = get_run(calibration_run_id, request.user)
-    if errorReturn:
-        return errorReturn
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
 
     run.user_formulation_name = user_formulation_name
 

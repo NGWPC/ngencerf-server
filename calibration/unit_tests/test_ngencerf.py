@@ -52,9 +52,9 @@ class CerfUnitTest(TestCase):
         self.run_id = res["calibration_run_id"]
         print(f"Executing setUp(): Calibration run ID = {self.run_id}")
         # verify the record for calibration_run_id
-        run, errorReturn = get_run(self.run_id, user)
-        if errorReturn:
-            return errorReturn
+        run, error_return = get_run(self.run_id, user)
+        if error_return:
+            return error_return
         status = Status.objects.get(name=StatusEnum.RUNNING.value)
         run.status = status
         run.save()
@@ -71,9 +71,9 @@ class CerfUnitTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # assemble the expected response data
-        run, errorReturn = get_run(calibration_run_id, user, run_status=[StatusEnum.RUNNING])
-        if errorReturn:
-            return errorReturn
+        run, error_return = get_run(calibration_run_id, user, run_status=[StatusEnum.RUNNING])
+        if error_return:
+            return error_return
 
         gage_id = run.gage.gage_id
         print(f"test_plot_definitions_view(): Gage ID: {gage_id}")
@@ -102,9 +102,9 @@ class CerfUnitTest(TestCase):
         # check if transaction was successful
         self.assertEqual(response.status_code, 200)
 
-        run, errorReturn = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
-        if errorReturn:
-            return errorReturn
+        run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+        if error_return:
+            return error_return
 
         gage_id = run.gage.gage_id
         print(f"test_plot_definitions_view(): Gage ID: {gage_id}")

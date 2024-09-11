@@ -43,6 +43,20 @@ class CalibrationRun(BaseModel):
     automatic_validation = models.BooleanField(null=False, default=False)
     ngen_commit_hash = models.CharField(max_length=50, null=True)
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
+    is_deleted = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'calibration_run'
+
+    def __str__(self):
+        gage_info = f"Gage: {self.gage.gage_id}" if self.gage else "No Gage"
+        return (
+            f"CalibrationRun {self.id}, {gage_info}, "
+            f"Owner: {self.owner.username}, "
+            f"Job data directory: {self.job_data_dir},"
+            f"GeoPackage Path: {self.geopackage_hydrofabric_path}, "
+            f"Forcing Dir: {self.forcing_hydrofabric_dir_path}, "
+            f"Observational File: {self.observational_hydrofabric_file_path}, "
+            f"Status: {self.status.name}, "
+            f"Deleted: {self.is_deleted}"
+        )
