@@ -7,13 +7,19 @@ To build and run the ngenCERF-server container, you will need the following soft
 - Docker Compose 
 
 You will also need files with the following credentials:
-- AWS S3 credentials: saved to .aws_credentials
+- AWS S3 credentials: saved to ./.aws_credentials
 - NGWPC gitlab Personal Access Token (PAT): saved to ~/.gitlab_token.
+
+This Docker container pulls images from the NGWPC official Docker registry, so you will need to be logged into that registry. Using your gitlab credentials, login to the registry using the following command:
+```
+$ docker login registry.sh.nextgenwaterprediction.com
+```
 
 This will also create directories to persist data for:
 1. the PostgreSQL database
 1. initialization data for the ngencerf-server application. 
 1. data from the ngen-cal tool
+
 Your directory structure should look like this:
 ```
 $ tree

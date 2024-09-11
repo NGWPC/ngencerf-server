@@ -1,6 +1,4 @@
-## TODO: replace with base image created under NGWPC-3223 ##
-## see: https://jira.nextgenwaterprediction.com/browse/NGWPC-3223
-FROM rockylinux:9
+FROM registry.sh.nextgenwaterprediction.com/infrastructure/rockylinux/rockylinux:latest
 
 ## FIXME: Replace installation and build of FOSS dependencies wiith a base image. ##
 
