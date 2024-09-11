@@ -96,16 +96,18 @@ def get_output_variable_to_calibrate(run):
 
 def get_parameters_and_output_variables(modules):
     module_list = []
-    for m in modules:
-        calibrationParameters = (CalibrationParameter.objects.filter(calibration_formulation=m))
-
-        parameters = list(
-            calibrationParameters.values('name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'))
-        module_entry = {'name': m.name, 'parameters': parameters,
-                        'output_variables': list(m.output_variables.all().only('name', 'description').values('name', 'description'))}
-
+    for m in modules.prefetch_related('calibrationparameter_set', 'output_variables'):
+        calibration_parameters = m.calibrationparameter_set.values(
+            'name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'
+        )
+        output_variables = m.output_variables.values('name', 'description')
+        module_entry = {
+            'name': m.name,
+            'parameters': list(calibration_parameters),
+            'output_variables': list(output_variables)
+        }
         module_list.append(module_entry)
-        return module_list
+    return module_list
 
 
 def get_parameters_for_export(modules):
@@ -136,24 +138,28 @@ def get_time_range(run):
     # If both paths are available, calculate intersection and update run
     if observation_path and forcing_path:
         daterange = get_date_range_intersection(observation_path, forcing_path)
-        run.time_range_start = daterange.start_datetime
-        run.time_range_end = daterange.end_datetime
-        run.save()
+        if run.time_range_start != daterange.start_datetime or run.time_range_end != daterange.end_datetime:
+            run.time_range_start = daterange.start_datetime
+            run.time_range_end = daterange.end_datetime
+            run.save(update_fields=['time_range_start', 'time_range_end'])
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
     return {}
 
 
 def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
+    job_specific_file = get_path_func()
     print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
+
     if source:
-        if source == upload_enum.from_enum(upload_enum) and (os.path.exists(job_specific_file := get_path_func())):
-            # Get uploaded data from job-specific path
-            print('get_valid_path returning', job_specific_file)
-            return job_specific_file
+        if source == upload_enum.from_enum(upload_enum):
+            # Check job-specific path first
+            if os.path.exists(job_specific_file):
+                return job_specific_file
+        # If not found or source is different, check the hydrofabric path
         if hydrofabric_path and os.path.exists(hydrofabric_path):
-            print('get_valid_path returning', hydrofabric_path)
             return hydrofabric_path
+
     return None
 
 
@@ -376,10 +382,21 @@ def save_output_variable(run, output_variable_to_calibrate):
 
 def save_parameters(run, parameters):
     if parameters:
+        parameters_to_update = []
         for p in parameters:
-            (CalibrationParameter.objects
-             .filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run)
-             .update(minimum=p['minimum'], maximum=p['maximum'], initial_value=p['initial_value'], user_selected_for_tuning=True))
+            calibration_param = CalibrationParameter.objects.filter(
+                name=p['name'],
+                calibration_formulation__name=p['module'],
+                calibration_formulation__calibration_run=run
+            ).first()
+            if calibration_param:
+                calibration_param.minimum = p['minimum']
+                calibration_param.maximum = p['maximum']
+                calibration_param.initial_value = p['initial_value']
+                calibration_param.user_selected_for_tuning = True
+                parameters_to_update.append(calibration_param)
+
+        CalibrationParameter.objects.bulk_update(parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'])
 
 
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range

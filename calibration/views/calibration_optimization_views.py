@@ -1,5 +1,6 @@
 import logging
 
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
@@ -82,7 +83,6 @@ def get_user_optimization(run):
 
 
 def get_static_optimizations():
-    # Use the enum to fetch optimizations with prefetched inputs
     optimization_list = OptimizationEnum.active_choices_with_fields(
         fields=['name', 'description', 'is_active']
     )
@@ -90,15 +90,22 @@ def get_static_optimizations():
     for optimization in optimization_list:
         optimization_obj: Optimization = OptimizationEnum.get_instance(optimization['name'])
 
-        # Fetch the prefetched inputs
-        inputs = list(optimization_obj.inputs.all().values('name', 'description', 'data_type', 'is_active'))
+        inputs = list(optimization_obj.inputs.values('name', 'description', 'data_type', 'is_active'))
         optimization['inputs'] = inputs
 
     return optimization_list
 
 
 def get_metrics():
-    return list(Metric.objects.filter(is_active=True).values('name', 'description', 'is_active', 'categorical', 'event_based'))
+    cache_key = 'active_metrics'
+    metrics = cache.get(cache_key)
+    if metrics is None:
+        # Fetch metrics from the database if not cached
+        metrics = list(Metric.objects.filter(is_active=True).values(
+            'name', 'description', 'is_active', 'categorical', 'event_based'
+        ))
+        cache.set(cache_key, metrics, timeout=None)
+    return metrics
 
 
 # noinspection PyUnusedLocal
@@ -177,19 +184,25 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
     optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
     if not optimization:
         return None, "Invalid optimization - '{}'".format(optimization_name)
+
     run.optimization = optimization
 
-    optimization_inputs_to_create = []
     if optimization_inputs:
+        valid_inputs = OptimizationInput.objects.filter(
+            optimization=optimization, name__in=[o['name'] for o in optimization_inputs], is_active=True
+        )
+        valid_inputs_dict = {input.name: input for input in valid_inputs}
+
+        optimization_inputs_to_create = []
         for o in optimization_inputs:
             name = o['name']
-            # See if parameter is valid for this optimization
-            optimization_input = OptimizationInput.objects.filter(optimization=optimization, name=name, is_active=True).first()
+            optimization_input = valid_inputs_dict.get(name)
             if not optimization_input:
                 return None, "'{}' is not a valid parameter input for '{}'".format(name, optimization_name)
             optimization_inputs_to_create.append(
                 CalibrationOptimizationInput(optimization_input=optimization_input, calibration_run=run, value=o['value'])
             )
+
         CalibrationOptimizationInput.objects.bulk_create(optimization_inputs_to_create)
 
     return optimization, None

@@ -81,8 +81,7 @@ class AbstractEnum(Generic[T], Enum):
         # Store the results in a dictionary with the item's name as the key
         item_dict = {item.name: item for item in items}
 
-        # Store the dictionary in the cache with a 1-hour timeout
-        cache.set(f'{cls.__name__}_cache', item_dict, timeout=3600)
+        cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
     @classmethod
     def get_instance(cls, name: str) -> T:
