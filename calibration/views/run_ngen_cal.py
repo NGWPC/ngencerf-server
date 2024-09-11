@@ -14,6 +14,9 @@ from calibration.views.common import CerfException
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
 
+# Store future and process objects by job id
+job_registry: Dict[int, subprocess.Popen] = {}
+
 
 class JobStage(Enum):
     """
@@ -153,6 +156,9 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
         print(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
         return
 
+    # Remove the job from the job registry when it completes
+    job_registry.pop(run.id, None)
+
     # Create a transition manager for the current job, depending on whether validation is enabled
     transition_manager = JobStageTransitionManager(validation_enabled=do_validation)
 
@@ -188,8 +194,40 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
+
+        # Register job for future reference
+        job_registry[run.id] = process
+
         future.add_done_callback(callback_function)
     except Exception as e:
         print(f"Failed to execute command: {str(e)}")
         raise
     print(f'Process {process_id} in stage {current_stage.name} is running in the background')
+
+
+def terminate_job(calibration_run_id: int):
+    """
+    Terminates a job with the given calibration_run_id by killing the associated process.
+    :param calibration_run_id: The id of the CalibrationRun to terminate.
+    """
+    process = job_registry.get(calibration_run_id)
+
+    if process:
+        process.terminate()  # Gracefully terminates the process
+        print(f"Job {calibration_run_id} has been terminated.")
+    else:
+        print(f"No running job found for CalibrationRun ID: {calibration_run_id}")
+
+
+def force_kill_job(calibration_run_id: int):
+    """
+    Forcefully kills a job with the given calibration_run_id by sending a SIGKILL signal to the associated process.
+    :param calibration_run_id: The id of the CalibrationRun to kill.
+    """
+    process = job_registry.get(calibration_run_id)
+
+    if process:
+        process.kill()  # Forcefully kills the process
+        print(f"Job {calibration_run_id} has been forcefully killed.")
+    else:
+        print(f"No running job found for CalibrationRun ID: {calibration_run_id}")
