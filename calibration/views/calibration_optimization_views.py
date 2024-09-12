@@ -10,7 +10,7 @@ from rest_framework.response import Response
 from calibration.enums import OptimizationEnum
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
-    SaveOptimizationRequestSerializer, SaveOptimizationResponseSerializer, ErrorResponseSerializer
+    SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 
@@ -112,7 +112,7 @@ def get_metrics():
 @extend_schema(
     request=SaveOptimizationRequestSerializer,
     responses={
-        200: SaveOptimizationResponseSerializer,
+        200: GenericResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -173,7 +173,7 @@ def save_optimization_tab(request):
 
         response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
 
-        response_validator, error_response = validate_response(SaveOptimizationResponseSerializer, response)
+        response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
         logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response_validator.data}')
@@ -191,7 +191,7 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
         valid_inputs = OptimizationInput.objects.filter(
             optimization=optimization, name__in=[o['name'] for o in optimization_inputs], is_active=True
         )
-        valid_inputs_dict = {input.name: input for input in valid_inputs}
+        valid_inputs_dict = {opt_input.name: opt_input for opt_input in valid_inputs}
 
         optimization_inputs_to_create = []
         for o in optimization_inputs:
