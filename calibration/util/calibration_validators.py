@@ -305,7 +305,7 @@ class FooterResponseSerializer(BaseSerializer):
 
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=False)
+    run_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
