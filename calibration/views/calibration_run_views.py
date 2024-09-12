@@ -1,6 +1,7 @@
 import csv
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from itertools import groupby
 from operator import attrgetter
@@ -10,7 +11,7 @@ import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Sum
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
 from rest_framework.decorators import api_view
@@ -18,7 +19,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Metric, IterationMetric, Iteration, IterationParameter, \
-    CalibrationParameter
+    CalibrationParameter, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer
 from calibration.util.ngen_locations import get_gage_dir
@@ -500,15 +501,14 @@ def get_iteration(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    # TODO Running jobs (or Done?)
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if error_return:
         return error_return
 
-    # TODO Need to figure out iterations with respect to multiple workers
-    iteration = 1
-    response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
-                'status': run.status.name, 'iteration': iteration}
+    # Add all iterations (1 for each worker)
+    total_iteration_num = Iteration.objects.filter(calibration_run=run).aggregate(total=Sum('iteration_num'))['total']
+    response = {'message': f'Last iteration for Calibration Run {run.id}, across all workers, is {total_iteration_num}', 'calibration_run_id': run.id,
+                'status': run.status.name, 'iteration': total_iteration_num}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
@@ -517,6 +517,33 @@ def get_iteration(request):
 
     return Response(response_validator.data)
 
+
+def get_iteration_by_file(run: CalibrationRun):
+    """
+    Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name and we create entires in the database.
+    Until we get that interface working, we'll have to figure out the iteration by brute force
+    Look through all the workers and open the metrics_iteration.csv file
+    :return:
+    """
+    # Regular expression pattern to match directories like "ngen_xxxxxxx_worker"
+    pattern = re.compile(r'ngen_\w+_worker')
+    output_calibration_run_dir = os.path.join(get_gage_dir(run), 'Output/Calibration_Run')
+    total_iterations = 0
+    # Loop through contents of the directory
+    for item in os.listdir(output_calibration_run_dir):
+        item_path = os.path.join(output_calibration_run_dir, item)
+        # Check if the item is a directory and matches the pattern
+        if os.path.isdir(item_path) and pattern.match(item):
+            worker_dir = os.path.join(output_calibration_run_dir, item)
+            metrics_iteration_file = os.path.join(worker_dir, f'{run.gage.gage_id}_metrics_iteration.csv')
+            # Get iteration count for this worker
+            total_iterations += count_rows_in_csv(metrics_iteration_file)
+
+
+def count_rows_in_csv(file_path):
+    with open(file_path, 'r') as file:
+        # Count the lines and subtract 1 for the header
+        return sum(1 for line in file) - 1
 
 @extend_schema(
     request=CalibrationRunSerializer,

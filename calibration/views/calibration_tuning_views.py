@@ -66,8 +66,8 @@ def load_tuning_tab(request):
     time_range = get_time_range(run)
 
     module_list = []
-    if modules:
-        # Only do this if modules have been saved in the formulation tab
+    if modules and run.gage:
+        # Only do this if modules have been saved in the formulation tab and we have a gage
 
         # print('calling hydrofabric with', modules)
         get_module_data_from_hydrofabric(run, modules)

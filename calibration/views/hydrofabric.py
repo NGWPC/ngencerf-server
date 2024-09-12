@@ -7,12 +7,12 @@ from django.db import transaction
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
-from calibration.util.calibration_validators import ForcingHydrofabricSerializer, ObservationalHydrofabricSerializer, \
-    ModuleDataHydrofabricListSerializer, GeopackageHydrofabricSerializer, ModuleHydrofabricListSerializer
+from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer, S3FileValidator, \
+    S3DirectoryValidator
 from calibration.views.common import CerfException
 from cerfServer import settings
-from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, module_sample_data, forcing_sample_data, \
-    module_metadata_sample_data
+from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, forcing_sample_data, \
+    hydrofabric_module_metadata_real_data, module_sample_data
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,6 @@ headers = {
 
 
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
-
     if settings.HYDROFABRIC:
         print('Getting geopackage from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT.format(gage_id=run.gage.gage_id))
@@ -38,7 +37,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         print('Getting dummy geopackage data')
         geopackage_json = geopackage_sample_data
 
-    hydrofabric_data = validate_response_data(GeopackageHydrofabricSerializer, geopackage_json,
+    hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
                                               'Geopackage data from Hydrofabric is not in the expected format')
 
     s3_uri = hydrofabric_data.get('uri')
@@ -64,7 +63,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
         print('Getting dummy observational data')
         observational_json = observational_sample_data
 
-    observational_data = validate_response_data(ObservationalHydrofabricSerializer, observational_json,
+    observational_data = validate_response_data(S3FileValidator, observational_json,
                                                 'Observational data from Hydrofabric is not in the expected format')
 
     s3_uri = observational_data.get('uri')
@@ -90,7 +89,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
         print('Getting dummy forcing data')
         forcing_json = forcing_sample_data
 
-    forcing_data = validate_response_data(ForcingHydrofabricSerializer, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
+    forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
 
     s3_uri = forcing_data.get('uri')
 
@@ -99,11 +98,13 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
 
 
 def get_module_data_from_hydrofabric(run, modules):
+    module_names = set(modules.values_list('name', flat=True))
+
     if settings.HYDROFABRIC:
         print('Getting module metadata from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send list of modules
-        response = requests.get(url, headers=headers)
+        response = requests.post(url, headers=headers, json={"modules": module_names})
         try:
             response.raise_for_status()
             module_json = response.json()
@@ -113,23 +114,35 @@ def get_module_data_from_hydrofabric(run, modules):
             return
     else:
         print('Getting dummy module metadata data')
-        module_json = module_metadata_sample_data
+        module_json = hydrofabric_module_metadata_real_data
 
     module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                          'Module metadata from Hydrofabric is not in the expected format')
 
+    hydrofabric_module_names = set([module['module_name'] for module in module_data['modules']])
+    print('hydrofabric_module_names:', hydrofabric_module_names)
+
+    missing_names = module_names - hydrofabric_module_names
+    if missing_names:
+        raise CerfException(f'Response from Hydrofabric is missing entries for {missing_names}')
+    extra_names = hydrofabric_module_names - module_names
+    if extra_names:
+        logger.error(f'Response from Hyrofabric has extra entries for {extra_names}')
+
     # Save the output variables and parameters for each module
-    # TODO We need to ensure that the data from Hydrofabric contains all the modules we asked for
     with transaction.atomic():
         for m in module_data.get('modules'):
+            print('m', m)
             # Get the modules object from our list
             module = modules.filter(name=m['module_name']).first()
-            # print('module', module)
+
+            print('module', module)
 
             # Save output variables
             outputs = m['module_output_variables']
             o: dict
             for o in outputs:
+                print('o', o)
                 ModuleOutputVariable.objects.update_or_create(
                     name=o['name'],
                     calibration_formulation=module,
@@ -137,7 +150,7 @@ def get_module_data_from_hydrofabric(run, modules):
                 )
             # Save parameters
             # print('getting parameters for', m)
-            parameters = m['module_parameters']
+            parameters = m['calibrate_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
                 # Using get_or_create because we don't want to override any values the user has already entered
@@ -145,7 +158,9 @@ def get_module_data_from_hydrofabric(run, modules):
                     name=p['name'],
                     calibration_formulation=module,
                     defaults={'data_type': p['data_type'],
-                              'description': p['description'], 'minimum': p['minimum'],
+                              'description': p['description'],
+                              'initial_value': p['initial_value'],
+                              'minimum': p['minimum'],
                               'maximum': p['maximum']}
                 )
 

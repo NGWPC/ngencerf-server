@@ -258,15 +258,12 @@ def save_gage_tab(request):
 def get_geopackage_image_url(run: CalibrationRun):
     geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_path
 
-    if geopackage_path:
-        if os.path.exists(geopackage_path):
-            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+    if geopackage_path and os.path.exists(geopackage_path):
+        geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
-            # Convert ByteIO image to base64
-            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-            return f'data:image/png;base64,{base64_str}'
-        else:
-            raise CerfException(f'Cannot find geopackage file at {geopackage_path}')
+        # Convert ByteIO image to base64
+        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+        return f'data:image/png;base64,{base64_str}'
     else:
         return None
 
