@@ -157,7 +157,7 @@ def load_calibration_run(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 

@@ -20,7 +20,7 @@ from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Metric, IterationMetric, Iteration, IterationParameter, \
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer
 from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request
@@ -107,9 +107,9 @@ def run_calibration(request):
         return response
 
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name}
+                'status': run.status.name, 'run_date': run.run_date}
 
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    response_validator, error_response = validate_response(SubmitJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user} from run_calibration() - {response_validator.data}')
 
     return Response(response_validator.data)

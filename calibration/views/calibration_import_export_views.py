@@ -262,7 +262,7 @@ def export_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
@@ -319,6 +319,7 @@ def load_calibration_run_data(run, export: bool = None):
 
     else:
         calibration_run_data['calibration_run_id'] = run.id
+        calibration_run_data['run_date'] = run.run_date
         calibration_run_data['time_range'] = time_range
         calibration_run_data['gage'] = {'gage_id': run.gage.gage_id, 'agency': run.gage.agency, 'station_name': run.gage.station_name,
                                         'latitude': run.gage.latitude,
@@ -384,7 +385,6 @@ def load_calibration_run_data(run, export: bool = None):
     stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
     calibration_run_data['stop_criteria'] = stop_criteria
 
-    # calibration_run_data['run_date'] = run.run_date
     # Compare run.status against the actual instances from StatusEnum
     if not export and run.status in [StatusEnum.from_enum(StatusEnum.RUNNING), StatusEnum.from_enum(StatusEnum.DONE)]:
         # Other stuff we need for Running/Done jobs
