@@ -86,11 +86,6 @@ But this might be moot on other environments.
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
 ```
 
-This information should already be in local_settings.py, which defines the mount point that has just been created
-```
-HYDROFABRIC_BUCKET = 'ngwpc-dev'
-HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
-```
 Some of these might only be needed temporarily, until Hydrofabric returns file system urls and not S3 urls
 
 **Note:** There are other tools that perform the same functionally as `s3fs`,  and 

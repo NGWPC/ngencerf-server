@@ -206,12 +206,12 @@ LOGGING = {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
-            'propagate': True,
+            'propagate': False,
         },
         'django.request': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-            'propagate': True,
+            'propagate': False,
         },
         'calibration': {
             'handlers': ['console', 'file'],
@@ -239,7 +239,7 @@ HYDROFABRIC_URL = 'http://localhost:8001'
 
 S3_MOUNT_POINT = os.path.join(Path.home(), 's3')
 
-HYDROFABRIC = True
+HYDROFABRIC = False
 
 # -----------------------------
 # Locations
