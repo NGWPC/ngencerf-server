@@ -20,11 +20,11 @@ from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Metric, IterationMetric, Iteration, IterationParameter, \
     CalibrationParameter
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer
 from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request
-from calibration.views.run_ngen_cal import run_job, JobStage
+from run_ngen_cal.run_ngen_cal import run_job, JobStage, terminate_job
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 
 logger = logging.getLogger(__name__)
@@ -107,9 +107,9 @@ def run_calibration(request):
         return response
 
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name}
+                'status': run.status.name, 'run_date': run.run_date}
 
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    response_validator, error_response = validate_response(SubmitJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user} from run_calibration() - {response_validator.data}')
 
     return Response(response_validator.data)
@@ -488,9 +488,7 @@ def report_iteration(request):
     },
     description="Get iteration of a running calibration"
 )
-# Called by ngen_cal
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def get_iteration(request):
     data = request.data if request.method == 'POST' else request.query_params
@@ -500,11 +498,9 @@ def get_iteration(request):
     if error_return:
         return error_return
 
-    # TODO Running jobs (or Done?)
     calibration_run_id = validator.get('calibration_run_id')
 
-    # TODO read output file
-
+    # TODO Running jobs (or Done?)
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if error_return:
         return error_return
@@ -513,6 +509,52 @@ def get_iteration(request):
     iteration = 1
     response = {'message': f'Last iteration for Calibration Run {run.id} is {iteration}', 'calibration_run_id': run.id,
                 'status': run.status.name, 'iteration': iteration}
+
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GenericResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
+    },
+    description="Cancel a running job"
+)
+@api_view(['POST'])
+@handle_exceptions
+def cancel_job(request):
+    data = request.data if request.method == 'POST' else request.query_params
+    logger.debug(f'get_iteration() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    if not terminate_job(run.id):
+        return ResponseError(f"Calibration Run {run.id} is not running")
+    else:
+        run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)
+        run.save(update_fields=['status'])
+        print('run', run)
+
+    response = {'message': f'Calibration Run job {run.id} has been canceled', 'calibration_run_id': run.id,
+                'status': run.status.name, }
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
@@ -538,30 +580,6 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
     logger.info(f'Done subsetting directory {input_directory}')
 
 
-# I changed this to use multiprocessing in the hopes of speeding it up a bit, but did not seem to have any affect
-# mostly likely because the S3 file processing is the bottleneck
-# def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
-#     logger.info(f'Subsetting directory {input_directory}')
-#
-#     if not os.path.exists(output_directory):
-#         os.makedirs(output_directory, exist_ok=True)
-#
-#     with ThreadPoolExecutor() as executor:
-#         futures = []
-#         for filename in os.listdir(input_directory):
-#             input_file_path = os.path.join(input_directory, filename)
-#             output_file_path = os.path.join(output_directory, filename)
-#
-#             if os.path.isfile(input_file_path):
-#                 future = executor.submit(subset_by_time_range, input_file_path, output_file_path, date_time_range)
-#                 futures.append(future)
-#
-#         for future in as_completed(futures):
-#             future.result()  # Propagate any exceptions
-#
-#     logger.info(f'Done subsetting directory {input_directory}')
-
-
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     logger.info(f'Subsetting file {input_file} to {output_file}')
 
@@ -581,21 +599,3 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
 
     # Write the filtered DataFrame to the output CSV file
     subset_df.to_csv(output_file, index=False)
-
-
-# def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
-#     logger.info(f'Subsetting file {input_file} to {output_file}')
-#     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-#     with open(input_file, 'r', buffering=32768) as infile, open(output_file, 'w', newline='', buffering=32768) as outfile:
-#         reader = csv.reader(infile)
-#         writer = csv.writer(outfile)
-#
-#         header = next(reader)  # Read the header
-#         writer.writerow(header)  # Write the header to the output file
-#
-#         for row in reader:
-#             row_date = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
-#             if row_date in date_time_range:
-#                 writer.writerow(row)
-#
-#     logger.info(f'Done subsetting file {input_file} to {output_file}')

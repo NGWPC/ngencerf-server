@@ -75,6 +75,11 @@ def s3DirectoryValidator(value):
         raise serializers.ValidationError('This field must be a valid S3 uri to a directory')
 
 
+def no_space_validator(value):
+    if ' ' in value:
+        raise serializers.ValidationError("This field must not contain spaces.")
+
+
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
@@ -266,14 +271,6 @@ class ModuleParametersSerializer(serializers.Serializer):
     initial_value = serializers.FloatField(required=False, allow_null=True)
 
 
-# class ModuleTuningParametersSerializer(BaseSerializer):
-#     name = serializers.CharField(required=True, allow_blank=False)
-#     minimum = serializers.FloatField(required=True, allow_null=True)
-#     maximum = serializers.FloatField(required=True, allow_null=True)
-#     initial_value = serializers.FloatField(required=True, allow_null=True)
-#     user_selected_for_tuning = serializers.BooleanField(required=True)
-#
-
 # Used by LoadTuningParameters
 class ModuleMetadataStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
@@ -292,7 +289,7 @@ class JobsResponseSerializer(BaseSerializer):
     status = serializers.CharField(required=True, validators=[statusValidator])
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
-    formulation_name = serializers.CharField(required=False, allow_null=True)
+    formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
     run_date = serializers.DateTimeField(required=True, allow_null=True)
     owner = serializers.CharField(required=True, allow_null=True)
 
@@ -308,6 +305,7 @@ class FooterResponseSerializer(BaseSerializer):
 
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+    run_date = serializers.DateTimeField(required=True, allow_null=False)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[forcingSourceValidator])
     forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
@@ -315,7 +313,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
-    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
+    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
     automatic_validation = serializers.BooleanField(default=False)
@@ -494,7 +492,7 @@ class LoadPlotResponseSerializer(BaseSerializer):
 
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(required=False, allow_blank=False)
+    formulation_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
     modules = serializers.ListField(child=serializers.CharField(required=True), min_length=2)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
@@ -689,6 +687,16 @@ class ImportResponseSerializer(BaseSerializer):
     messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
+class SubmitJobResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True, allow_null=False)
+    status = serializers.CharField(validators=[statusValidator], required=True)
+    run_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+
+
+
 ##################################
 # Import/Export
 ##################################
@@ -709,7 +717,7 @@ class ExportResponseSerializer(BaseSerializer):
     geopackage_path_from_hydrofabric = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_user_uploaded_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
-    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False)
+    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
     automatic_validation = serializers.BooleanField(default=False)
@@ -742,7 +750,7 @@ class ImportSerializer(BaseSerializer):
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
-    formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
     automatic_validation = serializers.BooleanField(required=False, default=False)
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)

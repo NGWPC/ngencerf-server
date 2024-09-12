@@ -25,6 +25,7 @@ config_template = {
         "user": "",
         "basin": "",
         "model": "",
+        "formulation": "",
         "run_type": "calib",
         "main_dir": ""
     },
@@ -157,16 +158,16 @@ def ready_to_run(run: CalibrationRun, build=None):
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    if CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).exists():
-        if not run.user_formulation_name:
-            errors.append('formulation name must be specified')
-        else:
-            if not run.ngen_formulation_name:
-                errors.append('Coding error - ngen_formulation_name is not filled in')
-            else:
-                general['model'] = run.ngen_formulation_name
-    else:
+    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values_list('name', flat=True)
+    if not modules:
         errors.append('modules must be specified')
+    elif not run.user_formulation_name:
+        errors.append('formulation name must be specified')
+    else:
+        general['formulation'] = run.user_formulation_name
+        general['model'] = run.ngen_formulation_name
+        # TODO Not being used yet by ngen-cal
+        general['models'] = ', '.join(modules)
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir
@@ -211,15 +212,18 @@ def ready_to_run(run: CalibrationRun, build=None):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         all_input_names = set(
-            OptimizationInput.objects.filter(optimization__name=run.optimization.name).select_related('optimization').only('names').values_list(
-                'name', flat=True))
+            OptimizationInput.objects.filter(optimization__name=run.optimization.name)
+            .select_related('optimization')
+            .values_list('name', flat=True)
+        )
+
         # See if we have values for all the inputs
-        CalibrationOptimizationInput.objects.filter()
-        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).only('optimization_input__name', 'value').values('value', name=F(
-            'optimization_input__name'))
+        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
+            'value', name=F('optimization_input__name'))
+
         for opt_input in inputs:
             calibration[opt_input['name']] = opt_input['value']
-            all_input_names.remove(opt_input['name'])
+            all_input_names.discard(opt_input['name'])
         # See if there are any names leftover
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
@@ -247,33 +251,36 @@ def ready_to_run(run: CalibrationRun, build=None):
         calibration['peak_flow_threshold'] = run.peak_flow_threshold
     if run.use_sloth:
         sloth_params = (CalibrationSlothParam.objects.filter(calibration_run=run)
-                        .only('param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'maps_to_module', 'maps_to_variable_name')
                         .values('param_name', 'param_count', 'param_units', 'param_location', 'param_value',
                                 'maps_to_variable_name', module=F('maps_to_module__name'), ))
 
+        # Required fields for sloth parameters
+        required_fields = ['param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'module', 'maps_to_variable_name']
+
         sloth_error = False
         for s in sloth_params:
-            # Make sure everything is specified
-            if not s['param_name'] or s['param_count'] is None or not s['param_units'] or not s['param_location'] or s['param_value'] is None or not \
-                    s['module'] or not s['maps_to_variable_name']:
+            missing_fields = [field for field in required_fields if s.get(field) is None]
+            if missing_fields:
                 sloth_error = True
                 errors.append(
-                    f"name, count, units, location, value, module and maps_to_variable_name must be specified for sloth parameter '{s['param_name']}'")
+                    f"Missing fields {', '.join(missing_fields)} for sloth parameter '{s['param_name']}'")
 
+        # If no errors and build is True, write the sloth parameters to a file
         if not sloth_error and build:
             sloth_parameter_file = os.path.join(job_data_dir, 'sloth_parameters.txt')
+            header_format = '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'
+            line_format = '{:30s} {:10d} {:8s} {:8s} {:10.5g} {:15s} {:30s}\n'
             with open(sloth_parameter_file, 'w') as file:
-                file.write(
-                    '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
-                                                                                'maps_to_variable_name'))
+                file.write(header_format.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
+                                                'maps_to_variable_name'))
+                # Write each parameter line
                 for s in sloth_params:
-                    file.write('{:30s} {:10d} {:8s} {:8s} {:10.5g} {:15s} {:30s}\n'
+                    file.write(line_format
                                .format(s['param_name'], s['param_count'], s['param_units'], s['param_location'], s['param_value'],
                                        s['module'], s['maps_to_variable_name']))
             datafile['sloth_parameter_file'] = sloth_parameter_file
 
     params = list(CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
-                  .only('name', 'initial_value', 'minimum', 'maximum', 'calibration_formulation')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
     param_error = False
     for p in params:

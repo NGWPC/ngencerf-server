@@ -157,7 +157,7 @@ def load_calibration_run(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
@@ -218,7 +218,7 @@ def delete_run(request):
     response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from delete_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from delete_run() - {response_validator.data}')
 
     return Response(response_validator.data)
 

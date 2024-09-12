@@ -12,6 +12,7 @@ class StatusEnum(AbstractEnum):
     READY = 'Ready'
     RUNNING = 'Running'
     DONE = 'Done'
+    CANCELLED = 'Cancelled'
     FAILED = 'Failed'
     SERVER_ERROR = 'Server error'
 

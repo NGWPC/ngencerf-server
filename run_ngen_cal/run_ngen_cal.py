@@ -3,7 +3,7 @@ import os
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from enum import auto, Enum
-from typing import Optional
+from typing import Optional, Dict
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
@@ -13,6 +13,9 @@ from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, get_c
 from calibration.views.common import CerfException
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
+
+# Store future and process objects by job id
+job_registry: Dict[int, subprocess.Popen] = {}
 
 
 class JobStage(Enum):
@@ -29,6 +32,7 @@ class JobStageTransitionManager:
      Manages transitions between job stages, controlling whether validation stages are included or not. It determines the next stage
      for a job based on the current stage and whether validation is enabled.
      """
+
     def __init__(self, validation_enabled: bool):
         """
         Initialize the JobStageTransitionManager with validation rules.
@@ -109,6 +113,8 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     :param output_file: Path to the output file for the stage.
     """
     cal_or_valid_script = CALIBRATION_PY if stage == JobStage.CALIBRATION else VALIDATION_PY
+    cal_or_valid_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'hello_world.py') if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
+
     shell_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'run_ngen_cal.sh')
 
     # Prepare the argument list to pass to the shell script
@@ -143,14 +149,28 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
     process_id = os.path.basename(run.job_data_dir)
     print(f'Job {process_id} completed stage {current_stage}')
 
+    error = False
+    cancelled = False
     try:
         if future.exception() is not None:
             print(f"Exception occurred in process {process_id} at stage {current_stage.name}: {future.exception()}")
         else:
             exit_code = future.result()
-            print(f"Process {process_id}, stage {current_stage.name}, completed successfully with exit code {exit_code}")
+            print(f"Process {process_id}, stage {current_stage.name}, completed with exit code {exit_code}")
+            error = exit_code != 0
+            cancelled = exit_code == -15
     except Exception as e:
         print(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
+        return
+
+    # Remove the job from the job registry when it completes
+    job_registry.pop(run.id, None)
+
+    if cancelled:
+        print(f'Job {process_id} was cancelled')
+        return
+    elif error:
+        print(f'Job {process_id} ending due to abnormal return code')
         return
 
     # Create a transition manager for the current job, depending on whether validation is enabled
@@ -188,8 +208,44 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
+
+        # Register job for future reference
+        job_registry[run.id] = process
+
         future.add_done_callback(callback_function)
     except Exception as e:
         print(f"Failed to execute command: {str(e)}")
         raise
     print(f'Process {process_id} in stage {current_stage.name} is running in the background')
+
+
+def terminate_job(calibration_run_id: int):
+    """
+    Terminates a job with the given calibration_run_id by killing the associated process.
+    :param calibration_run_id: The id of the CalibrationRun to terminate.
+    """
+    process = job_registry.get(calibration_run_id)
+
+    if process:
+        process.terminate()  # Gracefully terminates the process
+        print(f"Job {calibration_run_id} has been terminated.")
+        return True
+    else:
+        print(f"No running job found for Calibration Run: {calibration_run_id}")
+        return False
+
+
+def force_kill_job(calibration_run_id: int):
+    """
+    Forcefully kills a job with the given calibration_run_id by sending a SIGKILL signal to the associated process.
+    :param calibration_run_id: The id of the CalibrationRun to kill.
+    """
+    process = job_registry.get(calibration_run_id)
+
+    if process:
+        process.kill()  # Forcefully kills the process
+        print(f"Job {calibration_run_id} has been forcefully killed.")
+        return True
+    else:
+        print(f"No running job found for Calibration Run: {calibration_run_id}")
+        return False
