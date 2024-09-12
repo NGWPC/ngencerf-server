@@ -334,6 +334,12 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
+class GenericResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[statusValidator], required=True)
+
+
 ##################################
 # Gage Tab
 ##################################
@@ -391,10 +397,7 @@ class UploadGeopackageSerializer(BaseSerializer):
         return value
 
 
-class UploadGeopackageResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[statusValidator], required=True)
+class UploadGeopackageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
 
 
@@ -405,10 +408,7 @@ class SaveGageRequestSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
 
 
-class SaveGageResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[statusValidator], required=True)
+class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
 
 
@@ -444,11 +444,6 @@ class LoadGageResponseSerializer(BaseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
 
-
-class GenericResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[statusValidator], required=True)
 
 
 class CreateCalibrationRunSerializer(BaseSerializer):
@@ -627,11 +622,11 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     plot_frequency = serializers.IntegerField(required=False)
 
 
-class SaveOptimizationResponseSerializer(serializers.Serializer):
-    message = serializers.CharField()
-    calibration_run_id = serializers.IntegerField()
-    status = serializers.CharField(validators=[statusValidator], required=True)
-
+# class SaveOptimizationResponseSerializer(serializers.Serializer):
+#     message = serializers.CharField()
+#     calibration_run_id = serializers.IntegerField()
+#     status = serializers.CharField(validators=[statusValidator], required=True)
+#
 
 class OptimizationInputStaticSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
@@ -667,35 +662,26 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     optimizations = OptimizationStaticSerializer(many=True)
 
 
-#
-# class ObservationalHydrofabricSerializer(BaseSerializer):
-#     uri = serializers.CharField(required=True, validators=[s3FileValidator])
-
 
 ##################################
 # Run Tab
 ##################################
 
-class IsReadyResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
-    status = serializers.CharField(required=True, validators=[statusValidator])
+class IsReadyResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
-class ImportResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
-    status = serializers.CharField(required=True, validators=[statusValidator])
+class ImportResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
-class SubmitJobResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True, allow_null=False)
-    status = serializers.CharField(validators=[statusValidator], required=True)
+class SubmitJobResponseSerializer(GenericResponseSerializer):
     run_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+class GetIterationsResponseSerializer(GenericResponseSerializer):
+    iterations = serializers.IntegerField(required=True)
 
 
 ##################################

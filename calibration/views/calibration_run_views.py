@@ -21,7 +21,7 @@ from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Metric, IterationMetric, Iteration, IterationParameter, \
     CalibrationParameter, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer
 from calibration.util.ngen_locations import get_gage_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request
@@ -505,12 +505,16 @@ def get_iteration(request):
     if error_return:
         return error_return
 
-    # Add all iterations (1 for each worker)
-    total_iteration_num = Iteration.objects.filter(calibration_run=run).aggregate(total=Sum('iteration_num'))['total']
-    response = {'message': f'Last iteration for Calibration Run {run.id}, across all workers, is {total_iteration_num}', 'calibration_run_id': run.id,
-                'status': run.status.name, 'iteration': total_iteration_num}
 
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    total_iterations = get_iteration_by_file(run)
+    print('total iterations', total_iterations)
+
+    # Add all iterations (1 for each worker)
+    total_iteration_num = Iteration.objects.filter(calibration_run=run).aggregate(total=Sum('iteration_num'))['total'] or 0
+    response = {'message': f'Last iteration for Calibration Run {run.id}, across all workers, is {total_iteration_num}', 'calibration_run_id': run.id,
+                'status': run.status.name, 'iterations': total_iteration_num}
+
+    response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
@@ -535,15 +539,23 @@ def get_iteration_by_file(run: CalibrationRun):
         # Check if the item is a directory and matches the pattern
         if os.path.isdir(item_path) and pattern.match(item):
             worker_dir = os.path.join(output_calibration_run_dir, item)
+            print('worker', worker_dir)
             metrics_iteration_file = os.path.join(worker_dir, f'{run.gage.gage_id}_metrics_iteration.csv')
-            # Get iteration count for this worker
-            total_iterations += count_rows_in_csv(metrics_iteration_file)
+            if not os.path.exists(metrics_iteration_file):
+                print(f'File {metrics_iteration_file} not found in {worker_dir}')
+            else:
+                # Get iteration count for this worker
+                rows = count_rows_in_csv(metrics_iteration_file)
+                print(f'{rows} in {metrics_iteration_file}')
+                total_iterations += rows
+    return total_iterations
 
 
 def count_rows_in_csv(file_path):
     with open(file_path, 'r') as file:
         # Count the lines and subtract 1 for the header
         return sum(1 for line in file) - 1
+
 
 @extend_schema(
     request=CalibrationRunSerializer,
