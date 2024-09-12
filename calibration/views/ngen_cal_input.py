@@ -25,6 +25,7 @@ config_template = {
         "user": "",
         "basin": "",
         "model": "",
+        "formulation": "",
         "run_type": "calib",
         "main_dir": ""
     },
@@ -161,10 +162,8 @@ def ready_to_run(run: CalibrationRun, build=None):
         if not run.user_formulation_name:
             errors.append('formulation name must be specified')
         else:
-            if not run.ngen_formulation_name:
-                errors.append('Coding error - ngen_formulation_name is not filled in')
-            else:
-                general['model'] = run.ngen_formulation_name
+            general['formulation'] = run.user_formulation_name
+            general['model'] = run.ngen_formulation_name
     else:
         errors.append('modules must be specified')
 
