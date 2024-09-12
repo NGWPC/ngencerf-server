@@ -231,15 +231,15 @@ LOGGING = {
 # -----------------------------
 HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
 HYDROFABRIC_MODULES_ENDPOINT = 'api/module_metadata/'
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/get_geopackage/get_parameters/'
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/initial_parameters/get_parameters/'
 HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = 'api/observation_data/{gage_id}'
 HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
 
 HYDROFABRIC_URL = 'http://localhost:8001'
-HYDROFABRIC_BUCKET = 'ngwpc-dev'
-HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
 
-HYDROFABRIC = False
+S3_MOUNT_POINT = os.path.join(Path.home(), 's3')
+
+HYDROFABRIC = True
 
 # -----------------------------
 # Locations

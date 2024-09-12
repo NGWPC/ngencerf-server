@@ -23,7 +23,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_filename, get_geopackage_filename, get_forcing_filename_pattern
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 from cerfServer import settings
 

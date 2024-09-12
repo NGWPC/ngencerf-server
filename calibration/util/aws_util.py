@@ -1,8 +1,7 @@
 import logging
 import os
 
-from calibration.views.common import CerfException
-from cerfServer.local_settings import HYDROFABRIC_BUCKET, HYDROFABRIC_BUCKET_MOUNT_POINT
+from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 logging.getLogger('boto').setLevel(logging.INFO)
@@ -25,7 +24,5 @@ def convert_s3_uri_to_fs(uri):
     :return:file spec of the locally mounted bucket
     """
     bucket, key = parse_s3_uri(uri)
-    if bucket != HYDROFABRIC_BUCKET:
-        raise CerfException(f'Unexpected bucket {bucket}')
 
-    return os.path.join(HYDROFABRIC_BUCKET_MOUNT_POINT, key)
+    return os.path.join(settings.S3_MOUNT_POINT, bucket, key)

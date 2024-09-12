@@ -4,6 +4,7 @@ from urllib.parse import urljoin
 
 import requests
 from django.db import transaction
+from django.db.models import QuerySet
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
@@ -97,7 +98,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
 
 
-def get_module_data_from_hydrofabric(run, modules):
+def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[CalibrationFormulation]):
     module_names = set(modules.values_list('name', flat=True))
 
     if settings.HYDROFABRIC:
@@ -137,6 +138,9 @@ def get_module_data_from_hydrofabric(run, modules):
             module = modules.filter(name=m['module_name']).first()
 
             print('module', module)
+            # Save the config
+            print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
+            module.update(config=convert_s3_uri_to_fs(m['parameter_file']['url']))
 
             # Save output variables
             outputs = m['module_output_variables']
