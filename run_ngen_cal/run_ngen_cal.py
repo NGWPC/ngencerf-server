@@ -113,7 +113,7 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     :param output_file: Path to the output file for the stage.
     """
     cal_or_valid_script = CALIBRATION_PY if stage == JobStage.CALIBRATION else VALIDATION_PY
-    cal_or_valid_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'hello_world.py') if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
+    cal_or_valid_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'ngen_cal_simulation.py') if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
 
     shell_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'run_ngen_cal.sh')
 
