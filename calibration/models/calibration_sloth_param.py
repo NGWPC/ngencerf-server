@@ -1,6 +1,5 @@
 from django.db import models
 
-from calibration.models import CalibrationFormulation
 from calibration.models.base_model import BaseModel
 
 

@@ -445,7 +445,6 @@ class LoadGageResponseSerializer(BaseSerializer):
     domain_values = DomainResponseSerializer(many=True)
 
 
-
 class CreateCalibrationRunSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
@@ -660,7 +659,6 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
     metrics = MetricSerializer(many=True)
     optimizations = OptimizationStaticSerializer(many=True)
-
 
 
 ##################################

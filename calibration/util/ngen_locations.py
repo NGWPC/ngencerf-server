@@ -3,7 +3,6 @@ import os
 from django.conf import settings
 
 from calibration.models import CalibrationRun
-from calibration.views.calibration_optimization_views import get_metrics
 
 dirs = [CALIB_VALID_DIR := os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python/runCalibValid'),
         NOAH_PARAMETER_DIR := os.path.join(settings.NGEN_CAL_WORK_DIR, 'bmi_config/Noah-OWP'),
@@ -35,7 +34,7 @@ def get_gage_dir(run: CalibrationRun) -> str | bytes:
                         run.ngen_formulation_name, run.gage.gage_id)
 
 
-def get_realization_file(run: CalibrationRun) -> str:
+def get_realization_file_path(run: CalibrationRun) -> str:
     return os.path.join(get_gage_dir(run), f'{run.gage.gage_id}_realization_config_bmi_calib.json')
 
 

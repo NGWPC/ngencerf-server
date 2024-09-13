@@ -23,8 +23,12 @@ config_template = {
     "General": {
         "calibration_run_id": 0,
         "user": "",
-        "basin": "",
+        "basin"
+        # Old
         "model": "",
+        # New
+        "models": "",
+
         "formulation": "",
         "run_type": "calib",
         "main_dir": ""
@@ -280,7 +284,7 @@ def ready_to_run(run: CalibrationRun, build=None):
                                        s['module'], s['maps_to_variable_name']))
             datafile['sloth_parameter_file'] = sloth_parameter_file
 
-    params = list(CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
+    params = list(CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True).select_related('calibration_formulation')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
     param_error = False
     for p in params:

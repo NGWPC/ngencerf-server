@@ -22,7 +22,7 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer
-from calibration.util.ngen_locations import get_global_best_params_file, get_realization_file, \
+from calibration.util.ngen_locations import get_global_best_params_file, get_realization_file_path, \
     get_worker_path, get_metrics_iteration_file, get_params_iteration_file, get_objective_log_best_file, get_output_calibration_run_dir, \
     get_metrics_iteration_file_from_worker_dir
 from calibration.views import ngen_cal_input
@@ -227,7 +227,6 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
     Iteration.objects.bulk_create(all_iteration_objects)
 
 
-
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
 def read_output(run):
@@ -240,40 +239,38 @@ def read_output(run):
     Iteration.objects.filter(calibration_run=run).delete()
     create_iteration_objects_for_all_workers(run)
 
-
     # TODO Read best params for GWO and PSO
-    global_best_params_list = {}
-    if run.optimization.name != OptimizationEnum.DDS.value:
-        global_best_params_file = get_global_best_params_file(run)
-        if not os.path.exists(global_best_params_file):
-            raise CerfException(f"{global_best_params_file} does not exist")
-        # For non-DDS, we get the best parameters
-        with open(global_best_params_file) as global_best_params:
-            next(global_best_params)  # Skip header
-            global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
-    print('global_best_params', global_best_params_list)
+    # global_best_params_list = {}
+    # if run.optimization.name != OptimizationEnum.DDS.value:
+    #     # global_best_params_file = get_global_best_params_file(run)
+    #     if not os.path.exists(global_best_params_file):
+    #         raise CerfException(f"{global_best_params_file} does not exist")
+    #     # For non-DDS, we get the best parameters
+    #     with open(global_best_params_file) as global_best_params:
+    #         next(global_best_params)  # Skip header
+    #         global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
+    # print('global_best_params', global_best_params_list)
 
-    # TODO Does this just need to be the filename or the path?
-    run.realization_filename = os.path.basename(get_realization_file(run))
+    run.realization_file_path = get_realization_file_path(run)
 
     with transaction.atomic():
         run.save()
-        process_iterations_for_all_workers(run, global_best_params_list)
+        process_iterations_for_all_workers(run)
 
 
-def process_iterations_for_all_workers(run, global_best_params_list):
+def process_iterations_for_all_workers(run: CalibrationRun):
     # Query all Iteration objects for the given calibration_run
     iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
 
     # Group the iterations by worker_name using groupby
     grouped_iterations = groupby(iterations, key=attrgetter('worker_name'))
 
-    # Process each group of iterations
+    # Process iterations by worker
     for worker_name, group in grouped_iterations:
-        process_iterations_For_a_worker(run, worker_name, group, global_best_params_list)
+        process_iterations_for_a_worker(run, worker_name, group)
 
 
-def process_iterations_For_a_worker(run, worker_name: str, iterations, global_best_params_list):
+def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, iterations):
     worker_path = get_worker_path(run, worker_name)
     if not os.path.exists(worker_path):
         # TODO Need to make sure we're handling exceptions
@@ -321,7 +318,7 @@ def process_iterations_For_a_worker(run, worker_name: str, iterations, global_be
         for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
             print(f'iteration number: {iteration.iteration_num}')
             process_metrics_row(iteration, metrics_row, metrics_to_create)
-            process_params_row(iteration, params_row, params_to_create, best_iteration_for_worker, global_best_params_list)
+            process_params_row(run, iteration, params_row, params_to_create, best_iteration_for_worker)
 
     # Bulk create IterationMetric and IterationParameter objects
     IterationMetric.objects.bulk_create(metrics_to_create)
@@ -349,7 +346,7 @@ def process_metrics_row(iteration, metrics_row, metrics_to_create):
         metrics_to_create.append(metric_obj)
 
 
-def process_params_row(iteration, params_row, params_to_create, best_iteration_for_worker, global_best_params_list):
+def process_params_row(run, iteration, params_row, params_to_create, best_iteration_for_worker):
     """Process a single row from the params file and create IterationParameter objects."""
 
     # Get rid of the 'iteration' column
@@ -357,6 +354,16 @@ def process_params_row(iteration, params_row, params_to_create, best_iteration_f
 
     # Check if this row matches global_best_params
 
+    if run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
+        global_best_params_file = get_global_best_params_file(run)
+        if not os.path.exists(global_best_params_file):
+            raise CerfException(f"{global_best_params_file} does not exist")
+        # For non-DDS, we get the best parameters
+        with open(global_best_params_file) as global_best_params:
+            next(global_best_params)  # Skip header
+            global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
+
+    print('global_best_params', global_best_params_list)
     # Convert global_best_params to a dictionary for easier comparison
     best_params_dict = {
         param['name']: float(param['value'])
@@ -592,7 +599,7 @@ def accumulate_iterations(run: CalibrationRun):
     total_iterations = 0  # Initialize the accumulator
 
     # Define the lambda function to process each worker directory
-    def process_worker(worker_dir, run: CalibrationRun):
+    def process_worker(worker_dir, run: CalibrationRun):  # noqa : F811
         nonlocal total_iterations
         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
 

@@ -323,29 +323,36 @@ if [ "$operation" == "import" ]; then
        response=""
     fi
 
+    # Check if there was an HTTP error, and exit if so
     check_http_error "$http_status" "$response"
 
     # Print the response
     if ! echo "$response" | jq . --indent 3 2>/dev/null; then
        echo "Error parsing response."
+       exit 1
     fi
 
+    # Extract the calibration_run_id from the response
     calibration_run_id=$(echo "$response" | jq -r '.calibration_run_id' 2>/dev/null)
 
+    # Upload geopackage data (exit if there's an error)
     if [ -n "$geopackage_file" ]; then
-        upload_geopackage_data "$geopackage_file" "$calibration_run_id"
+        upload_geopackage_data "$geopackage_file" "$calibration_run_id" || exit 1
     fi
 
+    # Upload observational data (exit if there's an error)
     if [ -n "$observational_file" ]; then
-        upload_observational_data "$observational_file" "$calibration_run_id"
+        upload_observational_data "$observational_file" "$calibration_run_id" || exit 1
     fi
 
+    # Upload forcing data (exit if there's an error)
     if [ -n "$forcing_dir" ]; then
-        upload_forcing_data "$forcing_dir" "$calibration_run_id"
+        upload_forcing_data "$forcing_dir" "$calibration_run_id" || exit 1
     fi
 
+    # Run the calibration job after import if requested (exit if there's an error)
     if [ "$run_after_import" = true ]; then
-        run_job "$calibration_run_id"
+        run_job "$calibration_run_id" || exit 1
     fi
 
     # Clean up the temporary file

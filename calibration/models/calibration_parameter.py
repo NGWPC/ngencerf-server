@@ -25,5 +25,6 @@ class CalibrationParameter(BaseModel):
             f"CalibrationParameter: {self.id}, "
             f"Name: {self.name:20},"
             f"User selected for tuning: {str(self.user_selected_for_tuning):<5}, "
-            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
+            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name}), "
+            f"Calibration Run: {self.calibration_formulation.calibration_run_id}"
         )

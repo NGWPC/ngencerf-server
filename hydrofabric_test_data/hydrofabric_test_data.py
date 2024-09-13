@@ -290,7 +290,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
         ]
     },
     {
-        "module_name": "NOAH-OWP-MODULAR",
+        "module_name": "Noah-OWP-Modular",
         "parameter_file": {
             "url": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
         },
@@ -301,7 +301,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "snowmelt curve parameter",
                 "min": None,
                 "max": None,
-                "data_type": "real",
+                "data_type": "double",
                 "units": None,
                 "calibratable": True,
             },
@@ -311,7 +311,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "empirical canopy wind parameter",
                 "min": None,
                 "max": None,
-                "data_type": "real",
+                "data_type": "double",
                 "units": None,
                 "calibratable": True,
             },
@@ -321,7 +321,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "maximum rate of carboxylation at 25c",
                 "min": None,
                 "max": None,
-                "data_type": "real",
+                "data_type": "double",
                 "units": "umol co2/m**2/s",
                 "calibratable": True,
             },
@@ -331,7 +331,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "slope of conductance-to-photosynthesis relationship",
                 "min": None,
                 "max": None,
-                "data_type": "real",
+                "data_type": "double",
                 "units": None,
                 "calibratable": True,
             },
@@ -341,7 +341,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "surface resistence for snow [s/m]",
                 "min": None,
                 "max": None,
-                "data_type": "real",
+                "data_type": "double",
                 "units": "s/m",
                 "calibratable": True,
             },
@@ -351,7 +351,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "exponent in the shape parameter for soil resistance option 1",
                 "min": None,
                 "max": None,
-                "data_type": "real",
+                "data_type": "double",
                 "units": None,
                 "calibratable": True,
             }
@@ -384,6 +384,21 @@ hydrofabric_module_metadata_real_data = {"modules": [
             {
                 "name": "TGS",
                 "description": "ground temperature (K) (is equal to TG when no snow and equal to bottom snow element temperature when there is snow)"
+            }
+        ]
+    },
+    {
+        "module_name": "T-Route",
+        "parameter_file": {
+            "url": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
+        },
+        "calibrate_parameters": [
+
+        ],
+        "module_output_variables": [
+            {
+                "name": "ETRAN",
+                "description": "transpiration rate (mm/s)"
             }
         ]
     }

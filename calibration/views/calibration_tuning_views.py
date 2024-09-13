@@ -359,7 +359,7 @@ def validate_parameters(run, parameters):
             return 'Modules and/or CalibrationParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
-            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module']).exists():
+            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run).exists():
                 return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
     return None
 

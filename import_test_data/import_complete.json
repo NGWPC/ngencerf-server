@@ -76,21 +76,21 @@
     "peak_flow_threshold": 2.0,
     "parameters": [
         {
-            "name": "parameter1",
+            "name": "MFSNO",
             "minimum": 1.234e-07,
             "maximum": 1.2545678912345,
             "initial_value": 1.24,
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "parameter2",
+            "name": "CWPVT",
             "minimum": 120.1234,
             "maximum": 123.2345678912345,
             "initial_value": 123.1233,
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "parameter3",
+            "name": "VCMX25",
             "minimum": 120.1234,
             "maximum": 123.2345678912345,
             "initial_value": 123.1233,

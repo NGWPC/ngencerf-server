@@ -135,7 +135,11 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
     # Save the output variables and parameters for each module
     with transaction.atomic():
         for m in module_data.get('modules'):
+            if m['module_name'] in extra_names:
+                # Ignore any extra names that Hydrofabric sent us
+                continue
             print('m', m)
+            print(f"Getting module object for {m['module_name']}")
             # Get the modules object from our list
             module = modules.filter(name=m['module_name']).first()
 
@@ -160,21 +164,32 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
             parameters = m['calibrate_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
+                # Hydrofabric gives us initial_value, min and max as Strings because sometimes crap appears in them.
+
                 # Using get_or_create because we don't want to override any values the user has already entered
                 CalibrationParameter.objects.get_or_create(
                     name=p['name'],
                     calibration_formulation=module,
                     defaults={'data_type': p['data_type'],
                               'description': p['description'],
-                              'initial_value': p['initial_value'],
-                              'minimum': p['minimum'],
-                              'maximum': p['maximum']}
+                              'initial_value': str_to_float(p['initial_value']),
+                              'minimum': str_to_float(p['minimum']),
+                              'maximum': str_to_float(p['maximum'])}
                 )
 
         # run.got_module_data_from_hydrofabric = True
         run.save()
 
     return
+
+
+def str_to_float(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
 
 
 def get_modules_from_hydrofabric(run: CalibrationRun):
