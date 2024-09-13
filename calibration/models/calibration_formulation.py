@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import CharField
 
 from calibration.models.base_model import BaseModel
 
@@ -6,8 +7,9 @@ from calibration.models.base_model import BaseModel
 class CalibrationFormulation(BaseModel):
     description = models.TextField(null=False)
     name = models.CharField(max_length=50, null=False)
-    groups = models.TextField(null=False)
+    groups = models.TextField(max_length=50, null=False)
     used_by_calibration_run = models.BooleanField(default=False)
+    bmi_config_path = models.CharField(max_length=255)
     version = models.TextField(null=True)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.CASCADE)
 

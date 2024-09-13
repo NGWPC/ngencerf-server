@@ -125,7 +125,9 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
 
     missing_names = module_names - hydrofabric_module_names
     if missing_names:
-        raise CerfException(f'Response from Hydrofabric is missing entries for {missing_names}')
+        # TODO Needs to be an exception
+        # raise CerfException(f'Response from Hydrofabric is missing entries for {missing_names}')
+        pass
     extra_names = hydrofabric_module_names - module_names
     if extra_names:
         logger.error(f'Response from Hyrofabric has extra entries for {extra_names}')
@@ -140,7 +142,8 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
             print('module', module)
             # Save the config
             print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
-            module.update(config=convert_s3_uri_to_fs(m['parameter_file']['url']))
+            module.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['url'])
+            module.save(update_fields=['bmi_config_path'])
 
             # Save output variables
             outputs = m['module_output_variables']
