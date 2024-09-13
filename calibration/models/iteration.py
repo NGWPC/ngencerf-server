@@ -16,3 +16,12 @@ class Iteration(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=['iteration_num', 'worker_name', 'calibration_run'], name='iteration_iteration_num_worker_calibration_run__unique')
         ]
+
+    def __str__(self):
+        return (
+            f"Iteration: {self.id}, "
+            f"Iteration number: {self.iteration_num},"
+            f"Worker name: {str(self.worker_name)}, "
+            f"Worker number: {self.worker_number}"
+        )
+

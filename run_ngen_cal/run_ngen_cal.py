@@ -184,6 +184,8 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
         run_job(run, next_stage)
     else:
         print(f'Job {process_id} complete. No further stages.')
+        run.status = StatusEnum.from_enum(StatusEnum.DONE)
+        run.save(update_fields=['status'])
 
 
 # Create a global thread pool that will be reused across multiple execute() calls

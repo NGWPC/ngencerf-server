@@ -12,3 +12,9 @@ class Metric(BaseModel):
 
     class Meta:
         db_table = 'metric'
+
+    def __str__(self):
+        return (
+            f"Metric: {self.id}, "
+            f"Name: {self.name:10}"
+        )

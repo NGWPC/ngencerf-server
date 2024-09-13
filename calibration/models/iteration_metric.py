@@ -10,3 +10,12 @@ class IterationMetric(BaseModel):
 
     class Meta:
         db_table = 'iteration_metric'
+
+    def __str__(self):
+        return (
+            f"IterationMetric: {self.id}, "
+            f"Metric: {self.metric.name:10}, "
+            f"Value: {self.metric_value}, "
+            f"Iteration number: {self.iteration.iteration_num}"
+        )
+

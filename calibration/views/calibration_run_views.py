@@ -153,9 +153,7 @@ def test_read_output(request):
     data = request.data if request.method == 'POST' else request.query_params
     calibration_run_id = data.get('calibration_run_id')
 
-    # TODO This should only be for DONE jobs
-    # run, error_return = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     print('run', run)
 
     if error_return:
@@ -316,7 +314,7 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
         params_reader = csv.DictReader(params_file)
 
         for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
-            print(f'iteration number: {iteration.iteration_num}')
+            print(f'iteration number from metrics file: {iteration.iteration_num}')
             process_metrics_row(iteration, metrics_row, metrics_to_create)
             process_params_row(run, iteration, params_row, params_to_create, best_iteration_for_worker)
 
@@ -343,6 +341,7 @@ def process_metrics_row(iteration, metrics_row, metrics_to_create):
             metric=metric,
             metric_value=metric_value
         )
+        print(f'Creating Iteration metric for {metric_obj}')
         metrics_to_create.append(metric_obj)
 
 
@@ -354,6 +353,7 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
 
     # Check if this row matches global_best_params
 
+    global_best_params_list = []
     if run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
         global_best_params_file = get_global_best_params_file(run)
         if not os.path.exists(global_best_params_file):
@@ -398,14 +398,15 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
         # Either the iteration number matches (for DDS); or the parameter values match (for GWO or PSO)
         best = is_best_match or iteration.iteration_num == best_iteration_for_worker
 
-        param_value = float(value) if value else None
+        tuned_value = float(value) if value else None
         param_obj = IterationParameter(
             iteration=iteration,
-            parameter=parameter,
-            param_value=param_value,
+            calibration_parameter=parameter,
+            tuned_value=tuned_value,
             best=best
-
         )
+        print(f'Creating Iteration parameter for {param_obj}')
+
         params_to_create.append(param_obj)
 
 
@@ -433,6 +434,7 @@ def update_output_variables(metrics_iteration_file, run, worker_name):
                 raise CerfException(
                     f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}.  Ngen-cal did not report this iteration")
 
+            print(f'Updating iteration {iteration_num} with output variable value {obj_fun_val}')
             iteration.calibration_output_variable_value = obj_fun_val
 
             # Add the modified object to the list
