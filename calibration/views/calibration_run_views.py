@@ -22,11 +22,12 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer
-from calibration.util.ngen_locations import get_gage_dir
+from calibration.util.ngen_locations import get_gage_dir, get_global_best_params_file, get_realization_file, \
+    get_worker_path, get_metrics_iteration_file, get_params_iteration_file, get_objective_log_best_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request
-from run_ngen_cal.run_ngen_cal import run_job, JobStage, terminate_job
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
+from run_ngen_cal.run_ngen_cal import run_job, JobStage, terminate_job
 
 logger = logging.getLogger(__name__)
 
@@ -150,8 +151,6 @@ def submit_job(run, config_file=None):
 def test_read_output(request):
     data = request.data if request.method == 'POST' else request.query_params
     calibration_run_id = data.get('calibration_run_id')
-    # optimization_name = data.get('optimization')
-    # username = data.get('user')
 
     # TODO This should only be for DONE jobs
     # run, error_return = get_run(calibration_run_id, request.user, status=[StatusEnum.DONE])
@@ -160,14 +159,6 @@ def test_read_output(request):
 
     if error_return:
         return error_return
-    # if not run:
-    #     # create some dummies
-    #     gage = Gage(gage_id='01123000')
-    #     optimization = Optimization(name=optimization_name)
-    #     owner = get_user_model()(username=username)
-    #     objective_function = Metric(name='kge')
-    #     run = CalibrationRun(optimization=optimization, ngen_formulation_name='cfe_noah', gage=gage,
-    #                          objective_function=objective_function, owner=owner)
 
     # .
     # └── ngen-cal-work
@@ -188,28 +179,20 @@ def test_read_output(request):
     #                 └── cfe_noah
     #                     └── 01123000
 
-    gage_dir = get_gage_dir(run)
-    print("gage_dir", gage_dir)
-
-    read_output(gage_dir, run)
+    read_output(run)
 
     return Response(data={'calibration_run_id': calibration_run_id})
 
 
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
-def read_output(gage_dir, run):
-    print('Reading output from', gage_dir)
-
-    if not os.path.isdir(gage_dir):
-        raise Exception(f'Directory {gage_dir} does not exist or is not a directory')
-
-    output_calibration_run_dir = os.path.join(gage_dir, 'Output/Calibration_Run')
+def read_output(run):
+    # output_calibration_run_dir = get_output_calibration_run_dir(run)
 
     # TODO Read best params for GWO and PSO
     global_best_params_list = {}
     if run.optimization.name != OptimizationEnum.DDS.value:
-        global_best_params_file = os.path.join(output_calibration_run_dir, f'{run.gage.gage_id}_global_best_params.csv')
+        global_best_params_file = get_global_best_params_file(run)
         if not os.path.exists(global_best_params_file):
             raise CerfException(f"{global_best_params_file} does not exist")
         # For non-DDS, we get the best parameters
@@ -218,15 +201,15 @@ def read_output(gage_dir, run):
             global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
     print('global_best_params', global_best_params_list)
 
-    realization_filename = f'{run.gage.gage_id}_realization_config_bmi_calib.json'
-    run.realization_filename = realization_filename
+    # TODO Does this just need to be the filename or the path?
+    run.realization_filename = os.path.basename(get_realization_file(run))
 
     with transaction.atomic():
         run.save()
-        process_workers(run, output_calibration_run_dir, global_best_params_list)
+        process_workers(run, global_best_params_list)
 
 
-def process_workers(run, output_calibration_run_dir, global_best_params_list):
+def process_workers(run, global_best_params_list):
     # Query all Iteration objects for the given calibration_run
     iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
 
@@ -235,19 +218,19 @@ def process_workers(run, output_calibration_run_dir, global_best_params_list):
 
     # Process each group of iterations
     for worker_name, group in grouped_iterations:
-        process_iteration(run, output_calibration_run_dir, worker_name, group, global_best_params_list)
+        process_iteration(run, worker_name, group, global_best_params_list)
 
 
-def process_iteration(run, output_calibration_run_dir, worker_name: str, iterations, global_best_params_list):
-    worker_path = os.path.join(output_calibration_run_dir, worker_name)
+def process_iteration(run, worker_name: str, iterations, global_best_params_list):
+    worker_path = get_worker_path(run, worker_name)
     if not os.path.exists(worker_path):
         # TODO Need to make sure we're handling exceptions
         raise CerfException(f"{worker_path} does not exist")
 
-    metrics_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_metrics_iteration.csv')
-    params_iteration_file = os.path.join(worker_path, f'{run.gage.gage_id}_params_iteration.csv')
+    metrics_iteration_file = get_metrics_iteration_file(run, worker_name)
+    params_iteration_file = get_params_iteration_file(run, worker_name)
     # Contains the best for DDS
-    objective_log_best_file = os.path.join(worker_path, f'{run.gage.gage_id}_objective_log.txt')
+    objective_log_best_file = get_objective_log_best_file(run, worker_name)
 
     if not os.path.exists(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist')
@@ -504,7 +487,6 @@ def get_iteration(request):
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if error_return:
         return error_return
-
 
     total_iterations = get_iteration_by_file(run)
     print('total iterations', total_iterations)

@@ -288,6 +288,104 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "description": "decsription for var 2"
             }
         ]
+    },
+    {
+        "module_name": "NOAH-OWP-MODULAR",
+        "parameter_file": {
+            "url": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
+        },
+        "calibrate_parameters": [
+            {
+                "name": "MFSNO",
+                "initial_value": 2.5,
+                "description": "snowmelt curve parameter",
+                "min": None,
+                "max": None,
+                "data_type": "real",
+                "units": None,
+                "calibratable": True,
+            },
+            {
+                "name": "CWPVT",
+                "initial_value": 0.67,
+                "description": "empirical canopy wind parameter",
+                "min": None,
+                "max": None,
+                "data_type": "real",
+                "units": None,
+                "calibratable": True,
+            },
+            {
+                "name": "VCMX25",
+                "initial_value": 60.0,
+                "description": "maximum rate of carboxylation at 25c",
+                "min": None,
+                "max": None,
+                "data_type": "real",
+                "units": "umol co2/m**2/s",
+                "calibratable": True,
+            },
+            {
+                "name": "MP",
+                "initial_value": 9.0,
+                "description": "slope of conductance-to-photosynthesis relationship",
+                "min": None,
+                "max": None,
+                "data_type": "real",
+                "units": None,
+                "calibratable": True,
+            },
+            {
+                "name": "RSURF_SNOW",
+                "initial_value": 50.0,
+                "description": "surface resistence for snow [s/m]",
+                "min": None,
+                "max": None,
+                "data_type": "real",
+                "units": "s/m",
+                "calibratable": True,
+            },
+            {
+                "name": "RSURF_EXP",
+                "initial_value": 5.0,
+                "description": "exponent in the shape parameter for soil resistance option 1",
+                "min": None,
+                "max": None,
+                "data_type": "real",
+                "units": None,
+                "calibratable": True,
+            }
+        ],
+        "module_output_variables": [
+            {
+                "name": "ETRAN",
+                "description": "transpiration rate (mm/s)"
+            },
+            {
+                "name": "EVAPOTRANS",
+                "description": "evapotranspiration rate (m/s)"
+            },
+            {
+                "name": "QINSUR",
+                "description": "total liquid water input to surface rate (m/s)"
+            },
+            {
+                "name": "QSEVA",
+                "description": "evaporation rate (m/s)"
+            },
+            {
+                "name": "SNEQV",
+                "description": "snow water equivalent (mm)"
+            },
+            {
+                "name": "TG",
+                "description": "surface/ground temperature (becomes snow surface temperature when snow is present)"
+            },
+            {
+                "name": "TGS",
+                "description": "ground temperature (K) (is equal to TG when no snow and equal to bottom snow element temperature when there is snow)"
+            }
+        ]
     }
 ]
 }
