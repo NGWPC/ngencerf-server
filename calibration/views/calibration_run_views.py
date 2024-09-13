@@ -22,8 +22,9 @@ from calibration.models import Metric, IterationMetric, Iteration, IterationPara
     CalibrationParameter, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer
-from calibration.util.ngen_locations import get_gage_dir, get_global_best_params_file, get_realization_file, \
-    get_worker_path, get_metrics_iteration_file, get_params_iteration_file, get_objective_log_best_file
+from calibration.util.ngen_locations import get_global_best_params_file, get_realization_file, \
+    get_worker_path, get_metrics_iteration_file, get_params_iteration_file, get_objective_log_best_file, get_output_calibration_run_dir, \
+    get_metrics_iteration_file_from_worker_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, CerfException, validate_request
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
@@ -184,10 +185,61 @@ def test_read_output(request):
     return Response(data={'calibration_run_id': calibration_run_id})
 
 
+def create_iteration_objects_for_all_workers(run: CalibrationRun):
+    worker_number = 0
+    all_iteration_objects = []
+
+    def create_iteration_objects_for_a_worker(worker_dir, run):  # noqa : F811
+        nonlocal worker_number
+        """
+        Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name, and we create entries in the database.
+        Until we get that interface working, we'll have to figure out the iteration by brute force
+        We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
+        :return:
+        """
+        # Create iteration object for a given worker
+        worker_number += 1
+
+        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
+
+        # Check if the file exists before proceeding
+        if not os.path.exists(metrics_iteration_file):
+            print(f'Metrics iteration file not found in {worker_dir}')
+            return
+
+        # Use pandas to read the CSV file into a DataFrame
+        metrics_df = pd.read_csv(metrics_iteration_file)
+
+        for _, row in metrics_df.iterrows():
+            iteration_number = row['iteration']
+
+            print(f'Creating iteration {iteration_number} for worker {os.path.basename(worker_dir)}, worker number {worker_number}')
+            all_iteration_objects.append(Iteration(
+                iteration_num=iteration_number,
+                calibration_run=run,
+                worker_name=os.path.basename(worker_dir),
+                worker_number=worker_number
+            ))
+
+    # Loop through all worker directories and apply create_iteration_objects_for_a_worker
+    process_worker_dirs(run, create_iteration_objects_for_a_worker)
+
+    Iteration.objects.bulk_create(all_iteration_objects)
+
+
+
 # This is not an endpoint, but will be automatically called
 # when we get a notification (somehow) that a run has completed
 def read_output(run):
-    # output_calibration_run_dir = get_output_calibration_run_dir(run)
+    """
+    Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name, and we create entries in the database.
+    Until we get that interface working, we'll create all the Iteration objects here
+    We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
+    """
+    # TODO For dev only, we'll delete the objects first
+    Iteration.objects.filter(calibration_run=run).delete()
+    create_iteration_objects_for_all_workers(run)
+
 
     # TODO Read best params for GWO and PSO
     global_best_params_list = {}
@@ -206,10 +258,10 @@ def read_output(run):
 
     with transaction.atomic():
         run.save()
-        process_workers(run, global_best_params_list)
+        process_iterations_for_all_workers(run, global_best_params_list)
 
 
-def process_workers(run, global_best_params_list):
+def process_iterations_for_all_workers(run, global_best_params_list):
     # Query all Iteration objects for the given calibration_run
     iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
 
@@ -218,10 +270,10 @@ def process_workers(run, global_best_params_list):
 
     # Process each group of iterations
     for worker_name, group in grouped_iterations:
-        process_iteration(run, worker_name, group, global_best_params_list)
+        process_iterations_For_a_worker(run, worker_name, group, global_best_params_list)
 
 
-def process_iteration(run, worker_name: str, iterations, global_best_params_list):
+def process_iterations_For_a_worker(run, worker_name: str, iterations, global_best_params_list):
     worker_path = get_worker_path(run, worker_name)
     if not os.path.exists(worker_path):
         # TODO Need to make sure we're handling exceptions
@@ -488,7 +540,11 @@ def get_iteration(request):
     if error_return:
         return error_return
 
-    total_iterations = get_iteration_by_file(run)
+    # Use accumulate_iterations to get the total iterations
+    total_iterations = accumulate_iterations(run)
+
+    # Log and return the total iterations
+    logger.debug(f'Total iterations: {total_iterations}')
     print('total iterations', total_iterations)
 
     # Add all iterations (1 for each worker)
@@ -504,33 +560,54 @@ def get_iteration(request):
     return Response(response_validator.data)
 
 
-def get_iteration_by_file(run: CalibrationRun):
+# Regular expression pattern to match directories like "ngen_xxxxxxx_worker"
+worker_directory_pattern = re.compile(r'ngen_\w+_worker')
+
+
+def process_worker_dirs(run, worker_lambda):
     """
-    Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name and we create entires in the database.
-    Until we get that interface working, we'll have to figure out the iteration by brute force
-    Look through all the workers and open the metrics_iteration.csv file
-    :return:
+    Loops through directories matching the pattern "ngen_xxxxx_worker" and applies the worker_lambda function.
+
+    :param run: The run object to process
+    :param worker_lambda: A lambda function that processes each worker directory
     """
-    # Regular expression pattern to match directories like "ngen_xxxxxxx_worker"
-    pattern = re.compile(r'ngen_\w+_worker')
-    output_calibration_run_dir = os.path.join(get_gage_dir(run), 'Output/Calibration_Run')
-    total_iterations = 0
-    # Loop through contents of the directory
+    output_calibration_run_dir = get_output_calibration_run_dir(run)
     for item in os.listdir(output_calibration_run_dir):
         item_path = os.path.join(output_calibration_run_dir, item)
         # Check if the item is a directory and matches the pattern
-        if os.path.isdir(item_path) and pattern.match(item):
+        if os.path.isdir(item_path) and worker_directory_pattern.match(item):
             worker_dir = os.path.join(output_calibration_run_dir, item)
-            print('worker', worker_dir)
-            metrics_iteration_file = os.path.join(worker_dir, f'{run.gage.gage_id}_metrics_iteration.csv')
-            if not os.path.exists(metrics_iteration_file):
-                print(f'File {metrics_iteration_file} not found in {worker_dir}')
-            else:
-                # Get iteration count for this worker
-                rows = count_rows_in_csv(metrics_iteration_file)
-                print(f'{rows} in {metrics_iteration_file}')
-                total_iterations += rows
-    return total_iterations
+            print('Processing worker directory:', worker_dir)
+            worker_lambda(worker_dir, run)
+
+
+def accumulate_iterations(run: CalibrationRun):
+    """
+    This function loops through worker directories, counts the iterations in each worker's metrics file,
+    and returns the total iterations across all workers.
+
+    :param run: The run object to process
+    :return: Total number of iterations across all worker directories
+    """
+    total_iterations = 0  # Initialize the accumulator
+
+    # Define the lambda function to process each worker directory
+    def process_worker(worker_dir, run: CalibrationRun):
+        nonlocal total_iterations
+        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
+
+        if not os.path.exists(metrics_iteration_file):
+            print(f'File {metrics_iteration_file} not found in {worker_dir}')
+        else:
+            # Count rows in the CSV file and add to total iterations
+            rows = count_rows_in_csv(metrics_iteration_file)
+            print(f'{rows} in {metrics_iteration_file}')
+            total_iterations += rows
+
+    # Call process_worker_dirs with the defined lambda function
+    process_worker_dirs(run, process_worker)
+
+    return total_iterations  # Return the accumulated total iterations
 
 
 def count_rows_in_csv(file_path):

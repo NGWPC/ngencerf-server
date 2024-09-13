@@ -3,6 +3,7 @@ import os
 from django.conf import settings
 
 from calibration.models import CalibrationRun
+from calibration.views.calibration_optimization_views import get_metrics
 
 dirs = [CALIB_VALID_DIR := os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python/runCalibValid'),
         NOAH_PARAMETER_DIR := os.path.join(settings.NGEN_CAL_WORK_DIR, 'bmi_config/Noah-OWP'),
@@ -95,8 +96,16 @@ def get_worker_path(run: CalibrationRun, worker_name) -> str:
     return os.path.join(get_output_calibration_run_dir(run), worker_name)
 
 
+def get_metrics_iteration_csv(run: CalibrationRun) -> str:
+    return f'{run.gage.gage_id}_metrics_iteration.csv'
+
+
 def get_metrics_iteration_file(run: CalibrationRun, worker_name) -> str:
-    return os.path.join(get_worker_path(run, worker_name), f'{run.gage.gage_id}_metrics_iteration.csv')
+    return os.path.join(get_worker_path(run, worker_name), get_metrics_iteration_csv(run))
+
+
+def get_metrics_iteration_file_from_worker_dir(run: CalibrationRun, worker_dir) -> str:
+    return os.path.join(worker_dir, get_metrics_iteration_csv(run))
 
 
 def get_params_iteration_file(run: CalibrationRun, worker_name) -> str:
