@@ -113,7 +113,8 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     :param output_file: Path to the output file for the stage.
     """
     cal_or_valid_script = CALIBRATION_PY if stage == JobStage.CALIBRATION else VALIDATION_PY
-    cal_or_valid_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'ngen_cal_simulation.py') if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
+    cal_or_valid_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal',
+                                       'ngen_cal_simulation.py') if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
 
     shell_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'run_ngen_cal.sh')
 
@@ -154,29 +155,30 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
     try:
         if future.exception() is not None:
             print(f"Exception occurred in process {process_id} at stage {current_stage.name}: {future.exception()}")
+            set_job_status(run, StatusEnum.FAILED)
+            return
+
+        exit_code = future.result()
+        print(f"Process {process_id}, stage {current_stage.name}, completed with exit code {exit_code}")
+        if exit_code == -15:
+            print(f'Job {process_id} was cancelled')
+            set_job_status(run, StatusEnum.CANCELLED)
+
+        elif exit_code != 0:
+            print(f'Job {process_id} ending due to abnormal return code')
+            set_job_status(run, StatusEnum.FAILED)
         else:
-            exit_code = future.result()
-            print(f"Process {process_id}, stage {current_stage.name}, completed with exit code {exit_code}")
-            error = exit_code != 0
-            cancelled = exit_code == -15
+            proceed_to_next_stage(run, current_stage, do_validation
+                                  )
     except Exception as e:
         print(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
-        return
+        set_job_status(run, StatusEnum.FAILED)
 
-    # Remove the job from the job registry when it completes
-    job_registry.pop(run.id, None)
 
-    if cancelled:
-        print(f'Job {process_id} was cancelled')
-        return
-    elif error:
-        print(f'Job {process_id} ending due to abnormal return code')
-        return
-
-    # Create a transition manager for the current job, depending on whether validation is enabled
+def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_validation: bool):
+    """Handle the logic to proceed to the next stage of the job."""
+    process_id = os.path.basename(run.job_data_dir)
     transition_manager = JobStageTransitionManager(validation_enabled=do_validation)
-
-    # Determine the next stage
     next_stage = transition_manager.get_next_stage(current_stage)
 
     if next_stage:
@@ -184,8 +186,14 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
         run_job(run, next_stage)
     else:
         print(f'Job {process_id} complete. No further stages.')
-        run.status = StatusEnum.from_enum(StatusEnum.DONE)
-        run.save(update_fields=['status'])
+        set_job_status(run, StatusEnum.DONE)
+
+
+def set_job_status(run: CalibrationRun, status: StatusEnum):
+    """Set the status for the CalibrationRun and save it."""
+    run.status = StatusEnum.from_enum(status)
+    run.save(update_fields=['status'])
+    job_registry.pop(run.id, None)
 
 
 # Create a global thread pool that will be reused across multiple execute() calls

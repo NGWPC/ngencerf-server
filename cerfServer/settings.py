@@ -191,11 +191,21 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },
-        'file': {
+        'file_simple': {
             'level': 'DEBUG',
             'class': 'logging.FileHandler',
             'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
             'formatter': 'verbose'
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
+            'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
+            'when': 'midnight',  # Rotate the file every day at midnight
+            'interval': 1,  # Rotate every 1 day
+            'backupCount': 7,  # Keep 7 days worth of logs (adjust as needed)
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
         }
     },
     'loggers': {
