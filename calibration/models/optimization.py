@@ -12,3 +12,9 @@ class Optimization(BaseModel):
 
     class Meta:
         db_table = 'optimization'
+
+    def __str__(self):
+        return (
+            f"Optimization: {self.id}, "
+            f"Name: {self.name:20}, "
+        )

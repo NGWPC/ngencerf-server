@@ -6,7 +6,7 @@ import toml
 from datetimerange import DateTimeRange
 from django.db.models import F
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
@@ -248,10 +248,11 @@ def ready_to_run(run: CalibrationRun, build=None):
 
         # See if we have values for all the inputs
         inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
-            'value', name=F('optimization_input__name'))
+            'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name'))
 
         for opt_input in inputs:
-            calibration[opt_input['name']] = opt_input['value']
+            converted_value = int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']
+            calibration[opt_input['name']] = converted_value
             all_input_names.discard(opt_input['name'])
         # See if there are any names leftover
         if all_input_names:

@@ -142,7 +142,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
             module = modules.filter(name=m['module_name']).first()
 
             # Save the config
-            print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
+            # print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
             module.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['url'])
             module.save(update_fields=['bmi_config_path'])
 

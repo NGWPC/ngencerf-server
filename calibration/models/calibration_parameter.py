@@ -11,7 +11,7 @@ class CalibrationParameter(BaseModel):
     initial_value = models.FloatField(null=True)
     minimum = models.FloatField(null=True)
     maximum = models.FloatField(null=True)
-    units = models.CharField(max_length=20, null=True)
+    units = models.CharField(max_length=50, null=True)
     user_selected_for_tuning = models.BooleanField(default=False)
 
     class Meta:

@@ -209,6 +209,7 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
         metrics_df = pd.read_csv(metrics_iteration_file)
 
         for _, row in metrics_df.iterrows():
+            # TODO Why is this being read as a float
             iteration_number = row['iteration']
 
             print(f'Creating iteration {iteration_number} for worker {os.path.basename(worker_dir)}, worker number {worker_number}')
@@ -314,7 +315,6 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
         params_reader = csv.DictReader(params_file)
 
         for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
-            print(f'iteration number from metrics file: {iteration.iteration_num}')
             process_metrics_row(iteration, metrics_row, metrics_to_create)
             process_params_row(run, iteration, params_row, params_to_create, best_iteration_for_worker)
 
@@ -376,11 +376,13 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
     if len(params_row) != len(best_params_dict):
         is_best_match = False
     else:
+        print(f'Comparing global_best_params_list with {params_row.itmes()}')
         # Check if all params in params_row match those in best_params_dict
         for param_name, value in params_row.items():
             if param_name not in best_params_dict or float(value) != best_params_dict[param_name]:
                 is_best_match = False
                 break
+        print('is_best_match', is_best_match)
 
         # Check if all keys in best_params_dict are present in params_row
         for best_param_name in best_params_dict:
@@ -434,7 +436,7 @@ def update_output_variables(metrics_iteration_file, run, worker_name):
                 raise CerfException(
                     f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}.  Ngen-cal did not report this iteration")
 
-            print(f'Updating iteration {iteration_num} with output variable value {obj_fun_val}')
+            print(f'Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
             iteration.calibration_output_variable_value = obj_fun_val
 
             # Add the modified object to the list

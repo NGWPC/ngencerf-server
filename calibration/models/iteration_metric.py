@@ -16,6 +16,7 @@ class IterationMetric(BaseModel):
             f"IterationMetric: {self.id}, "
             f"Metric: {self.metric.name:10}, "
             f"Value: {self.metric_value}, "
-            f"Iteration number: {self.iteration.iteration_num}"
+            f"Iteration number: {self.iteration.iteration_num}, "
+            f"Worker name: {self.iteration.worker_name}"
         )
 
