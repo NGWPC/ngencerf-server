@@ -121,7 +121,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
                                          'Module metadata from Hydrofabric is not in the expected format')
 
     hydrofabric_module_names = set([module['module_name'] for module in module_data['modules']])
-    print('hydrofabric_module_names:', hydrofabric_module_names)
+    # print('hydrofabric_module_names:', hydrofabric_module_names)
 
     missing_names = module_names - hydrofabric_module_names
     if missing_names:
@@ -138,12 +138,9 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
             if m['module_name'] in extra_names:
                 # Ignore any extra names that Hydrofabric sent us
                 continue
-            print('m', m)
-            print(f"Getting module object for {m['module_name']}")
             # Get the modules object from our list
             module = modules.filter(name=m['module_name']).first()
 
-            print('module', module)
             # Save the config
             print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
             module.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['url'])
@@ -153,14 +150,12 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
             outputs = m['module_output_variables']
             o: dict
             for o in outputs:
-                print('o', o)
                 ModuleOutputVariable.objects.update_or_create(
                     name=o['name'],
                     calibration_formulation=module,
                     defaults={'description': o['description']}
                 )
             # Save parameters
-            # print('getting parameters for', m)
             parameters = m['calibrate_parameters']
             # print('parameters from Hydro', parameters)
             for p in parameters:
@@ -174,7 +169,9 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
                               'description': p['description'],
                               'initial_value': str_to_float(p['initial_value']),
                               'minimum': str_to_float(p['minimum']),
-                              'maximum': str_to_float(p['maximum'])}
+                              'maximum': str_to_float(p['maximum']),
+                              'units': p['units']
+                              }
                 )
 
         # run.got_module_data_from_hydrofabric = True

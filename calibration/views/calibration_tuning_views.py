@@ -98,7 +98,7 @@ def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules.prefetch_related('calibrationparameter_set', 'output_variables'):
         calibration_parameters = m.calibrationparameter_set.values(
-            'name', 'minimum', 'maximum', 'initial_value', 'data_type', 'description', 'user_selected_for_tuning'
+            'name', 'minimum', 'maximum', 'initial_value', 'units', 'data_type', 'description', 'user_selected_for_tuning'
         )
         output_variables = m.output_variables.values('name', 'description')
         module_entry = {
@@ -149,7 +149,7 @@ def get_time_range(run):
 
 def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     job_specific_file = get_path_func()
-    print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
+    # print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
 
     if source:
         if source == upload_enum.from_enum(upload_enum):
@@ -219,7 +219,6 @@ def save_tuning_tab(request):
 
     save_times(run, calibration_times, validation_times)
 
-    print('parameters', parameters)
     message = validate_parameters(run, parameters)
     if message is not None:
         return ResponseError(message)

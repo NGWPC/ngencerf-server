@@ -237,13 +237,17 @@ class SaveTuningParametersSerializer(BaseSerializer):
 
 
 class LoadTuningParametersSerializer(BaseSerializer):
+    """
+    This serializer is used when loading, so min, max and initial_value are not required
+    """
     name = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=True)
-    maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True, allow_null=True)
+    minimum = serializers.FloatField(required=False, allow_null=True)
+    maximum = serializers.FloatField(required=False, allow_null=True)
+    initial_value = serializers.FloatField(required=False, allow_null=True)
     data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
     description = serializers.CharField(required=True, allow_blank=False)
     user_selected_for_tuning = serializers.BooleanField(required=True)
+    units = serializers.CharField(required=False, allow_null=True)
 
 
 class OptimizationInputsSerializer(BaseSerializer):
@@ -271,6 +275,7 @@ class ModuleParametersSerializer(serializers.Serializer):
     minimum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     maximum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     initial_value = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 # Used by LoadTuningParameters
