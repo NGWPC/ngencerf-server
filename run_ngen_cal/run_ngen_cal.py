@@ -150,8 +150,6 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
     process_id = os.path.basename(run.job_data_dir)
     print(f'Job {process_id} completed stage {current_stage}')
 
-    error = False
-    cancelled = False
     try:
         if future.exception() is not None:
             print(f"Exception occurred in process {process_id} at stage {current_stage.name}: {future.exception()}")

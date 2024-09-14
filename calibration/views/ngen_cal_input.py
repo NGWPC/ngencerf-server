@@ -72,9 +72,25 @@ config_template = {
         "obs_dir": "",
         "nwmretro_file": "",
         "hydrofab_dir": "",
+
+        # TODO cfe_dir and topmd_dir should be obsolete
         "cfe_dir": "",
         "topmd_dir": "",
-        # Need another dir for every model
+        "noah-owp-modular_bmi_dir": "",
+        "cfe-s_bmi_dir": "",
+        "cfe-x_bmi_dir": "",
+        "t-route_bmi_dir": "",
+        "topoflow_bmi_dir": "",
+        "snow-17_bmi_dir": "",
+        "ueb_bmi_dir": "",
+        "pet_bmi_dir": "",
+        "topmodel_bmi_dir": "",
+        "sac-sma_bmi_dir": "",
+        "lasam_bmi_dir": "",
+        "smp_bmi_dir": "",
+        "sft_bmi_dir": "",
+
+        
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
@@ -132,6 +148,8 @@ def ready_to_run(run: CalibrationRun, build=None):
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
                                                DateTimeRange(run.calibration_start_period, run.calibration_end_period))
 
+
+
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         if not run.observational_source:
@@ -162,7 +180,9 @@ def ready_to_run(run: CalibrationRun, build=None):
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values_list('name', flat=True)
+    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values('name', 'bmi_config_path')
+    # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
+    module_dict = {module['name']: module['bmi_config_path'] for module in modules}
     if not modules:
         errors.append('modules must be specified')
     elif not run.user_formulation_name:
@@ -171,7 +191,12 @@ def ready_to_run(run: CalibrationRun, build=None):
         general['formulation'] = run.user_formulation_name
         general['model'] = run.ngen_formulation_name
         # TODO Not being used yet by ngen-cal
-        general['models'] = ', '.join(modules)
+        general['models'] = ', '.join(module_dict.keys())
+
+        # Dynamically add keys and values from the module_dict to our config
+        for key, value in module_dict.items():
+            new_key = key.lower() + '_bmi_dir'
+            datafile[new_key] = value
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir
