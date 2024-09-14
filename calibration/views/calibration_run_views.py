@@ -1,7 +1,7 @@
-import csv
 import logging
 import os
 import re
+from collections import deque
 from datetime import datetime, timezone
 from itertools import groupby
 from operator import attrgetter
@@ -31,6 +31,8 @@ from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 from run_ngen_cal.run_ngen_cal import run_job, JobStage, terminate_job
 
 logger = logging.getLogger(__name__)
+
+BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 
 
 @extend_schema(
@@ -201,15 +203,14 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
 
         # Check if the file exists before proceeding
-        if not os.path.exists(metrics_iteration_file):
+        if not os.path.isfile(metrics_iteration_file):
             print(f'Metrics iteration file not found in {worker_dir}')
             return
 
         # Use pandas to read the CSV file into a DataFrame
-        metrics_df = pd.read_csv(metrics_iteration_file)
+        metrics_df = pd.read_csv(metrics_iteration_file, dtype={'iteration': int})
 
         for _, row in metrics_df.iterrows():
-            # TODO Why is this being read as a float
             iteration_number = row['iteration']
 
             print(f'Creating iteration {iteration_number} for worker {os.path.basename(worker_dir)}, worker number {worker_number}')
@@ -223,7 +224,10 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
     # Loop through all worker directories and apply create_iteration_objects_for_a_worker
     process_worker_dirs(run, create_iteration_objects_for_a_worker)
 
-    Iteration.objects.bulk_create(all_iteration_objects)
+    if all_iteration_objects:
+        with transaction.atomic():  # Ensure atomicity of bulk update
+            for i in range(0, len(all_iteration_objects), BULK_CREATE_BATCH_SIZE):
+                Iteration.objects.bulk_update(all_iteration_objects[i:i + BULK_CREATE_BATCH_SIZE], ['calibration_output_variable_value'])
 
 
 # This is not an endpoint, but will be automatically called
@@ -238,18 +242,6 @@ def read_output(run):
     Iteration.objects.filter(calibration_run=run).delete()
     create_iteration_objects_for_all_workers(run)
 
-    # TODO Read best params for GWO and PSO
-    # global_best_params_list = {}
-    # if run.optimization.name != OptimizationEnum.DDS.value:
-    #     # global_best_params_file = get_global_best_params_file(run)
-    #     if not os.path.exists(global_best_params_file):
-    #         raise CerfException(f"{global_best_params_file} does not exist")
-    #     # For non-DDS, we get the best parameters
-    #     with open(global_best_params_file) as global_best_params:
-    #         next(global_best_params)  # Skip header
-    #         global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
-    # print('global_best_params', global_best_params_list)
-
     run.realization_file_path = get_realization_file_path(run)
 
     with transaction.atomic():
@@ -259,19 +251,17 @@ def read_output(run):
 
 def process_iterations_for_all_workers(run: CalibrationRun):
     # Query all Iteration objects for the given calibration_run
-    iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num')
+    iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num').prefetch_related('iterationmetric_set',
+                                                                                                                         'iterationparameter_set')
 
-    # Group the iterations by worker_name using groupby
-    grouped_iterations = groupby(iterations, key=attrgetter('worker_name'))
-
-    # Process iterations by worker
-    for worker_name, group in grouped_iterations:
-        process_iterations_for_a_worker(run, worker_name, group)
+    # Use itertools.groupby to efficiently group in memory
+    for worker_name, worker_iterations in groupby(iterations, key=attrgetter('worker_name')):
+        process_iterations_for_a_worker(run, worker_name, list(worker_iterations))
 
 
 def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, iterations):
     worker_path = get_worker_path(run, worker_name)
-    if not os.path.exists(worker_path):
+    if not os.path.isdir(worker_path):
         # TODO Need to make sure we're handling exceptions
         raise CerfException(f"{worker_path} does not exist")
 
@@ -280,15 +270,14 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     # Contains the best for DDS
     objective_log_best_file = get_objective_log_best_file(run, worker_name)
 
-    if not os.path.exists(metrics_iteration_file):
+    if not os.path.isfile(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist')
-    if not os.path.exists(params_iteration_file):
+    if not os.path.isfile(params_iteration_file):
         raise CerfException(f'{params_iteration_file} does not exist')
-    print('optimization', run.optimization.name)
+
     best_iteration_for_worker = -1
     if run.optimization.name == 'DDS':
-        print(f'checking if {objective_log_best_file} exists')
-        if not os.path.exists(objective_log_best_file):
+        if not os.path.isfile(objective_log_best_file):
             raise CerfException(f'{objective_log_best_file} does not exist')
         # Get the best iteration number
         last_line = read_last_line(objective_log_best_file)
@@ -297,6 +286,9 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
         # for GWO and PSO, we can't get the best iteration number.  We need to read the actual best parameters and then try to match them up when we read the parameter file later
         pass
 
+    # Prefetch Iteration objects for efficiency
+    iteration_dict = {it.iteration_num: it for it in iterations}
+
     #########
     # TODO For dev only, we will delete entries first
     #########
@@ -304,23 +296,42 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     IterationParameter.objects.filter(iteration__calibration_run=run).delete()
     #####
 
+    # Use pandas for reading both files efficiently
+    metrics_df = pd.read_csv(metrics_iteration_file)
+    params_df = pd.read_csv(params_iteration_file)
+
+    # Ensure the CSV files have the same number of rows (sanity check)
+    if len(metrics_df) != len(params_df):
+        raise CerfException(f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file}')
+
     metrics_to_create = []
     params_to_create = []
 
+    # Call the function to update the output variable values for iterations
     update_output_variables(metrics_iteration_file, run, worker_name)
 
-    # Read the metrics and parameter files and update values
-    with open(metrics_iteration_file) as metrics_file, open(params_iteration_file) as params_file:
-        metrics_reader = csv.DictReader(metrics_file)
-        params_reader = csv.DictReader(params_file)
+    # Loop over both DataFrames row by row
+    for _, (metrics_row, params_row) in enumerate(zip(metrics_df.iterrows(), params_df.iterrows())):
+        iteration_num = metrics_row[1]['iteration']
+        iteration = iteration_dict.get(iteration_num)
+        if not iteration:
+            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
 
-        for iteration, metrics_row, params_row in zip(iterations, metrics_reader, params_reader):
-            process_metrics_row(iteration, metrics_row, metrics_to_create)
-            process_params_row(run, iteration, params_row, params_to_create, best_iteration_for_worker)
+        process_metrics_row(iteration, metrics_row[1], metrics_to_create)
+        process_params_row(run, iteration, params_row[1], params_to_create, best_iteration_for_worker)
 
-    # Bulk create IterationMetric and IterationParameter objects
-    IterationMetric.objects.bulk_create(metrics_to_create)
-    IterationParameter.objects.bulk_create(params_to_create)
+    # # Bulk create IterationMetric and IterationParameter objects
+    # IterationMetric.objects.bulk_create(metrics_to_create)
+    # IterationParameter.objects.bulk_create(params_to_create)
+
+    # Bulk create IterationMetric and IterationParameter objects in chunks
+    if metrics_to_create:
+        for i in range(0, len(metrics_to_create), BULK_CREATE_BATCH_SIZE):
+            IterationMetric.objects.bulk_create(metrics_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+
+    if params_to_create:
+        for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
+            IterationParameter.objects.bulk_create(params_to_create[i:i + BULK_CREATE_BATCH_SIZE])
 
 
 def process_metrics_row(iteration, metrics_row, metrics_to_create):
@@ -329,11 +340,14 @@ def process_metrics_row(iteration, metrics_row, metrics_to_create):
     # Get rid of 'iteration' and 'objFunVal' columns
     metrics_row = {k: v for k, v in metrics_row.items() if k not in ['iteration', 'objFunVal']}
 
+    # Prefetch metrics for quick lockup
+    metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
+
     for metric_name, value in metrics_row.items():
         # Do a case-insensitive match
-        metric = Metric.objects.filter(name__iexact=metric_name).first()
+        metric = metrics_lookup.get(metric_name.lower())
         if not metric:
-            raise CerfException(f"Could not find metric '{metric_name}' referenced in metrics_iteration_file")
+            raise CerfException(f"Could not find metric '{metric_name}'")
 
         metric_value = float(value) if value else None
         metric_obj = IterationMetric(
@@ -351,48 +365,35 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
     # Get rid of the 'iteration' column
     params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
 
-    # Check if this row matches global_best_params
-
-    global_best_params_list = []
+    # Initialize global_best_params_dict only if necessary
+    best_params_dict: Dict[str, float] = {}
     if run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
         global_best_params_file = get_global_best_params_file(run)
-        if not os.path.exists(global_best_params_file):
+        if not os.path.isfile(global_best_params_file):
             raise CerfException(f"{global_best_params_file} does not exist")
-        # For non-DDS, we get the best parameters
-        with open(global_best_params_file) as global_best_params:
-            next(global_best_params)  # Skip header
-            global_best_params_list = list(csv.DictReader(global_best_params, fieldnames=['value', 'name', 'model']))
 
-    print('global_best_params', global_best_params_list)
-    # Convert global_best_params to a dictionary for easier comparison
-    best_params_dict = {
-        param['name']: float(param['value'])
-        for param in global_best_params_list
-    }
+        # Use pandas to read the CSV file into a DataFrame
+        df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
 
-    is_best_match = True
+        # Convert the 'name' and 'value' columns into a dictionary
+        best_params_dict = pd.Series(df['value'].astype(float).values, index=df['name']).to_dict()
+        print('best_params_dict:', best_params_dict)
 
-    # Ensure params_row contains exactly the same parameters as global_best_params
-    if len(params_row) != len(best_params_dict):
-        is_best_match = False
-    else:
-        print(f'Comparing global_best_params_list with {params_row.itmes()}')
-        # Check if all params in params_row match those in best_params_dict
-        for param_name, value in params_row.items():
-            if param_name not in best_params_dict or float(value) != best_params_dict[param_name]:
-                is_best_match = False
-                break
-        print('is_best_match', is_best_match)
+    # Check if this params_row matches the global best parameters
+    is_best_match = (
+            len(params_row) == len(best_params_dict) and
+            all(param_name in best_params_dict and float(value) == best_params_dict[param_name]
+                for param_name, value in params_row.items())
+    )
+    if is_best_match:
+        print('found best match:', params_row)
 
-        # Check if all keys in best_params_dict are present in params_row
-        for best_param_name in best_params_dict:
-            if best_param_name not in params_row:
-                is_best_match = False
-                break
+    # Prefetch params for quick lookup
+    params_lookup = {p.name.lower(): p for p in CalibrationParameter.objects.all()}
 
     for param_name, value in params_row.items():
         # Do a case-insensitive match
-        parameter = CalibrationParameter.objects.filter(name__iexact=param_name).first()
+        parameter = params_lookup.get(param_name.lower())
         if not parameter:
             raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
 
@@ -409,6 +410,7 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
         )
         print(f'Creating Iteration parameter for {param_obj}')
 
+        # Append the created object to the list for bulk creation
         params_to_create.append(param_obj)
 
 
@@ -419,42 +421,49 @@ def update_output_variables(metrics_iteration_file, run, worker_name):
         for iteration in Iteration.objects.filter(calibration_run=run, worker_name=worker_name)
     }
 
+    # Read the metrics file using pandas for better handling
+    metrics_df = pd.read_csv(metrics_iteration_file)
+
     iterations_to_update = []
 
-    # We read the metrics_iteration_file to get the output variable value for the Iteration object
-    with open(metrics_iteration_file) as file:
-        reader = csv.DictReader(file)
-        # iteration,objFunVal,Corr,MAE,RMSE,RSR,PBIAS,NSE,NSELog,NSEWt,KGE,POD,FAR,CSI,FBIAS,HSEG_FDC,MSEG_FDC,LSEG_FDC
-        row_dict: Dict[str, str]
-        for row_dict in reader:
-            iteration_num = int(row_dict['iteration'])
-            obj_fun_val = row_dict['objFunVal']
+    # Iterate over rows in the DataFrame
+    for _, row in metrics_df.iterrows():
+        iteration_num = int(row['iteration'])
+        obj_fun_val = row['objFunVal']
 
-            # Retrieve the iteration object from the dictionary
-            iteration = iterations_dict.get(iteration_num)
-            if not iteration:
-                raise CerfException(
-                    f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}.  Ngen-cal did not report this iteration")
+        # Retrieve the iteration object from the dictionary
+        iteration = iterations_dict.get(iteration_num)
+        if not iteration:
+            raise CerfException(
+                f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}.  Ngen-cal did not report this iteration")
 
-            print(f'Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
-            iteration.calibration_output_variable_value = obj_fun_val
+        print(f'Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
+        iteration.calibration_output_variable_value = obj_fun_val
 
-            # Add the modified object to the list
-            iterations_to_update.append(iteration)
+        # Add the modified object to the list
+        iterations_to_update.append(iteration)
 
-    # Perform a bulk update for all iterations in the list
-    Iteration.objects.bulk_update(iterations_to_update, ['calibration_output_variable_value'])
+    # Perform a bulk update for all iterations in chunks if there are any updates to apply
+    if iterations_to_update:
+        with transaction.atomic():  # Ensure atomicity of bulk update
+            for i in range(0, len(iterations_to_update), BULK_CREATE_BATCH_SIZE):
+                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['calibration_output_variable_value'])
 
 
 # # Read backwards from the end of the file until we find linefeed.  Then read the line
+# def read_last_line(filename):
+#     with open(filename, 'rb') as file:
+#         # Move the cursor to the end of the file
+#         file.seek(-2, 2)
+#         while file.read(1) != b'\n':
+#             file.seek(-2, 1)
+#         last_line = file.readline().decode()
+#         return last_line
+
+
 def read_last_line(filename):
     with open(filename, 'rb') as file:
-        # Move the cursor to the end of the file
-        file.seek(-2, 2)
-        while file.read(1) != b'\n':
-            file.seek(-2, 1)
-        last_line = file.readline().decode()
-        return last_line
+        return deque(file, maxlen=1).pop().decode().strip()
 
 
 @extend_schema(
@@ -607,7 +616,7 @@ def accumulate_iterations(run: CalibrationRun):
         nonlocal total_iterations
         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
 
-        if not os.path.exists(metrics_iteration_file):
+        if not os.path.isfile(metrics_iteration_file):
             print(f'File {metrics_iteration_file} not found in {worker_dir}')
         else:
             # Count rows in the CSV file and add to total iterations
@@ -676,7 +685,7 @@ def cancel_job(request):
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
     logger.info(f'Subsetting directory {input_directory}')
 
-    if not os.path.exists(output_directory):
+    if not os.path.isdir(output_directory):
         os.makedirs(output_directory, exist_ok=True)
 
     for filename in os.listdir(input_directory):
@@ -693,18 +702,15 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     logger.info(f'Subsetting file {input_file} to {output_file}')
 
     # Read the CSV into a DataFrame, parsing dates in the first column
-    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0])
+    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0], infer_datetime_format=True)
 
-    # Ensure the first column is converted to UTC and timezone aware
-    df['dateTime'] = pd.to_datetime(df.iloc[:, 0], errors='coerce')
+    df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
 
-    # If the datetime is naive, localize it to UTC
-    if df['dateTime'].dt.tz is None:
-        df['dateTime'] = df['dateTime'].dt.tz_localize('UTC', ambiguous='NaT', nonexistent='shift_forward')
-
-    # Filter the rows based on the date range
-    mask = (df['dateTime'] >= date_time_range.start_datetime) & (df['dateTime'] <= date_time_range.end_datetime)
-    subset_df = df[mask]
+    # Efficiently filter rows using DataFrame.loc
+    subset_df = df.loc[
+        (df['dateTime'] >= date_time_range.start_datetime) &
+        (df['dateTime'] <= date_time_range.end_datetime)
+        ]
 
     # Write the filtered DataFrame to the output CSV file
     subset_df.to_csv(output_file, index=False)
