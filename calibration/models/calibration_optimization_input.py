@@ -1,8 +1,6 @@
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.calibration_run import CalibrationRun
-from calibration.models.optimization_input import OptimizationInput
 
 
 class CalibrationOptimizationInput(BaseModel):

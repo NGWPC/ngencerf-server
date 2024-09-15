@@ -90,7 +90,6 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
-        
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
@@ -147,8 +146,6 @@ def ready_to_run(run: CalibrationRun, build=None):
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
                                                DateTimeRange(run.calibration_start_period, run.calibration_end_period))
-
-
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -310,7 +307,9 @@ def ready_to_run(run: CalibrationRun, build=None):
                                        s['module'], s['maps_to_variable_name']))
             datafile['sloth_parameter_file'] = sloth_parameter_file
 
-    params = list(CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True).select_related('calibration_formulation')
+    params = list(CalibrationParameter.objects
+                  .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
+                  .select_related('calibration_formulation')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
     param_error = False
     for p in params:

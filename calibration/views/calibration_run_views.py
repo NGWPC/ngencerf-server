@@ -633,7 +633,7 @@ def accumulate_iterations(run: CalibrationRun):
 def count_rows_in_csv(file_path):
     with open(file_path, 'r') as file:
         # Count the lines and subtract 1 for the header
-        return sum(1 for line in file) - 1
+        return sum(1 for _ in file) - 1
 
 
 @extend_schema(
