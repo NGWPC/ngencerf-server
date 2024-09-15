@@ -2,7 +2,7 @@ import inspect
 import logging
 import os
 from functools import wraps
-from typing import List, cast
+from typing import List, cast, Optional, Tuple
 
 from rest_framework import status
 from rest_framework.exceptions import ValidationError, ParseError
@@ -16,7 +16,8 @@ from cerfServer import settings
 logger = logging.getLogger(__name__)
 
 
-def get_run(calibration_run_id, user, run_status=None) -> CalibrationRun:
+def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
+
     """
     Get an instance of a CalibrationRun by id, but only if it's owned by the user
     and is one of the passed-in statuses. If the CalibrationRun exists but has a
@@ -69,7 +70,6 @@ def join(items):
 
 def create_calibration_run_internal(request) -> CalibrationRun:
     run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
-    run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
 
     run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
     run.save(update_fields=['job_data_dir'])

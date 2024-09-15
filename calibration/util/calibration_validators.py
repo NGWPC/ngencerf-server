@@ -237,13 +237,17 @@ class SaveTuningParametersSerializer(BaseSerializer):
 
 
 class LoadTuningParametersSerializer(BaseSerializer):
+    """
+    This serializer is used when loading, so min, max and initial_value are not required
+    """
     name = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=True)
-    maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True, allow_null=True)
+    minimum = serializers.FloatField(required=False, allow_null=True)
+    maximum = serializers.FloatField(required=False, allow_null=True)
+    initial_value = serializers.FloatField(required=False, allow_null=True)
     data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
     description = serializers.CharField(required=True, allow_blank=False)
     user_selected_for_tuning = serializers.BooleanField(required=True)
+    units = serializers.CharField(required=False, allow_null=True)
 
 
 class OptimizationInputsSerializer(BaseSerializer):
@@ -262,13 +266,16 @@ class GageSerializer(BaseSerializer):
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
 # Parameters from Hydrofabric
+# initial_value, min and max are strings, since Hydrofabric sometimes has some extra crap in there, like units
+# We save them in the db as floats, so we'll have to sanitize them
 class ModuleParametersSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, allow_blank=False)
     data_type = serializers.CharField(required=True, validators=[dataTypeValidator])
     description = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=False, allow_null=True)
-    maximum = serializers.FloatField(required=False, allow_null=True)
-    initial_value = serializers.FloatField(required=False, allow_null=True)
+    minimum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    maximum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    initial_value = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 # Used by LoadTuningParameters
@@ -332,6 +339,12 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[statusValidator], required=True)
 
 
+class GenericResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[statusValidator], required=True)
+
+
 ##################################
 # Gage Tab
 ##################################
@@ -389,10 +402,7 @@ class UploadGeopackageSerializer(BaseSerializer):
         return value
 
 
-class UploadGeopackageResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[statusValidator], required=True)
+class UploadGeopackageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
 
 
@@ -403,11 +413,8 @@ class SaveGageRequestSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=False, validators=[observationSourceValidator])
 
 
-class SaveGageResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[statusValidator], required=True)
-    geopackage_image_url = serializers.CharField(required=False)
+class SaveGageResponseSerializer(GenericResponseSerializer):
+    geopackage_image_url = serializers.CharField(required=False, allow_null=True)
 
 
 class DomainResponseSerializer(BaseSerializer):
@@ -441,12 +448,6 @@ class LoadGageResponseSerializer(BaseSerializer):
     gage = GageSerializer(required=False)
     geopackage_image_url = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
-
-
-class GenericResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[statusValidator], required=True)
 
 
 class CreateCalibrationRunSerializer(BaseSerializer):
@@ -488,6 +489,14 @@ class LoadPlotResponseSerializer(BaseSerializer):
 ##################################
 # Formulation Tab
 ##################################
+
+
+class S3DirectoryValidator(BaseSerializer):
+    url = serializers.CharField(required=True, validators=[s3DirectoryValidator])
+
+
+class S3FileValidator(serializers.Serializer):
+    url = serializers.CharField(required=True, validators=[s3FileValidator])
 
 
 class SaveFormulationRequestSerializer(BaseSerializer):
@@ -548,8 +557,9 @@ class ModuleOutputVariablesSerializer(BaseSerializer):
 # Module object from Hydrofabric containing module parameters and output variables
 class ModuleMetadataHydrofabricSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
-    module_parameters = ModuleParametersSerializer(many=True)
+    calibrate_parameters = ModuleParametersSerializer(many=True)
     module_output_variables = ModuleOutputVariablesSerializer(many=True)
+    parameter_file = S3FileValidator(required=True)
 
 
 # List of module objects from Hydrofabric containing module parameters and output variables
@@ -616,11 +626,11 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     plot_frequency = serializers.IntegerField(required=False)
 
 
-class SaveOptimizationResponseSerializer(serializers.Serializer):
-    message = serializers.CharField()
-    calibration_run_id = serializers.IntegerField()
-    status = serializers.CharField(validators=[statusValidator], required=True)
-
+# class SaveOptimizationResponseSerializer(serializers.Serializer):
+#     message = serializers.CharField()
+#     calibration_run_id = serializers.IntegerField()
+#     status = serializers.CharField(validators=[statusValidator], required=True)
+#
 
 class OptimizationInputStaticSerializer(serializers.Serializer):
     name = serializers.CharField(required=True)
@@ -656,45 +666,25 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
     optimizations = OptimizationStaticSerializer(many=True)
 
 
-class ObservationalHydrofabricSerializer(BaseSerializer):
-    uri = serializers.CharField(required=True, validators=[s3FileValidator])
-
-
-class ForcingHydrofabricSerializer(BaseSerializer):
-    uri = serializers.CharField(required=True, validators=[s3DirectoryValidator])
-
-
-class GeopackageHydrofabricSerializer(serializers.Serializer):
-    uri = serializers.CharField(required=True, validators=[s3FileValidator])
-
-
 ##################################
 # Run Tab
 ##################################
 
-class IsReadyResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
-    status = serializers.CharField(required=True, validators=[statusValidator])
+class IsReadyResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
-class ImportResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True, allow_null=True)
-    status = serializers.CharField(required=True, validators=[statusValidator])
+class ImportResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
-class SubmitJobResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True, allow_null=False)
-    status = serializers.CharField(validators=[statusValidator], required=True)
+class SubmitJobResponseSerializer(GenericResponseSerializer):
     run_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
-
+class GetIterationsResponseSerializer(GenericResponseSerializer):
+    iterations = serializers.IntegerField(required=True)
 
 
 ##################################

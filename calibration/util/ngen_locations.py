@@ -34,6 +34,10 @@ def get_gage_dir(run: CalibrationRun) -> str | bytes:
                         run.ngen_formulation_name, run.gage.gage_id)
 
 
+def get_realization_file_path(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), f'{run.gage.gage_id}_realization_config_bmi_calib.json')
+
+
 def get_forcing_filename_pattern():
     return r"^cat-\d+\.csv$"
 
@@ -71,25 +75,69 @@ def get_geopackage_file_for_job(run: CalibrationRun) -> str:
     return os.path.join(get_geopackage_dir_for_job(run), get_geopackage_filename(run)) if run.gage else None
 
 
+def get_input_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Input')
+
+
+def get_output_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_gage_dir(run), 'Output')
+
+
+def get_output_calibration_run_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_output_dir(run), 'Calibration_Run')
+
+
+def get_output_validation_run_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_output_dir(run), 'Validation_Run')
+
+
+def get_worker_path(run: CalibrationRun, worker_name) -> str:
+    return os.path.join(get_output_calibration_run_dir(run), worker_name)
+
+
+def get_metrics_iteration_csv(run: CalibrationRun) -> str:
+    return f'{run.gage.gage_id}_metrics_iteration.csv'
+
+
+def get_metrics_iteration_file(run: CalibrationRun, worker_name) -> str:
+    return os.path.join(get_worker_path(run, worker_name), get_metrics_iteration_csv(run))
+
+
+def get_metrics_iteration_file_from_worker_dir(run: CalibrationRun, worker_dir) -> str:
+    return os.path.join(worker_dir, get_metrics_iteration_csv(run))
+
+
+def get_params_iteration_file(run: CalibrationRun, worker_name) -> str:
+    return os.path.join(get_worker_path(run, worker_name), f'{run.gage.gage_id}_params_iteration.csv')
+
+
+def get_objective_log_best_file(run: CalibrationRun, worker_name) -> str:
+    return os.path.join(get_worker_path(run, worker_name), f'{run.gage.gage_id}_objective_log.txt')
+
+
 def get_calibration_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Output', 'Calibration_Run', 'ngen-cal_calibration_stdout.log')
+    return os.path.join(get_output_calibration_run_dir(run), 'ngen-cal_calibration_stdout.log')
+
+
+def get_global_best_params_file(run: CalibrationRun) -> str:
+    return os.path.join(get_output_calibration_run_dir(run), f'{run.gage.gage_id}_global_best_params.csv')
 
 
 def get_validation_control_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', 'ngen-cal_validation_control_stdout.log')
+    return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_control_stdout.log')
 
 
 def get_validation_best_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', 'ngen-cal_validation_best_stdout.log')
+    return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_best_stdout.log')
 
 
 def get_calibration_input_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Input', f'{run.gage.gage_id}_config_calib.yaml')
+    return os.path.join(get_input_dir(run), f'{run.gage.gage_id}_config_calib.yaml')
 
 
 def get_validation_control_input_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', f'{run.gage.gage_id}_config_valid_control.yaml')
+    return os.path.join(get_output_validation_run_dir(run), f'{run.gage.gage_id}_config_valid_control.yaml')
 
 
 def get_validation_best_input_file(run: CalibrationRun) -> str:
-    return os.path.join(get_gage_dir(run), 'Output', 'Validation_Run', f'{run.gage.gage_id}_config_valid_best.yaml')
+    return os.path.join(get_output_validation_run_dir(run), f'{run.gage.gage_id}_config_valid_best.yaml')

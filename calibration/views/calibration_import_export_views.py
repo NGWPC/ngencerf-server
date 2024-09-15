@@ -150,7 +150,7 @@ def import_job(request):
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
 
-    if modules:
+    if modules and run.gage:
         get_module_data_from_hydrofabric(run, modules)
 
     run.automatic_validation = validator.get('automatic_validation')

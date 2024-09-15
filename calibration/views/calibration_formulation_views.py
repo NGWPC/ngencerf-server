@@ -234,33 +234,38 @@ def validate_formulation(run, module_names):
             break
     return valid
 
-
-group_requirements = [
-    {
-        "name": "Glacier",
-        "allowed_counts": [0, 1]
-    },
-    {
-        "name": "Snowmelt",
-        "allowed_counts": [0, 1]
-    },
-    {
-        "name": "Evapotranspiration",
-        "allowed_counts": [1]
-    },
-    {
-        "name": "Rainfall Runoff",
-        "allowed_counts": [1]
-    },
-    {
-        "name": "Soil Moisture",
-        "allowed_counts": [0, 2]
-    },
-    {
-        "name": "Routing",
-        "allowed_counts": [1]
+formulation_validations = {
+    "formulation_rules": {
+        "group_requirements": {
+            "Glacier": {
+                "allowed_counts": [0, 1]
+            },
+            "Snowmelt": {
+                "allowed_counts": [0, 1]
+            },
+            "Evapotranspiration": {
+                "allowed_counts": [1]
+            },
+            "Rainfall Runoff": {
+                "allowed_counts": [1]
+            },
+            "Soil Moisture": {
+                "allowed_counts": [0, 2]
+            },
+            "Routing": {
+                "allowed_counts": [1]
+            }
+        },
+        "module_exclusions": {
+            "SMP": {
+                "must_have": ["CFE-S", "CFE-X", "LASAM"]
+            },
+            "SFT": {
+                "must_have": ["CFE-S", "CFE-X", "LASAM"]
+            }
+        }
     }
-]
+}
 
 
 def validate_formulation2(run, module_names):
@@ -279,7 +284,10 @@ def validate_formulation2(run, module_names):
         })
 
     # Initialize a dictionary to store the count of formulations per group
-    group_counts = {group['name']: 0 for group in group_requirements}
+    group_counts = {group_name: 0 for group_name in formulation_validations['formulation_rules']['group_requirements']}
+
+    # Initialize a set to track which modules exist
+    module_set = set(module_names)
 
     # Parse the groups for each formulation once and update the group counts
     for formulation in calibration_formulations:
@@ -288,10 +296,20 @@ def validate_formulation2(run, module_names):
             if group_name in group_counts:  # Only update if the group is in group_requirements
                 group_counts[group_name] += 1
 
+    # Check for module exclusions
     messages = []
-    for group in group_requirements:
-        group_name = group.get('name')
-        allowed_counts = group.get('allowed_counts')
+    for excluded_module, conditions in formulation_validations['formulation_rules']['module_exclusions'].items():
+        if excluded_module in module_set:  # If the excluded module exists
+            must_have_modules = conditions.get("must_have", [])
+            # Check if any of the required modules are present
+            if not any(module in module_set for module in must_have_modules):
+                messages.append(
+                    f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
+                )
+
+    # Validate group requirements
+    for group_name, group_rules in formulation_validations['formulation_rules']['group_requirements'].items():
+        allowed_counts = group_rules.get('allowed_counts')
         count = group_counts[group_name]
 
         # Validate the count against allowed_counts

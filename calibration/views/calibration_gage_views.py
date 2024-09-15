@@ -23,7 +23,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_filename, get_geopackage_filename, get_forcing_filename_pattern
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 from cerfServer import settings
 
@@ -258,15 +258,12 @@ def save_gage_tab(request):
 def get_geopackage_image_url(run: CalibrationRun):
     geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_path
 
-    if geopackage_path:
-        if os.path.exists(geopackage_path):
-            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+    if geopackage_path and os.path.exists(geopackage_path):
+        geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
-            # Convert ByteIO image to base64
-            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-            return f'data:image/png;base64,{base64_str}'
-        else:
-            raise CerfException(f'Cannot find geopackage file at {geopackage_path}')
+        # Convert ByteIO image to base64
+        base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+        return f'data:image/png;base64,{base64_str}'
     else:
         return None
 

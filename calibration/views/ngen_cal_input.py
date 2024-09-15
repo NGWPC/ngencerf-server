@@ -6,7 +6,7 @@ import toml
 from datetimerange import DateTimeRange
 from django.db.models import F
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
@@ -23,8 +23,12 @@ config_template = {
     "General": {
         "calibration_run_id": 0,
         "user": "",
-        "basin": "",
+        "basin"
+        # Old
         "model": "",
+        # New
+        "models": "",
+
         "formulation": "",
         "run_type": "calib",
         "main_dir": ""
@@ -41,7 +45,7 @@ config_template = {
         "start_iteration": 0,
         "number_iteration": 0,
         "restart": 0,
-        # Output variable to calibration is not supported yet by ngen-cal
+        # TODO Ouutput variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
         "output_variable_to_calibration_name": "",
         "calib_start_period": "",
@@ -68,13 +72,28 @@ config_template = {
         "obs_dir": "",
         "nwmretro_file": "",
         "hydrofab_dir": "",
+
+        # TODO cfe_dir and topmd_dir should be obsolete
         "cfe_dir": "",
         "topmd_dir": "",
-        # Need another dir for every model
+        "noah-owp-modular_bmi_dir": "",
+        "cfe-s_bmi_dir": "",
+        "cfe-x_bmi_dir": "",
+        "t-route_bmi_dir": "",
+        "topoflow_bmi_dir": "",
+        "snow-17_bmi_dir": "",
+        "ueb_bmi_dir": "",
+        "pet_bmi_dir": "",
+        "topmodel_bmi_dir": "",
+        "sac-sma_bmi_dir": "",
+        "lasam_bmi_dir": "",
+        "smp_bmi_dir": "",
+        "sft_bmi_dir": "",
+
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
-        # Sloth parameter file is not supported by ngen-cal yet
+        # TODO Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
@@ -158,7 +177,9 @@ def ready_to_run(run: CalibrationRun, build=None):
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values_list('name', flat=True)
+    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values('name', 'bmi_config_path')
+    # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
+    module_dict = {module['name']: module['bmi_config_path'] for module in modules}
     if not modules:
         errors.append('modules must be specified')
     elif not run.user_formulation_name:
@@ -167,7 +188,12 @@ def ready_to_run(run: CalibrationRun, build=None):
         general['formulation'] = run.user_formulation_name
         general['model'] = run.ngen_formulation_name
         # TODO Not being used yet by ngen-cal
-        general['models'] = ', '.join(modules)
+        general['models'] = ', '.join(module_dict.keys())
+
+        # Dynamically add keys and values from the module_dict to our config
+        for key, value in module_dict.items():
+            new_key = key.lower() + '_bmi_dir'
+            datafile[new_key] = value
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir
@@ -219,10 +245,11 @@ def ready_to_run(run: CalibrationRun, build=None):
 
         # See if we have values for all the inputs
         inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
-            'value', name=F('optimization_input__name'))
+            'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name'))
 
         for opt_input in inputs:
-            calibration[opt_input['name']] = opt_input['value']
+            converted_value = int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']
+            calibration[opt_input['name']] = converted_value
             all_input_names.discard(opt_input['name'])
         # See if there are any names leftover
         if all_input_names:
@@ -243,6 +270,9 @@ def ready_to_run(run: CalibrationRun, build=None):
         calibration['number_iteration'] = stop_criteria.value
 
     calibration['start_iteration'] = 0  # TODO ????'
+
+    calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
+    calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
@@ -280,7 +310,9 @@ def ready_to_run(run: CalibrationRun, build=None):
                                        s['module'], s['maps_to_variable_name']))
             datafile['sloth_parameter_file'] = sloth_parameter_file
 
-    params = list(CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).select_related('calibration_formulation')
+    params = list(CalibrationParameter.objects
+                  .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
+                  .select_related('calibration_formulation')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
     param_error = False
     for p in params:

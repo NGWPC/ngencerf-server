@@ -191,11 +191,21 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },
-        'file': {
+        'file_simple': {
             'level': 'DEBUG',
             'class': 'logging.FileHandler',
             'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
             'formatter': 'verbose'
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
+            'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
+            'when': 'midnight',  # Rotate the file every day at midnight
+            'interval': 1,  # Rotate every 1 day
+            'backupCount': 7,  # Keep 7 days worth of logs (adjust as needed)
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
         }
     },
     'loggers': {
@@ -206,12 +216,12 @@ LOGGING = {
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
-            'propagate': True,
+            'propagate': False,
         },
         'django.request': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-            'propagate': True,
+            'propagate': False,
         },
         'calibration': {
             'handlers': ['console', 'file'],
@@ -231,13 +241,13 @@ LOGGING = {
 # -----------------------------
 HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
 HYDROFABRIC_MODULES_ENDPOINT = 'api/module_metadata/'
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/get_geopackage/get_parameters/'
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/initial_parameters/get_parameters/'
 HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = 'api/observation_data/{gage_id}'
 HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
 
 HYDROFABRIC_URL = 'http://localhost:8001'
-HYDROFABRIC_BUCKET = 'ngwpc-dev'
-HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
+
+S3_MOUNT_POINT = os.path.join(Path.home(), 's3')
 
 HYDROFABRIC = False
 

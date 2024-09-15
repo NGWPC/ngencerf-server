@@ -11,6 +11,7 @@ class CalibrationParameter(BaseModel):
     initial_value = models.FloatField(null=True)
     minimum = models.FloatField(null=True)
     maximum = models.FloatField(null=True)
+    units = models.CharField(max_length=50, null=True)
     user_selected_for_tuning = models.BooleanField(default=False)
 
     class Meta:
@@ -25,5 +26,6 @@ class CalibrationParameter(BaseModel):
             f"CalibrationParameter: {self.id}, "
             f"Name: {self.name:20},"
             f"User selected for tuning: {str(self.user_selected_for_tuning):<5}, "
-            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
+            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name}), "
+            f"Calibration Run: {self.calibration_formulation.calibration_run_id}"
         )

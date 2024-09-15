@@ -100,11 +100,11 @@
     "objective_function": "KGE",
     "optimization_inputs": [
         {
-            "name": "r",
-            "value": 2.0
+            "name": "swarm_size",
+            "value": 3
         }
     ],
-    "optimization": "DDS",
+    "optimization": "GWO",
     "plot_frequency": 5,
     "stop_criteria": 2
 }
