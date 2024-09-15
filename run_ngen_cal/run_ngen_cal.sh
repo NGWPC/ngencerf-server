@@ -60,3 +60,5 @@ cat "$PYTHON_OUTPUT_FILE"
 echo "---------------- end of $PYTHON_OUTPUT_FILE -----------------------------"
 
 echo "Done running $(basename "$SCRIPT_PATH") $*"
+
+exit $python_exit_code
