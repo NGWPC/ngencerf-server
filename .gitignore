@@ -23,3 +23,5 @@ Thumbs_db
 data
 .aws_credentials
 .gitlab_token
+
+.load_static

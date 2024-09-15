@@ -25,6 +25,8 @@ else
     exit 1
 fi
 
+pip install -r requirements.txt
+
 echo
 echo "Running migrate"
 python3 manage.py migrate

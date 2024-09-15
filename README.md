@@ -101,17 +101,20 @@ Install Postgres if not already done so.
 
 The `runCerf.sh` script will handle initialization of the database the 
 first time it runs and will then  `manage.py runServer` to start up the server.  
-For subsequent runs, it will run `migrate` and `runServer`.
+For subsequent runs, it will run `pip install`, `migrate` and `runServer`.
 
 In those cases where you need to re-initialize the data, after dropping all the tables you should
-delete the file called `.load-static`.  If this file is missing, that tells `runCert.sh` to re-initialize the database
+run  `runCerf.sh` with the `--load-static` argument.
 
-## Manual Steps
+
+## Manual Steps (optional if you're using runCerf.sh)
 These are the steps the `runCert` is performing.  You can skip them if you've successfully run `runCerf`.
 
 Ensure that you are still in the `.venv-cerf` virtual environment
+Run `pip install -r requirements.txt` to update any dependence
 Run `manage.py migrate` to create all the tables
 ```
+(.venv-cerf) pip install r requirements.txt
 (.venv-cerf) $ python manage.py migrate
 ```
 
@@ -145,8 +148,8 @@ end $$;
 where `public` is the name of your schema.
 
 # Updating
-After pulling the latest updates from the repo, you should update any dependencies and  apply any database changes.  
-Both of these commands can be run multiple times without any harm.
+After pulling the latest updates from the repo, you should update any dependencies and apply any database changes.  
+Both of these commands can be run multiple times without any harm.  `runCerf.sh` will automatically take care of these steps
 ```
 (.venv-cerf) $ pip install -r requirements.txt
 (.venv-cerf) $ python manage.py migrate
