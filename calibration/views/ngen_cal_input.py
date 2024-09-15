@@ -45,7 +45,7 @@ config_template = {
         "start_iteration": 0,
         "number_iteration": 0,
         "restart": 0,
-        # Output variable to calibration is not supported yet by ngen-cal
+        # TODO Ouutput variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
         "output_variable_to_calibration_name": "",
         "calib_start_period": "",
@@ -93,7 +93,7 @@ config_template = {
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
-        # Sloth parameter file is not supported by ngen-cal yet
+        # TODO Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
@@ -270,6 +270,9 @@ def ready_to_run(run: CalibrationRun, build=None):
         calibration['number_iteration'] = stop_criteria.value
 
     calibration['start_iteration'] = 0  # TODO ????'
+
+    calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
+    calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
