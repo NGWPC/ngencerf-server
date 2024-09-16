@@ -142,7 +142,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 # for non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
-                                               DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -156,7 +156,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
                 subset_by_time_range(source_file, get_observational_file_for_job(run),
-                                     DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
@@ -210,8 +210,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             errors.append(
                 'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
-            calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
-            calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
+            calibration['valid_start_period'] = run.validation_start_period.strftime(DATE_FORMAT)
+            calibration['valid_end_period'] = run.validation_end_period.strftime(DATE_FORMAT)
             calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
             calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
 
