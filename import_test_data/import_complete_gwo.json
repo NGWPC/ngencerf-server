@@ -101,7 +101,7 @@
     "optimization_inputs": [
         {
             "name": "swarm_size",
-            "value": 2
+            "value": 5
         }
     ],
     "optimization": "GWO",

@@ -229,12 +229,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             .select_related('optimization')
             .values_list('name', flat=True)
         )
-        print('all_input_names', all_input_names)
 
         # See if we have values for all the inputs
         inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
             'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name'))
-        print('opt inputs', inputs)
 
         for opt_input in inputs:
             converted_value = int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']

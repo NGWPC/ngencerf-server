@@ -11,6 +11,7 @@ from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, get_c
     get_calibration_stdout_file, get_validation_control_stdout_file, get_validation_best_input_file, get_validation_control_input_file, \
     get_validation_best_stdout_file
 from calibration.views.common import CerfException
+from calibration.views.read_output import read_output
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
 
@@ -184,6 +185,8 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
     else:
         print(f'Job {process_id} complete. No further stages.')
         set_job_status(run, StatusEnum.DONE)
+
+        read_output(run)
 
 
 def set_job_status(run: CalibrationRun, status: StatusEnum):
