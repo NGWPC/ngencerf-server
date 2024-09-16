@@ -1,7 +1,7 @@
 import inspect
 import logging
-import os
 from functools import wraps
+from pathlib import Path
 from typing import List, cast, Optional, Tuple
 
 from rest_framework import status
@@ -71,7 +71,7 @@ def join(items):
 def create_calibration_run_internal(request) -> CalibrationRun:
     run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
-    run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f'{run.id}_{run.owner.username}')
+    run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
     run.save(update_fields=['job_data_dir'])
     return run
 

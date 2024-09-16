@@ -1,10 +1,10 @@
 import logging
-import os
 import re
 from collections import deque
 from datetime import datetime, timezone
 from itertools import groupby
 from operator import attrgetter
+from pathlib import Path
 from typing import Dict
 
 import pandas as pd
@@ -203,7 +203,7 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
 
         # Check if the file exists before proceeding
-        if not os.path.isfile(metrics_iteration_file):
+        if not Path(metrics_iteration_file).is_file():
             print(f'Metrics iteration file not found in {worker_dir}')
             return
 
@@ -213,11 +213,11 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
         for _, row in metrics_df.iterrows():
             iteration_number = row['iteration']
 
-            print(f'Creating iteration {iteration_number} for worker {os.path.basename(worker_dir)}, worker number {worker_number}')
+            print(f'Creating iteration {iteration_number} for worker {Path(worker_dir).name}, worker number {worker_number}')
             all_iteration_objects.append(Iteration(
                 iteration_num=iteration_number,
                 calibration_run=run,
-                worker_name=os.path.basename(worker_dir),
+                worker_name=Path(worker_dir).name,
                 worker_number=worker_number
             ))
 
@@ -261,7 +261,7 @@ def process_iterations_for_all_workers(run: CalibrationRun):
 
 def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, iterations):
     worker_path = get_worker_path(run, worker_name)
-    if not os.path.isdir(worker_path):
+    if not Path(worker_path).is_dir():
         # TODO Need to make sure we're handling exceptions
         raise CerfException(f"{worker_path} does not exist")
 
@@ -270,14 +270,14 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     # Contains the best for DDS
     objective_log_best_file = get_objective_log_best_file(run, worker_name)
 
-    if not os.path.isfile(metrics_iteration_file):
+    if not Path(metrics_iteration_file).is_file():
         raise CerfException(f'{metrics_iteration_file} does not exist')
-    if not os.path.isfile(params_iteration_file):
+    if not Path(params_iteration_file).is_file():
         raise CerfException(f'{params_iteration_file} does not exist')
 
     best_iteration_for_worker = -1
     if run.optimization.name == 'DDS':
-        if not os.path.isfile(objective_log_best_file):
+        if not Path(objective_log_best_file).is_file():
             raise CerfException(f'{objective_log_best_file} does not exist')
         # Get the best iteration number
         last_line = read_last_line(objective_log_best_file)
@@ -369,7 +369,7 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
     best_params_dict: Dict[str, float] = {}
     if run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
         global_best_params_file = get_global_best_params_file(run)
-        if not os.path.isfile(global_best_params_file):
+        if not Path(global_best_params_file).is_file():
             raise CerfException(f"{global_best_params_file} does not exist")
 
         # Use pandas to read the CSV file into a DataFrame
@@ -592,11 +592,11 @@ def process_worker_dirs(run, worker_lambda):
     :param worker_lambda: A lambda function that processes each worker directory
     """
     output_calibration_run_dir = get_output_calibration_run_dir(run)
-    for item in os.listdir(output_calibration_run_dir):
-        item_path = os.path.join(output_calibration_run_dir, item)
+    for item in Path(output_calibration_run_dir).iterdir():
+        item_path = Path(output_calibration_run_dir) / item
         # Check if the item is a directory and matches the pattern
-        if os.path.isdir(item_path) and worker_directory_pattern.match(item):
-            worker_dir = os.path.join(output_calibration_run_dir, item)
+        if item_path.is_dir() and worker_directory_pattern.match(str(item)):
+            worker_dir = Path(output_calibration_run_dir) / item
             print('Processing worker directory:', worker_dir)
             worker_lambda(worker_dir, run)
 
@@ -616,7 +616,7 @@ def accumulate_iterations(run: CalibrationRun):
         nonlocal total_iterations
         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
 
-        if not os.path.isfile(metrics_iteration_file):
+        if not Path(metrics_iteration_file).is_file():
             print(f'File {metrics_iteration_file} not found in {worker_dir}')
         else:
             # Count rows in the CSV file and add to total iterations
@@ -685,14 +685,14 @@ def cancel_job(request):
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
     logger.info(f'Subsetting directory {input_directory}')
 
-    if not os.path.isdir(output_directory):
-        os.makedirs(output_directory, exist_ok=True)
+    if not Path(output_directory).is_dir():
+        Path(output_directory).mkdir(parents=True, exist_ok=True)
 
-    for filename in os.listdir(input_directory):
-        input_file_path = os.path.join(input_directory, filename)
-        output_file_path = os.path.join(output_directory, filename)
+    for filename in Path(input_directory).iterdir():
+        input_file_path = Path(input_directory) / filename
+        output_file_path = Path(output_directory) / filename
 
-        if os.path.isfile(input_file_path):  # Ensure it's a file
+        if input_file_path.is_file():  # Ensure it's a file
             subset_by_time_range(input_file_path, output_file_path, date_time_range)
 
     logger.info(f'Done subsetting directory {input_directory}')

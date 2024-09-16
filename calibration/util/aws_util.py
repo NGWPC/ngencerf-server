@@ -1,5 +1,5 @@
 import logging
-import os
+from pathlib import Path
 
 from calibration.views.common import CerfException
 from cerfServer import settings
@@ -29,4 +29,4 @@ def convert_s3_uri_to_fs(uri):
 
     bucket, key = parse_s3_uri(uri)
 
-    return os.path.join(settings.S3_MOUNT_POINT, bucket, key)
+    return Path(settings.S3_MOUNT_POINT) / bucket, key

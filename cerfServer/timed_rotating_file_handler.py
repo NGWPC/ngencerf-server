@@ -1,6 +1,7 @@
 import os
 import time
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 from typing import Optional, IO
 
 
@@ -31,8 +32,8 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         new_filename = f"{log_filename}.{date_suffix}{log_extension}"
 
         # Rename the current log file to the new filename
-        dfn = os.path.join(dir_name, new_filename)
-        if os.path.exists(self.baseFilename):
+        dfn = Path(dir_name) / new_filename
+        if Path(self.baseFilename).exists():
             os.rename(self.baseFilename, dfn)
 
         # Handle file rotation

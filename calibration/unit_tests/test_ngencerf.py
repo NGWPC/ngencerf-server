@@ -1,5 +1,5 @@
 import json
-import os
+from pathlib import Path
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -41,7 +41,7 @@ class CerfUnitTest(TestCase):
 
         factory = APIRequestFactory()
         # Opening import_complete.json file
-        f = open(os.path.join(settings.BASE_DIR, 'Import_test_data/import_complete.json'))
+        f = open(Path(settings.BASE_DIR) / 'Import_test_data/import_complete.json')
         # returns JSON object as a dictionary
         data = json.load(f)
         request = factory.post('/calibration/import/', data, format='json')
