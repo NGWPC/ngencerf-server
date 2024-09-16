@@ -101,7 +101,7 @@
     "optimization_inputs": [
         {
             "name": "c1",
-            "value": 1.0
+            "value": 2.0
         },
          {
             "name": "c2",
@@ -109,7 +109,7 @@
         },
          {
             "name": "w",
-            "value": 3.0
+            "value": 0.7
         }
     ],
     "optimization": "PSO",

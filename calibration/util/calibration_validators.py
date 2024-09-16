@@ -540,7 +540,7 @@ class ModuleMetadataHydrofabricSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
     module_output_variables = ModuleOutputVariablesSerializer(many=True)
-    parameter_file = S3UriField(required=True)
+    parameter_file = S3FileValidator(required=True)
 
 
 # List of module objects from Hydrofabric containing module parameters and output variables
