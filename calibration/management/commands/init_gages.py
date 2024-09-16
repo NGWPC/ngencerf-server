@@ -103,7 +103,7 @@ class Command(BaseCommand):
                 nwm_v3_calibrated = row.get('nwm_v3_calibrated') == 'True'
 
                 rfc = row.get('rfc')
-                rfc_id = rfc_dict[rfc.strip()] or None
+                rfc_id = rfc_dict[rfc.strip()] if rfc else None
 
                 gage.update(
                     {'nws_id': nws_id or None,
@@ -254,10 +254,12 @@ def add_nwm_v3(nwm_v3_file, domain):
                         'domain_id': domain.id}
                 gages[gage_id] = gage
             else:
+                # If it already exists, update this flag
                 existing_count += 1
+                gage['nwm_v3_calibrated'] = True
 
             rfc = row.get('rfc')
-            gage['rfc_id'] = rfc_dict[rfc] or None
+            gage['rfc_id'] = rfc_dict[rfc] if rfc else None
             gages[gage_id] = gage
     print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
