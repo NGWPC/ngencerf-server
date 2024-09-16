@@ -17,6 +17,8 @@ services:
       secrets:
         - gitlab_token
         - aws_token
+    image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest
+    pull_policy: build
     ports:
       - "8000:8000"
     volumes:
