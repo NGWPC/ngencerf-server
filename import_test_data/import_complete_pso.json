@@ -103,13 +103,17 @@
             "name": "c1",
             "value": 2.0
         },
-         {
+        {
             "name": "c2",
             "value": 2.0
         },
-         {
+        {
             "name": "w",
             "value": 0.7
+        },
+        {
+            "name": "swarm_size",
+            "value": 2
         }
     ],
     "optimization": "PSO",

@@ -11,17 +11,17 @@ dirs = [CALIB_VALID_DIR := Path(settings.NGEN_CAL_REPO_ROOT) / 'python/runCalibV
 # TODO Need to update this
 CAL_PLOTS_DIR = Path(settings.NGEN_CAL_WORK_DIR) / 'cal_plots'
 
-files = [NGEN_EXE := Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen',
-         CFE_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/cfe/cmake_build/libcfebmi.so',
-         SLOTH_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/sloth/cmake_build/libslothmodel.so',
-         TOPMD_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/topmodel/cmake_build/libtopmodelbmi.so',
-         NOAH_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/noah-owp-modular/cmake_build/libsurfacebmi.so',
-         SFT_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so',
-         SMP_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so',
-         LASAM_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/LASAM/cmake_build/liblasambmi.so',
-         PET_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/pet/cmake_build/libpetbmi.so',
-         SNOW17_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so',
-         SAC_LIB := Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so',
+files = [NGEN_EXE := str(Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen'),
+         CFE_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/cfe/cmake_build/libcfebmi.so'),
+         SLOTH_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sloth/cmake_build/libslothmodel.so'),
+         TOPMD_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/topmodel/cmake_build/libtopmodelbmi.so'),
+         NOAH_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/noah-owp-modular/cmake_build/libsurfacebmi.so'),
+         SFT_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so'),
+         SMP_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so'),
+         LASAM_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/LASAM/cmake_build/liblasambmi.so'),
+         PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/pet/cmake_build/libpetbmi.so'),
+         SNOW17_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so'),
+         SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
 
          CALIBRATION_PY := Path(CALIB_VALID_DIR) / 'calibration.py',
          VALIDATION_PY := Path(CALIB_VALID_DIR) / 'validation.py']

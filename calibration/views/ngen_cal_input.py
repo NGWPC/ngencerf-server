@@ -70,7 +70,7 @@ config_template = {
     "DataFile": {
         "forcing_dir": "",
         "obs_dir": "",
-        "nwmretro_file": "",
+        "nwmretro_file": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/nwmv3_retro_streamflow/csv/CONUS/01123000_1979_2022.csv",
         "hydrofab_dir": "",
 
         # TODO cfe_dir and topmd_dir should be obsolete
@@ -90,7 +90,7 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
-        "noah_parameter_dir": NOAH_PARAMETER_DIR,
+        "noah_parameter_dir": str(NOAH_PARAMETER_DIR),
         "attributes_file": "",
         "calib_parameter_file": "",
         # TODO Sloth parameter file is not supported by ngen-cal yet
@@ -144,7 +144,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
                                                DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
-        datafile['forcing_dir'] = get_forcing_dir_for_job(run)
+        datafile['forcing_dir'] = str(get_forcing_dir_for_job(run))
 
         if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
@@ -158,15 +158,15 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 subset_by_time_range(source_file, get_observational_file_for_job(run),
                                      DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
-        datafile['obs_dir'] = get_observational_dir_for_job(run)
+        datafile['obs_dir'] = str(get_observational_dir_for_job(run))
 
-        datafile['nwmretro_file'] = ''  # Not sure what this is yet
+        # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 
         if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists():
-            datafile['hydrofab_dir'] = Path(run.geopackage_hydrofabric_path).parent
+            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)
         else:
             if Path(get_geopackage_file_for_job(run)).exists():
-                datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+                datafile['hydrofab_dir'] = str(get_geopackage_dir_for_job(run))
             else:
                 errors.append('geopackage data must be uploaded')
 
@@ -186,6 +186,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         # Dynamically add keys and values from the module_dict to our config
         for key, value in module_dict.items():
             new_key = key.lower() + '_bmi_dir'
+            print('value', value)
+            print('str value', str(value))
             datafile[new_key] = value
 
     job_data_dir = run.job_data_dir
@@ -229,10 +231,12 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             .select_related('optimization')
             .values_list('name', flat=True)
         )
+        print('all_input_names', all_input_names)
 
         # See if we have values for all the inputs
         inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
             'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name'))
+        print('opt inputs', inputs)
 
         for opt_input in inputs:
             converted_value = int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']
@@ -298,7 +302,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             )
             Path(sloth_parameter_file).write_text(sloth_parameter_content)
 
-            datafile['sloth_parameter_file'] = sloth_parameter_file
+            datafile['sloth_parameter_file'] = str(sloth_parameter_file)
 
     params = list(CalibrationParameter.objects
                   .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
@@ -320,7 +324,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         )
         Path(parameter_file).write_text(parameter_content)
 
-        datafile['calib_parameter_file'] = parameter_file
+        datafile['calib_parameter_file'] = str(parameter_file)
 
     # print('validation errors from ngen_cal_input:', errors)
 

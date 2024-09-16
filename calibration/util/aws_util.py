@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger('boto').setLevel(logging.INFO)
 
 
-def parse_s3_uri(s3_uri):
+def parse_s3_uri(s3_uri) -> str:
     """
       Parse an S3 URI into bucket and key components.
 
@@ -18,7 +18,7 @@ def parse_s3_uri(s3_uri):
     return s3_uri.replace("s3://", "").split("/", 1)
 
 
-def convert_s3_uri_to_fs(uri):
+def convert_s3_uri_to_fs(uri) -> str:
     """
     Until Hydrofabric gives ua a file path, convert the S3 uri to filepath
     :param uri:
@@ -29,4 +29,4 @@ def convert_s3_uri_to_fs(uri):
 
     bucket, key = parse_s3_uri(uri)
 
-    return Path(settings.S3_MOUNT_POINT) / bucket, key
+    return str(Path(settings.S3_MOUNT_POINT) / bucket / key)

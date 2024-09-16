@@ -146,11 +146,11 @@ class Command(BaseCommand):
                                                                                     "created_by": self.user})
 
             for i in v['inputs']:
-                OptimizationInput.objects.update_or_create(name=i['name'], defaults={"is_active": i.get('is_active', True),
-                                                                                     "description": i['description'],
-                                                                                     "data_type": i['data_type'],
-                                                                                     "optimization": optimization,
-                                                                                     "created_by": self.user})
+                OptimizationInput.objects.update_or_create(name=i['name'], optimization=optimization,
+                                                           defaults={"is_active": i.get('is_active', True),
+                                                                     "description": i['description'],
+                                                                     "data_type": i['data_type'],
+                                                                     "created_by": self.user})
 
     def define_metric(self):
         if self.DELETE_FLAG:
