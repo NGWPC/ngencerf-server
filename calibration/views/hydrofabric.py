@@ -41,7 +41,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
     hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
                                               'Geopackage data from Hydrofabric is not in the expected format')
 
-    s3_uri = hydrofabric_data.get('uri')
+    s3_uri = hydrofabric_data.get('url')
     run.geopackage_hydrofabric_path = convert_s3_uri_to_fs(s3_uri)
     logger.info(f'Setting run.geopackage_hydrofabric_path to {run.geopackage_hydrofabric_path}')
 
@@ -67,7 +67,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
     observational_data = validate_response_data(S3FileValidator, observational_json,
                                                 'Observational data from Hydrofabric is not in the expected format')
 
-    s3_uri = observational_data.get('uri')
+    s3_uri = observational_data.get('url')
 
     run.observational_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
     logger.info(f'Setting run.observational_hydrofabric_file_path to {run.observational_hydrofabric_file_path}')
@@ -92,7 +92,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
 
-    s3_uri = forcing_data.get('uri')
+    s3_uri = forcing_data.get('url')
 
     run.forcing_hydrofabric_dir_path = convert_s3_uri_to_fs(s3_uri)
     logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')

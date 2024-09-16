@@ -2,6 +2,7 @@ import base64
 import logging
 import re
 import shutil
+import traceback
 from pathlib import Path
 
 from django.core.cache import cache
@@ -193,6 +194,7 @@ def save_gage_tab(request):
                 get_geopackage_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
+                traceback.print_exc()
                 return Response(f'Error retrieving geopackage from Hydrofabric.- {e}')
 
         geopackage_image_url = get_geopackage_image_url(run)
@@ -223,6 +225,7 @@ def save_gage_tab(request):
                 get_observational_data_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
+                traceback.print_exc()
                 return Response(f'Error retrieving observation data from Hydrofabric.- {e}')
 
         run.observational_source = ObservationalSourceEnum.from_enum(
@@ -237,6 +240,7 @@ def save_gage_tab(request):
                 get_forcing_data_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
+                traceback.print_exc()
                 return Response(f'Error retrieving forcing data from Hydrofabric.- {e}')
         run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
 

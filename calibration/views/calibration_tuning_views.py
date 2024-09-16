@@ -209,7 +209,7 @@ def save_tuning_tab(request):
     validation_times = validator.get('validation_times')
     parameters = validator.get('parameters')
 
-    output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
+    output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:

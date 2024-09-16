@@ -1,6 +1,7 @@
 import logging
 import os
 
+from calibration.views.common import CerfException
 from cerfServer import settings
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ def convert_s3_uri_to_fs(uri):
     :param uri:
     :return:file spec of the locally mounted bucket
     """
+    if not uri:
+        raise CerfException('uri cannot be empty')
+
     bucket, key = parse_s3_uri(uri)
 
     return os.path.join(settings.S3_MOUNT_POINT, bucket, key)

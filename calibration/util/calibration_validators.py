@@ -390,8 +390,7 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
 
 
 class DomainResponseSerializer(BaseSerializer):
-    domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-
+    name = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
 
 
@@ -404,12 +403,12 @@ class GagesSerializer(BaseSerializer):
 
 
 class ForcingSourceSerializer(BaseSerializer):
-    forcing_source = serializers.CharField(required=True, validators=[enum_validator(ForcingSourceEnum)])
+    name = serializers.CharField(required=True, validators=[enum_validator(ForcingSourceEnum)])
     description = serializers.CharField(required=True)
 
 
 class ObservationalSourceSerializer(BaseSerializer):
-    observational_source = serializers.CharField(required=True, validators=[enum_validator(ObservationalSourceEnum)])
+    name = serializers.CharField(required=True, validators=[enum_validator(ObservationalSourceEnum)])
     description = serializers.CharField(required=True)
 
 

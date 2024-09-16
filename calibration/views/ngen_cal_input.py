@@ -114,7 +114,7 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def ready_to_run(run: CalibrationRun, build:bool = None):
+def ready_to_run(run: CalibrationRun, build: bool = None):
     config = dict(config_template)
     general = config['General']
     calibration = config['Calibration']
@@ -128,11 +128,11 @@ def ready_to_run(run: CalibrationRun, build:bool = None):
     general['calibration_run_id'] = run.id
     general['user'] = run.owner.username
 
-    if not if_missing(run.gage, 'gage_id', errors):
+    if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
-        if not if_missing(run.forcing_source, 'forcing source', errors):
+        if not is_missing(run.forcing_source, 'forcing source', errors):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
                 forcing_dir = get_forcing_dir_for_job(run)
@@ -146,7 +146,7 @@ def ready_to_run(run: CalibrationRun, build:bool = None):
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
-        if not if_missing(run.observational_source, 'observational source', errors):
+        if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
                 observational_file = get_observational_file_for_job(run)
@@ -177,7 +177,7 @@ def ready_to_run(run: CalibrationRun, build:bool = None):
     # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
     module_dict = {module['name']: module['bmi_config_path'] for module in modules}
 
-    if not if_missing(modules, 'modules', errors) and not if_missing(run.user_formulation_name, 'formulation name', errors):
+    if not is_missing(modules, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
         general['formulation'] = run.user_formulation_name
         general['model'] = run.ngen_formulation_name
         # TODO Not being used yet by ngen-cal
@@ -218,10 +218,10 @@ def ready_to_run(run: CalibrationRun, build:bool = None):
             calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
             calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
-    if not if_missing(run.objective_function, 'objective function', errors):
+    if not is_missing(run.objective_function, 'objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()
 
-    if not if_missing(run.optimization, 'optimization', errors):
+    if not is_missing(run.optimization, 'optimization', errors):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         all_input_names = set(
@@ -242,20 +242,21 @@ def ready_to_run(run: CalibrationRun, build:bool = None):
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not if_missing(run.plot_frequency, 'plot frequency', errors):
+    if not is_missing(run.plot_frequency, 'plot frequency', errors):
         calibration['save_plot_iter_freq'] = run.plot_frequency
     calibration['save_plot-iter'] = 0  # TODO ???
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    if not if_missing(stop_criteria, 'stop criteria (number of iterations)', errors):
+    if not is_missing(stop_criteria, 'stop criteria (number of iterations)', errors):
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
     calibration['start_iteration'] = 0  # TODO ????'
 
-    calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
-    calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
+    if not is_missing(run.module_output_variable, 'output variable to calibrate', errors):
+        calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
+        calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
@@ -349,7 +350,8 @@ def build_config(config: dict, directory: str):
 
     return config_file
 
-def if_missing(value, field_name, errors, custom_error=None):
+
+def is_missing(value, field_name, errors, custom_error=None):
     if value is None:
         if custom_error:
             errors.append(custom_error)
