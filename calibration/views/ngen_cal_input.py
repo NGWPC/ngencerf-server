@@ -90,7 +90,7 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
-        "noah_parameter_dir": str(NOAH_PARAMETER_DIR),
+        "noah_parameter_dir": NOAH_PARAMETER_DIR,
         "attributes_file": "",
         "calib_parameter_file": "",
         # TODO Sloth parameter file is not supported by ngen-cal yet
@@ -144,7 +144,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
                                                DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
-        datafile['forcing_dir'] = str(get_forcing_dir_for_job(run))
+        datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
@@ -158,7 +158,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 subset_by_time_range(source_file, get_observational_file_for_job(run),
                                      DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
-        datafile['obs_dir'] = str(get_observational_dir_for_job(run))
+        datafile['obs_dir'] = get_observational_dir_for_job(run)
 
         # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 
@@ -166,7 +166,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)
         else:
             if Path(get_geopackage_file_for_job(run)).exists():
-                datafile['hydrofab_dir'] = str(get_geopackage_dir_for_job(run))
+                datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
             else:
                 errors.append('geopackage data must be uploaded')
 
@@ -186,8 +186,6 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         # Dynamically add keys and values from the module_dict to our config
         for key, value in module_dict.items():
             new_key = key.lower() + '_bmi_dir'
-            print('value', value)
-            print('str value', str(value))
             datafile[new_key] = value
 
     job_data_dir = run.job_data_dir

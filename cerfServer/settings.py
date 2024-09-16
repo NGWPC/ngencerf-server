@@ -270,7 +270,7 @@ NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 
 # Directory containing the ngen-cal virtual environment
 # This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
-NGEN_CAL_VENV = Path(NGEN_CAL_WORK_DIR) / 'venv.cal'
+NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
 
 
 class RunTypeEnum(StrEnum):
