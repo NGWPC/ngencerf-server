@@ -126,7 +126,7 @@ def submit_job(run, config_file=None):
 
     print(f'Return from create_input for Calibration Run {run.id}')
 
-    if Path(NGEN_REPO_ROOT).exists():
+    if not Path(NGEN_REPO_ROOT).exists():
         # Save the latest git hash or ngen and ngen-cal
         run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
         run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
