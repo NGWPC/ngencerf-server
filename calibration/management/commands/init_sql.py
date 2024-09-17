@@ -4,7 +4,8 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DataTypeEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinition
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinition, \
+    GeopackageSource
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
@@ -38,6 +39,7 @@ class Command(BaseCommand):
         self.define_rfc()
         self.define_forcing_source()
         self.define_observational_source()
+        self.define_geopackage_source()
         self.define_optimization()
         self.define_metric()
         self.define_status()
@@ -119,6 +121,20 @@ class Command(BaseCommand):
                                                          defaults={"is_active": v.get('is_active', True),
                                                                    "description": v['description'],
                                                                    "created_by": self.user})
+
+    def define_geopackage_source(self):
+        if self.DELETE_FLAG:
+            GeopackageSource.objects.all().delete()
+
+        values = [{"name": "EHS", "description": "Enterprise Hydrofabric Service", "is_active": False},
+                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
+                  ]
+
+        for v in values:
+            GeopackageSource.objects.update_or_create(name=v['name'],
+                                                      defaults={"is_active": v.get('is_active', True),
+                                                                "description": v['description'],
+                                                                "created_by": self.user})
 
     def define_optimization(self):
         if self.DELETE_FLAG:
@@ -349,9 +365,9 @@ class Command(BaseCommand):
 
         for v in values:
             PlotDefinition.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                               "description": v['description'],
-                                                                               "location": v['location'],
-                                                                               "valid_optimizations": v['valid_optimizations'],
-                                                                               "validation": v['validation'],
-                                                                               "filename_mask": v['filename_mask'],
-                                                                               "created_by": self.user})
+                                                                              "description": v['description'],
+                                                                              "location": v['location'],
+                                                                              "valid_optimizations": v['valid_optimizations'],
+                                                                              "validation": v['validation'],
+                                                                              "filename_mask": v['filename_mask'],
+                                                                              "created_by": self.user})

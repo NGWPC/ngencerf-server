@@ -45,6 +45,10 @@ config_template = {
         "objective_function": "",
         "start_iteration": 0,
         "number_iteration": 0,
+        # Whether restart calibration from the stopped iteration
+        # 0: Not
+        # 1: Yes
+        # It should be 0 if start_interation entry is 0.
         "restart": 0,
         # TODO Output variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
@@ -60,8 +64,15 @@ config_template = {
         "valid_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "full_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "full_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        # Save streamflow output and plot at the specified iteration
+        # These entries are optional and specified with the default values.
+        # 1: Filename is distinguished by the iteration number.
+        # 0: Filename is same at different iteration, i.e., overwritten by file from last iteration.
         "save_output_iter": 0,
         "save_plot_iter": 0,
+
+        # Iteration interval to save plots
+        # This entry is optional and specified with the default value.
         "save_plot_iter_freq": 0,
         "streamflow_threshold": 0,
         "peak_flow_threshold": 0,
@@ -92,8 +103,11 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
+        # Static file
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
+        # Parquet file - base on domain
         "attributes_file": "",
+        # Parameter file, dynamically built based on user input
         "calib_parameter_file": "",
         # TODO Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
@@ -181,8 +195,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if error_message:
             errors.append(error_message)
 
-        if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists():
-            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)
+        if run.geopackage_hydrofabric_file_path and Path(run.geopackage_hydrofabric_file_path).exists():
+            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
         else:
             if Path(get_geopackage_file_for_job(run)).exists():
                 datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)

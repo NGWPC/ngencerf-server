@@ -29,7 +29,8 @@ class CalibrationRun(BaseModel):
     use_sloth = models.BooleanField(null=False, default=False)
     streamflow_threshold = models.FloatField(null=True)
     peak_flow_threshold = models.FloatField(null=True)
-    geopackage_hydrofabric_path = models.TextField(null=True)
+    geopackage_source = models.ForeignKey('GeopackageSource', null=True, on_delete=models.RESTRICT)
+    geopackage_hydrofabric_file_path = models.TextField(null=True)
     forcing_hydrofabric_dir_path = models.TextField(null=True)
     forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT)
     observational_hydrofabric_file_path = models.TextField(null=True)
@@ -54,7 +55,7 @@ class CalibrationRun(BaseModel):
             f"CalibrationRun {self.id}, {gage_info}, "
             f"owner: {self.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
             f"job_data_directory: {self.job_data_dir},"
-            f"geopackage_hydrofabric_path: {self.geopackage_hydrofabric_path}, "
+            f"geopackage_hydrofabric_file_path: {self.geopackage_hydrofabric_file_path}, "
             f"forcing_hydrofabric_dir_path: {self.forcing_hydrofabric_dir_path}, "
             f"observational_hydrofabric_file_path: {self.observational_hydrofabric_file_path}, "
             f"status.name: {self.status.name}, "

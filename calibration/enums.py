@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Type
 
 from django.core.cache import cache
 
-from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -40,6 +40,19 @@ class ObservationalSourceEnum(AbstractEnum):
     @classmethod
     def get_model(cls) -> Type[ObservationalSource]:
         return ObservationalSource
+
+    @classmethod
+    def get_filter(cls) -> Dict[str, Any]:
+        # Apply the filter to only return active statuses
+        return {'is_active': True}
+
+
+class GeopackageSourceEnum(AbstractEnum):
+    UPLOAD = 'Upload'
+
+    @classmethod
+    def get_model(cls) -> Type[GeopackageSource]:
+        return GeopackageSource
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
