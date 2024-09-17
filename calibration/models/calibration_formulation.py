@@ -23,5 +23,5 @@ class CalibrationFormulation(BaseModel):
             f"CalibrationFormulation: {self.id}, "
             f"name: {self.name:20}, "
             f"used_by_calibration_run: {str(self.used_by_calibration_run):<5}, "
-            f"Calibration Run: {self.calibration_run.id}"
+            f"calibration_run: {self.calibration_run.id}"
         )

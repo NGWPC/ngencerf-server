@@ -17,7 +17,7 @@ from .ngen_cal_formulation import NgenCalFormulation
 from .observational_source import ObservationalSource
 from .optimization import Optimization
 from .optimization_input import OptimizationInput
-from .plot_definitions import PlotDefinitions
+from .plot_definitions import PlotDefinition
 from .rfc import Rfc
 from .status import Status
 from .validation_run import ValidationRun

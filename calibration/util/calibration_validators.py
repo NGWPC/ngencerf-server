@@ -460,6 +460,7 @@ class GetPlotRequestSerializer(CalibrationRunSerializer):
 
 class GetPlotResponseSerializer(CalibrationRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False)
+    plot_file_name = serializers.CharField(required=True, allow_null=False)
     plot_url = serializers.CharField(required=True, allow_null=False)
 
 

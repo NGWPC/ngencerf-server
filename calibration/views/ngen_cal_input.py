@@ -121,7 +121,7 @@ def validate_times(run):
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
         if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.validation_start_period not in time_range or run.validation_end_peroid not in time_range:
+        if run.validation_start_period not in time_range or run.validation_end_period not in time_range:
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
@@ -180,8 +180,6 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         error_message = validate_times(run)
         if error_message:
             errors.append(error_message)
-
-        # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 
         if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists():
             datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)

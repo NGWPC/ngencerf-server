@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DataTypeEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinitions
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinition
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
@@ -235,16 +235,16 @@ class Command(BaseCommand):
 
     def define_plot_definitions(self):
         if self.DELETE_FLAG:
-            PlotDefinitions.objects.all().delete()
+            PlotDefinition.objects.all().delete()
 
         # Temporarily delete them, although this doesn't hurt, since this table is not a FK in any other table
-        PlotDefinitions.objects.all().delete()
+        PlotDefinition.objects.all().delete()
 
         values = [
             {
                 "name": "Hydrograph evolution",
                 "description": "Time series plot comparing streamflow simulations from the control, the best iteration and the last iteration with the observed streamflow",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_hydrograph_iteration.png"
@@ -252,7 +252,7 @@ class Command(BaseCommand):
             {
                 "name": "Objective Function evolution",
                 "description": "The evolution of objective function during all iterations with the best iteration highlighted in red",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_objfun_iteration.png"
@@ -260,7 +260,7 @@ class Command(BaseCommand):
             {
                 "name": "Metric evolution",
                 "description": "The evolution of objective function and all other metrics during all iterations with the best iteration highlighted in red",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_metric_iteration.png"
@@ -268,7 +268,7 @@ class Command(BaseCommand):
             {
                 "name": "Parameter evolution",
                 "description": "The evolution of each calibration parameter during all iterations with the best iteration highlighted in red",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_param_iteration.png"
@@ -276,7 +276,7 @@ class Command(BaseCommand):
             {
                 "name": "Scatterplot streamflow",
                 "description": "Scatter plot of streamflow simulations from the control, the best iteration and the last iteration vs the observed streamflow",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png"
@@ -284,7 +284,7 @@ class Command(BaseCommand):
             {
                 "name": "Metrics vs Objective Functions",
                 "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to examine tradeoffs between the objective function and other metrics)",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_metric_objfun.png"
@@ -292,7 +292,7 @@ class Command(BaseCommand):
             {
                 "name": "Stream Flow Precipitation",
                 "description": "Same as Hydrograph Evolution but with the precipitation time series added at the top using an inverted y-axis",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_streamflow_precip_iteration.png"
@@ -300,7 +300,7 @@ class Command(BaseCommand):
             {
                 "name": "Flow Duration Curves",
                 "description": "Comparison of the flow duration curves for the streamflow simulations from the control, the best iteration, the last iteration and the observed streamflow",
-                "location": "plot_iterations",
+                "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
                 "validation": False,
                 "filename_mask": "{gage_id}_fdc_iteration.png"
@@ -348,7 +348,7 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            PlotDefinitions.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+            PlotDefinition.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
                                                                                "description": v['description'],
                                                                                "location": v['location'],
                                                                                "valid_optimizations": v['valid_optimizations'],

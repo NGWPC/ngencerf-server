@@ -10,7 +10,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient, force_authenticate, APIRequestFactory
 
 from calibration.enums import StatusEnum
-from calibration.models.plot_definitions import PlotDefinitions
+from calibration.models.plot_definitions import PlotDefinition
 from calibration.models.status import Status
 from calibration.views import calibration_import_export_views, calibration_plot_views
 from calibration.views.common import get_run
@@ -78,7 +78,7 @@ class CerfUnitTest(TestCase):
         gage_id = run.gage.gage_id
         print(f"test_plot_definitions_view(): Gage ID: {gage_id}")
         plots = (
-            PlotDefinitions.objects.filter(is_active=True)
+            PlotDefinition.objects.filter(is_active=True)
             .annotate(filename=Concat(Value(gage_id), 'filename_mask', output_field=CharField()))
             .values('name', 'description', 'filename')
         )
@@ -109,7 +109,7 @@ class CerfUnitTest(TestCase):
         gage_id = run.gage.gage_id
         print(f"test_plot_definitions_view(): Gage ID: {gage_id}")
         plots = (
-            PlotDefinitions.objects.filter(is_active=True)
+            PlotDefinition.objects.filter(is_active=True)
             .annotate(filename=Concat(Value(gage_id), 'filename_mask', output_field=CharField()))
             .values('name', 'description', 'filename')
         )
