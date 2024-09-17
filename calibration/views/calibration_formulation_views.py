@@ -144,9 +144,9 @@ def save_formulation_tab(request):
     if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
         return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
 
-    message = validate_modules(run, new_module_names)
-    if message:
-        return ResponseError(message)
+    error_message = validate_modules(run, new_module_names)
+    if error_message:
+        return ResponseError(error_message)
 
     messages = validate_formulation2(run, new_module_names)
     if messages:
@@ -197,9 +197,9 @@ def save_formulation_tab(request):
             # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
             if use_sloth:
-                message = add_sloth_parameters(run, sloth_parameters)
-            if message:
-                return ResponseError(message)
+                error_message = add_sloth_parameters(run, sloth_parameters)
+            if error_message:
+                return ResponseError(error_message)
 
             run.save()
 
