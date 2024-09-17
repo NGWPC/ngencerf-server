@@ -138,11 +138,12 @@ def get_time_range(run):
     # If both paths are available, calculate intersection and update run
     if observation_path and forcing_path:
         daterange = get_date_range_intersection(observation_path, forcing_path)
-        if run.time_range_start != daterange.start_datetime or run.time_range_end != daterange.end_datetime:
-            run.time_range_start = daterange.start_datetime
-            run.time_range_end = daterange.end_datetime
-            run.save(update_fields=['time_range_start', 'time_range_end'])
-        return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
+        if daterange:
+            if run.time_range_start != daterange.start_datetime or run.time_range_end != daterange.end_datetime:
+                run.time_range_start = daterange.start_datetime
+                run.time_range_end = daterange.end_datetime
+                run.save(update_fields=['time_range_start', 'time_range_end'])
+            return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
     return {}
 
@@ -464,4 +465,4 @@ def get_date_range_intersection(observational_file_path, forcing_dir_path):
     logger.debug(f'obs_range: {obs_range}')
     forcing_range = get_forcing_date_range(forcing_dir_path)
     logger.debug(f'forcing_range: {forcing_range}')
-    return obs_range.intersection(forcing_range)
+    return obs_range.intersection(forcing_range) if forcing_range and obs_range else None
