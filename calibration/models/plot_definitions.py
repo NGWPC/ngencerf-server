@@ -9,6 +9,8 @@ class PlotDefinitions(BaseModel):
     name = models.CharField(max_length=50, unique=True, null=False)
     function = models.CharField(max_length=50, null=False)
     valid_optimizations = models.TextField(null=False)
+    # True if calibration plot; False if validation plot
+    calibration = models.BooleanField(null=False)
     filename_mask = models.TextField(null=False)
 
     class Meta:
