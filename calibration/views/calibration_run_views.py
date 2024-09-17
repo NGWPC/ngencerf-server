@@ -269,7 +269,7 @@ def report_iteration(request):
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: GenericResponseSerializer,
+        200: GetIterationsResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
