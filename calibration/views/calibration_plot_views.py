@@ -1,21 +1,16 @@
-import base64
+import json
 import logging
-import mimetypes
-import os
 from pathlib import Path
 
-from django.db.models import Value, CharField
-from django.db.models.functions import Concat
-from django.http import HttpResponse
+from django.db.models import Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import PlotDefinitions
-from calibration.util.calibration_validators import CalibrationRunSerializer, LoadPlotDefinitionsResponseSerializer, \
-    ErrorResponseSerializer, CalibrationPlotNameSerializer, GetPlotRequestSerializer
-from calibration.util.ngen_locations import CAL_PLOTS_DIR
+from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
+    ErrorResponseSerializer, CalibrationPlotNameSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.views.common import get_run, handle_exceptions, validate_response, validate_request, CerfException, png_str_to_base64_url
 
 logger = logging.getLogger(__name__)
@@ -24,7 +19,7 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: LoadPlotDefinitionsResponseSerializer,
+        200: GetPLotNamesResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -54,55 +49,38 @@ def get_plot_names(request):
     if error_return:
         return error_return
 
-    gage_id = run.gage.gage_id
+    # If automatic_validation is True, retrieve all records
+    # Otherwise, filter where 'validation' is False
+    plot_names = list(PlotDefinitions.objects
+                      .filter(Q(valid_optimizations__contains=json.dumps(run.optimization.name)) &
+                              (Q(validation=False) if not run.automatic_validation else Q()))
+                      .values('name', 'description'))
 
-    plots = (
-        PlotDefinitions.objects.filter(is_active=True)
-        .annotate(filename=Concat(Value(gage_id), 'filename_mask', output_field=CharField()))
-        .values('name', 'description', 'filename')
-    )
+    response = {'calibration_run_id': calibration_run_id, 'plot_names': plot_names, 'status': run.status.name}
 
-    response = {'calibration_run_id': calibration_run_id, 'plot_list': list(plots), 'status': run.status.name}
-
-    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
-
-    response_validator, error_response = validate_response(LoadPlotDefinitionsResponseSerializer, response)
+    response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
+    if error_response:
+        return error_response
     logger.debug(f'get_plot_names() request from {request.user} - {response_validator.data}')
 
     return Response(response_validator.data)
 
 
-# def download_plot(filename):
-#     # @TODO - once decided, replace settings.CAL_PLOTS_DIR with the final location for the plots
-#     file_path = CAL_PLOTS_DIR + '/' + filename
-#
-#     fileData = open(file_path, "r")
-#     file_mimetype = mimetypes.guess_type(file_path)
-#     response = HttpResponse(fileData, content_type=file_mimetype)
-#     response['X-Sendfile'] = file_path
-#     response['Content-Length'] = os.stat(file_path).st_size
-#     response['Content-Disposition'] = 'attachment; filename=%s' % str(filename)
-#
-#     return response
-
-
 def png_to_base64_url(png):
     if png:
         png_path = Path(png)
-        if png.exists():
+        if png_path.exists():
             with png_path.open("rb") as png_file:
                 return png_str_to_base64_url(png_file.read())
         else:
-            raise CerfException(f"File {png} does not exist")
+            raise CerfException(f"Plot {png} does not exist")
     return None
 
 
-
-
 @extend_schema(
-    request=CalibrationPlotNameSerializer,
+    request=GetPlotRequestSerializer,
     responses={
-        200: CalibrationPlotNameSerializer,
+        200: GetPlotResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -126,6 +104,7 @@ def get_plot(request):
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    plot_name = validator.get('plot_name')
 
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
@@ -133,24 +112,17 @@ def get_plot(request):
 
     gage_id = run.gage.gage_id
 
-
-
-
     plot_file_name = validator.get('cal_plot_name')
     # TODO Validate the plot name
 
     # Figure out the full path
-    png_path = None
-    url = png_to_base64_url(png_path)
+    png_path = "foo"
+    plot_url = png_to_base64_url(png_path) or "bar"
 
-
-
-
-    response = {'calibration_run_id': run.id, 'plot_name': plot_name, 'plot_url': plot_url}
-    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response)
+    response = {'calibration_run_id': run.id, 'plot_name': plot_file_name, 'plot_url': plot_url}
+    response_validator, error_response = validate_response(GetPlotResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from get_plot() - {response_validator.data}')
-
 
     return response

@@ -1,5 +1,6 @@
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 import toml
@@ -52,12 +53,13 @@ config_template = {
         "calib_end_period": "",
         "calib_eval_start_period": "",
         "calib_eval_end_period": "",
-        "valid_start_period": "0000-00-00 00:00:00",
-        "valid_end_period": "0000-00-00 00:00:00",
-        "valid_eval_start_period": "0000-00-00 00:00:00",
-        "valid_eval_end_period": "0000-00-00 00:00:00",
-        "full_eval_start_period": "0000-00-00 00:00:00",
-        "full_eval_end_period": "0000-00-00 00:00:00",
+        # If we're not doing automatic validation, create_input still expects a valid date/time here
+        "valid_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "full_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "full_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "save_output_iter": 0,
         "save_plot_iter": 0,
         "save_plot_iter_freq": 0,

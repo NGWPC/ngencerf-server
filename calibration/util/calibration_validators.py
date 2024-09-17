@@ -445,28 +445,22 @@ class GeopackageSerializer(BaseSerializer):
 class PlotListStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     description = serializers.CharField(required=True, allow_blank=False)
-    filename = serializers.CharField(required=True, allow_blank=False)
+    # filename = serializers.CharField(required=True, allow_blank=False)
 
 
-class LoadPlotDefinitionsResponseSerializer(BaseSerializer):
+class GetPLotNamesResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    plot_list = PlotListStaticSerializer(many=True)
+    plot_names = PlotListStaticSerializer(many=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
-
-
-class LoadPlotResponseSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
-    filename = serializers.CharField(required=True, allow_blank=False)
 
 class GetPlotRequestSerializer(CalibrationRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False)
 
-class GetPlotResponseSerializer(BaseSerializer):
+
+class GetPlotResponseSerializer(CalibrationRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False)
     plot_url = serializers.CharField(required=True, allow_null=False)
-
 
 
 ##################################
@@ -676,7 +670,6 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
 
 class ProcessCalibrationOutputRequest(CalibrationRunSerializer):
     rerun = serializers.BooleanField(required=False, default=False)
-
 
 
 ##################################
