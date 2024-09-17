@@ -82,7 +82,7 @@ class DataTypeEnum(StrEnum):
     STRING = 'string'
 
     @classmethod
-    def values(cls) -> List[str]:
+    def get_names(cls) -> List[str]:
         # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
@@ -91,7 +91,7 @@ class LocationEnum(StrEnum):
     NODE = 'node'
 
     @classmethod
-    def values(cls) -> List[str]:
+    def get_names(cls) -> List[str]:
         # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
 
@@ -101,6 +101,6 @@ class UnitsEnum(StrEnum):
     NONE = 'none'
 
     @classmethod
-    def values(cls) -> List[str]:
+    def get_names(cls) -> List[str]:
         # noinspection PyUnresolvedReferences
         return [e.value for e in cls]

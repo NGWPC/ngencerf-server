@@ -1,6 +1,6 @@
 import base64
 import logging
-import os
+from pathlib import Path
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -83,7 +83,7 @@ def import_job(request):
 
         run.geopackage_hydrofabric_path = validator.get('geopackage_path_from_hydrofabric')
         geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
-        if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
+        if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
             # Copy from original location to our job-specific path
             info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
         else:
@@ -92,7 +92,7 @@ def import_job(request):
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = validator.get('forcing_user_uploaded_dir_path')
-            if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
+            if forcing_user_uploaded_dir_path and Path(forcing_user_uploaded_dir_path).exists():
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
             else:
@@ -101,7 +101,7 @@ def import_job(request):
 
         if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
             observational_user_uploaded_file_path = validator.get('observational_user_uploaded_file_path')
-            if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
+            if observational_user_uploaded_file_path and Path(observational_user_uploaded_file_path).exists():
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
             else:
@@ -312,10 +312,10 @@ def load_calibration_run_data(run, export: bool = None):
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
-        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
-            user_uploaded_observational_file) else None
+        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and Path(
+            user_uploaded_observational_file).exists() else None
         user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
-        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir) else None
+        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and Path(user_uploaded_forcing_dir).exists() else None
 
     else:
         calibration_run_data['calibration_run_id'] = run.id
@@ -328,8 +328,8 @@ def load_calibration_run_data(run, export: bool = None):
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        geopackage_path = run.geopackage_hydrofabric_path if run.geopackage_hydrofabric_path and os.path.exists(run.geopackage_hydrofabric_path) else get_geopackage_file_for_job(run)
-        if geopackage_path and os.path.exists(geopackage_path):
+        geopackage_path = run.geopackage_hydrofabric_path if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists() else get_geopackage_file_for_job(run)
+        if geopackage_path and Path(geopackage_path).exists():
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
             geopackage_image_url = f'data:image/png;base64,{base64_str}'

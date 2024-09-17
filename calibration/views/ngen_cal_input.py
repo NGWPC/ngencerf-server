@@ -1,6 +1,6 @@
 import logging
-import os
 import re
+from pathlib import Path
 
 import toml
 from datetimerange import DateTimeRange
@@ -23,7 +23,7 @@ config_template = {
     "General": {
         "calibration_run_id": 0,
         "user": "",
-        "basin"
+        "basin": "",
         # Old
         "model": "",
         # New
@@ -45,7 +45,7 @@ config_template = {
         "start_iteration": 0,
         "number_iteration": 0,
         "restart": 0,
-        # TODO Ouutput variable to calibrate is not supported yet by ngen-cal
+        # TODO Output variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
         "output_variable_to_calibration_name": "",
         "calib_start_period": "",
@@ -70,7 +70,7 @@ config_template = {
     "DataFile": {
         "forcing_dir": "",
         "obs_dir": "",
-        "nwmretro_file": "",
+        "nwmretro_file": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/nwmv3_retro_streamflow/csv/CONUS/01123000_1979_2022.csv",
         "hydrofab_dir": "",
 
         # TODO cfe_dir and topmd_dir should be obsolete
@@ -114,7 +114,7 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def ready_to_run(run: CalibrationRun, build=None):
+def ready_to_run(run: CalibrationRun, build: bool = None):
     config = dict(config_template)
     general = config['General']
     calibration = config['Calibration']
@@ -128,63 +128,56 @@ def ready_to_run(run: CalibrationRun, build=None):
     general['calibration_run_id'] = run.id
     general['user'] = run.owner.username
 
-    if not run.gage:
-        errors.append('gage_id must be specified')
-    else:
+    if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
-        if not run.forcing_source:
-            errors.append('forcing source must be specified')
-        else:
+        if not is_missing(run.forcing_source, 'forcing source', errors):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
-                if not get_forcing_dir_for_job(run) or not os.path.exists(get_forcing_dir_for_job(run)):
+                forcing_dir = get_forcing_dir_for_job(run)
+                if not forcing_dir or not Path(forcing_dir).exists():
                     errors.append('forcing data must be uploaded')
             elif build:
                 # for non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
-                                               DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
-        if not run.observational_source:
-            errors.append('observational source must be specified')
-        else:
+        if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
-                if not get_observational_file_for_job(run) or not os.path.exists(get_observational_dir_for_job(run)):
+                observational_file = get_observational_file_for_job(run)
+                if not observational_file or not Path(observational_file).exists():
                     errors.append('observational data must be uploaded')
             elif build:
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
                 subset_by_time_range(source_file, get_observational_file_for_job(run),
-                                     DateTimeRange(run.calibration_start_period, run.calibration_end_period))
+                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
-        datafile['nwmretro_file'] = ''  # Not sure what this is yet
+        # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 
-        if run.geopackage_hydrofabric_path and os.path.exists(run.geopackage_hydrofabric_path):
-            datafile['hydrofab_dir'] = os.path.dirname(run.geopackage_hydrofabric_path)
+        if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists():
+            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)
         else:
-            if os.path.exists(get_geopackage_file_for_job(run)):
+            if Path(get_geopackage_file_for_job(run)).exists():
                 datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
             else:
                 errors.append('geopackage data must be uploaded')
 
         # Need to set parquet file based on domain
-        datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
+        datafile['attributes_file'] = str(Path(PARQUET_DIR) / f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values('name', 'bmi_config_path')
     # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
     module_dict = {module['name']: module['bmi_config_path'] for module in modules}
-    if not modules:
-        errors.append('modules must be specified')
-    elif not run.user_formulation_name:
-        errors.append('formulation name must be specified')
-    else:
+
+    if not is_missing(modules, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
         general['formulation'] = run.user_formulation_name
         general['model'] = run.ngen_formulation_name
         # TODO Not being used yet by ngen-cal
@@ -199,12 +192,10 @@ def ready_to_run(run: CalibrationRun, build=None):
     general['main_dir'] = job_data_dir
 
     if build:
-        os.makedirs(job_data_dir, exist_ok=True)
+        Path(job_data_dir).mkdir(parents=True, exist_ok=True)
 
-    # TODO output variable to calibrate
-    # TODO set run_date when we actually run it
-
-    if not run.calibration_start_period or not run.calibration_end_period or not run.calibration_eval_start_period or not run.calibration_eval_end_period:
+    if any(field is None for field in
+           [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
         errors.append(
             'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
@@ -219,22 +210,18 @@ def ready_to_run(run: CalibrationRun, build=None):
             errors.append(
                 'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
-            calibration['valid_start_period'] = min(run.calibration_start_period, run.validation_start_period).strftime(DATE_FORMAT)
-            calibration['valid_end_period'] = max(run.calibration_end_period, run.validation_end_period).strftime(DATE_FORMAT)
+            calibration['valid_start_period'] = run.validation_start_period.strftime(DATE_FORMAT)
+            calibration['valid_end_period'] = run.validation_end_period.strftime(DATE_FORMAT)
             calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
             calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
 
             calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
             calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
-    if not run.objective_function:
-        errors.append('objective function must be specified')
-    else:
+    if not is_missing(run.objective_function, 'objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()
 
-    if not run.optimization:
-        errors.append('optimization must be specified')
-    else:
+    if not is_missing(run.optimization, 'optimization', errors):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         all_input_names = set(
@@ -255,24 +242,21 @@ def ready_to_run(run: CalibrationRun, build=None):
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not run.plot_frequency:
-        errors.append('plot frequency must be specified')
-    else:
+    if not is_missing(run.plot_frequency, 'plot frequency', errors):
         calibration['save_plot_iter_freq'] = run.plot_frequency
     calibration['save_plot-iter'] = 0  # TODO ???
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    if not stop_criteria:
-        errors.append('stop criteria (number of iterations) must be specified')
-    else:
+    if not is_missing(stop_criteria, 'stop criteria (number of iterations)', errors):
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
     calibration['start_iteration'] = 0  # TODO ????'
 
-    calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
-    calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
+    if not is_missing(run.module_output_variable, 'output variable to calibrate', errors):
+        calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
+        calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
@@ -282,33 +266,39 @@ def ready_to_run(run: CalibrationRun, build=None):
     if run.use_sloth:
         sloth_params = (CalibrationSlothParam.objects.filter(calibration_run=run)
                         .values('param_name', 'param_count', 'param_units', 'param_location', 'param_value',
-                                'maps_to_variable_name', module=F('maps_to_module__name'), ))
+                                'maps_to_variable_name', module=F('maps_to_module__name')))
 
         # Required fields for sloth parameters
         required_fields = ['param_name', 'param_count', 'param_units', 'param_location', 'param_value', 'module', 'maps_to_variable_name']
 
         sloth_error = False
+        sloth_lines = []
+        header_format = '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'
+        line_format = '{:30s} {:10d} {:8s} {:8s} {:10.5g} {:15s} {:30s}\n'
         for s in sloth_params:
             missing_fields = [field for field in required_fields if s.get(field) is None]
             if missing_fields:
                 sloth_error = True
-                errors.append(
-                    f"Missing fields {', '.join(missing_fields)} for sloth parameter '{s['param_name']}'")
+                errors.append(f"Missing fields {', '.join(missing_fields)} for sloth parameter '{s['param_name']}'")
+            else:
+                sloth_lines.append(
+                    line_format.format(s['param_name'], s['param_count'], s['param_units'], s['param_location'], s['param_value'], s['module'],
+                                       s['maps_to_variable_name'])
+                )
 
         # If no errors and build is True, write the sloth parameters to a file
         if not sloth_error and build:
-            sloth_parameter_file = os.path.join(job_data_dir, 'sloth_parameters.txt')
-            header_format = '{:30s} {:>10s} {:8s} {:8s} {:>10s} {:15s} {:30s}\n'
-            line_format = '{:30s} {:10d} {:8s} {:8s} {:10.5g} {:15s} {:30s}\n'
-            with open(sloth_parameter_file, 'w') as file:
-                file.write(header_format.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
-                                                'maps_to_variable_name'))
-                # Write each parameter line
-                for s in sloth_params:
-                    file.write(line_format
-                               .format(s['param_name'], s['param_count'], s['param_units'], s['param_location'], s['param_value'],
-                                       s['module'], s['maps_to_variable_name']))
-            datafile['sloth_parameter_file'] = sloth_parameter_file
+            sloth_parameter_file = Path(job_data_dir) / 'sloth_parameters.txt'
+
+            sloth_parameter_content = header_format.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
+                                                           'maps_to_variable_name') + '\n'.join(
+                line_format.format(s['param_name'], s['param_count'], s['param_units'], s['param_location'], s['param_value'], s['module'],
+                                   s['maps_to_variable_name'])
+                for s in sloth_params
+            )
+            Path(sloth_parameter_file).write_text(sloth_parameter_content)
+
+            datafile['sloth_parameter_file'] = str(sloth_parameter_file)
 
     params = list(CalibrationParameter.objects
                   .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
@@ -322,14 +312,15 @@ def ready_to_run(run: CalibrationRun, build=None):
             errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
     if not param_error and build:
-        parameter_file = os.path.join(job_data_dir, 'parameters.txt')
-        with open(parameter_file, 'w') as file:
-            file.write('{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model'))
-            for p in params:
-                file.write('{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'
-                           .format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model']))
+        parameter_file = Path(job_data_dir) / 'parameters.txt'
 
-        datafile['calib_parameter_file'] = parameter_file
+        parameter_content = '{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model') + '\n'.join(
+            '{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'.format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model'])
+            for p in params
+        )
+        Path(parameter_file).write_text(parameter_content)
+
+        datafile['calib_parameter_file'] = str(parameter_file)
 
     # print('validation errors from ngen_cal_input:', errors)
 
@@ -346,8 +337,8 @@ def ready_to_run(run: CalibrationRun, build=None):
     return errors, config_file
 
 
-def build_config(config, directory):
-    config_file = os.path.join(directory, 'input.config')
+def build_config(config: dict, directory: str):
+    config_file = Path(directory) / 'input.config'
 
     logger.info(f'saving config to {config_file}')
     toml_string = toml.dumps(config)
@@ -355,7 +346,17 @@ def build_config(config, directory):
     # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
     modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
 
-    with open(config_file, 'w') as file:
-        file.write(modified_toml_string)
+    Path(config_file).write_text(modified_toml_string)
 
     return config_file
+
+
+def is_missing(value, field_name, errors, custom_error=None):
+    if value is None:
+        if custom_error:
+            errors.append(custom_error)
+        else:
+            errors.append(f'{field_name} must be specified')
+
+        return True
+    return False

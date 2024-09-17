@@ -1,5 +1,5 @@
 import csv
-import os.path
+from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -32,13 +32,11 @@ class Command(BaseCommand):
         parser.add_argument('--data_dir', type=str, help='Path to location of gage files')
 
     def handle(self, *args, **options):
-        data_dir = options['data_dir']
-        if not data_dir:
-            data_dir = os.path.join(BASE_DIR, 'calibration/management/commands')
+        data_dir = Path(options['data_dir']) if options['data_dir'] else Path(BASE_DIR) / 'calibration/management/commands'
 
         print(f'Reading data from {data_dir}')
 
-        if not os.path.isdir(data_dir) or not os.path.exists(data_dir):
+        if not data_dir.is_dir():
             print(f'{data_dir} must be a directory containing the data files')
             return
 
@@ -48,21 +46,21 @@ class Command(BaseCommand):
         user = get_user_model().objects.get(username='admin')
         print(f"In init_gages: username: {user.username}, email: {user.email}")
 
-        add_usgs_gages(os.path.join(data_dir, 'USGS_gages_CONUS.csv'), conus_domain)
-        add_usgs_gages(os.path.join(data_dir, 'USGS_gages_AK.csv'), alaska_domain)
-        add_usgs_gages(os.path.join(data_dir, 'USGS_gages_HI.csv'), hawaii_domain)
-        add_usgs_gages(os.path.join(data_dir, 'USGS_gages_PR.csv'), puerto_rico_domain)
+        add_usgs_gages(data_dir / 'USGS_gages_CONUS.csv', conus_domain)
+        add_usgs_gages(data_dir / 'USGS_gages_AK.csv', alaska_domain)
+        add_usgs_gages(data_dir / 'USGS_gages_HI.csv', hawaii_domain)
+        add_usgs_gages(data_dir / 'USGS_gages_PR.csv', puerto_rico_domain)
 
-        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_CONUS.csv'), conus_domain)
-        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_AK.csv'), alaska_domain)
-        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_HI.csv'), hawaii_domain)
-        add_nwm_v3(os.path.join(data_dir, 'NWMv3_calibration_basins_PR.csv'), puerto_rico_domain)
+        add_nwm_v3(data_dir / 'NWMv3_calibration_basins_CONUS.csv', conus_domain)
+        add_nwm_v3(data_dir / 'NWMv3_calibration_basins_AK.csv', alaska_domain)
+        add_nwm_v3(data_dir / 'NWMv3_calibration_basins_HI.csv', hawaii_domain)
+        add_nwm_v3(data_dir / 'NWMv3_calibration_basins_PR.csv', puerto_rico_domain)
 
         # Some extra manually added gages
 
-        with open(os.path.join(data_dir, 'Supplemental - AK.csv')) as file:
+        with (data_dir / 'Supplemental - AK.csv').open() as file:
             # Skip the first 2 lines before header
-            for i in range(2):
+            for _ in range(2):
                 next(file)
             reader = csv.DictReader(file, delimiter=',')
             gage_count = 0
@@ -77,9 +75,9 @@ class Command(BaseCommand):
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
 
-        with open(os.path.join(data_dir, 'Supplemental - CONUS.csv')) as file:
+        with (data_dir / 'Supplemental - CONUS.csv').open() as file:
             # Skip the first line before header
-            for i in range(1):
+            for _ in range(1):
                 next(file)
             reader = csv.DictReader(file, delimiter='|')
             new_count = 0
@@ -108,19 +106,20 @@ class Command(BaseCommand):
                 rfc_id = rfc_dict[rfc.strip()] if rfc else None
 
                 gage.update(
-                    {'nws_id': nws_id if nws_id else None,
-                     'station_name': station_name.strip() if station_name else '',
+                    {'nws_id': nws_id or None,
+                     'station_name': (station_name or '').strip(),
                      'rfc_id': rfc_id,
                      'nwm_v3_calibrated': nwm_v3_calibrated,
-                     'agency': agency.strip() if agency else ''})
+                     'agency': (agency or '').strip()
+                     })
 
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
         # This file maps NWS id with USGS id
-        with open(os.path.join(data_dir, 'ALL_USGS-HADS_SITES.txt')) as file:
+        with (data_dir / 'ALL_USGS-HADS_SITES.txt').open() as file:
             # Skip the first 4 lines
-            for i in range(4):
+            for _ in range(4):
                 next(file)
             reader = csv.DictReader(file, delimiter='|',
                                     fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
@@ -149,8 +148,8 @@ class Command(BaseCommand):
                 gage['nws_id'] = nws_id
         print(f'Processed {gage_count} gages from {file.name}.  Skipped {skip_count} gages which are assumed to be non-streamflow gages')
 
-        add_additional_gages(os.path.join(data_dir, 'RFC Additional NextGen Calibration Basin List - AK.csv'), alaska_domain)
-        add_additional_gages(os.path.join(data_dir, 'RFC Additional NextGen Calibration Basin List - CONUS.csv'), conus_domain)
+        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - AK.csv', alaska_domain)
+        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - CONUS.csv', conus_domain)
 
         unique_field = 'gage_id'
         print()
@@ -169,7 +168,7 @@ class Command(BaseCommand):
 
 
 def add_additional_gages(gage_file, domain):
-    with open(gage_file) as file:
+    with Path(gage_file).open() as file:
         reader = csv.reader(file, delimiter=',')
         row_num = 0
         gage_count = 0
@@ -196,9 +195,9 @@ def add_additional_gages(gage_file, domain):
 
 def add_usgs_gages(usgs_file, domain):
     # Read the main file and supplement with info from the previous file, if available for that gage
-    with open(usgs_file, 'r') as file:
+    with Path(usgs_file).open() as file:
         # Skip the first 34 lines, including the header
-        for i in range(34):
+        for _ in range(34):
             next(file)
         reader = csv.DictReader(file, delimiter='\t',
                                 fieldnames=['agency_name', 'gage_id', 'station_name', 'site_type', 'latitude', 'longitude', 'lat_long_accuracy',
@@ -237,7 +236,7 @@ def add_usgs_gages(usgs_file, domain):
 
 
 def add_nwm_v3(nwm_v3_file, domain):
-    with open(nwm_v3_file) as file:
+    with Path(nwm_v3_file).open() as file:
         reader = csv.DictReader(file, delimiter=',')
         new_count = 0
         existing_count = 0
@@ -255,7 +254,9 @@ def add_nwm_v3(nwm_v3_file, domain):
                         'domain_id': domain.id}
                 gages[gage_id] = gage
             else:
+                # If it already exists, update this flag
                 existing_count += 1
+                gage['nwm_v3_calibrated'] = True
 
             rfc = row.get('rfc')
             gage['rfc_id'] = rfc_dict[rfc] if rfc else None

@@ -90,7 +90,7 @@ def get_static_optimizations():
     for optimization in optimization_list:
         optimization_obj: Optimization = OptimizationEnum.get_instance(optimization['name'])
 
-        inputs = list(optimization_obj.inputs.values('name', 'description', 'data_type', 'is_active'))
+        inputs = list(optimization_obj.inputs.values('name', 'description', 'data_type', 'is_active', 'default_value', 'min', 'max'))
         optimization['inputs'] = inputs
 
     return optimization_list
@@ -190,15 +190,35 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
     if optimization_inputs:
         valid_inputs = OptimizationInput.objects.filter(
             optimization=optimization, name__in=[o['name'] for o in optimization_inputs], is_active=True
-        )
+        ).only('name', 'min', 'max', 'data_type')
         valid_inputs_dict = {opt_input.name: opt_input for opt_input in valid_inputs}
 
         optimization_inputs_to_create = []
         for o in optimization_inputs:
             name = o['name']
+            value = o['value']
             optimization_input = valid_inputs_dict.get(name)
+
+            # Safely convert min and max to integers if necessary and if they are not None
+            min_value = optimization_input.min
+            max_value = optimization_input.max
+
+            if optimization_input.data_type != 'double':
+                # noinspection PyTypeChecker
+                min_value = int(min_value) if min_value is not None else None
+                # noinspection PyTypeChecker
+                max_value = int(max_value) if max_value is not None else None
+                value = int(value)
+
             if not optimization_input:
                 return None, "'{}' is not a valid parameter input for '{}'".format(name, optimization_name)
+
+            # Validate the value against min and max
+            if min_value is not None and value < min_value:
+                return None, "'{}' value ({}) is below the minimum allowed ({})".format(name, value, min_value)
+            if max_value is not None and value > max_value:
+                return None, "'{}' value ({}) is above the maximum allowed ({})".format(name, value, max_value)
+
             optimization_inputs_to_create.append(
                 CalibrationOptimizationInput(optimization_input=optimization_input, calibration_run=run, value=o['value'])
             )

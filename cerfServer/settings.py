@@ -23,7 +23,7 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+dotenv_path = Path(__file__).parent / '.env'
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
 
@@ -194,13 +194,13 @@ LOGGING = {
         'file_simple': {
             'level': 'DEBUG',
             'class': 'logging.FileHandler',
-            'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
+            'filename': Path(BASE_DIR) / 'cerfServer.log',
             'formatter': 'verbose'
         },
         'file': {
             'level': 'DEBUG',
-            'class': 'timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': os.path.join(BASE_DIR, 'cerfServer.log'),
+            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
+            'filename': Path(BASE_DIR) / 'cerfServer.log',
             'when': 'midnight',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
             'backupCount': 7,  # Keep 7 days worth of logs (adjust as needed)
@@ -247,7 +247,7 @@ HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
 
 HYDROFABRIC_URL = 'http://localhost:8001'
 
-S3_MOUNT_POINT = os.path.join(Path.home(), 's3')
+S3_MOUNT_POINT = Path.home() / 's3'
 
 HYDROFABRIC = False
 
@@ -255,22 +255,22 @@ HYDROFABRIC = False
 # Locations
 # -----------------------------
 # Locations for running ngen-cal
-REPO_ROOT = os.getenv('REPO_ROOT', os.path.join(Path.home(), 'noaa-owp'))
+REPO_ROOT = os.getenv('REPO_ROOT', Path.home() / 'noaa-owp')
 # Directory that Ngen is cloned into
-NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
+NGEN_REPO_ROOT = Path(REPO_ROOT) / 'ngen'
 # directory that Ngen-cal is cloned into
-NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+NGEN_CAL_REPO_ROOT = Path(REPO_ROOT) / 'ngen-cal'
 
 # This is the mount point for docker containers
-NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', os.path.join(Path.home(), 'ngwpc/data'))
+NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', Path.home() / 'ngwpc/data')
 
-NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
+NGEN_CAL_WORK_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-cal-work'
 # Directory where all the output runs are stored
-NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
+NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 
 # Directory containing the ngen-cal virtual environment
 # This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
-NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
+NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
 
 
 class RunTypeEnum(StrEnum):

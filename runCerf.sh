@@ -17,15 +17,15 @@ for arg in "$@"; do
   esac
 done
 
-if [ -n "${CERF_VENV}" ] ; then
-    # shellcheck disable=SC1090
-    source "$cerfServer/${CERF_VENV}/bin/activate"
-else
-    echo "CERF_VENV is not set. Please set the virtual environment variable."
-    exit 1
+if [ "${CERF_VENV}" != "Docker" ] ; then
+    if [ -n "${CERF_VENV}" ]; then
+       # shellcheck disable=SC1090
+       source "$cerfServer/${CERF_VENV}/bin/activate"
+       pip install -r requirements.txt
+    else
+       echo "CERF_VENV is not set. Please set the virtual environment variable."
+    fi
 fi
-
-pip install -r requirements.txt
 
 echo
 echo "Running migrate"

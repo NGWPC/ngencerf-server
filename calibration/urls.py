@@ -65,7 +65,7 @@ urlpatterns = [
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
 
     # Testing
-    path('calibration/read_output/', calibration_run_views.test_read_output, name="readOutput"),
+    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
 
     ##################################
     # Import/Export

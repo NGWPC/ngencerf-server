@@ -234,6 +234,7 @@ def validate_formulation(run, module_names):
             break
     return valid
 
+
 formulation_validations = {
     "formulation_rules": {
         "group_requirements": {

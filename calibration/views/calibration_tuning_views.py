@@ -1,9 +1,9 @@
 import io
 import logging
-import os
 from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -154,10 +154,10 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     if source:
         if source == upload_enum.from_enum(upload_enum):
             # Check job-specific path first
-            if os.path.exists(job_specific_file):
+            if Path(job_specific_file).exists():
                 return job_specific_file
         # If not found or source is different, check the hydrofabric path
-        if hydrofabric_path and os.path.exists(hydrofabric_path):
+        if hydrofabric_path and Path(hydrofabric_path).exists():
             return hydrofabric_path
 
     return None
@@ -209,7 +209,7 @@ def save_tuning_tab(request):
     validation_times = validator.get('validation_times')
     parameters = validator.get('parameters')
 
-    output_variable_to_calibrate = validator.data.get('output_variable_to_calibrate')
+    output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -401,7 +401,7 @@ def save_parameters(run, parameters):
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
 def get_csv_daterange(file):
     try:
-        if not os.path.exists(file):
+        if not Path(file).exists():
             raise CerfException(f"File {file} does not exist")
         # Read the CSV file, assuming the first column contains date information
         df = pd.read_csv(file, delimiter=',', parse_dates=[0])
@@ -426,12 +426,13 @@ def get_csv_daterange(file):
 def get_forcing_date_range(forcing_dir_path):
     # Get all files in the directory
     timerange = None
-    for file in os.listdir(forcing_dir_path):
-        new_range = get_csv_daterange(os.path.join(forcing_dir_path, file))
-        if timerange:
-            timerange = timerange.encompass(new_range)
-        else:
-            timerange = new_range
+    for file in Path(forcing_dir_path).iterdir():
+        if file.is_file():
+            new_range = get_csv_daterange(Path(forcing_dir_path) / file)
+            if timerange:
+                timerange = timerange.encompass(new_range)
+            else:
+                timerange = new_range
 
     return timerange
 

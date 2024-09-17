@@ -1,8 +1,9 @@
 import base64
 import logging
-import os
 import re
 import shutil
+import traceback
+from pathlib import Path
 
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
@@ -193,6 +194,7 @@ def save_gage_tab(request):
                 get_geopackage_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
+                traceback.print_exc()
                 return Response(f'Error retrieving geopackage from Hydrofabric.- {e}')
 
         geopackage_image_url = get_geopackage_image_url(run)
@@ -217,12 +219,13 @@ def save_gage_tab(request):
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
             observational_file = ngen_locations.get_observational_file_for_job(run)
-            if os.path.exists(observational_file):
-                os.remove(observational_file)
+            if Path(observational_file).exists():
+                Path(observational_file).unlink()
             try:
                 get_observational_data_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
+                traceback.print_exc()
                 return Response(f'Error retrieving observation data from Hydrofabric.- {e}')
 
         run.observational_source = ObservationalSourceEnum.from_enum(
@@ -231,12 +234,13 @@ def save_gage_tab(request):
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
             forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
-            if os.path.exists(forcing_dir):
+            if Path(forcing_dir).exists():
                 shutil.rmtree(forcing_dir)
             try:
                 get_forcing_data_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
+                traceback.print_exc()
                 return Response(f'Error retrieving forcing data from Hydrofabric.- {e}')
         run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
 
@@ -258,7 +262,7 @@ def save_gage_tab(request):
 def get_geopackage_image_url(run: CalibrationRun):
     geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_path
 
-    if geopackage_path and os.path.exists(geopackage_path):
+    if geopackage_path and Path(geopackage_path).exists():
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
 
         # Convert ByteIO image to base64
@@ -275,12 +279,12 @@ def save_gage(run, gage_id):
         if run.gage:
             # Delete any user uploaded files
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
-            if os.path.exists(uploaded_forcing_dir):
+            if Path(uploaded_forcing_dir).exists():
                 shutil.rmtree(uploaded_forcing_dir)
 
             uploaded_observational_file = get_observational_file_for_job(run)
-            if os.path.exists(uploaded_observational_file):
-                os.remove(uploaded_observational_file)
+            if Path(uploaded_observational_file).exists():
+                Path(uploaded_observational_file).unlink()
 
         # Update the run.gage field
         run.gage = gage
@@ -332,7 +336,7 @@ def upload_observational_data(request):
     run.observational_hydrofabric_file_path = None
 
     if fs.exists(observational_file.name):
-        os.remove(os.path.join(fs.location, observational_file.name))
+        (Path(fs.location) / observational_file.name).unlink()
     fs.save(observational_file.name, observational_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
@@ -402,12 +406,12 @@ def upload_forcing_data(request):
     for forcing_file in files:
         # Replace any existing files
         if fs.exists(forcing_file.name):
-            forcing_file_path = os.path.join(fs.location, forcing_file.name)
+            forcing_file_path = Path(fs.location) / forcing_file.name
             # Check name matching
             if not re.match(get_forcing_filename_pattern(), forcing_file.name):
                 logger.warning(f'Skipping forcing file {forcing_file.name}')
                 number_of_files -= 1
-            os.remove(forcing_file_path)
+            Path(forcing_file_path).unlink()
         fs.save(forcing_file.name, forcing_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
@@ -477,7 +481,7 @@ def upload_geopackage_data(request):
     run.geopackage_hydrofabric_path = None
 
     if fs.exists(geopackage_file.name):
-        os.remove(os.path.join(fs.location, geopackage_file.name))
+        (Path(fs.location) / geopackage_file.name).unlink()
     fs.save(geopackage_file.name, geopackage_file)
 
     geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None

@@ -1,8 +1,8 @@
 import functools
-import os
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from enum import auto, Enum
+from pathlib import Path
 from typing import Optional, Dict
 
 from calibration.enums import StatusEnum
@@ -11,6 +11,7 @@ from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, get_c
     get_calibration_stdout_file, get_validation_control_stdout_file, get_validation_best_input_file, get_validation_control_input_file, \
     get_validation_best_stdout_file
 from calibration.views.common import CerfException
+from calibration.views.read_output import read_output
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
 
@@ -113,10 +114,9 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     :param output_file: Path to the output file for the stage.
     """
     cal_or_valid_script = CALIBRATION_PY if stage == JobStage.CALIBRATION else VALIDATION_PY
-    cal_or_valid_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal',
-                                       'ngen_cal_simulation.py') if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
+    cal_or_valid_script = Path(settings.BASE_DIR) / 'run_ngen_cal' / 'ngen_cal_simulation.py' if settings.NGEN_CAL_SIMULATE else cal_or_valid_script
 
-    shell_script = os.path.join(settings.BASE_DIR, 'run_ngen_cal', 'run_ngen_cal.sh')
+    shell_script = Path(settings.BASE_DIR) / 'run_ngen_cal' / 'run_ngen_cal.sh'
 
     # Prepare the argument list to pass to the shell script
     args_to_calibrate_or_validate = [input_file]
@@ -147,7 +147,7 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
     :param run: The CalibrationRun object representing the job run.
     :param future: The Future object representing the asynchronous job process.
     """
-    process_id = os.path.basename(run.job_data_dir)
+    process_id = Path(run.job_data_dir).name
     print(f'Job {process_id} completed stage {current_stage}')
 
     try:
@@ -175,7 +175,7 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
 
 def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_validation: bool):
     """Handle the logic to proceed to the next stage of the job."""
-    process_id = os.path.basename(run.job_data_dir)
+    process_id = Path(run.job_data_dir).name
     transition_manager = JobStageTransitionManager(validation_enabled=do_validation)
     next_stage = transition_manager.get_next_stage(current_stage)
 
@@ -185,6 +185,8 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
     else:
         print(f'Job {process_id} complete. No further stages.')
         set_job_status(run, StatusEnum.DONE)
+
+        read_output(run)
 
 
 def set_job_status(run: CalibrationRun, status: StatusEnum):
@@ -210,7 +212,7 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    process_id = os.path.basename(run.job_data_dir)
+    process_id = Path(run.job_data_dir).name
 
     print(f"Spawning process: {process_id} in stage {current_stage.name} with {args}")
     try:

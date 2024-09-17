@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -14,11 +15,11 @@ def copy_directory(source_dir, destination_dir):
     :param destination_dir: Path to the destination directory
     """
     # Check if the source directory exists
-    if not os.path.exists(source_dir):
+    if not Path(source_dir).exists():
         raise FileNotFoundError(f"Source directory {source_dir} does not exist.")
 
     # Check if the destination directory exists, if not, create it
-    if not os.path.exists(destination_dir):
+    if not Path(destination_dir).exists():
         os.makedirs(destination_dir)
 
     # Copy the contents of the source directory to the destination directory
@@ -36,15 +37,15 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     :param destination_dir: Path to the destination directory
     """
     # Check if the source file exists
-    if not os.path.exists(source_file):
+    if not Path(source_file).exists():
         raise FileNotFoundError(f"Source file {source_file} does not exist.")
 
     # Ensure the destination directory exists, if not, create it
-    if not os.path.exists(destination_dir):
+    if not Path(destination_dir).exists():
         os.makedirs(destination_dir)
 
     # Construct the full path for the destination file
-    destination_file = os.path.join(destination_dir, os.path.basename(source_file))
+    destination_file = Path(destination_dir) / Path(source_file).name
 
     # Copy the source file to the destination directory
     shutil.copy2(source_file, destination_file)

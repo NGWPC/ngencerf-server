@@ -1,8 +1,7 @@
 import logging
-import os
+from pathlib import Path
 
 from django.apps import AppConfig
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +16,12 @@ class CalibrationConfig(AppConfig):
         from cerfServer.settings import BASE_DIR
 
         for file in files:
-            if not os.path.exists(file):
+            if not Path(file).is_file():
                 logger.warning(f'{file} does not exist')
         for directory in dirs:
-            if not os.path.exists(directory):
+            if not Path(directory).is_dir():
                 logger.warning(f'{directory} does not exist')
 
         # Copy the static files
-        copy_directory(os.path.join(BASE_DIR, 'ngen_static_files', 'parquet'), PARQUET_DIR)
-        copy_directory(os.path.join(BASE_DIR, 'ngen_static_files', 'bmi_config', 'Noah-OWP'), NOAH_PARAMETER_DIR)
-
-
+        copy_directory(Path(BASE_DIR) / 'ngen_static_files' / 'parquet', PARQUET_DIR)
+        copy_directory(Path(BASE_DIR, ) / 'ngen_static_files' / 'bmi_config' / 'Noah-OWP', NOAH_PARAMETER_DIR)
