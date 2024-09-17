@@ -255,14 +255,14 @@ HYDROFABRIC = False
 # Locations
 # -----------------------------
 # Locations for running ngen-cal
-REPO_ROOT = os.getenv('REPO_ROOT', Path.home() / 'noaa-owp')
+REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
 # Directory that Ngen is cloned into
-NGEN_REPO_ROOT = Path(REPO_ROOT) / 'ngen'
+NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
 # directory that Ngen-cal is cloned into
-NGEN_CAL_REPO_ROOT = Path(REPO_ROOT) / 'ngen-cal'
+NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 
 # This is the mount point for docker containers
-NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', Path.home() / 'ngwpc/data')
+NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
 
 NGEN_CAL_WORK_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-cal-work'
 # Directory where all the output runs are stored
