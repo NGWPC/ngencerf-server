@@ -18,8 +18,8 @@ class ModuleOutputVariable(BaseModel):
     def __str__(self):
         return (
             f"ModuleOutputVariable: {self.id}, "
-            f"Name: {self.name:20}, "
-            f"Calibration Formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
+            f"name: {self.name:20}, "
+            f"calibration_formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
         )
 
 

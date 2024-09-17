@@ -52,11 +52,11 @@ class CalibrationRun(BaseModel):
         gage_info = f"Gage: {self.gage.gage_id}" if self.gage else "No Gage"
         return (
             f"CalibrationRun {self.id}, {gage_info}, "
-            f"Owner: {self.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
-            f"Job data directory: {self.job_data_dir},"
-            f"GeoPackage Path: {self.geopackage_hydrofabric_path}, "
-            f"Forcing Dir: {self.forcing_hydrofabric_dir_path}, "
-            f"Observational File: {self.observational_hydrofabric_file_path}, "
-            f"Status: {self.status.name}, "
-            f"Deleted: {self.is_deleted}"
+            f"owner: {self.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
+            f"job_data_directory: {self.job_data_dir},"
+            f"geopackage_hydrofabric_path: {self.geopackage_hydrofabric_path}, "
+            f"forcing_hydrofabric_dir_path: {self.forcing_hydrofabric_dir_path}, "
+            f"observational_hydrofabric_file_path: {self.observational_hydrofabric_file_path}, "
+            f"status.name: {self.status.name}, "
+            f"is_deleted: {self.is_deleted}"
         )

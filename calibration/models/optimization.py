@@ -16,5 +16,5 @@ class Optimization(BaseModel):
     def __str__(self):
         return (
             f"Optimization: {self.id}, "
-            f"Name: {self.name:20}, "
+            f"name: {self.name:20}, "
         )

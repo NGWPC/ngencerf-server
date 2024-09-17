@@ -17,8 +17,8 @@ class IterationParameter(BaseModel):
     def __str__(self):
         return (
             f"IterationParameter: {self.id}, "
-            f"Calibration parameter: ({self.calibration_parameter}), "
-            f"Value: {str(self.tuned_value)}, "
-            f"Best: {self.best}"
+            f"calibration_parameter: ({self.calibration_parameter}), "
+            f"tuned_value: {str(self.tuned_value)}, "
+            f"best: {self.best}"
         )
 
