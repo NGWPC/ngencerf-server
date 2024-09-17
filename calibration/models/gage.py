@@ -30,7 +30,7 @@ class Gage(BaseModel):
         ]
 
     def __str__(self):
-        return f"Gage {self.gage_id} - {self.agency} station name: {self.station_name} domain: {self.domain})"
+        return f"gage: {self.gage_id} - {self.agency} station name: {self.station_name} domain: {self.domain})"
 
 
 

@@ -6,7 +6,7 @@ from calibration.models.base_model import BaseModel
 class CalibrationFormulation(BaseModel):
     description = models.TextField(null=False)
     name = models.CharField(max_length=50, null=False)
-    groups = models.TextField(max_length=50, null=False)
+    groups = models.TextField(null=False)
     used_by_calibration_run = models.BooleanField(default=False)
     bmi_config_path = models.CharField(max_length=255, null=True)
     version = models.TextField(null=True)
@@ -21,7 +21,7 @@ class CalibrationFormulation(BaseModel):
     def __str__(self):
         return (
             f"CalibrationFormulation: {self.id}, "
-            f"Name: {self.name:20}, "
-            f"Used by calibration run: {str(self.used_by_calibration_run):<5}, "
+            f"name: {self.name:20}, "
+            f"used_by_calibration_run: {str(self.used_by_calibration_run):<5}, "
             f"Calibration Run: {self.calibration_run.id}"
         )

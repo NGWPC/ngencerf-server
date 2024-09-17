@@ -217,15 +217,17 @@ def save_tuning_tab(request):
 
     run.automatic_validation = automatic_validation
 
-    save_times(run, calibration_times, validation_times)
+    error_message = validate_and_save_times(run, calibration_times, validation_times)
+    if error_message:
+        return ResponseError(error_message)
 
-    message = validate_parameters(run, parameters)
-    if message is not None:
-        return ResponseError(message)
+    error_message = validate_parameters(run, parameters)
+    if error_message:
+        return ResponseError(error_message)
 
-    message = save_output_variable(run, output_variable_to_calibrate)
-    if message is not None:
-        return ResponseError(message)
+    error_message = save_output_variable(run, output_variable_to_calibrate)
+    if error_message:
+        return ResponseError(error_message)
 
     with transaction.atomic():
         run.save()
@@ -339,7 +341,13 @@ def upload_user_parameters(request):
     return Response(response_validator.data)
 
 
-def save_times(run, calibration_times, validation_times):
+def validate_and_save_times(run, calibration_times, validation_times):
+    time_range = DateTimeRange(run.time_range_start, run.time_range_end)
+    if calibration_times['simulation_start_time'] not in time_range or calibration_times['simulation_end_time'] not in time_range:
+        return f"Calibration simulation times must be contained without the intersection of forcing data and observational data - {time_range}"
+    if validation_times['simulation_start_time'] not in time_range or validation_times['simulation_end_time'] not in time_range:
+        return f"Validation simulation times must be contained without the intersection of forcing data and observational data - {time_range}"
+
     run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times else None
     run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times else None
     run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times else None
@@ -350,6 +358,8 @@ def save_times(run, calibration_times, validation_times):
         run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times else None
         run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times else None
         run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times else None
+
+    return None
 
 
 def validate_parameters(run, parameters):

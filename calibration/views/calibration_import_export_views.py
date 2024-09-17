@@ -24,7 +24,7 @@ from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
-from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, save_times, validate_parameters, save_output_variable, \
+from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
@@ -160,7 +160,9 @@ def import_job(request):
     if not run.automatic_validation and validation_times:
         return ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
-    save_times(run, calibration_times, validation_times)
+    error_message = validate_and_save_times(run, calibration_times, validation_times)
+    if error_message:
+        return ResponseError(error_message)
 
     output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
     parameters = validator.get('parameters')
@@ -168,11 +170,11 @@ def import_job(request):
         return ResponseError('Parameters cannot be specified without modules')
 
     error_message = validate_parameters(run, parameters)
-    if error_message is not None:
+    if error_message:
         return ResponseError(error_message)
 
     error_message = save_output_variable(run, output_variable_to_calibrate)
-    if error_message is not None:
+    if error_message:
         return ResponseError(error_message)
 
     save_parameters(run, parameters)

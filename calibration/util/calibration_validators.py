@@ -611,8 +611,8 @@ class OptimizationInputStaticSerializer(serializers.Serializer):
     description = serializers.CharField(required=True)
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     default_value = serializers.FloatField(required=True)
-    min=serializers.FloatField(required=False, allow_null=True)
-    max=serializers.FloatField(required=False, allow_null=True)
+    min = serializers.FloatField(required=False, allow_null=True)
+    max = serializers.FloatField(required=False, allow_null=True)
     is_active = serializers.BooleanField(required=True)
 
 

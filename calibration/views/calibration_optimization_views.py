@@ -149,13 +149,13 @@ def save_optimization_tab(request):
     if optimization_inputs and not optimization_name:
         return ResponseError('Optimization inputs cannot be specified without an optimization name')
 
-    optimization, message = validate_optimizations(run, optimization_name, optimization_inputs)
-    if message:
-        return ResponseError(message)
+    optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
+    if error_message:
+        return ResponseError(error_message)
 
-    message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
-    if message:
-        return ResponseError(message)
+    error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
+    if error_message:
+        return ResponseError(error_message)
 
     run.plot_frequency = plot_frequency
     run.streamflow_threshold = streamflow_threshold

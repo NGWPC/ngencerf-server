@@ -20,8 +20,8 @@ class Iteration(BaseModel):
     def __str__(self):
         return (
             f"Iteration: {self.id}, "
-            f"Iteration number: {self.iteration_num},"
-            f"Worker name: {str(self.worker_name)}, "
-            f"Worker number: {self.worker_number}"
+            f"iteration_num: {self.iteration_num},"
+            f"worker_name: {str(self.worker_name)}, "
+            f"worker_number: {self.worker_number}"
         )
 
