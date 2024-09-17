@@ -664,6 +664,10 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
     iterations = serializers.IntegerField(required=True)
 
 
+class ProcessCalibrationOutputRequest(CalibrationRunSerializer):
+    rerun = serializers.BooleanField(required=False, default=False)
+
+
 ##################################
 # Import/Export
 ##################################

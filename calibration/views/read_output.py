@@ -31,8 +31,7 @@ def read_output(run):
     We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
     """
     print(f"Processing output for Calibration Run {run.id}")
-    # TODO For dev only, we'll delete the objects first
-    Iteration.objects.filter(calibration_run=run).delete()
+
     create_iteration_objects_for_all_workers(run)
 
     run.realization_file_path = get_realization_file_path(run)
@@ -126,13 +125,6 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
 
     # Prefetch Iteration objects for efficiency
     iteration_dict = {it.iteration_num: it for it in iterations}
-
-    #########
-    # TODO For dev only, we will delete entries first
-    #########
-    IterationMetric.objects.filter(iteration__calibration_run=run).delete()
-    IterationParameter.objects.filter(iteration__calibration_run=run).delete()
-    #####
 
     # Use pandas for reading both files efficiently
     metrics_df = pd.read_csv(metrics_iteration_file)

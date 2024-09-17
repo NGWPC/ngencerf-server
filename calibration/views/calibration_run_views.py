@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Iteration
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request
 from calibration.views.read_output import read_output, accumulate_iterations
@@ -138,40 +138,64 @@ def submit_job(run, config_file=None):
     return None
 
 
-# This is just a test endpoint to trigger read_output()
+@extend_schema(
+    request=ProcessCalibrationOutputRequest,
+    responses={
+        200: ProcessCalibrationOutputRequest,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
+    },
+    description="Process the output of a calibration run"
+)
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def test_read_output(request):
+def process_calibration_output(request):
+    """
+     This endpoint is mostly for testing, to kick of the processing of output for a completed job
+     Normally read_output() is called automatically when a job completes.
+     This endpoint can be used in case the output processing doesn't work.
+     It does not hurt to run this endpoint more than once.
+     The 'rerun' option will delete any Iteration and related objects and re-create them
+    """
     data = request.data if request.method == 'POST' else request.query_params
-    calibration_run_id = data.get('calibration_run_id')
+
+    logger.debug(f'process_calibration_output() request from {request.user} - {data}')
+    validator, error_return = validate_request(ProcessCalibrationOutputRequest, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    rerun = validator.get('rerun')
 
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
 
     if error_return:
         return error_return
 
-    # .
-    # └── ngen-cal-work
-    #     ├── bmi_config
-    #     │   └── Noah-OWP
-    #     ├── parquet
-    #     └── run_calib                      NGEN_CAL_RUN_DIR
-    #         ├── 100_peterx
-    #         │   └── kge_dds
-    #         │       └── cfe_noah
-    #         │           └── 01123000
-    #         ├── 101_peterx
-    #         │   └── kge_gwo
-    #         │       └── cfe_noah
-    #         │           └── 01123000
-    #         └── 102_peterx
-    #             └── kge_pso
-    #                 └── cfe_noah
-    #                     └── 01123000
+    iteration_objects = Iteration.objects.filter(calibration_run=run)
+    if iteration_objects.exists():
+        if rerun:
+            iteration_objects.delete()
+        else:
+            return ResponseError(f"End of job processing has already been completed Calibration Run {run.id}")
+
+    # If we have a repeat option then iteration_objects.delete()
 
     read_output(run)
 
-    return Response(data={'calibration_run_id': calibration_run_id})
+    response = {'message': f"End of job processing completed for Calibration Run {run.id}",
+                'calibration_run_id': run.id,
+                'status': run.status.name}
+
+    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from process_calibration_output() - {response_validator.data}')
+
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -323,7 +347,7 @@ def cancel_job(request):
         run.save(update_fields=['status'])
 
     response = {'message': f'Calibration Run job {run.id} has been canceled', 'calibration_run_id': run.id,
-                'status': run.status.name, }
+                'status': run.status.name}  # type: ignore[attr-defined]
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
