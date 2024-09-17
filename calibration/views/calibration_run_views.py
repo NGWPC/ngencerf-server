@@ -6,7 +6,7 @@ import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import Max, Sum
+from django.db.models import Max
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
 from rest_framework.decorators import api_view
@@ -295,14 +295,8 @@ def get_iteration(request):
     # Use accumulate_iterations to get the total iterations
     total_iterations = accumulate_iterations(run)
 
-    # Log and return the total iterations
-    logger.debug(f'Total iterations: {total_iterations}')
-    print('total iterations', total_iterations)
-
-    # Add all iterations (1 for each worker)
-    total_iteration_num = Iteration.objects.filter(calibration_run=run).aggregate(total=Sum('iteration_num'))['total'] or 0
-    response = {'message': f'Last iteration for Calibration Run {run.id}, across all workers, is {total_iteration_num}', 'calibration_run_id': run.id,
-                'status': run.status.name, 'iterations': total_iteration_num}
+    response = {'message': f'Iterations so far for Calibration Run {run.id}, across all workers, is {total_iterations}', 'calibration_run_id': run.id,
+                'status': run.status.name, 'iterations': total_iterations}
 
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
@@ -328,7 +322,7 @@ def get_iteration(request):
 @handle_exceptions
 def cancel_job(request):
     data = request.data if request.method == 'POST' else request.query_params
-    logger.debug(f'get_iteration() request from {request.user} - {data}')
+    logger.debug(f'cancel_job() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -352,7 +346,7 @@ def cancel_job(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from cancel_job() - {response_validator.data}')
 
     return Response(response_validator.data)
 

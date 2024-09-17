@@ -297,7 +297,7 @@ def process_worker_dirs(run, worker_lambda):
         # Check if the item is a directory and matches the pattern
         if item.is_dir() and worker_directory_pattern.match(item.name):
             worker_dir = Path(output_calibration_run_dir) / item
-            logger.debug(f'{run.id}_{run.owner.username} CProcessing worker directory:{worker_dir}')
+            logger.debug(f'{run.id}_{run.owner.username} Processing worker directory:{worker_dir}')
             worker_lambda(worker_dir, run)
 
 
@@ -312,7 +312,7 @@ def accumulate_iterations(run: CalibrationRun):
     total_iterations = 0  # Initialize the accumulator
 
     # Define the lambda function to process each worker directory
-    def process_worker(worker_dir, run: CalibrationRun):  # noqa : F811
+    def count_iterations_for_worker(worker_dir, run: CalibrationRun):  # noqa : F811
         nonlocal total_iterations
         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
 
@@ -321,11 +321,10 @@ def accumulate_iterations(run: CalibrationRun):
         else:
             # Count rows in the CSV file and add to total iterations
             rows = count_rows_in_csv(metrics_iteration_file)
-            logger.error(f'{rows} in {metrics_iteration_file}')
             total_iterations += rows
 
     # Call process_worker_dirs with the defined lambda function
-    process_worker_dirs(run, process_worker)
+    process_worker_dirs(run, count_iterations_for_worker)
 
     return total_iterations  # Return the accumulated total iterations
 
