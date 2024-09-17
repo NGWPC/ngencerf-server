@@ -13,7 +13,7 @@ from calibration.models import CalibrationOptimizationInput, CalibrationStopCrit
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB
+    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
 
@@ -72,7 +72,7 @@ config_template = {
     "DataFile": {
         "forcing_dir": "",
         "obs_dir": "",
-        "nwmretro_file": "/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/nwmv3_retro_streamflow/csv/CONUS/01123000_1979_2022.csv",
+        "nwmretro_file": "",
         "hydrofab_dir": "",
 
         # TODO cfe_dir and topmd_dir should be obsolete
@@ -121,7 +121,7 @@ def validate_times(run):
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
         if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.validation_start_period not in time_range or run.validation_end_peroid not in time_range:
+        if run.validation_start_period not in time_range or run.validation_end_period not in time_range:
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
@@ -173,11 +173,13 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
+        nwm_retro = Path(NWM_RETROSPECTIVE_DIR) / f'{run.gage.gage_id}.csv'
+        if nwm_retro.exists():
+            datafile['nwmretro_file'] = str(nwm_retro)
+
         error_message = validate_times(run)
         if error_message:
             errors.append(error_message)
-
-        # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 
         if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists():
             datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)

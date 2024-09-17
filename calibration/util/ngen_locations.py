@@ -8,8 +8,8 @@ dirs = [CALIB_VALID_DIR := str(Path(settings.NGEN_CAL_REPO_ROOT) / 'python/runCa
         NOAH_PARAMETER_DIR := str(Path(settings.NGEN_CAL_WORK_DIR) / 'bmi_config/Noah-OWP'),
         PARQUET_DIR := str(Path(settings.NGEN_CAL_WORK_DIR) / 'parquet')]
 
-# TODO Need to update this
-CAL_PLOTS_DIR = str(Path(settings.NGEN_CAL_WORK_DIR) / 'cal_plots')
+NWM_RETROSPECTIVE_DIR = str(Path(settings.NGEN_CAL_MOUNT_POINT, 'nwm_retro_streamflow'))
+
 
 files = [NGEN_EXE := str(Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen'),
          CFE_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/cfe/cmake_build/libcfebmi.so'),

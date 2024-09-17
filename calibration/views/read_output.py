@@ -285,7 +285,7 @@ def read_last_line(filename):
         return deque(file, maxlen=1).pop().decode().strip()
 
 
-def process_worker_dirs(run, worker_lambda):
+def process_worker_dirs(run: CalibrationRun, worker_lambda):
     """
     Loops through directories matching the pattern "ngen_xxxxx_worker" and applies the worker_lambda function.
 

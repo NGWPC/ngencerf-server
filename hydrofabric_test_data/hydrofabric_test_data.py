@@ -585,7 +585,7 @@ module_sample_data = {"modules": [
             "version_date": "2024-08-29T09:12:33.001Z"
         },
         "groups": [
-            "Coastal"
+            "Glacier"
         ]
     }
 ]
