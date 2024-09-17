@@ -1,3 +1,4 @@
+import base64
 import inspect
 import logging
 from functools import wraps
@@ -65,6 +66,14 @@ def join(items):
         return items[0].lower()
     else:
         return ', '.join(items[:-1]) + ' or ' + items[-1]
+
+
+def png_str_to_base64_url(png_str):
+    if png_str:
+        base64_str = base64.b64encode(png_str).decode('utf-8')
+        return f'data:image/png;base64,{base64_str}'
+    else:
+        return None
 
 
 def create_calibration_run_internal(request) -> CalibrationRun:

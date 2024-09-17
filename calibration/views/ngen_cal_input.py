@@ -1,5 +1,6 @@
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 import toml
@@ -52,12 +53,13 @@ config_template = {
         "calib_end_period": "",
         "calib_eval_start_period": "",
         "calib_eval_end_period": "",
-        "valid_start_period": "0000-00-00 00:00:00",
-        "valid_end_period": "0000-00-00 00:00:00",
-        "valid_eval_start_period": "0000-00-00 00:00:00",
-        "valid_eval_end_period": "0000-00-00 00:00:00",
-        "full_eval_start_period": "0000-00-00 00:00:00",
-        "full_eval_end_period": "0000-00-00 00:00:00",
+        # If we're not doing automatic validation, create_input still expects a valid date/time here
+        "valid_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "full_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "full_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "save_output_iter": 0,
         "save_plot_iter": 0,
         "save_plot_iter_freq": 0,
@@ -114,6 +116,17 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
+def validate_times(run):
+    if run.time_range_start and run.time_range_end:
+        time_range = DateTimeRange(run.time_range_start, run.time_range_end)
+        if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
+            return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
+        if run.validation_start_period not in time_range or run.validation_end_peroid not in time_range:
+            return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
+
+    return None
+
+
 def ready_to_run(run: CalibrationRun, build: bool = None):
     config = dict(config_template)
     general = config['General']
@@ -159,6 +172,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                                      DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
+
+        error_message = validate_times(run)
+        if error_message:
+            errors.append(error_message)
 
         # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 

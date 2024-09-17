@@ -126,12 +126,16 @@ class Command(BaseCommand):
             OptimizationInput.objects.all().delete()
 
         values = [{"name": "DDS", "description": "Dynamically Dimensioned Search",
-                   "inputs": [{"name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2, "min": 0.2, "max": 0.2}]},
+                   "inputs": [{"name": "r", "description": "Sample region size", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.2, "min": 0.2,
+                               "max": 0.2}]},
                   {"name": "PSO", "description": "Particle Swarm Optimization",
                    "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 2, "min": 2},
-                              {"name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0, "min": 1.0, "max": 3.0},
-                              {"name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0, "min": 1.0, "max": 3.0},
-                              {"name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7, "min": 0.0, "max": 1.0}]},
+                              {"name": "c1", "description": "Acceleration coefficient c1", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
+                               "min": 1.0, "max": 3.0},
+                              {"name": "c2", "description": "Acceleration coefficient c2 ", "data_type": DataTypeEnum.DOUBLE, "default_value": 2.0,
+                               "min": 1.0, "max": 3.0},
+                              {"name": "w", "description": "Inertia weight", "data_type": DataTypeEnum.DOUBLE, "default_value": 0.7, "min": 0.0,
+                               "max": 1.0}]},
                   {"name": "GWO", "description": "Grey Wolf Optimization",
                    "inputs": [{"name": "swarm_size", "description": "Swarm size", "data_type": DataTypeEnum.INTEGER, "default_value": 4, "min": 4}]},
                   ]
@@ -233,42 +237,121 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             PlotDefinitions.objects.all().delete()
 
-        values = [{"name": "Stream Flow Time Series",
-                   "description": "Time series plot comparing streamflow simulations from the first iteration (control), the best iteration, and the last iteration with the observed streamflow",
-                   "filename_mask": "_hydrograph_iteration.png"
-                   },
-                  {"name": "Evolution of Objective Function",
-                   "description": "The evolution of objective function during all iterations, with the best iteration highlighted in red",
-                   "filename_mask": "_objfun_iteration.png"
-                   },
-                  {"name": "Evolution of All Metrics",
-                   "description": "The evolution of objective function and all other metrics during all iterations, with the best iteration highlighted in red; note the subplots for the four categorical metrics (POD, FAR, CSI, FBIAS) are blank, because we did not specify a threshold for calculating these metrics in input.config_01123000.sh",
-                   "filename_mask": "_metric_iteration.png"
-                   },
-                  {"name": "Evolution of Calibration Params",
-                   "description": "The evolution of each calibration parameter during all iterations, with the best iteration highlighted in red",
-                   "filename_mask": "_param_iteration.png"
-                   },
-                  {"name": "Scatter plot of streamflow",
-                   "description": "Scatter plot of streamflow simulations from the first iteration (control), the best iteration, and the last iteration vs the observed streamflow",
-                   "filename_mask": "_scatterplot_streamflow_iteration.png"
-                   },
-                  {"name": "Metrics vs Objective Functions",
-                   "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to exam tradeoffs between the objective function and other metrics)",
-                   "filename_mask": "_metric_objfun.png"
-                   },
-                  {"name": "Stream Flow/Precipitation Time Series",
-                   "description": "Same as the first plot but with the precipitation time series added",
-                   "filename_mask": "_streamflow_precip_iteration.png"
-                   },
-                  {"name": "Flow Duration Curves",
-                   "description": "Comparison of the flow duration curves for the streamflow simulations from the first iteration (control), the best iteration, and the last iteration, and the observed streamflow",
-                   "filename_mask": "_fdc_iteration.png"
-                   },
-                  ]
+        # Temporarily delete them, although this doesn't hurt, since this table is not a FK in any other table
+        PlotDefinitions.objects.all().delete()
+
+        values = [
+            {
+                "name": "Hydrograph evolution",
+                "description": "Time series plot comparing streamflow simulations from the control, the best iteration and the last iteration with the observed streamflow",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_hydrograph_iteration.png"
+            },
+            {
+                "name": "Objective Function evolution",
+                "description": "The evolution of objective function during all iterations with the best iteration highlighted in red",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_objfun_iteration.png"
+            },
+            {
+                "name": "Metric evolution",
+                "description": "The evolution of objective function and all other metrics during all iterations with the best iteration highlighted in red",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_metric_iteration.png"
+            },
+            {
+                "name": "Parameter evolution",
+                "description": "The evolution of each calibration parameter during all iterations with the best iteration highlighted in red",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_param_iteration.png"
+            },
+            {
+                "name": "Scatterplot streamflow",
+                "description": "Scatter plot of streamflow simulations from the control, the best iteration and the last iteration vs the observed streamflow",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png"
+            },
+            {
+                "name": "Metrics vs Objective Functions",
+                "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to examine tradeoffs between the objective function and other metrics)",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_metric_objfun.png"
+            },
+            {
+                "name": "Stream Flow Precipitation",
+                "description": "Same as Hydrograph Evolution but with the precipitation time series added at the top using an inverted y-axis",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_streamflow_precip_iteration.png"
+            },
+            {
+                "name": "Flow Duration Curves",
+                "description": "Comparison of the flow duration curves for the streamflow simulations from the control, the best iteration, the last iteration and the observed streamflow",
+                "location": "plot_iterations",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_fdc_iteration.png"
+            },
+            {
+                "name": "Cost History",
+                "description": "Comparison of the best global, local and best cost values at each iteration",
+                "location": "output_calibration",
+                "valid_optimizations": "[\"GWO\", \"PSO\"}",
+                "validation": False,
+                "filename_mask": "{gage_id}_cost_hist.png"
+            },
+            {
+                "name": "Bar Chart Metrics",
+                "description": "Bar chart comparing metrics from best and control validation runs for each evaluation period of the best global, local and best cost values at each iteration",
+                "location": "output_validation",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "validation": True,
+                "filename_mask": "{gage_id}_barplot_metrics_valid_run.png"
+            },
+            {
+                "name": "Flow Duration Curves Validation",
+                "description": "Plot of flow duration curve comparing best and control validation runs with observation for each evaluation period",
+                "location": "output_validation",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "validation": True,
+                "filename_mask": "{gage_id}_fdc_valid_run.png"
+            },
+            {
+                "name": "Hydrograph Validation",
+                "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
+                "location": "output_validation",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "validation": True,
+                "filename_mask": "{gage_id}_hydrograph_valid_run.png"
+            },
+            {
+                "name": "Streamflow Validation Precipitation",
+                "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axi",
+                "location": "output_validation",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "validation": True,
+                "filename_mask": "{gage_id}streamflow_precip_valid_run.png"
+            }
+        ]
 
         for v in values:
             PlotDefinitions.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
                                                                                "description": v['description'],
+                                                                               "location": v['location'],
+                                                                               "valid_optimizations": v['valid_optimizations'],
+                                                                               "validation": v['validation'],
                                                                                "filename_mask": v['filename_mask'],
                                                                                "created_by": self.user})

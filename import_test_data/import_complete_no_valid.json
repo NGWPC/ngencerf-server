@@ -55,7 +55,7 @@
             "maps_to_variable_name": "soil_moisture_profile"
         }
     ],
-    "automatic_validation": true,
+    "automatic_validation": false,
     "output_variable_to_calibrate": {
         "name": "QINSUR",
         "module": "Noah-OWP-Modular"
@@ -66,12 +66,7 @@
         "simulation_start_time": "2016-10-01T00:00:00Z",
         "simulation_end_time": "2018-09-30T23:00:00Z"
     },
-    "validation_times": {
-        "validation_start_time": "2018-10-01T00:00:00Z",
-        "validation_end_time": "2019-09-30T23:00:00Z",
-        "simulation_start_time": "2016-10-01T00:00:00Z",
-        "simulation_end_time": "2019-09-30T23:00:00Z"
-    },
+
     "streamflow_threshold": 1.0,
     "peak_flow_threshold": 2.0,
     "parameters": [
