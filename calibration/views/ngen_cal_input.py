@@ -114,6 +114,17 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
+def validate_times(run):
+    if run.time_range_start and run.time_range_end:
+        time_range = DateTimeRange(run.time_range_start, run.time_range_end)
+        if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
+            return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
+        if run.validation_start_period not in time_range or run.validation_end_peroid not in time_range:
+            return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
+
+    return None
+
+
 def ready_to_run(run: CalibrationRun, build: bool = None):
     config = dict(config_template)
     general = config['General']
@@ -159,6 +170,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                                      DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
+
+        error_message = validate_times(run)
+        if error_message:
+            errors.append(error_message)
 
         # datafile['nwmretro_file'] = ''  # Not sure what this is yet
 
