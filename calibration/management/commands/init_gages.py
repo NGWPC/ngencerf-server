@@ -97,10 +97,21 @@ class Command(BaseCommand):
                 else:
                     existing_count += 1
 
+                # Use new value only if old value doesn't exist
                 nws_id = row.get('nws_id').strip()
+                if not nws_id:
+                    nws_id = gage.get('nws_id')
+
                 station_name = row.get('station_name')
+                if not station_name:
+                    station_name = gage.get('station_name')
+
                 agency = row.get('agency')
-                nwm_v3_calibrated = row.get('nwm_v3_calibrated') == 'True'
+                if not agency:
+                    agency = gage.get('agency')
+
+                new_nwm_v3_calibrated = row.get('nwm_v3_calibrated') == 'True'
+                nwm_v3_calibrated = new_nwm_v3_calibrated or gage.get('nwm_v3_calibrated')
 
                 rfc = row.get('rfc')
                 rfc_id = rfc_dict[rfc.strip()] if rfc else None
@@ -151,10 +162,10 @@ class Command(BaseCommand):
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - AK.csv', alaska_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - CONUS.csv', conus_domain)
 
-        unique_field = 'gage_id'
         print()
         print('Creating objects.... this will take a minute or two')
         row_num = 0
+        unique_field = 'gage_id'
         for gage in gages.values():
             gage['created_by'] = user
             try:
