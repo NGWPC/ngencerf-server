@@ -127,6 +127,10 @@ def validate_response(serializer_class, data):
         validator.is_valid(raise_exception=True)
         return validator, None
     except ValidationError as e:
+        # Log the full data and errors in case of validation failure
+        logger.error(f"Validation error with data: {data}")
+        logger.error(f"Validation errors: {str(e)}")
+
         # Note that an exception here is most likely due to a coding error
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
         message = f"Data format error in response returning from {calling_function}"
