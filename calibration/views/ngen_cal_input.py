@@ -353,7 +353,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         parameter_file = Path(job_data_dir) / 'parameters.txt'
 
         parameter_content = '{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model') + '\n'.join(
-            '{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}\n'.format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model'])
+            '{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}'.format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model'])
             for p in params
         )
         Path(parameter_file).write_text(parameter_content)
