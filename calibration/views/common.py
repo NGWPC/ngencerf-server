@@ -80,7 +80,9 @@ def create_calibration_run_internal(request) -> CalibrationRun:
     run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
-    run.save(update_fields=['job_data_dir'])
+    # This is always true
+    run.automatic_validation = True
+    run.save(update_fields=['job_data_dir', 'automatic_validation'])
     return run
 
 
