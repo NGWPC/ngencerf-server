@@ -39,10 +39,6 @@ class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CalibrationPlotNameSerializer(BaseSerializer):
-    cal_plot_name = serializers.CharField(required=True)
-
-
 ##################################
 # Common serializers that need to be defined before usage
 ##################################
@@ -308,7 +304,8 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     optimization_inputs = OptimizationInputsSerializer(many=True, default=[])
-    plot_frequency = serializers.IntegerField(required=True, allow_null=True)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
@@ -617,7 +614,8 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     streamflow_threshold = serializers.FloatField(required=False)
     peak_flow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False, min_value=2)
-    plot_frequency = serializers.IntegerField(required=False)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False)
+    save_output_iteration = serializers.BooleanField(required=False, default=False)
 
 
 class OptimizationInputStaticSerializer(serializers.Serializer):
@@ -716,7 +714,8 @@ class ExportResponseSerializer(BaseSerializer):
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, default={})
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
-    plot_frequency = serializers.IntegerField(required=True, allow_null=True)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
 
 
@@ -749,7 +748,8 @@ class ImportSerializer(BaseSerializer):
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
-    plot_frequency = serializers.IntegerField(required=False, allow_null=True)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=False, allow_null=True)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
 
 

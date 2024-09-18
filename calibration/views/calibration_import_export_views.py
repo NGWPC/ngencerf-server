@@ -218,7 +218,8 @@ def import_job(request):
     if error_message:
         return ResponseError(error_message)
 
-    run.plot_frequency = validator.get('plot_frequency')
+    run.save_plot_iteration_frequency = validator.get('save_plot_iteration_frequency')
+    run.save_output_iteration = validator.get('save_output_iteration')
     run.streamflow_threshold = streamflow_threshold
     run.peak_flow_threshold = peak_flow_threshold
 
@@ -329,8 +330,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
-        print('uploaded', user_uploaded_geopackage_file)
-        print('exists', Path(user_uploaded_geopackage_file).exists())
         calibration_run_data['geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and Path(
             user_uploaded_geopackage_file).exists() else None
 
@@ -409,7 +408,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     optimization, optimization_inputs = get_user_optimization(run)
     calibration_run_data['optimization'] = optimization
     calibration_run_data['optimization_inputs'] = optimization_inputs
-    calibration_run_data['plot_frequency'] = run.plot_frequency
+    calibration_run_data['save_plot_iteration_frequency'] = run.save_plot_iteration_frequency
+    calibration_run_data['save_output_iteration'] = run.save_output_iteration
 
     # Get stop criteria
     calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()

@@ -13,9 +13,10 @@
     "forcing_user_uploaded_dir_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/3_peter/forcing",
     "observational_source": "Upload",
     "observational_hydrofabric_file_path": null,
-    "observational_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/3_peter/observation/01123000_hourly_discharge.csv",
-    "geopackage_path_from_hydrofabric": null,
-    "geopackage_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/3_peter/geopackage/gauge_01123000.gpkg",
+    "observational_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/148_peter/observation/01123000_hourly_discharge.csv",
+    "geopackage_source": null,
+    "geopackage_hydrofabric_file_path": null,
+    "geopackage_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/148_peter/geopackage/gauge_01123000.gpkg",
     "modules": [
         "Noah-OWP-Modular",
         "CFE-S",
@@ -117,6 +118,7 @@
         }
     ],
     "optimization": "PSO",
-    "plot_frequency": 5,
+    "save_plot_iteration_frequency": 5,
+    "save_output_iteration": false,
     "stop_criteria": 2
 }

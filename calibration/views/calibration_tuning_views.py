@@ -113,7 +113,7 @@ def get_parameters_and_output_variables(modules):
 def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
-        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
+        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m, user_selected_for_tuning=True)
                                      .values('name', 'minimum', 'maximum', 'initial_value'))
 
         for p in calibrationParameters:

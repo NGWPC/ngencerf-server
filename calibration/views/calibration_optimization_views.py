@@ -140,7 +140,8 @@ def save_optimization_tab(request):
     peak_flow_threshold = validator.get('peak_flow_threshold')
     optimization_inputs = validator.get('optimization_inputs')
     stop_criteria = validator.get('stop_criteria')
-    plot_frequency = validator.get('plot_frequency')
+    save_plot_iteration_frequency = validator.get('save_plot_iteration_frequency')
+    save_output_iteration = validator.get('save_output_iteration')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -157,7 +158,8 @@ def save_optimization_tab(request):
     if error_message:
         return ResponseError(error_message)
 
-    run.plot_frequency = plot_frequency
+    run.save_plot_iteration_frequency = save_plot_iteration_frequency
+    run.save_output_iteration = save_output_iteration
     run.streamflow_threshold = streamflow_threshold
     run.peak_flow_threshold = peak_flow_threshold
 

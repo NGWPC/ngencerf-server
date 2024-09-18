@@ -135,7 +135,7 @@ def validate_times(run):
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
         if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.validation_start_period not in time_range or run.validation_end_period not in time_range:
+        if run.automatic_validation and (run.validation_start_period not in time_range or run.validation_end_period not in time_range):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
@@ -169,7 +169,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 # for non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
-                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
+                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                                             max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -183,7 +184,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
                 subset_by_time_range(source_file, get_observational_file_for_job(run),
-                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
+                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                                   max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
@@ -275,9 +277,12 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not is_missing(run.plot_frequency, 'plot frequency', errors):
-        calibration['save_plot_iter_freq'] = run.plot_frequency
-    calibration['save_plot-iter'] = 0  # TODO ???
+    if not is_missing(run.save_plot_iteration_frequency, 'plot iteration frequency', errors):
+        calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
+
+    # This field is not required from user
+    calibration['save_output_iteration'] = int(run.save_output_iteration or 0)
+
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
