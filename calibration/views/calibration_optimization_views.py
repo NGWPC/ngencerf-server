@@ -159,7 +159,11 @@ def save_optimization_tab(request):
         return ResponseError(error_message)
 
     run.save_plot_iteration_frequency = save_plot_iteration_frequency
-    run.save_output_iteration = save_output_iteration
+
+    # This field is not supported by UI, so if not specified, leave it alone
+    if save_output_iteration is not None:
+        run.save_output_iteration = save_output_iteration
+
     run.streamflow_threshold = streamflow_threshold
     run.peak_flow_threshold = peak_flow_threshold
 

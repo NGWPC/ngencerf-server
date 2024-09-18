@@ -615,7 +615,7 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     peak_flow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False, min_value=2)
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False)
-    save_output_iteration = serializers.BooleanField(required=False, default=False)
+    save_output_iteration = serializers.BooleanField(required=False)
 
 
 class OptimizationInputStaticSerializer(serializers.Serializer):
