@@ -97,7 +97,7 @@ def import_job(request):
         #         warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
 
         if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):
-            geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_dir_path')
+            geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
             if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
