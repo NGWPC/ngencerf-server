@@ -14,7 +14,7 @@
     "observational_source": "Upload",
     "observational_hydrofabric_file_path": null,
     "observational_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/148_peter/observation/01123000_hourly_discharge.csv",
-    "geopackage_source": null,
+    "geopackage_source": "Upload",
     "geopackage_hydrofabric_file_path": null,
     "geopackage_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/148_peter/geopackage/gauge_01123000.gpkg",
     "modules": [
