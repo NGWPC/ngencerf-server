@@ -1,4 +1,5 @@
 import functools
+import logging
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from enum import auto, Enum
@@ -15,14 +16,16 @@ from calibration.views.read_output import read_output
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
 
+logger = logging.getLogger(__name__)
+
 # Store future and process objects by job id
 job_registry: Dict[int, subprocess.Popen] = {}
 
 
 class JobStage(Enum):
     """
-     Enum representing the stages of a job.
-     """
+    Enum representing the stages of a job.
+    """
     CALIBRATION = auto()
     VALIDATION_CONTROL = auto()
     VALIDATION_BEST = auto()
@@ -123,22 +126,12 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     args = [shell_script, NGEN_CAL_VENV, output_file, cal_or_valid_script] + args_to_calibrate_or_validate
 
     # Bind the callback function for the job stage transition
-    job_callback = functools.partial(job_stage_callback, stage, run.automatic_validation, run)
+    job_callback = functools.partial(job_stage_callback_local, stage, run.automatic_validation, run)
 
     execute(run, stage, args, callback_function=job_callback)
 
 
-def run_docker(run: CalibrationRun, cmd, input_file):
-    """
-    Placeholder for Docker execution. Currently not supported.
-    :param run: The CalibrationRun object.
-    :param cmd: The job command.
-    :param input_file: Input file path.
-    """
-    pass
-
-
-def job_stage_callback(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
+def job_stage_callback_local(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
@@ -166,8 +159,7 @@ def job_stage_callback(current_stage: JobStage, do_validation: bool, run: Calibr
             print(f'Job {process_id} ending due to abnormal return code')
             set_job_status(run, StatusEnum.FAILED)
         else:
-            proceed_to_next_stage(run, current_stage, do_validation
-                                  )
+            proceed_to_next_stage(run, current_stage, do_validation)
     except Exception as e:
         print(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
         set_job_status(run, StatusEnum.FAILED)
