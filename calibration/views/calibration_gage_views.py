@@ -1,4 +1,3 @@
-import base64
 import logging
 import re
 import shutil
@@ -13,7 +12,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
@@ -24,10 +23,8 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_filename, get_geopackage_filename, get_forcing_filename_pattern
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
-from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +69,7 @@ def load_gage_tab(request):
     # Use cached enum values for forcing and observational source
     forcing_source_values = ForcingSourceEnum.active_choices_with_fields(fields=['name', 'description'])
     observational_source_values = ObservationalSourceEnum.active_choices_with_fields(fields=['name', 'description'])
+    geopackage_source_values = GeopackageSourceEnum.active_choices_with_fields(fields=['name', 'description'])
 
     domain_values = DomainEnum.active_choices_with_fields(fields=['name', 'description'])
 
@@ -92,6 +90,7 @@ def load_gage_tab(request):
                 'domain_values': domain_values,
                 'forcing_source_values': forcing_source_values,
                 'observational_source_values': observational_source_values,
+                'geopackage_source_values': geopackage_source_values,
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
@@ -166,6 +165,22 @@ def get_gage(request):
 @api_view(['POST'])
 @handle_exceptions
 def save_gage_tab(request):
+    """
+          Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
+
+          run.forcing_hydrofabric_dir_path and observational_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
+          These paths are also not really used for anything, except as a reference for the unsubsetted data
+
+          The actual paths that are eventually put in the input.config are not stored in the calibration_run object.
+          This path is deterministic and can be derived at the time we create input.config.  They are referred to use the job-specific paths.
+          It is obtained by ngen_locations.get_forcing_dir() and ngen_locations_get_observational_dir()
+          Files that are uploaded by the user are immediately saved in the job-specific path.  If the files are obtained from Hydrofabric,
+          the job specific path remains empty, until we build the config, at which point the Hydrofabric data is subsetted by time-range and the
+          resulting files placed in the job-specific paths.
+
+          run.geopackage_hydrofabric_path is the path of the geopackage file from Hydrofabric.
+          This field is always used, since the geopackage files can't be uploaded.
+          """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user} - {data}')
 
@@ -177,6 +192,7 @@ def save_gage_tab(request):
     gage_id = validator.get('gage_id')
     forcing_source_name = validator.get('forcing_source')
     observational_source_name = validator.get('observational_source')
+    geopackage_source_name = validator.get('geopackage_source')
 
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
@@ -189,33 +205,26 @@ def save_gage_tab(request):
         except Gage.DoesNotExist:
             return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
-        # We don't even want fake data
-        if not settings.HYDROFABRIC:
+        if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
+            # Delete any user-upload, if there
+            geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
+            print('geopackage', geopackage_file)
+            if Path(geopackage_file).exists():
+                Path(geopackage_file).unlink()
             try:
                 get_geopackage_from_hydrofabric(run)
             except Exception as e:
                 # TODO Probably just want to catch the HTTPError
                 traceback.print_exc()
                 return Response(f'Error retrieving geopackage from Hydrofabric.- {e}')
+        else:
+            run.geopackage_hydrofabric_file_path = None
+
+        run.geopackage_source = GeopackageSourceEnum.from_enum(
+            GeopackageSourceEnum(geopackage_source_name)) if geopackage_source_name else None
 
         geopackage_image_url = get_geopackage_image_url(run)
 
-        """
-        Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
-        
-        run.forcing_hydrofabric_dir_path and observational_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
-        These paths are also not really used for anything, except as a reference for the unsubsetted data
-        
-        The actual paths that are eventually put in the input.config are not stored in the calibration_run object.
-        This path is deterministic and can be derived at the time we create input.config.  They are referred to use the job-specific paths.
-        It is obtained by ngen_locations.get_forcing_dir() and ngen_locations_get_observational_dir()
-        Files that are uploaded by the user are immediately saved in the job-specific path.  If the files are obtained from Hydrofabric,
-        the job specific path remains empty, until we build the config, at which point the Hydrofabric data is subsetted by time-range and the 
-        resulting files placed in the job-specific paths.
-        
-        run.geopackage_hydrofabric_path is the path of the geopackage file from Hydrofabric.  
-        This field is always used, since the geopackage files can't be uploaded.
-        """
         # Get forcing and observational data
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
@@ -228,6 +237,8 @@ def save_gage_tab(request):
                 # TODO Probably just want to catch the HTTPError
                 traceback.print_exc()
                 return Response(f'Error retrieving observation data from Hydrofabric.- {e}')
+        else:
+            run.observational_hydrofabric_file_path = None
 
         run.observational_source = ObservationalSourceEnum.from_enum(
             ObservationalSourceEnum(observational_source_name)) if observational_source_name else None
@@ -243,6 +254,9 @@ def save_gage_tab(request):
                 # TODO Probably just want to catch the HTTPError
                 traceback.print_exc()
                 return Response(f'Error retrieving forcing data from Hydrofabric.- {e}')
+        else:
+            run.forcing_hydrofabric_dir_path = None
+
         run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
 
     with transaction.atomic():
@@ -261,7 +275,7 @@ def save_gage_tab(request):
 
 
 def get_geopackage_image_url(run: CalibrationRun):
-    geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_path
+    geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_file_path
 
     if geopackage_path and Path(geopackage_path).exists():
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
@@ -277,6 +291,11 @@ def save_gage(run, gage_id):
     if run.gage != gage:
         if run.gage:
             # Delete any user uploaded files
+
+            uploaded_geopackage_file = get_geopackage_file_for_job(run)
+            if Path(uploaded_geopackage_file).exists():
+                Path(uploaded_geopackage_file).unlink()
+
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if Path(uploaded_forcing_dir).exists():
                 shutil.rmtree(uploaded_forcing_dir)
@@ -468,6 +487,8 @@ def upload_geopackage_data(request):
     if not run.gage:
         return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
+    run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
+
     # Save to the run-specific geopackage directory
     fs = FileSystemStorage(location=get_geopackage_dir_for_job(run))
 
@@ -477,7 +498,7 @@ def upload_geopackage_data(request):
     if geopackage_file.name != get_geopackage_filename(run):
         return ResponseError(f"Geopackage file must be named '{get_geopackage_filename(run)}'")
 
-    run.geopackage_hydrofabric_path = None
+    run.geopackage_hydrofabric_file_path = None
 
     if fs.exists(geopackage_file.name):
         (Path(fs.location) / geopackage_file.name).unlink()

@@ -8,8 +8,9 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource, Gage
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource, Gage, GeopackageSource, \
+    CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
@@ -24,7 +25,8 @@ from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
-from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, save_output_variable, \
+from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
+    save_output_variable, \
     save_parameters, get_module_data_from_hydrofabric, get_time_range
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
@@ -78,17 +80,30 @@ def import_job(request):
         run.forcing_hydrofabric_dir_path = validator.get('forcing_hydrofabric_dir_path')
 
         observational_source_name = validator.get('observational_source')
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name, is_active=True) if observational_source_name else None
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name,
+                                                                   is_active=True) if observational_source_name else None
         run.observational_hydrofabric_file_path = validator.get('observational_hydrofabric_file_path')
 
-        run.geopackage_hydrofabric_path = validator.get('geopackage_path_from_hydrofabric')
-        geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
-        if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
-            # Copy from original location to our job-specific path
-            info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
-        else:
-            if geopackage_user_uploaded_file_path:
-                warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
+        geopackage_source_name = validator.get('geopackage_source')
+        run.geopackage_source = GeopackageSource.objects.get(name=geopackage_source_name, is_active=True) if geopackage_source_name else None
+        run.geopackage_hydrofabric_path = validator.get('geopackage_hydrofabric_file_path')
+
+        # geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
+        # if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
+        #     # Copy from original location to our job-specific path
+        #     info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
+        # else:
+        #     if geopackage_user_uploaded_file_path:
+        #         warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
+
+        if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):
+            geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_dir_path')
+            if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
+                # Copy from original location to our job-specific path
+                info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
+            else:
+                if geopackage_user_uploaded_file_path:
+                    warnings.append(f"Unable to access user uploaded geopackage data from '{geopackage_user_uploaded_file_path}'")
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = validator.get('forcing_user_uploaded_dir_path')
@@ -203,7 +218,8 @@ def import_job(request):
     if error_message:
         return ResponseError(error_message)
 
-    run.plot_frequency = validator.get('plot_frequency')
+    run.save_plot_iteration_frequency = validator.get('save_plot_iteration_frequency')
+    run.save_output_iteration = validator.get('save_output_iteration')
     run.streamflow_threshold = streamflow_threshold
     run.peak_flow_threshold = peak_flow_threshold
 
@@ -282,7 +298,7 @@ def export_job(request):
     return Response(response_validator.data)
 
 
-def load_calibration_run_data(run, export: bool = None):
+def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     if export is None:
         export = False
 
@@ -309,15 +325,21 @@ def load_calibration_run_data(run, export: bool = None):
         # We will subset them again with the new job, when it is imported
 
         # Only one of these geopackage paths should be populated
-        calibration_run_data['geopackage_path_from_hydrofabric'] = run.geopackage_hydrofabric_path
-        calibration_run_data['geopackage_user_uploaded_file_path'] = get_geopackage_file_for_job(run)
+        # calibration_run_data['geopackage_path_from_hydrofabric'] = run.geopackage_hydrofabric_file_path
+        # calibration_run_data['geopackage_user_uploaded_file_path'] = get_geopackage_file_for_job(run)
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
+        user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
+        calibration_run_data['geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and Path(
+            user_uploaded_geopackage_file).exists() else None
+
         user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
         calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and Path(
             user_uploaded_observational_file).exists() else None
+
         user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
-        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and Path(user_uploaded_forcing_dir).exists() else None
+        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and Path(
+            user_uploaded_forcing_dir).exists() else None
 
     else:
         calibration_run_data['calibration_run_id'] = run.id
@@ -330,7 +352,10 @@ def load_calibration_run_data(run, export: bool = None):
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        geopackage_path = run.geopackage_hydrofabric_path if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists() else get_geopackage_file_for_job(run)
+        # geopackage_path = run.geopackage_hydrofabric_file_path if run.geopackage_hydrofabric_file_path and Path(
+        #     run.geopackage_hydrofabric_file_path).exists() else get_geopackage_file_for_job(run)
+        geopackage_path = get_geopackage_file_for_job(run) if run.geopackage_source == GeopackageSourceEnum.from_enum(
+            GeopackageSourceEnum.UPLOAD) else run.geopackage_hydrofabric_file_path
         if geopackage_path and Path(geopackage_path).exists():
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
@@ -346,6 +371,9 @@ def load_calibration_run_data(run, export: bool = None):
 
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
+
+    calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
+    calibration_run_data['geopackage_hydrofabric_file_path'] = run.geopackage_hydrofabric_file_path
 
     #############################
     # Formulation
@@ -380,7 +408,8 @@ def load_calibration_run_data(run, export: bool = None):
     optimization, optimization_inputs = get_user_optimization(run)
     calibration_run_data['optimization'] = optimization
     calibration_run_data['optimization_inputs'] = optimization_inputs
-    calibration_run_data['plot_frequency'] = run.plot_frequency
+    calibration_run_data['save_plot_iteration_frequency'] = run.save_plot_iteration_frequency
+    calibration_run_data['save_output_iteration'] = run.save_output_iteration
 
     # Get stop criteria
     calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()

@@ -45,6 +45,10 @@ config_template = {
         "objective_function": "",
         "start_iteration": 0,
         "number_iteration": 0,
+        # Whether restart calibration from the stopped iteration
+        # 0: Not
+        # 1: Yes
+        # It should be 0 if start_interation entry is 0.
         "restart": 0,
         # TODO Output variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
@@ -60,8 +64,15 @@ config_template = {
         "valid_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "full_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         "full_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        # Save streamflow output and plot at the specified iteration
+        # These entries are optional and specified with the default values.
+        # 1: Filename is distinguished by the iteration number.
+        # 0: Filename is same at different iteration, i.e., overwritten by file from last iteration.
         "save_output_iter": 0,
         "save_plot_iter": 0,
+
+        # Iteration interval to save plots
+        # This entry is optional and specified with the default value.
         "save_plot_iter_freq": 0,
         "streamflow_threshold": 0,
         "peak_flow_threshold": 0,
@@ -92,8 +103,11 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
+        # Static file
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
+        # Parquet file - base on domain
         "attributes_file": "",
+        # Parameter file, dynamically built based on user input
         "calib_parameter_file": "",
         # TODO Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
@@ -121,7 +135,7 @@ def validate_times(run):
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
         if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.validation_start_period not in time_range or run.validation_end_period not in time_range:
+        if run.automatic_validation and (run.validation_start_period not in time_range or run.validation_end_period not in time_range):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
@@ -155,7 +169,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 # for non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
-                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
+                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                                             max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -169,7 +184,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
                 subset_by_time_range(source_file, get_observational_file_for_job(run),
-                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period), max(run.calibration_end_period, run.validation_end_period)))
+                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                                   max(run.calibration_end_period, run.validation_end_period)))
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
@@ -181,8 +197,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if error_message:
             errors.append(error_message)
 
-        if run.geopackage_hydrofabric_path and Path(run.geopackage_hydrofabric_path).exists():
-            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_path).parent)
+        if run.geopackage_hydrofabric_file_path and Path(run.geopackage_hydrofabric_file_path).exists():
+            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
         else:
             if Path(get_geopackage_file_for_job(run)).exists():
                 datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
@@ -261,9 +277,12 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not is_missing(run.plot_frequency, 'plot frequency', errors):
-        calibration['save_plot_iter_freq'] = run.plot_frequency
-    calibration['save_plot-iter'] = 0  # TODO ???
+    if not is_missing(run.save_plot_iteration_frequency, 'plot iteration frequency', errors):
+        calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
+
+    # This field is not required from user
+    calibration['save_output_iteration'] = int(run.save_output_iteration or 0)
+
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()

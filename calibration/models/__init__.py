@@ -7,6 +7,7 @@ from .calibration_parameter import CalibrationParameter
 from .domain import Domain
 from .forcing_source import ForcingSource
 from .gage import Gage
+from .geopackage_source import GeopackageSource
 from .iteration import Iteration
 from .iteration_metric import IterationMetric
 from .iteration_result import IterationResult

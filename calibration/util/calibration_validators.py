@@ -6,7 +6,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum
+    OptimizationEnum, GeopackageSourceEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -37,10 +37,6 @@ def no_space_validator(value):
 
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-
-
-class CalibrationPlotNameSerializer(BaseSerializer):
-    cal_plot_name = serializers.CharField(required=True)
 
 
 ##################################
@@ -290,6 +286,8 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
+    geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
@@ -306,7 +304,8 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     optimization_inputs = OptimizationInputsSerializer(many=True, default=[])
-    plot_frequency = serializers.IntegerField(required=True, allow_null=True)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
@@ -383,6 +382,7 @@ class SaveGageRequestSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=False)
     forcing_source = serializers.CharField(required=False, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=False, validators=[enum_validator(ObservationalSourceEnum)])
+    geopackage_source = serializers.CharField(required=False, validators=[enum_validator(GeopackageSourceEnum)])
 
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
@@ -412,11 +412,17 @@ class ObservationalSourceSerializer(BaseSerializer):
     description = serializers.CharField(required=True)
 
 
+class GeopackageSourceSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, validators=[enum_validator(GeopackageSourceEnum)])
+    description = serializers.CharField(required=True)
+
+
 class LoadGageResponseSerializer(BaseSerializer):
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     calibration_run_id = serializers.IntegerField(required=True)
     forcing_source_values = ForcingSourceSerializer(many=True)
     observational_source_values = ObservationalSourceSerializer(many=True)
+    geopackage_source_values = GeopackageSourceSerializer(many=True)
     gages = GagesSerializer(required=True, many=True)
     gage = GageSerializer(required=False)
     geopackage_image_url = serializers.CharField(required=False)
@@ -608,7 +614,8 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     streamflow_threshold = serializers.FloatField(required=False)
     peak_flow_threshold = serializers.FloatField(required=False)
     stop_criteria = serializers.IntegerField(required=False, min_value=2)
-    plot_frequency = serializers.IntegerField(required=False)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False)
+    save_output_iteration = serializers.BooleanField(required=False)
 
 
 class OptimizationInputStaticSerializer(serializers.Serializer):
@@ -690,7 +697,8 @@ class ExportResponseSerializer(BaseSerializer):
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
-    geopackage_path_from_hydrofabric = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
+    geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_user_uploaded_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
@@ -706,7 +714,8 @@ class ExportResponseSerializer(BaseSerializer):
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, default={})
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
-    plot_frequency = serializers.IntegerField(required=True, allow_null=True)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
 
 
@@ -722,7 +731,8 @@ class ImportSerializer(BaseSerializer):
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    geopackage_path_from_hydrofabric = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
+    geopackage_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
@@ -738,7 +748,8 @@ class ImportSerializer(BaseSerializer):
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
-    plot_frequency = serializers.IntegerField(required=False, allow_null=True)
+    save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=False, allow_null=True)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
 
 
