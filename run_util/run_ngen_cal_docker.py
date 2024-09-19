@@ -9,7 +9,8 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.views.common import get_run
 from cerfServer import settings
-from run_util.run_ngen_cal import JobStage, set_job_status, proceed_to_next_stage
+from run_util.run_common import JobStage, set_job_status
+from run_util.run_ngen_cal import proceed_to_next_stage
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def run_docker(run: CalibrationRun, stage: JobStage, input_file, output_file):
         return
 
 
-def run_job_callback_slurm(current_stage: JobStage,  process_id, job_status):
+def run_job_callback_slurm(current_stage: JobStage, process_id, job_status):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
@@ -66,7 +67,7 @@ def run_job_callback_slurm(current_stage: JobStage,  process_id, job_status):
     print(f'Job {process_id} completed stage {current_stage}')
 
     # TODO Display job status
-    if job_status == 'excepption':
+    if job_status == 'exception':
         print(f"Exception occurred in process {process_id} at stage {current_stage.name}")
         set_job_status(run, StatusEnum.FAILED)
         return
