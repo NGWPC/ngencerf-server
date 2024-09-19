@@ -8,8 +8,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable
-from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, GenericResponseSerializer, \
-    LoadFormulationResponseSerializer, ErrorResponseSerializer
+from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
+    ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
 from calibration.views.hydrofabric import get_modules_from_hydrofabric
@@ -63,7 +63,7 @@ def load_formulation_tab(request):
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, "modules": module_list}
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
 
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
@@ -107,7 +107,7 @@ def get_sloth_parameters(run):
 @extend_schema(
     request=SaveFormulationRequestSerializer,
     responses={
-        200: GenericResponseSerializer,
+        200: SaveFormulationResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -117,7 +117,6 @@ def get_sloth_parameters(run):
     description="Save formulation tab data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def save_formulation_tab(request):
     data = request.data
@@ -148,7 +147,7 @@ def save_formulation_tab(request):
     if error_message:
         return ResponseError(error_message)
 
-    messages = validate_formulation2(run, new_module_names)
+    messages, nwm_warning = validate_formulation2(run, new_module_names)
     if messages:
         return ResponseError(messages)
 
@@ -203,16 +202,15 @@ def save_formulation_tab(request):
 
             run.save()
 
-        ngen_cal_input.ready_to_run(run)
+    ngen_cal_input.ready_to_run(run)
+    response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name, 'nwm_warning': nwm_warning}
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+    response_validator, error_response = validate_response(SaveFormulationResponseSerializer, response)
+    if error_response:
+        return error_response
 
-        response_validator, error_response = validate_response(GenericResponseSerializer, response)
-        if error_response:
-            return error_response
-
-        logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response_validator.data}')
-        return Response(response_validator.data)
+    logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response_validator.data}')
+    return Response(response_validator.data)
 
 
 def validate_modules(run, module_names):
@@ -237,6 +235,9 @@ def validate_formulation(run, module_names):
 
 formulation_validations = {
     "formulation_rules": {
+        "nwm_required_groups": [
+            "Glacier"
+        ],
         "group_requirements": {
             "Glacier": {
                 "allowed_counts": [0, 1]
@@ -284,13 +285,13 @@ def validate_formulation2(run, module_names):
             "groups": groups  # Add the parsed groups list here
         })
 
-    # Initialize a dictionary to store the count of formulations per group
+    # Initialize a dictionary to store the count of modules per group
     group_counts = {group_name: 0 for group_name in formulation_validations['formulation_rules']['group_requirements']}
 
     # Initialize a set to track which modules exist
     module_set = set(module_names)
 
-    # Parse the groups for each formulation once and update the group counts
+    # Parse the groups for each module once and update the group counts
     for formulation in calibration_formulations:
         groups = json.loads(formulation.groups)  # Parse the groups JSON string once
         for group_name in groups:
@@ -317,7 +318,16 @@ def validate_formulation2(run, module_names):
         if count not in allowed_counts:
             messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
 
-    return messages
+    nwm_warning = False
+
+    # Check that required groups have at least one module
+    required_groups = formulation_validations['formulation_rules']['nwm_required_groups']
+    for required_group in required_groups:
+        if group_counts.get(required_group, 0) == 0:  # If a required group has no modules, set nwm_warning to True
+            nwm_warning = True
+            break  # No need to continue checking if one required group is missing
+
+    return messages, nwm_warning
 
 
 def add_sloth_parameters(run, sloth_parameters):

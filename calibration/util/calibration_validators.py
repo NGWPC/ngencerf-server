@@ -278,6 +278,12 @@ class FooterResponseSerializer(BaseSerializer):
     contact_email = serializers.CharField(required=True)
 
 
+def validate_automatic_validation(value):
+    if value is not True:
+        raise serializers.ValidationError("automatic_validation must always be True.")
+    return value
+
+
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
@@ -291,9 +297,10 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    nwm_warning = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
-    automatic_validation = serializers.BooleanField(default=False)
+    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
@@ -498,6 +505,10 @@ class SaveFormulationRequestSerializer(BaseSerializer):
     sloth_parameters = SlothParameters(required=False, many=True)
 
 
+class SaveFormulationResponseSerializer(GenericResponseSerializer):
+    nwm_warning = serializers.BooleanField(required=True)
+
+
 class ModuleStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     groups = serializers.ListField(child=serializers.CharField(required=True))
@@ -581,7 +592,7 @@ class SaveTuningRequestSerializer(BaseSerializer):
     parameters = SaveTuningParametersSerializer(many=True, required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
-    automatic_validation = serializers.BooleanField(required=True)
+    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
 
     def validate(self, data):
@@ -704,7 +715,7 @@ class ExportResponseSerializer(BaseSerializer):
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
-    automatic_validation = serializers.BooleanField(default=False)
+    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
@@ -738,7 +749,7 @@ class ImportSerializer(BaseSerializer):
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
-    automatic_validation = serializers.BooleanField(required=False, default=False)
+    automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)

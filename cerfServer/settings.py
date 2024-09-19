@@ -281,6 +281,8 @@ class RunTypeEnum(StrEnum):
 # TODO Right now we only support LOCAL.  Need to see if we can dynamically figure out which environment we're in, or set an ENV variable
 RUN_TYPE = RunTypeEnum.LOCAL
 
+SLURM_URL = os.getenv("SLURM_URL")
+
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
