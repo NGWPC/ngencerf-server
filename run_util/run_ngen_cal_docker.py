@@ -31,7 +31,6 @@ def run_docker(run: CalibrationRun, stage: JobStage, input_file, output_file):
         # 'job_stage': str(stage),
         'input_file': input_file,
         # 'output_file': output_file,
-        # 'do_validation': run.automatic_validation
     }
 
     # TODO How do we set callback?

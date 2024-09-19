@@ -298,7 +298,7 @@ class Command(BaseCommand):
                 "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png"
             },
             {
-                "name": "Metrics vs Objective Functions",
+                "name": "Metrics vs Objective Function",
                 "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to examine tradeoffs between the objective function and other metrics)",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
