@@ -15,7 +15,7 @@ from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
-from run_ngen_cal.run_ngen_cal_docker import run_docker
+from run_util.run_ngen_cal_docker import run_docker
 
 logger = logging.getLogger(__name__)
 
