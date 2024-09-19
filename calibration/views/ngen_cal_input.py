@@ -103,6 +103,10 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
+        # Not sure what these 2 are for
+        "ueb_lib": "",
+        "ueb_parameter_dir": "",
+
         # Static file
         "noah_parameter_dir": NOAH_PARAMETER_DIR,
         # Parquet file - base on domain

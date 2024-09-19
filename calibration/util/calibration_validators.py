@@ -297,6 +297,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    nwm_warning = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
@@ -502,6 +503,10 @@ class SaveFormulationRequestSerializer(BaseSerializer):
     modules = serializers.ListField(child=serializers.CharField(required=True), min_length=2)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
+
+
+class SaveFormulationResponseSerializer(GenericResponseSerializer):
+    nwm_warning = serializers.BooleanField(required=True)
 
 
 class ModuleStaticSerializer(BaseSerializer):
