@@ -25,9 +25,6 @@ config_template = {
         "calibration_run_id": 0,
         "user": "",
         "basin": "",
-        # Old
-        "model": "",
-        # New
         "models": "",
 
         "formulation": "",
@@ -218,8 +215,6 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
     if not is_missing(modules, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
         general['formulation'] = run.user_formulation_name
-        general['model'] = run.ngen_formulation_name
-        # TODO Not being used yet by ngen-cal
         general['models'] = ', '.join(module_dict.keys())
 
         # Dynamically add keys and values from the module_dict to our config

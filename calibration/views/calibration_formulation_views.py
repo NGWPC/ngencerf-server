@@ -7,7 +7,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import NgenCalFormulation, CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
@@ -147,7 +147,7 @@ def save_formulation_tab(request):
     if error_message:
         return ResponseError(error_message)
 
-    messages, nwm_warning = validate_formulation2(run, new_module_names)
+    messages, nwm_warning = validate_formulation(run, new_module_names)
     if messages:
         return ResponseError(messages)
 
@@ -221,18 +221,6 @@ def validate_modules(run, module_names):
     return None
 
 
-def validate_formulation(run, module_names):
-    valid_formulations = NgenCalFormulation.objects.all().values('name', 'modules')
-    valid = False
-    for valid_formulation in valid_formulations:
-        valid_module_set = set(json.loads(valid_formulation['modules']))
-        if valid_module_set == module_names:
-            valid = True
-            run.ngen_formulation_name = valid_formulation['name']
-            break
-    return valid
-
-
 formulation_validations = {
     "formulation_rules": {
         "nwm_required_groups": [
@@ -270,7 +258,7 @@ formulation_validations = {
 }
 
 
-def validate_formulation2(run, module_names):
+def validate_formulation(run, module_names):
     calibration_formulations = CalibrationFormulation.objects.filter(
         name__in=module_names,
         calibration_run=run

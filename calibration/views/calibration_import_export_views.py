@@ -20,7 +20,7 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
-    validate_formulation, SLOTH, add_sloth_parameters, get_my_modules, validate_formulation2
+    SLOTH, add_sloth_parameters, get_my_modules, validate_formulation
 from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
@@ -381,7 +381,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['formulation_name'] = run.user_formulation_name
     modules = get_my_modules(run)
     calibration_run_data['modules'] = modules
-    _, nwm_warning = validate_formulation2(run, modules)
+    _, nwm_warning = validate_formulation(run, modules)
     if not export:
         calibration_run_data['nwm_warning'] = nwm_warning
 

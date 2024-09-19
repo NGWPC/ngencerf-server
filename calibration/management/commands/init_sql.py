@@ -1,10 +1,8 @@
-import json
-
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DataTypeEnum
-from calibration.models import Domain, ObservationalSource, Optimization, Metric, NgenCalFormulation, OptimizationInput, PlotDefinition, \
+from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
     GeopackageSource
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.rfc import Rfc
@@ -43,7 +41,6 @@ class Command(BaseCommand):
         self.define_optimization()
         self.define_metric()
         self.define_status()
-        self.define_ngen_formulations()
         self.define_plot_definitions()
 
     def define_domains(self):
@@ -224,30 +221,6 @@ class Command(BaseCommand):
 
         for v in values:
             Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})
-
-    def define_ngen_formulations(self):
-        if self.DELETE_FLAG:
-            NgenCalFormulation.objects.all().delete()
-
-        values = [
-            {"name": "cfe_noah", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "T-Route"]),
-             "description": "CFE-S, Noah-OWP-Modular, T-Route"},
-            {"name": "cfe_noah_sft", "modules": json.dumps(["CFE-S", "Noah-OWP-Modular", "SFT", "SMP", "T-Route"]),
-             "description": "CFE-S, Noah-OWP-Modular, SFT, SMP, T-Route"},
-            {"name": "cfe_xaj_noah", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "T-Route"]),
-             "description": "CFE-X, Noah-OWP-Modular, T-Route"},
-            {"name": "cfe_xaj_noah_sft", "modules": json.dumps(["CFE-X", "Noah-OWP-Modular", "SFT", "SMP", "T-Route"]),
-             "description": "CFE-X, Noah-OWP-Modular, SFT, SMP, T-Route"},
-            {"name": "lasam_noah_sft", "modules": json.dumps(["LASAM", "Noah-OWP-Modular", "SFT", "SMP", "T-Route"]),
-             "description": "LASAM, Noah-OWP-Modular, SFT, SMP, T-Route"},
-            {"name": "topmodel_noah", "modules": json.dumps(["TopModel", "Noah-OWP-Modular", "T-Route"]),
-             "description": "TopModel, Noah-OWP-Modular, T-Route"},
-        ]
-
-        for v in values:
-            NgenCalFormulation.objects.update_or_create(name=v['name'], defaults={"modules": v['modules'],
-                                                                                  "description": v['description'],
-                                                                                  "created_by": self.user})
 
     def define_plot_definitions(self):
         if self.DELETE_FLAG:
