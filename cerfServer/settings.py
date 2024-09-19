@@ -282,7 +282,7 @@ class RunTypeEnum(StrEnum):
 RUN_TYPE = RunTypeEnum.LOCAL
 
 SLURM_URL = os.getenv("SLURM_URL")
-SLURM_SUBMIT_ENDPOINT = 'submit-job'
+SLURM_SUBMIT_JOB_ENDPOINT = 'submit-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 

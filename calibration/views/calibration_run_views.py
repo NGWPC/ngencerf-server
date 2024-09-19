@@ -5,10 +5,12 @@ from pathlib import Path
 import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Max
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
+from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
@@ -21,6 +23,7 @@ from calibration.views.common import ResponseError, get_run, handle_exceptions, 
 from calibration.views.read_output import read_output, accumulate_iterations
 from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
 from run_ngen_cal.run_ngen_cal import run_job, JobStage, cancel_local_job
+from run_ngen_cal.run_ngen_cal_docker import run_job_callback_slurm
 
 logger = logging.getLogger(__name__)
 
@@ -278,7 +281,7 @@ def report_iteration(request):
     },
     description="Get iteration of a running calibration"
 )
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 @handle_exceptions
 def get_iteration(request):
     data = request.data if request.method == 'POST' else request.query_params
@@ -320,7 +323,7 @@ def get_iteration(request):
     },
     description="Cancel a running job"
 )
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
 @handle_exceptions
 def cancel_job(request):
     data = request.data if request.method == 'POST' else request.query_params
@@ -351,6 +354,46 @@ def cancel_job(request):
     logger.debug(f'Returning to {request.user} from cancel_job() - {response_validator.data}')
 
     return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GenericResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
+    },
+    description="Cancel a running job"
+)
+@api_view(['POST'])
+@handle_exceptions
+def slurm_callback(request):
+    data = request.data
+    logger.debug(f'slurm_callback() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    process_id = validator.get('process_id')
+    current_stage = validator.get('stage')
+    job_status = validator.get('job_status')
+
+    calibration_run_id, owner_name = process_id.split('_')
+    owner = get_user_model().objects.get(username=owner_name)
+
+    run, error_return = get_run(calibration_run_id, owner, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    run_job_callback_slurm(current_stage, process_id, job_status)
+
+    logger.debug(f'Returning to {request.user} from slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):

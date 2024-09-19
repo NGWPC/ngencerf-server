@@ -15,6 +15,7 @@ from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
+from run_ngen_cal.run_ngen_cal_docker import run_docker
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ def run_job(run: CalibrationRun, cmd: JobStage):
         case settings.RUN_TYPE.LOCAL:
             run_local(run, cmd, input_file, output_file)
         case settings.RUN_TYPE.DOCKER:
-            raise Exception('Docker not supported')
+            run_docker(run, cmd, input_file, output_file)
 
 
 def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
@@ -126,12 +127,12 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     args = [shell_script, NGEN_CAL_VENV, output_file, cal_or_valid_script] + args_to_calibrate_or_validate
 
     # Bind the callback function for the job stage transition
-    job_callback = functools.partial(job_stage_callback_local, stage, run.automatic_validation, run)
+    job_callback = functools.partial(run_job_callback_local, stage, run.automatic_validation, run)
 
     execute(run, stage, args, callback_function=job_callback)
 
 
-def job_stage_callback_local(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
+def run_job_callback_local(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
@@ -235,4 +236,3 @@ def cancel_local_job(calibration_run_id: int):
     else:
         print(f"No running job found for Calibration Run: {calibration_run_id}")
         return False
-
