@@ -206,6 +206,16 @@ To create a user, send the username/password to the endpoint `/auth/users/`
  }
 ```
 
+You can use this `curl` command
+```
+curl --location 'localhost:8000/auth/users/' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+    "username": "<username>",
+    "password": "<password"
+}'
+```
+
 User creation only needs to be done once.
 
 To simulate a login, send the request payload to the endpoint `auth/awt/create`
