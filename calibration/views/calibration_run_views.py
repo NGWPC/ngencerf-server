@@ -21,7 +21,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request
 from calibration.views.read_output import read_output, accumulate_iterations
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
+from cerfServer import settings
+from cerfServer.settings import NGEN_REPO_ROOT
 from calibration.run_util.run_common import run_job
 from calibration.run_util.run_ngen_cal import JobStage, cancel_local_job
 from calibration.run_util.run_ngen_cal_docker import run_job_callback_slurm
@@ -130,10 +131,11 @@ def submit_job(run, config_file=None):
 
     print(f'Return from create_input for Calibration Run {run.id}')
 
-    if not Path(NGEN_REPO_ROOT).exists():
+    # Need to return the commit hash as part of the Slurm job
+    if False:
         # Save the latest git hash or ngen and ngen-cal
-        run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
-        run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+        run.ngen_commit_hash = Repo(settings.NGEN_REPO_ROOT).head.object.hexsha
+        run.ngen_cal_commit_hash = Repo(settings.NGEN_CAL_REPO_ROOT).head.object.hexsha
 
     run.run_date = datetime.now(timezone.utc)
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
