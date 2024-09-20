@@ -5,11 +5,10 @@ from django.conf import settings
 from calibration.models import CalibrationRun
 
 dirs = [CALIB_VALID_DIR := str(Path(settings.NGEN_CAL_REPO_ROOT) / 'python/runCalibValid'),
-        NOAH_PARAMETER_DIR := str(Path(settings.NGEN_CAL_WORK_DIR) / 'bmi_config/Noah-OWP'),
-        PARQUET_DIR := str(Path(settings.NGEN_CAL_WORK_DIR) / 'parquet')]
-
-NWM_RETROSPECTIVE_DIR = str(Path(settings.NGEN_CAL_MOUNT_POINT, 'nwm_retro_streamflow'))
-
+        NWM_RETROSPECTIVE_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'nwm_retrospective'),
+        NOAH_PARAMETER_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'bmi_config/Noah-OWP'),
+        PARQUET_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'parquet')
+        ]
 
 files = [NGEN_EXE := str(Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen'),
          CFE_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/cfe/cmake_build/libcfebmi.so'),
@@ -30,7 +29,7 @@ files = [NGEN_EXE := str(Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen'),
 # Construct the directory where the Input/Output is
 def get_gage_dir(run: CalibrationRun) -> str | bytes:
     return str(Path(
-        run.job_data_dir) / f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}' / run.ngen_formulation_name / run.gage.gage_id)
+        run.job_data_dir) / f'{run.objective_function.name.lower()}_{run.optimization.name.lower()}' / run.user_formulation_name / run.gage.gage_id)
 
 
 def get_realization_file_path(run: CalibrationRun) -> str:

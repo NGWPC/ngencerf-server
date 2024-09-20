@@ -30,9 +30,9 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         try:
             response.raise_for_status()
             geopackage_json = response.json()
-        except requests.exceptions.HTTPError:
+        except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
-            print("Response from Hydrofabric:", response.text)
+            logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
             return
     else:
         print('Getting dummy geopackage data')
@@ -56,9 +56,9 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
         try:
             response.raise_for_status()
             observational_json = response.json()
-        except requests.exceptions.HTTPError:
+        except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
-            print("Response from Hydrofabric:", response.text)
+            logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
             return
     else:
         print('Getting dummy observational data')
@@ -82,9 +82,9 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
         try:
             response.raise_for_status()
             forcing_json = response.json()
-        except requests.exceptions.HTTPError:
+        except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
-            print("Response from Hydrofabric:", response.text)
+            logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
             return
     else:
         print('Getting dummy forcing data')
@@ -109,9 +109,9 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
         try:
             response.raise_for_status()
             module_json = response.json()
-        except requests.exceptions.HTTPError:
+        except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
-            print("Response from Hydrofabric:", response.text)
+            logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
             return
     else:
         print('Getting dummy module metadata data')

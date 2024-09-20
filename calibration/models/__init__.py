@@ -14,7 +14,6 @@ from .iteration_result import IterationResult
 from .iteration_parameter import IterationParameter
 from .metric import Metric
 from .module_output_variable import ModuleOutputVariable
-from .ngen_cal_formulation import NgenCalFormulation
 from .observational_source import ObservationalSource
 from .optimization import Optimization
 from .optimization_input import OptimizationInput

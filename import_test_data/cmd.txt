@@ -1,0 +1,1 @@
+./ngencerf.sh import ../import_test_data/import_complete.json geopackage_file=../sample_data/gauge_01123000.gpkg observational_file=../sample_data/01123000_hourly_discharge.csv forcing_dir=../sample_data/forcing/Gage_01123000 run_after_import=true
