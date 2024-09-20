@@ -27,6 +27,15 @@ You should make copies of `__local_settings.py` and `__.env`.
 The 2 template files are suitable for development and no changes need to be made.
 Note that these files are not checked in to Git
 
+# Static Files
+There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
+By default, when running locally, the mount point is at `~/ngwpc/data`.
+It Docker, this is mapped to `data/ngen-cal-data`
+
+The data for the `ngen-static-files` directory is on S3 at s3://ngwpc-dev/ngen-static-files/.  This directory and all its contents should be copied to
+`~/ngwpc/data/ngen-static-files`
+
+
 
 # Access to AWS
 Some endpoints require access to AWS and therefore you must update your credentials.
@@ -172,17 +181,17 @@ The server will still run.  You just won't be able to actually run a Calibration
 Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
 
 Use these recommended directory names to avoid having to change your settings.
-* It is recommended that you create a directory called `~/ngen-cal-work`
+* It is recommended that you create a directory called `~/ngwpc/data/ngen-cal-work`
 * It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~.noaa-owp/ngen-cal`
 
 
-* Create the ngen-cal virtual environment.  This directory goes into `settings.py` as `NGEN_CAL_VENV`.   Suggested location is `~/ngen-cal-work/venv`
-* Clone ngen-cal from Gitlab.  This directory goes into `settings.py` as `NGEN_CAL_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen-cal`
+* Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv`
+* Clone ngen-cal from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/ngen-cal`
 * Follow instructions for installing ngen-cal
-* Clone ngen from Gitlab.  This directory goes into `settings.py` as `NGEN_REPO_ROOT`.  Suggested location is `~/noaa-owp/ngen`
+* Clone ngen from Gitlab into `~/noaa-owp/ngen`
 * Follow instructions for installing ngen
 * It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
-* Define a directory in `settings.py` where all the ngen-cal runs will live called `NGEN_CAL_RUN_DIR`.  Suggested location is `~/ngen-cal-work/run_calib`
+* Create the `NGEN_CAL_RUN_DIR` at `~/ngwpc/data/run_calib`
 
 # User Authentication
 
@@ -208,49 +217,57 @@ type `Bearer token` that includes the access token.
 
 By convention with the Docker images, the mount point is at `~/ngwpc/data`.   This is defined in `settings.py` and should not change without proper coordination. 
 
-Under there, we have our work directory, `ngen-cal-work`.  This directory contains files that are common and can be shared with all the calibration runs, such as forcing and observation data that comes from hydrofabric,
-as well as some static files.
+`~/ngwpc/data` contains `ngen-static-files` and `ngen-cal-work`
 
-The static files are in `ngen-cal-work/bmi_config/Noah-OWP`  and `ngen-cal-work/parquet`.  These directories will be populated automatically at start-up.  Nothing else needs to be done.
+
+`ngen-cal-work/run_calib` contains the data for ngen and ngen-cal
 
 Files from Hydrofabric are in `s3/ngwpc-dev`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
-The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal
+The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal.
 
 Prior to running the job, the Observation and Forcing files from Hydrofabric will be subsetted to confirm to the time range of the job.  These files will be placed in the instance specific directory, as described above.
 So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Hydrofabric or User upload
 
 
 ```
-peter.a.kronenberg@U-12SMBYD5450YI:~/ngwpc/data$ tree -L 4  -n -A
-.
-└── ngen-cal-work
-    ├── bmi_config
-    │   └── Noah-OWP
-    │       ├── GENPARM.TBL
-    │       ├── MPTABLE.TBL
-    │       └── SOILPARM.TBL
-    ├── parquet
-    │   └── conus_model_attributes.parquet
-    └── run_calib
-        ├── 19_peter
-        │   ├── forcing
-        │   └── observation
-        ├── 1_peter
-        │   ├── forcing
-        │   └── observation
-        └── 20_peter
-            ├── forcing
-            ├── input.config
-            ├── KGE_DDS
-            ├── observation
-            ├── parameters.txt
-            └── sloth_parameters.txt
-   
-   
+peter.a.kronenberg@U-12SMBYD5450YI:~$ tree ngwpc -L 4 -n -A
+ngwpc
+└── data
+    ├── ngen-cal-work
+    │   ├── run_calib
+    │   │   ├── 100_peter
+    │   │   │    ├── forcing
+    │   │   │    ├── observation
+    │   │   │    ├── geopackage
+    │   │   │    ├── parameters.txt
+    │   │   │    └── sloth_parameters.txt
+    │   │   └── 98_peter
+    │   │        ├── forcing
+    │   │        ├── observation
+    │   │        ├── geopackage
+    │   │        ├── parameters.txt
+    │   │        └── sloth_parameters.txt
+    │   └── venv.cal
+    └── ngen-static-files
+        ├── bmi_config
+        │   └── Noah-OWP
+        │       ├── GENPARM.TBL
+        │       ├── MPTABLE.TBL
+        │       └── SOILPARM.TBL
+        ├── parquet
+        │   └── conus_model_attributes.parquet
+        └── nwm_retrospective
+            ├── 01118000.csv
+            ├── 01121000.csv
+            ├── 01123000.csv
+            ├── 01127500.csv
+            ├── 01130000.csv
+            └── 01134500.csv
+
 .
 └── s3
     └── ngwpc-dev   

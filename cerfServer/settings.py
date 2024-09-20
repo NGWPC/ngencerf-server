@@ -264,6 +264,8 @@ NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 # This is the mount point for docker containers
 NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
 
+NGEN_STATIC_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-static-files'
+
 NGEN_CAL_WORK_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-cal-work'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
