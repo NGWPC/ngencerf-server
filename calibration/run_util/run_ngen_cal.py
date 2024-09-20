@@ -9,7 +9,7 @@ from calibration.models import CalibrationRun
 from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY
 from cerfServer import settings
 from cerfServer.settings import NGEN_CAL_VENV
-from run_util.run_common import JobStage, set_job_status, job_registry, proceed_to_next_stage
+from calibration.run_util.run_common import JobStage, set_job_status, job_registry, proceed_to_next_stage
 
 logger = logging.getLogger(__name__)
 

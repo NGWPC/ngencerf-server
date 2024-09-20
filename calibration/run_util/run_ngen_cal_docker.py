@@ -9,8 +9,8 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.views.common import get_run
 from cerfServer import settings
-from run_util.run_common import JobStage, set_job_status
-from run_util.run_ngen_cal import proceed_to_next_stage
+from calibration.run_util.run_common import JobStage, set_job_status
+from calibration.run_util.run_ngen_cal import proceed_to_next_stage
 
 logger = logging.getLogger(__name__)
 

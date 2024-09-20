@@ -119,8 +119,8 @@ def run_job(run: CalibrationRun, cmd: JobStage):
     # Run the job locally or in Docker (Docker is currently unsupported)
     match settings.RUN_TYPE:
         case settings.RUN_TYPE.LOCAL:
-            from run_util.run_ngen_cal import run_local
+            from calibration.run_util.run_ngen_cal import run_local
             run_local(run, cmd, input_file, output_file)
         case settings.RUN_TYPE.DOCKER:
-            from run_util.run_ngen_cal_docker import run_docker
+            from calibration.run_util.run_ngen_cal_docker import run_docker
             run_docker(run, cmd, input_file, output_file)
