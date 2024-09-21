@@ -122,5 +122,5 @@ def run_job(run: CalibrationRun, cmd: JobStage):
             from calibration.run_util.run_ngen_cal import run_local
             run_local(run, cmd, input_file, output_file)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
-            from calibration.run_util.run_ngen_cal_docker import run_parallel_works
+            from calibration.run_util.run_ngen_cal_pw import run_parallel_works
             run_parallel_works(run, cmd, input_file, output_file)

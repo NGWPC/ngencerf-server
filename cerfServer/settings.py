@@ -11,10 +11,10 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import logging
 import os
+import re
 from datetime import timedelta
 from enum import StrEnum, auto
 from pathlib import Path
-import re
 
 from dotenv import load_dotenv
 
