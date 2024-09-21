@@ -45,7 +45,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Response from Slurm: response.text - {str(e)}")
-        return
+        raise
 
 
 def run_job_callback_slurm(current_stage: JobStage, process_id, job_status):
@@ -94,4 +94,4 @@ def cancel_slurm_job(run: CalibrationRun):
     except requests.exceptions.HTTPError as e:
         logger.error(f"Failed to cancel job: {response.json().get('error')}")
         logger.error(f"Response from Slurm: response.text - {str(e)}")
-        return
+        raise

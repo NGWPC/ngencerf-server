@@ -69,6 +69,7 @@ def import_job(request):
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
+            # TODO Need to catch exceptions from Slurm
             submit_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 

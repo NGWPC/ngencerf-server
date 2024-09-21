@@ -101,6 +101,7 @@ def run_calibration(request):
     if error_return:
         return error_return
 
+    # TODO Need to Catch exception from Slurm
     response = submit_job(run)
     if response:
         return response
