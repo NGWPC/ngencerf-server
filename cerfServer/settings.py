@@ -276,13 +276,17 @@ NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
 
 
-class RunTypeEnum(StrEnum):
-    LOCAL = auto()
-    DOCKER = auto()
+class EnvironmentEnum(StrEnum):
+    LOCAL = "LOCAL"
+    PARALLEL_WORKS = "PARALLEL_WORKS"
 
 
 # TODO Right now we only support LOCAL.  Need to see if we can dynamically figure out which environment we're in, or set an ENV variable
-RUN_TYPE = RunTypeEnum.LOCAL
+NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', "LOCAL")
+try:
+    NGEN_ENVIRONMENT = EnvironmentEnum[NGEN_ENVIRONMENT_STR]
+except KeyError:
+    raise SystemExit(f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
 
 SLURM_URL = os.getenv("SLURM_URL")
 SLURM_SUBMIT_JOB_ENDPOINT = 'submit-job'

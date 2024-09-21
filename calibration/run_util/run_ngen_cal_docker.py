@@ -15,7 +15,7 @@ from calibration.run_util.run_ngen_cal import proceed_to_next_stage
 logger = logging.getLogger(__name__)
 
 
-def run_docker(run: CalibrationRun, stage: JobStage, input_file, output_file):
+def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
     Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.

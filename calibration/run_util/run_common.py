@@ -117,10 +117,10 @@ def run_job(run: CalibrationRun, cmd: JobStage):
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
 
     # Run the job locally or in Docker (Docker is currently unsupported)
-    match settings.RUN_TYPE:
-        case settings.RUN_TYPE.LOCAL:
+    match settings.NGEN_ENVIRONMENT:
+        case settings.NGEN_ENVIRONMENT.LOCAL:
             from calibration.run_util.run_ngen_cal import run_local
             run_local(run, cmd, input_file, output_file)
-        case settings.RUN_TYPE.DOCKER:
-            from calibration.run_util.run_ngen_cal_docker import run_docker
-            run_docker(run, cmd, input_file, output_file)
+        case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
+            from calibration.run_util.run_ngen_cal_docker import run_parallel_works
+            run_parallel_works(run, cmd, input_file, output_file)
