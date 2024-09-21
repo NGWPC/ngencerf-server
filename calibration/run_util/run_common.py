@@ -1,6 +1,6 @@
 import logging
 import subprocess
-from enum import auto, Enum
+from enum import auto, StrEnum
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -15,7 +15,7 @@ from cerfServer import settings
 logger = logging.getLogger(__name__)
 
 
-class JobStage(Enum):
+class JobStage(StrEnum):
     """
     Enum representing the stages of a job.
     """

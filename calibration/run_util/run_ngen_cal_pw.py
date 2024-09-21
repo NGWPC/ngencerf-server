@@ -24,20 +24,21 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
+    # Slurm uses multipart form-data
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
     payload = {
-        'job_id': Path(run.job_data_dir).name,
-        'job_type': 'calibration' if stage == JobStage.CALIBRATION else 'validation',
-        'job_stage': stage.value,
-        'input_file': input_file,
-        'output_file': output_file,
+        'job_id': (None, Path(run.job_data_dir).name),
+        'job_type': (None, 'calibration' if stage == JobStage.CALIBRATION else 'validation'),
+        'job_stage': (None, stage.value),
+        'input_file': (None, input_file),
+        'output_file': (None, output_file),
     }
 
     # TODO How do we set callback?
     callback = run_job_callback_slurm
 
     logger.info(f'slurm payload: {payload}')
-    response = requests.post(url, data={"payload": payload})
+    response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
         run.slurm_job_id = response.json().get('slurm_job_id')
@@ -84,11 +85,11 @@ def run_job_callback_slurm(current_stage: JobStage, process_id, job_status):
 def cancel_slurm_job(run: CalibrationRun):
     url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
     payload = {
-        'slurm_job_id': run.slurm_job_id
+        'slurm_job_id': (None, run.slurm_job_id)
     }
 
     logger.info(f'slurm payload: {payload}')
-    response = requests.post(url, data={"payload": payload})
+    response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
         run.slurm_job_id = response.json().get('slurm_job_id')
