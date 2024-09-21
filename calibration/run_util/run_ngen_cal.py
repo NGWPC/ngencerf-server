@@ -49,27 +49,27 @@ def run_job_callback_local(current_stage: JobStage, do_validation: bool, run: Ca
     :param future: The Future object representing the asynchronous job process.
     """
     process_id = Path(run.job_data_dir).name
-    print(f'Job {process_id} completed stage {current_stage}')
+    logger.info(f'Job {process_id} completed stage {current_stage}')
 
     try:
         if future.exception() is not None:
-            print(f"Exception occurred in process {process_id} at stage {current_stage.name}: {future.exception()}")
+            logger.error(f"Exception occurred in process {process_id} at stage {current_stage.name}: {future.exception()}")
             set_job_status(run, StatusEnum.FAILED)
             return
 
         exit_code = future.result()
-        print(f"Process {process_id}, stage {current_stage.name}, completed with exit code {exit_code}")
+        logger.info(f"Process {process_id}, stage {current_stage.name}, completed with exit code {exit_code}")
         if exit_code == -15:
-            print(f'Job {process_id} was cancelled')
+            logger.info(f'Job {process_id} was cancelled')
             set_job_status(run, StatusEnum.CANCELLED)
 
         elif exit_code != 0:
-            print(f'Job {process_id} ending due to abnormal return code')
+            logger.error(f'Job {process_id} ending due to abnormal return code')
             set_job_status(run, StatusEnum.FAILED)
         else:
             proceed_to_next_stage(run, current_stage, do_validation)
     except Exception as e:
-        print(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
+        logger.error(f"Error in callback for process {process_id} at stage {current_stage.name}: {str(e)}")
         set_job_status(run, StatusEnum.FAILED)
 
 
@@ -91,7 +91,7 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
     """
     process_id = Path(run.job_data_dir).name
 
-    print(f"Spawning process: {process_id} in stage {current_stage.name} with {args}")
+    logger.info(f"Spawning process: {process_id} in stage {current_stage.name} with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
@@ -101,9 +101,9 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
 
         future.add_done_callback(callback_function)
     except Exception as e:
-        print(f"Failed to execute command: {str(e)}")
+        logger.error(f"Failed to execute command: {str(e)}")
         raise
-    print(f'Process {process_id} in stage {current_stage.name} is running in the background')
+    logger.info(f'Process {process_id} in stage {current_stage.name} is running in the background')
 
 
 def cancel_local_job(calibration_run_id: int):
@@ -115,8 +115,8 @@ def cancel_local_job(calibration_run_id: int):
 
     if process:
         process.terminate()  # Gracefully terminates the process
-        print(f"Job {calibration_run_id} has been terminated.")
+        logger.info(f"Job {calibration_run_id} has been terminated.")
         return True
     else:
-        print(f"No running job found for Calibration Run: {calibration_run_id}")
+        logger.warning(f"No running job found for Calibration Run: {calibration_run_id}")
         return False

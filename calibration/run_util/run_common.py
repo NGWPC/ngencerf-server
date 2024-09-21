@@ -1,3 +1,4 @@
+import logging
 import subprocess
 from enum import auto, Enum
 from pathlib import Path
@@ -10,6 +11,8 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
 from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
 from cerfServer import settings
+
+logger = logging.getLogger(__name__)
 
 
 class JobStage(Enum):
@@ -87,10 +90,10 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
     next_stage = transition_manager.get_next_stage(current_stage)
 
     if next_stage:
-        print(f'Job {process_id} proceeding to stage {next_stage}')
+        logger.info(f'Job {process_id} proceeding to stage {next_stage}')
         run_job(run, next_stage)
     else:
-        print(f'Job {process_id} complete. No further stages.')
+        logger.info(f'Job {process_id} complete. No further stages.')
         set_job_status(run, StatusEnum.DONE)
 
         read_output(run)

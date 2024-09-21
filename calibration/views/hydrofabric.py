@@ -24,7 +24,7 @@ headers = {
 
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC:
-        print('Getting geopackage from Hydrofabric')
+        logger.info('Getting geopackage from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT.format(gage_id=run.gage.gage_id))
         response = requests.get(url, headers=headers)
         try:
@@ -49,7 +49,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
 # TODO Throw exception for AWS errors and Hydrofabric errors
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC:
-        print('Getting observational data from Hydrofabric')
+        logger.info('Getting observational data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send source
         response = requests.get(url, headers=headers)
@@ -75,7 +75,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC:
-        print('Getting forcing data from Hydrofabric')
+        logger.info('Getting forcing data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send source
         response = requests.get(url, headers=headers)
@@ -102,7 +102,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
     module_names = set(modules.values_list('name', flat=True))
 
     if settings.HYDROFABRIC:
-        print('Getting module metadata from Hydrofabric')
+        logger.info('Getting module metadata from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT.format(gage_id=run.gage.gage_id))
         # Need to send list of modules
         response = requests.post(url, headers=headers, json={"modules": module_names})
@@ -191,7 +191,7 @@ def str_to_float(value):
 
 def get_modules_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC:
-        print('Getting module data from Hydrofabric')
+        logger.info('Getting module data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULES_ENDPOINT.format(gage_id=run.gage.gage_id))
         response = requests.get(url, headers=headers)
         try:

@@ -30,7 +30,7 @@ def read_output(run):
     Until we get that interface working, we'll create all the Iteration objects here
     We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
     """
-    print(f"Processing output for Calibration Run {run.id}")
+    logger.info(f"Processing output for Calibration Run {run.id}")
 
     create_iteration_objects_for_all_workers(run)
 

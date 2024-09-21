@@ -28,14 +28,15 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     payload = {
         'job_id': Path(run.job_data_dir).name,
         'job_type': 'calibration' if stage == JobStage.CALIBRATION else 'validation',
-        # 'job_stage': str(stage),
+        'job_stage': str(stage),
         'input_file': input_file,
-        # 'output_file': output_file,
+        'output_file': output_file,
     }
 
     # TODO How do we set callback?
     callback = run_job_callback_slurm
 
+    logger.info(f'slurm payload: {payload}')
     response = requests.post(url, data={"payload": payload})
     try:
         response.raise_for_status()
@@ -44,7 +45,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         logger.info(f"Job submitted successfully! Slurm id: {run.slurm_job_id}")
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
-        logger.error(f"Response from Slurm: response.text - {str(e)}")
+        logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
 
 
@@ -63,18 +64,18 @@ def run_job_callback_slurm(current_stage: JobStage, process_id, job_status):
     if error_return:
         return error_return
 
-    print(f'Job {process_id} completed stage {current_stage}')
+    logger.info(f'Job {process_id} completed stage {current_stage}')
 
     # TODO Display job status
     if job_status == 'exception':
-        print(f"Exception occurred in process {process_id} at stage {current_stage.name}")
+        logger.error(f"Exception occurred in process {process_id} at stage {current_stage.name}")
         set_job_status(run, StatusEnum.FAILED)
         return
     elif job_status == 'cancelled':
-        print(f'Job {process_id} was cancelled')
+        logger.error(f'Job {process_id} was cancelled')
         set_job_status(run, StatusEnum.CANCELLED)
     elif job_status == 'failed':
-        print(f'Job {process_id} ending due to abnormal return code')
+        logger.error(f'Job {process_id} ending due to abnormal return code')
         set_job_status(run, StatusEnum.FAILED)
     else:
         proceed_to_next_stage(run, current_stage, run.automatic_validation)
@@ -85,6 +86,8 @@ def cancel_slurm_job(run: CalibrationRun):
     payload = {
         'slurm_job_id': run.slurm_job_id
     }
+
+    logger.info(f'slurm payload: {payload}')
     response = requests.post(url, data={"payload": payload})
     try:
         response.raise_for_status()
@@ -93,5 +96,5 @@ def cancel_slurm_job(run: CalibrationRun):
         logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
     except requests.exceptions.HTTPError as e:
         logger.error(f"Failed to cancel job: {response.json().get('error')}")
-        logger.error(f"Response from Slurm: response.text - {str(e)}")
+        logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
