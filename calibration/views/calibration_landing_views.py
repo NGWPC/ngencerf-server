@@ -14,8 +14,8 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
-    GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer
-from calibration.views.calibration_import_export_views import load_calibration_run_data
+    GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer
+from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
     validate_request
 
@@ -133,7 +133,7 @@ def get_footer(request):
 
 
 @extend_schema(
-    request=None,
+    request=CalibrationRunSerializer,
     responses={
         200: LoadCalibrationRunResponseSerializer,
         400: OpenApiResponse(
@@ -172,6 +172,52 @@ def load_calibration_run(request):
 
 
 @extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: CalibrationRunSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: ErrorResponseSerializer
+    },
+    description="Delete a calibration run job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def clone_job(request):
+    data = request.data if request.method == 'POST' else request.query_params
+
+    logger.debug(f'clone_job() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
+    if error_return:
+        return error_return
+
+    calibration_run_data = load_calibration_run_data(run, export=True)
+    new_run, warnings, info_messages = import_calibration_run_data(request, calibration_run_data)
+
+    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id, 'status': new_run.status.name}
+    if warnings:
+        response['errors'] = warnings
+    if info_messages:
+        response['messages'] = info_messages
+
+    response_validator, error_response = validate_response(ImportResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user} from clone_job() - {response_validator.data}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
     request=None,
     responses={
         200: CalibrationRunSerializer,
@@ -185,7 +231,7 @@ def load_calibration_run(request):
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def delete_run(request):
+def delete_job(request):
     data = request.data if request.method == 'POST' else request.query_params
 
     logger.debug(f'delete_run() request from {request.user} - {data}')

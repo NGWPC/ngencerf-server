@@ -10,7 +10,7 @@ import traceback
 logger = logging.getLogger(__name__)
 
 
-### Some debugging for a weird error that Miguel is having
+### Some debugging for a weird error that Miguel is having, but shouldn't hurt to leave this here in production
 def on_exit():
     exc_type, exc_value, exc_traceback = sys.exc_info()
     if exc_type:
@@ -21,8 +21,11 @@ def on_exit():
         # Log a normal shutdown message
         logger.debug("The application is exiting normally.")
 
+
 # Register the on_exit function to be called on application exit
 atexit.register(on_exit)
+
+
 #####
 
 
