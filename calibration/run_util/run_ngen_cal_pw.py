@@ -28,7 +28,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     payload = {
         'job_id': Path(run.job_data_dir).name,
         'job_type': 'calibration' if stage == JobStage.CALIBRATION else 'validation',
-        'job_stage': str(stage),
+        'job_stage': stage.value,
         'input_file': input_file,
         'output_file': output_file,
     }

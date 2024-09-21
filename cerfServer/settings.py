@@ -204,7 +204,7 @@ LOGGING = {
             'filename': Path(BASE_DIR) / 'cerfServer.log',
             'when': 'midnight',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
-            'backupCount': 7,  # Keep 7 days worth of logs (adjust as needed)
+            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'verbose',
             'encoding': 'utf-8',
         }
@@ -233,7 +233,18 @@ LOGGING = {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False
-        }
+        },
+        # Add these loggers for 'requests' and 'urllib3'
+        'requests': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'urllib3': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     }
 }
 
