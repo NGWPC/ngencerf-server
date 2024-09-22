@@ -1,29 +1,55 @@
+import logging
 from pathlib import Path
 
 from django.conf import settings
 
 from calibration.models import CalibrationRun
+from cerfServer.settings import NGEN_ENVIRONMENT
 
-dirs = [CALIB_VALID_DIR := str(Path(settings.NGEN_CAL_REPO_ROOT) / 'python/runCalibValid'),
-        NWM_RETROSPECTIVE_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'nwm_retrospective'),
-        NOAH_PARAMETER_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'bmi_config/Noah-OWP'),
-        PARQUET_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'parquet')
-        ]
+logger = logging.getLogger(__name__)
 
-files = [NGEN_EXE := str(Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen'),
-         CFE_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/cfe/cmake_build/libcfebmi.so'),
-         SLOTH_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sloth/cmake_build/libslothmodel.so'),
-         TOPMD_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/topmodel/cmake_build/libtopmodelbmi.so'),
-         NOAH_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/noah-owp-modular/cmake_build/libsurfacebmi.so'),
-         SFT_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so'),
-         SMP_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so'),
-         LASAM_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/LASAM/cmake_build/liblasambmi.so'),
-         PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/pet/cmake_build/libpetbmi.so'),
-         SNOW17_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so'),
-         SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
+CALIB_VALID_DIR = str(Path(settings.NGEN_CAL_REPO_ROOT) / 'python/runCalibValid')
 
-         CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
-         VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py')]
+static_dirs = [
+    NWM_RETROSPECTIVE_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'nwm_retrospective'),
+    NOAH_PARAMETER_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'bmi_config/Noah-OWP'),
+    PARQUET_DIR := str(Path(settings.NGEN_STATIC_DIR) / 'parquet')
+]
+
+files = [
+    NGEN_EXE := str(Path(settings.NGEN_REPO_ROOT) / 'cmake_build/ngen'),
+    CFE_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/cfe/cmake_build/libcfebmi.so'),
+    SLOTH_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sloth/cmake_build/libslothmodel.so'),
+    TOPMD_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/topmodel/cmake_build/libtopmodelbmi.so'),
+    NOAH_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/noah-owp-modular/cmake_build/libsurfacebmi.so'),
+    SFT_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so'),
+    SMP_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so'),
+    LASAM_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/LASAM/cmake_build/liblasambmi.so'),
+    # TODO This path is not correct
+    PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/pet/cmake_build/libpetbmi.so'),
+    SNOW17_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so'),
+    SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
+
+    CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
+    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py')
+]
+
+
+def check_files():
+    # If we are running locally,then ngen and ngen-cal files must be on our machine
+    simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
+    if NGEN_ENVIRONMENT == NGEN_ENVIRONMENT.LOCAL and not simulate:
+        for file in files:
+            if not Path(file).is_file():
+                logger.warning(f'{file} does not exist')
+
+    # Static files must always be accessible
+    for directory in static_dirs:
+        if not Path(directory).is_dir():
+            logger.warning(f'{directory} does not exist')
+        else:
+            if not any(Path(directory).iterdir()):
+                logger.warning(f'{directory} is empty')
 
 
 # Construct the directory where the Input/Output is

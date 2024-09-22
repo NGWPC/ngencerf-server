@@ -46,8 +46,3 @@ DATABASES = {
         }
     }
 }
-
-# url of the front-end
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]

@@ -6,7 +6,6 @@
 # you can reference os.getenv and store the value in the .env file or in the environment
 import logging
 import os
-from pathlib import Path
 
 from cerfServer.settings import LOGGING
 
@@ -36,8 +35,6 @@ VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
 
 HYDROFABRIC_URL = 'http://localhost:8001'
-HYDROFABRIC_BUCKET = 'ngwpc-dev'
-HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
 
 DATABASES = {
     'default': {
@@ -53,8 +50,3 @@ DATABASES = {
         }
     }
 }
-
-# url of the front-end
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]

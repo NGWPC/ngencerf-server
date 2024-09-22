@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from django.apps import AppConfig
 
@@ -11,11 +10,6 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-        from calibration.util.ngen_locations import files, dirs
+        from calibration.util.ngen_locations import check_files
 
-        for file in files:
-            if not Path(file).is_file():
-                logger.warning(f'{file} does not exist')
-        for directory in dirs:
-            if not Path(directory).is_dir():
-                logger.warning(f'{directory} does not exist')
+        check_files()

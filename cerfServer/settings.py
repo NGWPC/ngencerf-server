@@ -263,9 +263,13 @@ S3_MOUNT_POINT = Path.home() / 's3'
 
 HYDROFABRIC = False
 
+# This flag is only used when running locally, not on Parallel Works
+# If false, then you must have Ngen and Ngen-call installed locally
+NGEN_CAL_SIMULATE = True
 # -----------------------------
 # Locations
 # -----------------------------
+
 # Locations for running ngen-cal
 REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
 # Directory that Ngen is cloned into
