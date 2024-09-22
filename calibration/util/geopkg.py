@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from shapely.geometry import shape, Polygon, MultiPolygon
 
 # See https://stackoverflow.com/questions/27147300/matplotlib-tcl-asyncdelete-async-handler-deleted-by-the-wrong-thread
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)
 
 
 def gpkg_to_png(gpkg_path, png_path, layer=None):
