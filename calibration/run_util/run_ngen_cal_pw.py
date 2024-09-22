@@ -3,14 +3,12 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 import requests
-from django.contrib.auth import get_user_model
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
-from calibration.views.common import get_run
-from cerfServer import settings
 from calibration.run_util.run_common import JobStage, set_job_status
 from calibration.run_util.run_ngen_cal import proceed_to_next_stage
+from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +18,11 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
     :param run: The CalibrationRun object representing the job run.
-    :param stage: The current job stage.
+    :param stage: The current job stage, as an enum
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
+    logger.info(f'in run_parallel_works', type(stage), stage)
     # Slurm uses multipart form-data
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
     payload = {
@@ -50,21 +49,16 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         raise
 
 
-def run_job_callback_slurm(current_stage: JobStage, process_id, job_status):
+def run_job_callback_slurm(current_stage: JobStage, process_id, run, job_status):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
-    :param current_stage: The current job stage.
+    :param current_stage: The current job stage, as an Enum
     :param process_id: The process_id of the job (id_user)
+    :param run: The CalibrationRun object representing the job run.
     :param job_status: Whether the job succeeded or failed
     """
     # Get run id from the process id
-    calibration_run_id, username = process_id.split('_')
-    user = get_user_model().objects.get(username=username)
-    run, error_return = get_run(calibration_run_id, user)
-    if error_return:
-        return error_return
-
     logger.info(f'Job {process_id} completed stage {current_stage}')
 
     # TODO Display job status

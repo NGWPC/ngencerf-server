@@ -20,7 +20,8 @@ from calibration.run_util.run_common import run_job
 from calibration.run_util.run_ngen_cal import JobStage, cancel_local_job
 from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
+    SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request
 from calibration.views.read_output import read_output, accumulate_iterations
@@ -360,9 +361,9 @@ def cancel_job(request):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=SlurmCallbackRequestSerializer,
     responses={
-        200: GenericResponseSerializer,
+        202: None,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -377,7 +378,7 @@ def slurm_callback(request):
     data = request.data
     logger.debug(f'slurm_callback() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(SlurmCallbackRequestSerializer, data)
     if error_return:
         return error_return
 
@@ -392,7 +393,7 @@ def slurm_callback(request):
     if error_return:
         return error_return
 
-    run_job_callback_slurm(current_stage, process_id, job_status)
+    run_job_callback_slurm(JobStage[current_stage], process_id, run, job_status)
 
     logger.debug(f'Returning to {request.user} from slurm_callback()')
 

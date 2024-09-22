@@ -293,10 +293,13 @@ def process_worker_dirs(run: CalibrationRun, worker_lambda):
     :param worker_lambda: A lambda function that processes each worker directory
     """
     output_calibration_run_dir = get_output_calibration_run_dir(run)
-    for item in Path(output_calibration_run_dir).iterdir():
+    output_calibration_run_dir_path = Path(output_calibration_run_dir)
+    if not output_calibration_run_dir_path.exists():
+        raise CerfException(f"Cannot find expected data at {output_calibration_run_dir}")
+    for item in output_calibration_run_dir_path.iterdir():
         # Check if the item is a directory and matches the pattern
         if item.is_dir() and worker_directory_pattern.match(item.name):
-            worker_dir = Path(output_calibration_run_dir) / item
+            worker_dir = output_calibration_run_dir_path / item
             logger.debug(f'{run.id}_{run.owner.username} Processing worker directory:{worker_dir}')
             worker_lambda(worker_dir, run)
 

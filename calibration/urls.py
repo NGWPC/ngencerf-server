@@ -64,6 +64,7 @@ urlpatterns = [
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
+    path('calibration/slurm_callback/', calibration_run_views.slurm_callback, name="slurmCallback"),
 
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
