@@ -60,9 +60,9 @@ sonarqube:
       - .sonar/cache
   script:
     - sonar-scanner -X -Dsonar.verbose=true
-#  rules:
-#    # SonarQube CommunityEdition only supports analyzing a single branch.
-#    - if: '$CI_COMMIT_BRANCH == "development"'
+  rules:
+    # SonarQube CommunityEdition only supports analyzing a single branch.
+    - if: '$CI_COMMIT_BRANCH == "development"'
 
 container_scanning:
   stage: test
@@ -93,5 +93,5 @@ deploy:
     - docker push $DOCKER_IMAGE_NAME:latest
     - docker push $DOCKER_IMAGE_NAME:prod
     - docker logout
-#  rules:
-#    - if: '$CI_COMMIT_BRANCH == "development"'
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "development"'
