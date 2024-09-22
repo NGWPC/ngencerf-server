@@ -81,4 +81,9 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+
+    ##################################
+    # Testing
+    ##################################
+    path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
 ]

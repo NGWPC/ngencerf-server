@@ -8,6 +8,7 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status
 from calibration.run_util.run_ngen_cal import proceed_to_next_stage
+from calibration.views.common import generate_process_token
 from cerfServer import settings
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     :param output_file: Path to the output file for the stage.
     """
     logger.info(f'in run_parallel_works', type(stage), stage)
+
+    slurm_token = generate_process_token(run.owner)
+    print(f'slurm token: {slurm_token}')
     # Slurm uses multipart form-data
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
     payload = {

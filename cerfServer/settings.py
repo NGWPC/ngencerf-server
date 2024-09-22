@@ -174,7 +174,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'root': {
         'handlers': ['console'],
-        'level': 'INFO'
+        'level': 'DEBUG'
     },
     'formatters': {
         'verbose': {
@@ -218,6 +218,10 @@ LOGGING = {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
+        },
+        'rest_framework_simplejwt': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
         },
         'django.request': {
             'handlers': ['console', 'file'],
@@ -301,7 +305,8 @@ NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', "LOCAL")
 try:
     NGEN_ENVIRONMENT = EnvironmentEnum[NGEN_ENVIRONMENT_STR]
 except KeyError:
-    raise SystemExit(f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
+    raise SystemExit(
+        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
 
 SLURM_URL = os.getenv("SLURM_URL")
 SLURM_SUBMIT_JOB_ENDPOINT = 'submit-job'

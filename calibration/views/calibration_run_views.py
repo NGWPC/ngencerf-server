@@ -11,7 +11,7 @@ from django.db.models import Max
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
@@ -23,7 +23,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
     SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, IsSlurmCallbackToken, \
+    generate_process_token
 from calibration.views.read_output import read_output, accumulate_iterations
 from cerfServer import settings
 
@@ -374,6 +375,7 @@ def cancel_job(request):
 )
 @api_view(['POST'])
 @handle_exceptions
+@permission_classes([IsSlurmCallbackToken])  # Requires custom JWT token
 def slurm_callback(request):
     data = request.data
     logger.debug(f'slurm_callback() request from {request.user} - {data}')
@@ -398,6 +400,12 @@ def slurm_callback(request):
     logger.debug(f'Returning to {request.user} from slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(['GET'])
+@handle_exceptions
+def get_slurm_token(request):
+    return Response({'access': generate_process_token(request.user)})
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
