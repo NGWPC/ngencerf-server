@@ -25,7 +25,7 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
     simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
     cal_or_valid_script = CALIBRATION_PY if stage == JobStage.CALIBRATION else VALIDATION_PY
-    cal_or_valid_script = str(Path(settings.BASE_DIR) / 'run_ngen_cal' / 'ngen_cal_simulation.py') if simulate else cal_or_valid_script
+    cal_or_valid_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'ngen_cal_simulation.py') if simulate else cal_or_valid_script
 
     shell_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'run_ngen_cal.sh')
 
