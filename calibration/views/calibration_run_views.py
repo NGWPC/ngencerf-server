@@ -16,8 +16,8 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Iteration
-from calibration.run_util.run_common import run_job
-from calibration.run_util.run_ngen_cal import JobStage, cancel_local_job
+from calibration.run_util.run_common import run_job, cancel_job_common
+from calibration.run_util.run_ngen_cal import JobStage
 from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
@@ -344,7 +344,7 @@ def cancel_job(request):
     if error_return:
         return error_return
 
-    if not cancel_local_job(run.id):
+    if not cancel_job_common(run):
         return ResponseError(f"Calibration Run {run.id} is not running")
     else:
         run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)

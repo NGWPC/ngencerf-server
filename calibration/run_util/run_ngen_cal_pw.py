@@ -36,11 +36,11 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         'job_stage': (None, stage.value),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
-        'access_token': (None, generate_custom_token(run.owner, token_slurm_scope))
+        'auth_token': (None, generate_custom_token(run.owner, token_slurm_scope))
     }
 
     # TODO How do we set callback?
-    callback = run_job_callback_slurm
+    # callback = run_job_callback_slurm
 
     logger.info(f'slurm payload: {payload}')
     response = requests.post(url, files=payload)
@@ -83,6 +83,10 @@ def run_job_callback_slurm(current_stage: JobStage, process_id, run, slurm_statu
 
 
 def cancel_slurm_job(run: CalibrationRun):
+    """
+     Terminates a job with the given calibration_run_id by sending a request to slurm.
+     :param run: The CalibrationRun to terminate.
+     """
     url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
     payload = {
         'slurm_job_id': (None, run.slurm_job_id)
@@ -91,10 +95,10 @@ def cancel_slurm_job(run: CalibrationRun):
     logger.info(f'slurm payload: {payload}')
     response = requests.post(url, files=payload)
     try:
+        # TODO Need to check for 'job doesn't exist' or some other error
         response.raise_for_status()
-        run.slurm_job_id = response.json().get('slurm_job_id')
-        run.save()
         logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
+        return True
     except requests.exceptions.HTTPError as e:
         logger.error(f"Failed to cancel job: {response.json().get('error')}")
         logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")

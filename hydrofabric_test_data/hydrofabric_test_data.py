@@ -552,32 +552,8 @@ module_sample_data = {"modules": [
             "Routing"
         ],
     },
-    {
-        "module_name": "SCHISM",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Coastal"
-        ]
-    },
-    {
-        "module_name": "SFINCS",
-        "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
-        "groups": [
-            "Coastal"
-        ]
-    },
     # {
-    #     "module_name": "Topoflow",
+    #     "module_name": "SCHISM",
     #     "description": "description of module",
     #     "module_version": {
     #         "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
@@ -585,8 +561,32 @@ module_sample_data = {"modules": [
     #         "version_date": "2024-08-29T09:12:33.001Z"
     #     },
     #     "groups": [
-    #         "Glacier"
+    #         "Coastal"
     #     ]
-    # }
+    # },
+    # {
+    #     "module_name": "SFINCS",
+    #     "description": "description of module",
+    #     "module_version": {
+    #         "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+    #         "version_url": "https://www.acme-corp.com",
+    #         "version_date": "2024-08-29T09:12:33.001Z"
+    #     },
+    #     "groups": [
+    #         "Coastal"
+    #     ]
+    # },
+    {
+        "module_name": "Topoflow",
+        "description": "description of module",
+        "module_version": {
+            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+            "version_url": "https://www.acme-corp.com",
+            "version_date": "2024-08-29T09:12:33.001Z"
+        },
+        "groups": [
+            "Glacier"
+        ]
+    }
 ]
 }
