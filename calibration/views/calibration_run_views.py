@@ -24,7 +24,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, IsSlurmCallbackToken, \
-    generate_process_token
+    generate_custom_token, token_slurm_scope
 from calibration.views.read_output import read_output, accumulate_iterations
 from cerfServer import settings
 
@@ -405,7 +405,7 @@ def slurm_callback(request):
 @api_view(['GET'])
 @handle_exceptions
 def get_slurm_token(request):
-    return Response({'access': generate_process_token(request.user)})
+    return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):

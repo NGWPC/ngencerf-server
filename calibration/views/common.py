@@ -89,31 +89,32 @@ def create_calibration_run_internal(request) -> CalibrationRun:
     return run
 
 
-def generate_process_token(user):
+token_slurm_scope = 'slurm_callback'
+
+
+def generate_custom_token(user, scope):
     access = AccessToken.for_user(user)
     # Set the expiration to 24 hours from now
     access.set_exp(lifetime=timedelta(hours=24))
 
     # Set our custom scope
-    access['scope'] = 'callback'
+    access['scope'] = scope
 
     return str(access)
 
 
 class IsSlurmCallbackToken(BasePermission):
-    required_scope = 'callback'
-
     def has_permission(self, request, view):
         # Ensure that the user is authenticated and has a valid token
         if not request.user or not request.auth:
-            logger.debug("No token or user provided")
+            logger.debug(f"No token or user provided - user: {request.user}, auth: {request.auth}")
             return False
 
         # We should already have a validated token in request.auth
         token = request.auth
 
         # Make sure we have our custom scope
-        return self.required_scope in token.get('scope', '').split()
+        return token_slurm_scope in token.get('scope', '').split()
 
 
 # Function wrapper to implement common exception handling

@@ -8,7 +8,7 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status
 from calibration.run_util.run_ngen_cal import proceed_to_next_stage
-from calibration.views.common import generate_process_token
+from calibration.views.common import generate_custom_token, token_slurm_scope
 from cerfServer import settings
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     """
     logger.info(f'in run_parallel_works', type(stage), stage)
 
-    slurm_token = generate_process_token(run.owner)
+    slurm_token = generate_custom_token(run.owner, token_slurm_scope)
     print(f'slurm token: {slurm_token}')
     # Slurm uses multipart form-data
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
@@ -35,6 +35,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         'job_stage': (None, stage.value),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
+        # 'access_token': generate_custom_token(run.owner, token_slurm_scope)
     }
 
     # TODO How do we set callback?
