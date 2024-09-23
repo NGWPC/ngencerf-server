@@ -4,13 +4,14 @@
 # The values in this template are suitable for use in Development.
 # Any Django or other properties can be added to this file.  For secure values, such as passwords,
 # you can reference os.getenv and store the value in the .env file or in the environment
-
+import logging
 import os
-from pathlib import Path
 
 from cerfServer.settings import LOGGING
 
-print('Loading local settings from', __name__)
+logger = logging.getLogger(__name__)
+
+logger.info('Loading local settings from', __name__)
 
 # Use fully open ALLOWED_HOSTS because ParallelWorks SSH tunnel connections 
 # come from arbitrary private IPs
@@ -34,9 +35,6 @@ VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
 
 HYDROFABRIC_URL = 'http://localhost:8001'
-HYDROFABRIC_BUCKET = 'ngwpc-dev'
-HYDROFABRIC_BUCKET_MOUNT_POINT = os.path.join(Path.home(), 's3/ngwpc-dev')
-
 
 DATABASES = {
     'default': {
@@ -52,8 +50,3 @@ DATABASES = {
         }
     }
 }
-
-# url of the front-end
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]

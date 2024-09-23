@@ -12,7 +12,8 @@ urlpatterns = [
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_jobs/', calibration_landing_views.get_jobs, name="getJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
-    path('calibration/delete_run/', calibration_landing_views.delete_run, name="deleteRun"),
+    path('calibration/delete_job/', calibration_landing_views.delete_job, name="deleteJob"),
+    path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
 
 
     ##################################
@@ -63,6 +64,7 @@ urlpatterns = [
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
+    path('calibration/slurm_callback/', calibration_run_views.slurm_callback, name="slurmCallback"),
 
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
@@ -79,4 +81,9 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Optional UI:
     path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+
+    ##################################
+    # Testing
+    ##################################
+    path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
 ]

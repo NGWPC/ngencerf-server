@@ -1,5 +1,6 @@
+import logging
 import subprocess
-from enum import auto, Enum
+from enum import auto, StrEnum
 from pathlib import Path
 from typing import Optional, Dict
 
@@ -11,8 +12,10 @@ from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
 from cerfServer import settings
 
+logger = logging.getLogger(__name__)
 
-class JobStage(Enum):
+
+class JobStage(StrEnum):
     """
     Enum representing the stages of a job.
     """
@@ -87,10 +90,10 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
     next_stage = transition_manager.get_next_stage(current_stage)
 
     if next_stage:
-        print(f'Job {process_id} proceeding to stage {next_stage}')
+        logger.info(f'Job {process_id} proceeding to stage {next_stage}')
         run_job(run, next_stage)
     else:
-        print(f'Job {process_id} complete. No further stages.')
+        logger.info(f'Job {process_id} complete. No further stages.')
         set_job_status(run, StatusEnum.DONE)
 
         read_output(run)
@@ -117,10 +120,10 @@ def run_job(run: CalibrationRun, cmd: JobStage):
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
 
     # Run the job locally or in Docker (Docker is currently unsupported)
-    match settings.RUN_TYPE:
-        case settings.RUN_TYPE.LOCAL:
-            from run_util.run_ngen_cal import run_local
+    match settings.NGEN_ENVIRONMENT:
+        case settings.NGEN_ENVIRONMENT.LOCAL:
+            from calibration.run_util.run_ngen_cal import run_local
             run_local(run, cmd, input_file, output_file)
-        case settings.RUN_TYPE.DOCKER:
-            from run_util.run_ngen_cal_docker import run_docker
-            run_docker(run, cmd, input_file, output_file)
+        case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
+            from calibration.run_util.run_ngen_cal_pw import run_parallel_works
+            run_parallel_works(run, cmd, input_file, output_file)

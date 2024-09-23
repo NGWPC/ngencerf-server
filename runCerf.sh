@@ -41,15 +41,17 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
         --password admin \
         --email admin@nextgenwaterprediction.com
     echo
-    echo "Calling init_sql"
-    python3 manage.py init_sql
-    echo
     echo "Calling init_gages"
     python3 manage.py init_gages
 
     touch "${CERF_LOAD_STATIC_DATA}"
 fi
 
+# Run this every time, since sometimes there are updates and it is very quick
+echo
+echo "Calling init_sql"
+python3 manage.py init_sql
+echo
 echo
 echo "Running pre_start"
 python3 "$cerfServer"/manage.py pre_start

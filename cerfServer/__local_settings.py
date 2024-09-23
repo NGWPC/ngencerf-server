@@ -4,12 +4,14 @@
 # The values in this template are suitable for use in Development.
 # Any Django or other properties can be added to this file.  For secure values, such as passwords,
 # you can reference os.getenv and store the value in the .env file or in the environment
-
+import logging
 import os
 
 from cerfServer.settings import LOGGING
 
-print('Loading local settings from', __name__)
+logger = logging.getLogger(__name__)
+
+logger.info('Loading local settings from', __name__)
 
 ALLOWED_HOSTS = ['.localhost', '127.0.0.1']
 
@@ -44,8 +46,3 @@ DATABASES = {
         }
     }
 }
-
-# url of the front-end
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-]

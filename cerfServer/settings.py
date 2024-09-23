@@ -11,10 +11,10 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 import logging
 import os
+import re
 from datetime import timedelta
 from enum import StrEnum, auto
 from pathlib import Path
-import re
 
 from dotenv import load_dotenv
 
@@ -87,6 +87,7 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3001",
 ]
 
 ROOT_URLCONF = 'cerfServer.urls'
@@ -173,7 +174,7 @@ LOGGING = {
     'disable_existing_loggers': False,
     'root': {
         'handlers': ['console'],
-        'level': 'INFO'
+        'level': 'DEBUG'
     },
     'formatters': {
         'verbose': {
@@ -203,7 +204,7 @@ LOGGING = {
             'filename': Path(BASE_DIR) / 'cerfServer.log',
             'when': 'midnight',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
-            'backupCount': 7,  # Keep 7 days worth of logs (adjust as needed)
+            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'verbose',
             'encoding': 'utf-8',
         }
@@ -217,6 +218,10 @@ LOGGING = {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,
+        },
+        'rest_framework_simplejwt': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
         },
         'django.request': {
             'handlers': ['console', 'file'],
@@ -232,7 +237,18 @@ LOGGING = {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
             'propagate': False
-        }
+        },
+        # Add these loggers for 'requests' and 'urllib3'
+        'requests': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'urllib3': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     }
 }
 
@@ -251,9 +267,13 @@ S3_MOUNT_POINT = Path.home() / 's3'
 
 HYDROFABRIC = False
 
+# This flag is only used when running locally, not on Parallel Works
+# If false, then you must have Ngen and Ngen-call installed locally
+NGEN_CAL_SIMULATE = True
 # -----------------------------
 # Locations
 # -----------------------------
+
 # Locations for running ngen-cal
 REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
 # Directory that Ngen is cloned into
@@ -275,13 +295,18 @@ NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
 
 
-class RunTypeEnum(StrEnum):
-    LOCAL = auto()
-    DOCKER = auto()
+class EnvironmentEnum(StrEnum):
+    LOCAL = "LOCAL"
+    PARALLEL_WORKS = "PARALLEL_WORKS"
 
 
 # TODO Right now we only support LOCAL.  Need to see if we can dynamically figure out which environment we're in, or set an ENV variable
-RUN_TYPE = RunTypeEnum.LOCAL
+NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', "LOCAL")
+try:
+    NGEN_ENVIRONMENT = EnvironmentEnum[NGEN_ENVIRONMENT_STR]
+except KeyError:
+    raise SystemExit(
+        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
 
 SLURM_URL = os.getenv("SLURM_URL")
 SLURM_SUBMIT_JOB_ENDPOINT = 'submit-job'

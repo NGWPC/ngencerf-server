@@ -1,13 +1,16 @@
 import base64
 import inspect
 import logging
+from datetime import timedelta
 from functools import wraps
 from pathlib import Path
 from typing import List, cast, Optional, Tuple
 
 from rest_framework import status
 from rest_framework.exceptions import ValidationError, ParseError
+from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Status
@@ -84,6 +87,34 @@ def create_calibration_run_internal(request) -> CalibrationRun:
     run.automatic_validation = True
     run.save(update_fields=['job_data_dir', 'automatic_validation'])
     return run
+
+
+token_slurm_scope = 'slurm_callback'
+
+
+def generate_custom_token(user, scope):
+    access = AccessToken.for_user(user)
+    # Set the expiration to 24 hours from now
+    access.set_exp(lifetime=timedelta(hours=24))
+
+    # Set our custom scope
+    access['scope'] = scope
+
+    return str(access)
+
+
+class IsSlurmCallbackToken(BasePermission):
+    def has_permission(self, request, view):
+        # Ensure that the user is authenticated and has a valid token
+        if not request.user or not request.auth:
+            logger.debug(f"No token or user provided - user: {request.user}, auth: {request.auth}")
+            return False
+
+        # We should already have a validated token in request.auth
+        token = request.auth
+
+        # Make sure we have our custom scope
+        return token_slurm_scope in token.get('scope', '').split()
 
 
 # Function wrapper to implement common exception handling

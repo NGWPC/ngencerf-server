@@ -11,20 +11,22 @@ from django.db.models import Max
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Iteration
+from calibration.run_util.run_common import run_job
+from calibration.run_util.run_ngen_cal import JobStage, cancel_local_job
+from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
+    SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, IsSlurmCallbackToken, \
+    generate_custom_token, token_slurm_scope
 from calibration.views.read_output import read_output, accumulate_iterations
-from cerfServer.settings import NGEN_REPO_ROOT, NGEN_CAL_REPO_ROOT
-from run_util.run_common import run_job
-from run_util.run_ngen_cal import JobStage, cancel_local_job
-from run_util.run_ngen_cal_docker import run_job_callback_slurm
+from cerfServer import settings
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +103,7 @@ def run_calibration(request):
     if error_return:
         return error_return
 
+    # TODO Need to Catch exception from Slurm
     response = submit_job(run)
     if response:
         return response
@@ -123,17 +126,18 @@ def submit_job(run, config_file=None):
             return ResponseError(f'Calibration Run {run.id} is not ready', validation_errors=messages)
 
     try:
-        print(f'Running create_input for Calibration Run {run.id}')
+        logger.info(f'Running create_input for Calibration Run {run.id}')
         create_input(config_file)
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')
 
-    print(f'Return from create_input for Calibration Run {run.id}')
+    logger.info(f'Return from create_input for Calibration Run {run.id}')
 
-    if not Path(NGEN_REPO_ROOT).exists():
+    # Need to return the commit hash as part of the Slurm job
+    if False:
         # Save the latest git hash or ngen and ngen-cal
-        run.ngen_commit_hash = Repo(NGEN_REPO_ROOT).head.object.hexsha
-        run.ngen_cal_commit_hash = Repo(NGEN_CAL_REPO_ROOT).head.object.hexsha
+        run.ngen_commit_hash = Repo(settings.NGEN_REPO_ROOT).head.object.hexsha
+        run.ngen_cal_commit_hash = Repo(settings.NGEN_CAL_REPO_ROOT).head.object.hexsha
 
     run.run_date = datetime.now(timezone.utc)
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
@@ -358,9 +362,9 @@ def cancel_job(request):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=SlurmCallbackRequestSerializer,
     responses={
-        200: GenericResponseSerializer,
+        202: None,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -371,11 +375,12 @@ def cancel_job(request):
 )
 @api_view(['POST'])
 @handle_exceptions
+@permission_classes([IsSlurmCallbackToken])  # Requires custom JWT token
 def slurm_callback(request):
     data = request.data
     logger.debug(f'slurm_callback() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(SlurmCallbackRequestSerializer, data)
     if error_return:
         return error_return
 
@@ -390,11 +395,17 @@ def slurm_callback(request):
     if error_return:
         return error_return
 
-    run_job_callback_slurm(current_stage, process_id, job_status)
+    run_job_callback_slurm(JobStage[current_stage], process_id, run, job_status)
 
     logger.debug(f'Returning to {request.user} from slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@api_view(['GET'])
+@handle_exceptions
+def get_slurm_token(request):
+    return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):

@@ -691,6 +691,12 @@ class ProcessCalibrationOutputRequest(CalibrationRunSerializer):
     rerun = serializers.BooleanField(required=False, default=False)
 
 
+class SlurmCallbackRequestSerializer(BaseSerializer):
+    process_id = serializers.CharField(required=True)
+    stage = serializers.CharField(required=True)
+    job_status = serializers.CharField(required=True)
+
+
 ##################################
 # Import/Export
 ##################################

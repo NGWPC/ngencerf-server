@@ -57,177 +57,9 @@ def import_job(request):
     if error_return:
         return error_return
 
-    with transaction.atomic():
-        run = create_calibration_run_internal(request)
+    run_after_import = validator.get('run_after_import', False)
 
-        run_after_import = validator.get('run_after_import', False)
-
-        warnings = []
-        info_messages = []
-
-        #############################
-        # Gage
-        #############################
-        gage_id = validator.get('gage_id')
-        if gage_id:
-            try:
-                save_gage(run, gage_id)
-            except Gage.DoesNotExist:
-                return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
-
-        forcing_source_name = validator.get('forcing_source')
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
-        run.forcing_hydrofabric_dir_path = validator.get('forcing_hydrofabric_dir_path')
-
-        observational_source_name = validator.get('observational_source')
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name,
-                                                                   is_active=True) if observational_source_name else None
-        run.observational_hydrofabric_file_path = validator.get('observational_hydrofabric_file_path')
-
-        geopackage_source_name = validator.get('geopackage_source')
-        run.geopackage_source = GeopackageSource.objects.get(name=geopackage_source_name, is_active=True) if geopackage_source_name else None
-        run.geopackage_hydrofabric_path = validator.get('geopackage_hydrofabric_file_path')
-
-        # geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
-        # if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
-        #     # Copy from original location to our job-specific path
-        #     info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
-        # else:
-        #     if geopackage_user_uploaded_file_path:
-        #         warnings.append(f"Unable to access user uploaded geopackage file from '{geopackage_user_uploaded_file_path}'")
-
-        if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):
-            geopackage_user_uploaded_file_path = validator.get('geopackage_user_uploaded_file_path')
-            if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
-                # Copy from original location to our job-specific path
-                info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
-            else:
-                if geopackage_user_uploaded_file_path:
-                    warnings.append(f"Unable to access user uploaded geopackage data from '{geopackage_user_uploaded_file_path}'")
-
-        if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
-            forcing_user_uploaded_dir_path = validator.get('forcing_user_uploaded_dir_path')
-            if forcing_user_uploaded_dir_path and Path(forcing_user_uploaded_dir_path).exists():
-                # Copy from original location to our job-specific path
-                info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
-            else:
-                if forcing_user_uploaded_dir_path:
-                    warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
-
-        if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
-            observational_user_uploaded_file_path = validator.get('observational_user_uploaded_file_path')
-            if observational_user_uploaded_file_path and Path(observational_user_uploaded_file_path).exists():
-                # Copy from original location to our job-specific path
-                info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
-            else:
-                if observational_user_uploaded_file_path:
-                    warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
-
-    #############################
-    # Formulations
-    #############################
-    get_modules_from_hydrofabric(run)
-    # List of module names
-    modules_list = validator.get('modules')
-    module_names = set(modules_list) if modules_list else set()
-
-    error_message = validate_modules(run, module_names)
-    if error_message:
-        return ResponseError(error_message)
-
-    if module_names:
-        if not validate_formulation(run, module_names):
-            return ResponseError(f'Invalid formulation -  {module_names}')
-
-    run.user_formulation_name = validator.get('formulation_name')
-
-    run.use_sloth = validator.get('use_sloth')
-    sloth_parameters = validator.get('sloth_parameters')
-    if run.use_sloth:
-        if module_names:
-            module_names.add(SLOTH)
-    else:
-        if sloth_parameters:
-            return ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
-
-    # Create any new formulations
-    for name in module_names:
-        CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
-
-    if sloth_parameters:
-        error_message = add_sloth_parameters(run, sloth_parameters)
-        if error_message:
-            return ResponseError(error_message)
-
-    #############################
-    # Tuning
-    #############################
-    # Get the list of modules for this Run
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
-
-    if modules and run.gage:
-        get_module_data_from_hydrofabric(run, modules)
-
-    run.automatic_validation = validator.get('automatic_validation')
-
-    calibration_times = validator.get('calibration_times')
-    validation_times = validator.get('validation_times')
-    if not run.automatic_validation and validation_times:
-        return ResponseError('validation_times cannot be specified unless automatic_validation is True')
-
-    error_message = validate_and_save_times(run, calibration_times, validation_times)
-    if error_message:
-        return ResponseError(error_message)
-
-    output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
-    parameters = validator.get('parameters')
-    if parameters and not modules:
-        return ResponseError('Parameters cannot be specified without modules')
-
-    error_message = validate_parameters(run, parameters)
-    if error_message:
-        return ResponseError(error_message)
-
-    error_message = save_output_variable(run, output_variable_to_calibrate)
-    if error_message:
-        return ResponseError(error_message)
-
-    save_parameters(run, parameters)
-
-    #############################
-    # Optimization
-    #############################
-
-    optimization_name = validator.get('optimization')
-    objective_function_name = validator.get('objective_function')
-    streamflow_threshold = validator.get('streamflow_threshold')
-    peak_flow_threshold = validator.get('peak_flow_threshold')
-    optimization_inputs = validator.get('optimization_inputs')
-    stop_criteria = validator.get('stop_criteria')
-
-    if not optimization_name:
-        if optimization_inputs:
-            return ResponseError('Optimization inputs cannot be specified without an optimization name')
-    else:
-        optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
-        if error_message:
-            return ResponseError(error_message)
-        write_optimization_inputs(run, optimization, optimization_inputs)
-
-    error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
-    if error_message:
-        return ResponseError(error_message)
-
-    run.save_plot_iteration_frequency = validator.get('save_plot_iteration_frequency')
-    run.save_output_iteration = validator.get('save_output_iteration')
-    run.streamflow_threshold = streamflow_threshold
-    run.peak_flow_threshold = peak_flow_threshold
-
-    if stop_criteria:
-        # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
-        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
-
-    run.save()
+    run, warnings, info_messages = import_calibration_run_data(request, validator)
 
     imported_and_submitted = 'imported'
 
@@ -237,6 +69,7 @@ def import_job(request):
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
+            # TODO Need to catch exceptions from Slurm
             submit_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 
@@ -252,6 +85,172 @@ def import_job(request):
 
     logger.debug(f'Returning to {request.user} from import_job() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+def import_calibration_run_data(request, calibration_run_data):
+    with transaction.atomic():
+        run = create_calibration_run_internal(request)
+
+        warnings = []
+        info_messages = []
+
+        #############################
+        # Gage
+        #############################
+        gage_id = calibration_run_data.get('gage_id')
+        if gage_id:
+            try:
+                save_gage(run, gage_id)
+            except Gage.DoesNotExist:
+                return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+
+        forcing_source_name = calibration_run_data.get('forcing_source')
+        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
+        run.forcing_hydrofabric_dir_path = calibration_run_data.get('forcing_hydrofabric_dir_path')
+
+        observational_source_name = calibration_run_data.get('observational_source')
+        run.observational_source = ObservationalSource.objects.get(name=observational_source_name,
+                                                                   is_active=True) if observational_source_name else None
+        run.observational_hydrofabric_file_path = calibration_run_data.get('observational_hydrofabric_file_path')
+
+        geopackage_source_name = calibration_run_data.get('geopackage_source')
+        run.geopackage_source = GeopackageSource.objects.get(name=geopackage_source_name, is_active=True) if geopackage_source_name else None
+        run.geopackage_hydrofabric_path = calibration_run_data.get('geopackage_hydrofabric_file_path')
+
+        if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):
+            geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
+            if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
+                # Copy from original location to our job-specific path
+                info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
+            else:
+                if geopackage_user_uploaded_file_path:
+                    warnings.append(f"Unable to access user uploaded geopackage data from '{geopackage_user_uploaded_file_path}'")
+
+        if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
+            forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
+            if forcing_user_uploaded_dir_path and Path(forcing_user_uploaded_dir_path).exists():
+                # Copy from original location to our job-specific path
+                info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
+            else:
+                if forcing_user_uploaded_dir_path:
+                    warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
+
+        if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
+            observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
+            if observational_user_uploaded_file_path and Path(observational_user_uploaded_file_path).exists():
+                # Copy from original location to our job-specific path
+                info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
+            else:
+                if observational_user_uploaded_file_path:
+                    warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
+
+        #############################
+        # Formulations
+        #############################
+        get_modules_from_hydrofabric(run)
+        # List of module names
+        modules_list = calibration_run_data.get('modules')
+        module_names = set(modules_list) if modules_list else set()
+
+        error_message = validate_modules(run, module_names)
+        if error_message:
+            return ResponseError(error_message)
+
+        if module_names:
+            if not validate_formulation(run, module_names):
+                return ResponseError(f'Invalid formulation -  {module_names}')
+
+        run.user_formulation_name = calibration_run_data.get('formulation_name')
+
+        run.use_sloth = calibration_run_data.get('use_sloth')
+        sloth_parameters = calibration_run_data.get('sloth_parameters')
+        if run.use_sloth:
+            if module_names:
+                module_names.add(SLOTH)
+        else:
+            if sloth_parameters:
+                return ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
+
+        # Create any new formulations
+        for name in module_names:
+            CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+
+        if sloth_parameters:
+            error_message = add_sloth_parameters(run, sloth_parameters)
+            if error_message:
+                return ResponseError(error_message)
+
+        #############################
+        # Tuning
+        #############################
+        # Get the list of modules for this Run
+        modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+
+        if modules and run.gage:
+            get_module_data_from_hydrofabric(run, modules)
+
+        run.automatic_validation = calibration_run_data.get('automatic_validation')
+
+        calibration_times = calibration_run_data.get('calibration_times')
+        validation_times = calibration_run_data.get('validation_times')
+        if not run.automatic_validation and validation_times:
+            return ResponseError('validation_times cannot be specified unless automatic_validation is True')
+
+        error_message = validate_and_save_times(run, calibration_times, validation_times)
+        if error_message:
+            return ResponseError(error_message)
+
+        output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')
+        parameters = calibration_run_data.get('parameters')
+        if parameters and not modules:
+            return ResponseError('Parameters cannot be specified without modules')
+
+        error_message = validate_parameters(run, parameters)
+        if error_message:
+            return ResponseError(error_message)
+
+        error_message = save_output_variable(run, output_variable_to_calibrate)
+        if error_message:
+            return ResponseError(error_message)
+
+        save_parameters(run, parameters)
+
+        #############################
+        # Optimization
+        #############################
+
+        optimization_name = calibration_run_data.get('optimization')
+        objective_function_name = calibration_run_data.get('objective_function')
+        streamflow_threshold = calibration_run_data.get('streamflow_threshold')
+        peak_flow_threshold = calibration_run_data.get('peak_flow_threshold')
+        optimization_inputs = calibration_run_data.get('optimization_inputs')
+        stop_criteria = calibration_run_data.get('stop_criteria')
+
+        if not optimization_name:
+            if optimization_inputs:
+                return ResponseError('Optimization inputs cannot be specified without an optimization name')
+        else:
+            optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
+            if error_message:
+                return ResponseError(error_message)
+            write_optimization_inputs(run, optimization, optimization_inputs)
+
+        error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
+        if error_message:
+            return ResponseError(error_message)
+
+        run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
+        run.save_output_iteration = calibration_run_data.get('save_output_iteration')
+        run.streamflow_threshold = streamflow_threshold
+        run.peak_flow_threshold = peak_flow_threshold
+
+        if stop_criteria:
+            # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
+            CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
+
+        run.save()
+
+    return run, warnings, info_messages
 
 
 @extend_schema(
