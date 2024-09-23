@@ -106,17 +106,17 @@ def execute(run: CalibrationRun, current_stage, args, callback_function):
     logger.info(f'Process {process_id} in stage {current_stage.name} is running in the background')
 
 
-def cancel_local_job(calibration_run_id: int):
+def cancel_local_job(run: CalibrationRun):
     """
     Terminates a job with the given calibration_run_id by killing the associated process.
-    :param calibration_run_id: The id of the CalibrationRun to terminate.
+    :param run: The CalibrationRun to terminate.
     """
-    process = job_registry.get(calibration_run_id)
+    process = job_registry.get(run.id)
 
     if process:
         process.terminate()  # Gracefully terminates the process
-        logger.info(f"Job {calibration_run_id} has been terminated.")
+        logger.info(f"Job {run.id} has been terminated.")
         return True
     else:
-        logger.warning(f"No running job found for Calibration Run: {calibration_run_id}")
+        logger.warning(f"No running job found for Calibration Run: {run.id}")
         return False

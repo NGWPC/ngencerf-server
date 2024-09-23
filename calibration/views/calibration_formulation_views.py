@@ -228,7 +228,7 @@ formulation_validations = {
         ],
         "group_requirements": {
             "Glacier": {
-                "allowed_counts": [0, 1]
+                "allowed_counts": [0, 0]   # Change back to [0, 1], once Topoflow is allowed
             },
             "Snowmelt": {
                 "allowed_counts": [0, 1]

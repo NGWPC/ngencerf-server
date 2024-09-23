@@ -45,6 +45,7 @@ class CalibrationRun(BaseModel):
     ngen_commit_hash = models.CharField(max_length=50, null=True)
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
     is_deleted = models.BooleanField(default=False)
+    slurm_job_id = models.IntegerField(null=True)
 
     class Meta:
         db_table = 'calibration_run'

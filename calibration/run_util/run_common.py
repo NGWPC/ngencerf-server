@@ -11,6 +11,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
 from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
 from cerfServer import settings
+from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +80,11 @@ job_registry: Dict[int, subprocess.Popen] = {}
 def set_job_status(run: CalibrationRun, status: StatusEnum):
     """Set the status for the CalibrationRun and save it."""
     run.status = StatusEnum.from_enum(status)
-    run.save(update_fields=['status'])
-    job_registry.pop(run.id, None)
+    # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
+    run.slurm_job_id = None
+    run.save(update_fields=['status', 'slurm_job_id'])
+    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+        job_registry.pop(run.id, None)
 
 
 def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_validation: bool):
@@ -127,3 +131,12 @@ def run_job(run: CalibrationRun, cmd: JobStage):
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
             from calibration.run_util.run_ngen_cal_pw import run_parallel_works
             run_parallel_works(run, cmd, input_file, output_file)
+
+
+def cancel_job_common(run_id):
+    from calibration.run_util.run_ngen_cal import cancel_local_job
+    from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
+    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+        return cancel_local_job(run_id)
+    else:
+        return cancel_slurm_job(run_id)
