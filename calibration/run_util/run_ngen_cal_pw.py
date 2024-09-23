@@ -1,4 +1,5 @@
 import logging
+from enum import StrEnum, auto
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -23,7 +24,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
-    logger.info(f'in run_parallel_works', type(stage), stage)
+    logger.info(f'in run_parallel_works: {type(stage)}, {stage}')
 
     slurm_token = generate_custom_token(run.owner, token_slurm_scope)
     print(f'slurm token: {slurm_token}')
@@ -35,7 +36,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         'job_stage': (None, stage.value),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
-        # 'access_token': generate_custom_token(run.owner, token_slurm_scope)
+        'access_token': (None, generate_custom_token(run.owner, token_slurm_scope))
     }
 
     # TODO How do we set callback?
@@ -54,27 +55,27 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         raise
 
 
-def run_job_callback_slurm(current_stage: JobStage, process_id, run, job_status):
+class SlurmStatusEnum(StrEnum):
+    DONE = auto()
+    FAILED = auto()
+    CANCELED = auto()
+
+
+def run_job_callback_slurm(current_stage: JobStage, process_id, run, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
     :param current_stage: The current job stage, as an Enum
     :param process_id: The process_id of the job (id_user)
     :param run: The CalibrationRun object representing the job run.
-    :param job_status: Whether the job succeeded or failed
+    :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    # Get run id from the process id
     logger.info(f'Job {process_id} completed stage {current_stage}')
 
-    # TODO Display job status
-    if job_status == 'exception':
-        logger.error(f"Exception occurred in process {process_id} at stage {current_stage.name}")
-        set_job_status(run, StatusEnum.FAILED)
-        return
-    elif job_status == 'cancelled':
+    if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Job {process_id} was cancelled')
         set_job_status(run, StatusEnum.CANCELLED)
-    elif job_status == 'failed':
+    elif slurm_status == SlurmStatusEnum.FAILED:
         logger.error(f'Job {process_id} ending due to abnormal return code')
         set_job_status(run, StatusEnum.FAILED)
     else:
