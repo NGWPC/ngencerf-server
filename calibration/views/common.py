@@ -1,7 +1,7 @@
 import base64
 import inspect
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
 from typing import List, cast, Optional, Tuple
@@ -83,6 +83,14 @@ def create_calibration_run_internal(request) -> CalibrationRun:
     run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
+    job_data_dir_path = Path(run.job_data_dir)
+    # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory now
+    if job_data_dir_path.exists():
+        # Rename the existing one
+        # This should never happen in production, but just in case
+        new_name = job_data_dir_path.with_name(f"{job_data_dir_path.name}_{datetime.now().isoformat()}")
+        job_data_dir_path.rename(new_name)
+
     # This is always true
     run.automatic_validation = True
     run.save(update_fields=['job_data_dir', 'automatic_validation'])
