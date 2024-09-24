@@ -134,9 +134,9 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 def validate_times(run):
     if run.time_range_start and run.time_range_end:
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
-        if run.calibration_start_period not in time_range or run.calibration_end_period not in time_range:
+        if run.calibration_start_period and (run.calibration_start_period not in time_range or run.calibration_end_period not in time_range):
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.automatic_validation and (run.validation_start_period not in time_range or run.validation_end_period not in time_range):
+        if run.automatic_validation and run.validation_start_period and (run.validation_start_period not in time_range or run.validation_end_period not in time_range):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
