@@ -100,6 +100,17 @@ class DataTypeEnum(StrEnum):
         return [e.value for e in cls]
 
 
+class SlurmStatusEnum(StrEnum):
+    DONE = 'done'
+    FAILED = 'failed'
+    CANCELED = 'canceled'
+
+    @classmethod
+    def get_names(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
+        return [e.value for e in cls]
+
+
 class LocationEnum(StrEnum):
     NODE = 'node'
 

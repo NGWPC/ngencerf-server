@@ -1,11 +1,10 @@
 import logging
-from enum import StrEnum, auto
 from pathlib import Path
 from urllib.parse import urljoin
 
 import requests
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status
 from calibration.run_util.run_ngen_cal import proceed_to_next_stage
@@ -53,12 +52,6 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
-
-
-class SlurmStatusEnum(StrEnum):
-    DONE = auto()
-    FAILED = auto()
-    CANCELED = auto()
 
 
 def run_job_callback_slurm(current_stage: JobStage, process_id, run, slurm_status: SlurmStatusEnum):
