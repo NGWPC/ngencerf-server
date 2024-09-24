@@ -1,5 +1,6 @@
 import json
 import logging
+from tokenize import group
 
 from django.db import transaction
 from django.db.models import Prefetch
@@ -147,9 +148,9 @@ def save_formulation_tab(request):
     if error_message:
         return ResponseError(error_message)
 
-    messages, nwm_warning = validate_formulation(run, new_module_names)
+    messages, formulation_validation_json, nwm_warning = validate_formulation(run, new_module_names)
     if messages:
-        return ResponseError(messages)
+        return ResponseError(messages, validation_errors = formulation_validation_json, response_type='formulation_error')
 
     if use_sloth:
         new_module_names.add(SLOTH)
@@ -228,7 +229,7 @@ formulation_validations = {
         ],
         "group_requirements": {
             "Glacier": {
-                "allowed_counts": [0, 0]   # Change back to [0, 1], once Topoflow is allowed
+                "allowed_counts": [0]   # Change back to [0, 1], once Topoflow is allowed
             },
             "Snowmelt": {
                 "allowed_counts": [0, 1]
@@ -288,6 +289,11 @@ def validate_formulation(run, module_names):
 
     # Check for module exclusions
     messages = []
+    formulation_validation_json = {}
+    excluded_modules = []
+    group_requirements = []
+    formulation_validation_json['excluded_modules'] = excluded_modules
+    formulation_validation_json['group_requirements'] = group_requirements
     for excluded_module, conditions in formulation_validations['formulation_rules']['module_exclusions'].items():
         if excluded_module in module_set:  # If the excluded module exists
             must_have_modules = conditions.get("must_have", [])
@@ -296,6 +302,7 @@ def validate_formulation(run, module_names):
                 messages.append(
                     f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
                 )
+                excluded_modules.append({'module_name': excluded_module, 'must_have': must_have_modules})
 
     # Validate group requirements
     for group_name, group_rules in formulation_validations['formulation_rules']['group_requirements'].items():
@@ -305,6 +312,7 @@ def validate_formulation(run, module_names):
         # Validate the count against allowed_counts
         if count not in allowed_counts:
             messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
+            group_requirements.append( {'group_name': group_name, 'required_count': allowed_counts, 'has_count': count })
 
     nwm_warning = False
 
@@ -315,7 +323,7 @@ def validate_formulation(run, module_names):
             nwm_warning = True
             break  # No need to continue checking if one required group is missing
 
-    return messages, nwm_warning
+    return messages, formulation_validation_json, nwm_warning
 
 
 def add_sloth_parameters(run, sloth_parameters):
