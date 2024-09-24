@@ -3,11 +3,11 @@ from pathlib import Path
 from urllib.parse import urljoin
 
 import requests
+from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun
-from calibration.run_util.run_common import JobStage, set_job_status
-from calibration.run_util.run_ngen_cal import proceed_to_next_stage
+from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
 from calibration.views.common import generate_custom_token, token_slurm_scope
 from cerfServer import settings
 
@@ -45,11 +45,14 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
+        logger.info(f'Response from slurm: {response.text}')
+        logger.info(f'Response from slurm: {response.json()}')
         run.slurm_job_id = response.json().get('slurm_job_id')
         run.save()
         logger.info(f"Job submitted successfully! Slurm id: {run.slurm_job_id}")
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
+        logger.error(f"Failed to submit job: {response.json().get('error')}")
         logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
 
@@ -80,6 +83,8 @@ def cancel_slurm_job(run: CalibrationRun):
      Terminates a job with the given calibration_run_id by sending a request to slurm.
      :param run: The CalibrationRun to terminate.
      """
+    logger.info(f'Cancelling slurm job {run.slurm_job_id} for Calibration Run {run.id}')
+
     url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
     payload = {
         'slurm_job_id': (None, run.slurm_job_id)
@@ -88,11 +93,15 @@ def cancel_slurm_job(run: CalibrationRun):
     logger.info(f'slurm payload: {payload}')
     response = requests.post(url, files=payload)
     try:
-        # TODO Need to check for 'job doesn't exist' or some other error
         response.raise_for_status()
+        logger.info(f'Response from slurm: {response.text}')
+        logger.info(f'Response from slurm: {response.json()}')
         logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
         return True
     except requests.exceptions.HTTPError as e:
+        logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to cancel job: {response.json().get('error')}")
         logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
+        if response.status_code == status.HTTP_404_NOT_FOUND:
+            return False
         raise

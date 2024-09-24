@@ -111,6 +111,8 @@ def cancel_local_job(run: CalibrationRun):
     Terminates a job with the given calibration_run_id by killing the associated process.
     :param run: The CalibrationRun to terminate.
     """
+    logger.info(f'Cancelling Calibration Run {run.id}')
+
     process = job_registry.get(run.id)
 
     if process:
