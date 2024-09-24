@@ -51,3 +51,28 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     shutil.copy2(source_file, destination_file)
 
     return f"File successfully copied from {source_file} to {destination_dir}."
+
+
+def delete_all_files_in_directory(source_dir):
+    dir_path = Path(source_dir)
+    if dir_path.exists():
+        for file in dir_path.iterdir():
+            if file.is_file():
+                file.unlink()
+
+
+def get_single_file(source_dir):
+    """
+    Directory is exacted to have only 1 file.  Retrieve that file or return None
+    :param source_dir:
+    :return:
+    """
+    dir_path = Path(source_dir)
+    # Get all files in the directory (excluding directories)
+    files = [f for f in dir_path.iterdir() if f.is_file()]
+
+    # Check if there is exactly one file
+    if len(files) == 0:
+        return None
+
+    return files[0]

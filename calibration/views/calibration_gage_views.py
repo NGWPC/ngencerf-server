@@ -19,6 +19,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
+from calibration.util.file_util import delete_all_files_in_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
@@ -352,12 +353,10 @@ def upload_observational_data(request):
     run.observational_hydrofabric_file_path = None
 
     # Delete the file if it's already there
-    observational_file_for_job_path = Path(fs.location) / user_observational_file.name
-    if observational_file_for_job_path.exists():
-        observational_file_for_job_path.unlink()
+    delete_all_files_in_directory(fs.location)
     print(f"Saving user-uploaded observational file as {user_observational_file.name}")
     # TODO Need to rename it later
-    fs.save(str(observational_file_for_job_path), user_observational_file)
+    fs.save(user_observational_file.name, user_observational_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
     run.time_range_start = None
@@ -419,20 +418,18 @@ def upload_forcing_data(request):
     run.forcing_hydrofabric_dir_path = None
 
     # Save to the run-specific forcing directory
-    fs = FileSystemStorage(location=get_geopackage_dir_for_job(run))
+    fs = FileSystemStorage(location=get_forcing_dir_for_job(run))
 
     number_of_files = len(files)
 
+    delete_all_files_in_directory(fs.location)
+
     for forcing_file in files:
-        forcing_file_path = Path(fs.location) / forcing_file.name
-        # Delete any existing files
-        if fs.exists(forcing_file.name):
-            # Forcing files must match the naming convention
-            if not re.match(get_forcing_filename_pattern(), forcing_file.name):
-                logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
-                number_of_files -= 1
-            Path(forcing_file_path).unlink()
-        fs.save(forcing_file_path, forcing_file)
+        if not re.match(get_forcing_filename_pattern(), forcing_file.name):
+            logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
+            number_of_files -= 1
+
+        fs.save(forcing_file.name, forcing_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
     run.time_range_start = None
@@ -492,7 +489,7 @@ def upload_geopackage_data(request):
     run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
 
     # Save to the run-specific geopackage directory
-    fs = FileSystemStorage(location=get_forcing_dir_for_job(run))
+    fs = FileSystemStorage(location=get_geopackage_dir_for_job(run))
 
     files = request.FILES.getlist('geopackage_file')
 
@@ -501,12 +498,10 @@ def upload_geopackage_data(request):
     run.geopackage_hydrofabric_file_path = None
 
     # Delete the file if it's already there
-    geopackage_file_for_job_path = Path(fs.location) / user_geopackage_file.name
-    if geopackage_file_for_job_path.exists():
-        geopackage_file_for_job_path.unlink()
+    delete_all_files_in_directory(fs.location)
     logger.info(f"Saving user-uploaded geopackage file as {user_geopackage_file.name}")
     # TODO Need to rename it later
-    fs.save(str(geopackage_file_for_job_path), user_geopackage_file)
+    fs.save(user_geopackage_file.name, user_geopackage_file)
 
     geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
 
