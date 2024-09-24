@@ -29,7 +29,7 @@ def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[Calibra
     :param calibration_run_id: The ID of the CalibrationRun to retrieve.
     :param user: The user requesting the run.
     :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
-    :return: The CalibrationRun instance and an optional error Response.
+    :return: A tuple containing the CalibrationRun (or None if not found) and an optional Response with an error.
     """
     # Default to READY and SAVED statuses if no run_status is passed
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
@@ -63,6 +63,12 @@ def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[Calibra
 
 
 def join(items):
+    """
+       Join a list of strings into a single string, using commas and 'or' for the last item.
+
+       :param items: A list of strings.
+       :return: A grammatically joined string.
+       """
     if not items:
         return ''
     elif len(items) == 1:
@@ -72,6 +78,12 @@ def join(items):
 
 
 def png_str_to_base64_url(png_str):
+    """
+     Convert a PNG image in binary format to a base64-encoded data URL.
+
+     :param png_str: The binary data of a PNG image.
+     :return: A base64-encoded string for embedding images in URLs.
+     """
     if png_str:
         base64_str = base64.b64encode(png_str).decode('utf-8')
         return f'data:image/png;base64,{base64_str}'
@@ -80,6 +92,13 @@ def png_str_to_base64_url(png_str):
 
 
 def create_calibration_run_internal(request) -> CalibrationRun:
+    """
+     Create a new CalibrationRun object for the user making the request.
+     Ensures that the job directory is created and assigns the 'SAVED' status by default.
+
+     :param request: The request object containing the authenticated user.
+     :return: The newly created CalibrationRun instance.
+     """
     run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
 
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
@@ -101,6 +120,13 @@ token_slurm_scope = 'slurm_callback'
 
 
 def generate_custom_token(user, scope):
+    """
+    Generate a JWT access token for a user, with a custom scope and a 24-hour expiration.
+
+    :param user: The user for whom the token is being generated.
+    :param scope: The custom scope to be embedded in the token.
+    :return: The string representation of the access token.
+    """
     access = AccessToken.for_user(user)
     # Set the expiration to 24 hours from now
     access.set_exp(lifetime=timedelta(hours=24))
@@ -112,6 +138,9 @@ def generate_custom_token(user, scope):
 
 
 class IsSlurmCallbackToken(BasePermission):
+    """
+    Permission class to check if the provided JWT token contains the 'slurm_callback' scope.
+    """
     def has_permission(self, request, view):
         # Ensure that the user is authenticated and has a valid token
         if not request.user or not request.auth:
@@ -127,6 +156,13 @@ class IsSlurmCallbackToken(BasePermission):
 
 # Function wrapper to implement common exception handling
 def handle_exceptions(view_func):
+    """
+    A decorator to wrap view functions and handle common exceptions.
+    Logs the exception and returns a formatted error response when an exception occurs.
+
+    :param view_func: The view function to wrap.
+    :return: The wrapped view function with exception handling.
+    """
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         original_logger = logging.getLogger(view_func.__module__)
@@ -149,6 +185,15 @@ def handle_exceptions(view_func):
 
 
 def ResponseError(message, response_type='error', validation_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
+    """
+    Return a standardized error response, with optional validation errors.
+
+    :param message: The error message to include.
+    :param response_type: The type of error (default is 'error').
+    :param validation_errors: Optional validation errors to include.
+    :param http_status: The HTTP status code for the response (default is 400).
+    :return: A formatted Response object with the error details.
+    """
     response = {'response_type': response_type, 'message': message}
     if validation_errors:
         response['validation_errors'] = validation_errors
@@ -158,6 +203,15 @@ def ResponseError(message, response_type='error', validation_errors=None, http_s
 
 
 def validate_request(serializer_class, data, context=None):
+    """
+    Validate request data using the specified serializer class.
+    Returns the validated data or an error response if validation fails.
+
+    :param serializer_class: The serializer class to use for validation.
+    :param data: The data to be validated.
+    :param context: Optional context for the serializer.
+    :return: The validated data or an error response.
+    """
     validator = None
     try:
         validator = serializer_class(data=data, context=context)

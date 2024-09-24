@@ -149,7 +149,7 @@ def get_footer(request):
 def load_calibration_run(request):
     data = request.data if request.method == 'POST' else request.query_params
 
-    logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+    logger.debug(f'load_calibration_run() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -166,7 +166,7 @@ def load_calibration_run(request):
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from load_calibration_run() - {response_validator.data}')
 
     return Response(response_validator.data)
 

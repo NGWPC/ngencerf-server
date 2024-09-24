@@ -354,7 +354,7 @@ def upload_observational_data(request):
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
-    print(f"Saving user-uploaded observational file as {user_observational_file.name}")
+    logger.info(f"Saving user-uploaded observational file as {user_observational_file.name}")
     # TODO Need to rename it later
     fs.save(user_observational_file.name, user_observational_file)
 
