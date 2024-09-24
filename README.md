@@ -167,13 +167,9 @@ Both of these commands can be run multiple times without any harm.  `runCerf.sh`
 # Running the server
 To run the server, use `runCerf.sh`
 
-Running the server in production is likely very different, 
-but it's important to run `pre_start.py` from `manage.py` before the server starts, 
-in order to clean up any  Calibrations or Validations that were running at the time the server went down.
-
-**_Note:_**
-You will get warnings about `ngen` and `ngen-cal` files that don't exist.  That is fine if you haven't installed them yet.
-The server will still run.  You just won't be able to actually run a Calibration.
+**Note:** If running locally (ngen and ngen-cal are being spawned as processes on the same machine), then it is import to run `pre_start.py` from `manage.py` before the
+server starts in order to clean up any Calibrations or Validations that were running at the time the server went down.
+This is not necessary when running on Parallel Works
 
 
 # Installing ngen and ngen-cal

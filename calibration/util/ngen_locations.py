@@ -43,13 +43,12 @@ def check_files():
             if not Path(file).is_file():
                 logger.warning(f'{file} does not exist')
 
-    # Static files must always be accessible
-    for directory in static_dirs:
-        if not Path(directory).is_dir():
-            logger.warning(f'{directory} does not exist')
-        else:
-            if not any(Path(directory).iterdir()):
-                logger.warning(f'{directory} is empty')
+        for directory in static_dirs:
+            if not Path(directory).is_dir():
+                logger.warning(f'{directory} does not exist')
+            else:
+                if not any(Path(directory).iterdir()):
+                    logger.warning(f'{directory} is empty')
 
 
 # Construct the directory where the Input/Output is

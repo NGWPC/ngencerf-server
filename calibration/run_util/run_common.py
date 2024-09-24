@@ -126,7 +126,7 @@ def run_job(run: CalibrationRun, cmd: JobStage):
     # Run the job locally or in Docker (Docker is currently unsupported)
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
-            from calibration.run_util.run_ngen_cal import run_local
+            from calibration.run_util.run_ngen_cal_local import run_local
             run_local(run, cmd, input_file, output_file)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
             from calibration.run_util.run_ngen_cal_pw import run_parallel_works
@@ -134,7 +134,7 @@ def run_job(run: CalibrationRun, cmd: JobStage):
 
 
 def cancel_job_common(run_id):
-    from calibration.run_util.run_ngen_cal import cancel_local_job
+    from calibration.run_util.run_ngen_cal_local import cancel_local_job
     from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
     if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
         return cancel_local_job(run_id)

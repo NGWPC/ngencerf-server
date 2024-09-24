@@ -16,8 +16,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
 from calibration.models import Iteration
-from calibration.run_util.run_common import run_job, cancel_job_common
-from calibration.run_util.run_ngen_cal import JobStage
+from calibration.run_util.run_common import run_job, cancel_job_common, JobStage
 from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
@@ -396,7 +395,6 @@ def slurm_callback(request):
         return error_return
 
     slurm_status = SlurmStatusEnum[job_status]
-    logger.info(f'slurm_status: {type(slurm_status)}, {slurm_status}')
     run_job_callback_slurm(JobStage[current_stage], process_id, run, slurm_status)
 
     logger.debug(f'Returning to {request.user} from slurm_callback()')
