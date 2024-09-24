@@ -101,9 +101,9 @@ class DataTypeEnum(StrEnum):
 
 
 class SlurmStatusEnum(StrEnum):
-    DONE = 'done'
-    FAILED = 'failed'
-    CANCELED = 'canceled'
+    DONE = 'DONE'
+    FAILED = 'FAILED'
+    CANCELED = 'CANCELED'
 
     @classmethod
     def get_names(cls) -> List[str]:
