@@ -5,6 +5,8 @@ from django.db import transaction
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, ValidationRun
+from cerfServer import settings
+from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +17,13 @@ class Command(BaseCommand):
     help = "Clean up running Calibration and Validation runs"
 
     def handle(self, *args, **options):
-        with transaction.atomic():
-            running_status = StatusEnum.from_enum(StatusEnum.RUNNING)
-            error_status = StatusEnum.from_enum(StatusEnum.SERVER_ERROR)
+        if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+            with transaction.atomic():
+                running_status = StatusEnum.from_enum(StatusEnum.RUNNING)
+                error_status = StatusEnum.from_enum(StatusEnum.SERVER_ERROR)
 
-            count = CalibrationRun.objects.filter(status=running_status).update(status=error_status)
-            logger.info(f'Updated {count} calibration run records')
+                count = CalibrationRun.objects.filter(status=running_status).update(status=error_status)
+                logger.info(f'Updated {count} calibration run records')
 
-            count = ValidationRun.objects.filter(status=running_status).update(status=error_status)
-            logger.info(f'Updated {count} validation run records')
+                count = ValidationRun.objects.filter(status=running_status).update(status=error_status)
+                logger.info(f'Updated {count} validation run records')

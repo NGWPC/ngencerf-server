@@ -166,6 +166,75 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # -----------------------------
+# Hydrofabric
+# -----------------------------
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
+HYDROFABRIC_MODULES_ENDPOINT = 'api/module_metadata/'
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/initial_parameters/get_parameters/'
+HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = 'api/observation_data/{gage_id}'
+HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
+
+HYDROFABRIC_URL = 'http://localhost:8001'
+
+S3_MOUNT_POINT = Path.home() / 's3'
+
+HYDROFABRIC = False
+
+# -----------------------------
+# Ngen/Ngen-cal Locations
+# -----------------------------
+
+# This flag is only used when running locally, not on Parallel Works
+# If false, then you must have Ngen and Ngen-call installed locally
+NGEN_CAL_SIMULATE = True
+
+# Locations for running ngen-cal
+REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
+# Directory that Ngen is cloned into
+NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
+# directory that Ngen-cal is cloned into
+NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
+
+# This is the mount point for docker containers
+NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
+
+NGEN_LOGGING_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngencerf-server-logs'
+NGEN_LOGGING_DIR.mkdir(exist_ok=True)
+
+NGEN_STATIC_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-static-files'
+
+NGEN_CAL_WORK_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-cal-work'
+# Directory where all the output runs are stored
+NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
+
+# Directory containing the ngen-cal virtual environment
+# This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
+NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
+
+
+class EnvironmentEnum(StrEnum):
+    LOCAL = "LOCAL"
+    PARALLEL_WORKS = "PARALLEL_WORKS"
+
+
+NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', "LOCAL")
+try:
+    NGEN_ENVIRONMENT = EnvironmentEnum[NGEN_ENVIRONMENT_STR]
+except KeyError:
+    # noinspection PyUnresolvedReferences
+    raise SystemExit(
+        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
+
+# -----------------------------
+# Slurm 
+# -----------------------------
+
+SLURM_URL = os.getenv("SLURM_URL")
+SLURM_SUBMIT_JOB_ENDPOINT = 'submit-job'
+SLURM_JOB_STATUS_ENDPOINT = 'job-status'
+SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
+
+# -----------------------------
 # Logging
 # -----------------------------
 print(f"Logging files will be created at {BASE_DIR}")
@@ -195,7 +264,7 @@ LOGGING = {
         'file': {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': Path(BASE_DIR) / 'cerfServer.log',
+            'filename': Path(NGEN_LOGGING_DIR) / 'cerfServer.log',
             'when': 'midnight',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
@@ -245,67 +314,6 @@ LOGGING = {
         },
     }
 }
-
-# -----------------------------
-# Hydrofabric
-# -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
-HYDROFABRIC_MODULES_ENDPOINT = 'api/module_metadata/'
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/initial_parameters/get_parameters/'
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = 'api/observation_data/{gage_id}'
-HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
-
-HYDROFABRIC_URL = 'http://localhost:8001'
-
-S3_MOUNT_POINT = Path.home() / 's3'
-
-HYDROFABRIC = False
-
-# This flag is only used when running locally, not on Parallel Works
-# If false, then you must have Ngen and Ngen-call installed locally
-NGEN_CAL_SIMULATE = True
-# -----------------------------
-# Locations
-# -----------------------------
-
-# Locations for running ngen-cal
-REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
-# Directory that Ngen is cloned into
-NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
-# directory that Ngen-cal is cloned into
-NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
-
-# This is the mount point for docker containers
-NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
-
-NGEN_STATIC_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-static-files'
-
-NGEN_CAL_WORK_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-cal-work'
-# Directory where all the output runs are stored
-NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
-
-# Directory containing the ngen-cal virtual environment
-# This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
-NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
-
-
-class EnvironmentEnum(StrEnum):
-    LOCAL = "LOCAL"
-    PARALLEL_WORKS = "PARALLEL_WORKS"
-
-
-NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', "LOCAL")
-try:
-    NGEN_ENVIRONMENT = EnvironmentEnum[NGEN_ENVIRONMENT_STR]
-except KeyError:
-    # noinspection PyUnresolvedReferences
-    raise SystemExit(
-        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
-
-SLURM_URL = os.getenv("SLURM_URL")
-SLURM_SUBMIT_JOB_ENDPOINT = 'submit-job'
-SLURM_JOB_STATUS_ENDPOINT = 'job-status'
-SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
 # This needs to be at the end of settings.py
 try:

@@ -41,19 +41,18 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     # TODO How do we set callback?
     # callback = run_job_callback_slurm
 
-    logger.info(f'slurm payload: {payload}')
+    logger.info(f'slurm submit-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
-        logger.info(f'Response from slurm: {response.text}')
         logger.info(f'Response from slurm: {response.json()}')
         run.slurm_job_id = response.json().get('slurm_job_id')
         run.save()
         logger.info(f"Job submitted successfully! Slurm id: {run.slurm_job_id}")
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
-        logger.error(f"Failed to submit job: {response.json().get('error')}")
-        logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
+        logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
+        # logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
 
 
@@ -90,18 +89,17 @@ def cancel_slurm_job(run: CalibrationRun):
         'slurm_job_id': (None, run.slurm_job_id)
     }
 
-    logger.info(f'slurm payload: {payload}')
+    logger.info(f'slurm cancel-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
-        logger.info(f'Response from slurm: {response.text}')
         logger.info(f'Response from slurm: {response.json()}')
         logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
         return True
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
-        logger.error(f"Failed to cancel job: {response.json().get('error')}")
-        logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
+        logger.error(f"Failed to cancel job: {response.json().get('error')}, {str(e)}")
+        # logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             return False
         raise
