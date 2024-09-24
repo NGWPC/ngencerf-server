@@ -6,7 +6,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -694,7 +694,7 @@ class ProcessCalibrationOutputRequest(CalibrationRunSerializer):
 class SlurmCallbackRequestSerializer(BaseSerializer):
     process_id = serializers.CharField(required=True)
     stage = serializers.CharField(required=True)
-    job_status = serializers.CharField(required=True)
+    job_status = serializers.CharField(required=True, validator=[SlurmStatusEnum])
 
 
 ##################################
