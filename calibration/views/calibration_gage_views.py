@@ -21,7 +21,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
-    get_geopackage_file_for_job, get_forcing_filename_pattern
+    get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
@@ -337,26 +337,27 @@ def upload_observational_data(request):
     if error_return:
         return error_return
 
-    if not run.gage:
-        return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
+    # if not run.gage:
+    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
     run.observational_source = ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
 
     # Save to the run-specific observational directory
-    fs = FileSystemStorage(location='')
+    fs = FileSystemStorage(location=get_observational_dir_for_job(run))
 
-    files = request.FILES.getlist('user_observational_file')
+    files = request.FILES.getlist('observational_file')
 
     user_observational_file = files[0]
 
     run.observational_hydrofabric_file_path = None
 
     # Delete the file if it's already there
-    get_observational_file_for_job_path = Path(get_observational_file_for_job(run))
-    if get_observational_file_for_job_path.exists():
-        get_observational_file_for_job_path.unlink()
-    print(f"Saving user-uploaded observational file, {user_observational_file.name} as {str(get_observational_file_for_job_path)}")
-    fs.save(str(get_observational_file_for_job_path), user_observational_file)
+    observational_file_for_job_path = Path(fs.location) / user_observational_file.name
+    if observational_file_for_job_path.exists():
+        observational_file_for_job_path.unlink()
+    print(f"Saving user-uploaded observational file as {user_observational_file.name}")
+    # TODO Need to rename it later
+    fs.save(str(observational_file_for_job_path), user_observational_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
     run.time_range_start = None
@@ -406,8 +407,8 @@ def upload_forcing_data(request):
     if error_return:
         return error_return
 
-    if not run.gage:
-        return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
+    # if not run.gage:
+    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
     run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
 
@@ -418,14 +419,14 @@ def upload_forcing_data(request):
     run.forcing_hydrofabric_dir_path = None
 
     # Save to the run-specific forcing directory
-    fs = FileSystemStorage(location='')
+    fs = FileSystemStorage(location=get_geopackage_dir_for_job(run))
 
     number_of_files = len(files)
 
     for forcing_file in files:
-        # Replace any existing files
+        forcing_file_path = Path(fs.location) / forcing_file.name
+        # Delete any existing files
         if fs.exists(forcing_file.name):
-            forcing_file_path = Path(get_forcing_dir_for_job(run)) / forcing_file.name
             # Forcing files must match the naming convention
             if not re.match(get_forcing_filename_pattern(), forcing_file.name):
                 logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
@@ -485,26 +486,27 @@ def upload_geopackage_data(request):
     if error_return:
         return error_return
 
-    if not run.gage:
-        return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
+    # if not run.gage:
+    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
     run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
 
     # Save to the run-specific geopackage directory
-    fs = FileSystemStorage(location='')
+    fs = FileSystemStorage(location=get_forcing_dir_for_job(run))
 
-    files = request.FILES.getlist('user_geopackage_file')
+    files = request.FILES.getlist('geopackage_file')
 
     user_geopackage_file = files[0]
 
     run.geopackage_hydrofabric_file_path = None
 
     # Delete the file if it's already there
-    get_geopackage_file_for_job_path = Path(get_geopackage_file_for_job(run))
-    if get_geopackage_file_for_job_path.exists():
-        get_geopackage_file_for_job_path.unlink()
-    logger.info(f"Saving user-uploaded geopackage file, {user_geopackage_file.name} as {str(get_geopackage_file_for_job_path)},")
-    fs.save(str(get_geopackage_file_for_job_path), user_geopackage_file)
+    geopackage_file_for_job_path = Path(fs.location) / user_geopackage_file.name
+    if geopackage_file_for_job_path.exists():
+        geopackage_file_for_job_path.unlink()
+    logger.info(f"Saving user-uploaded geopackage file as {user_geopackage_file.name}")
+    # TODO Need to rename it later
+    fs.save(str(geopackage_file_for_job_path), user_geopackage_file)
 
     geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
 
