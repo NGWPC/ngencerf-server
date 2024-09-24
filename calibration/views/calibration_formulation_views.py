@@ -1,6 +1,5 @@
 import json
 import logging
-from tokenize import group
 
 from django.db import transaction
 from django.db.models import Prefetch
@@ -150,7 +149,7 @@ def save_formulation_tab(request):
 
     messages, formulation_validation_json, nwm_warning = validate_formulation(run, new_module_names)
     if messages:
-        return ResponseError(messages, validation_errors = formulation_validation_json, response_type='formulation_error')
+        return ResponseError(messages, validation_errors=formulation_validation_json, response_type='formulation_error')
 
     if use_sloth:
         new_module_names.add(SLOTH)
@@ -229,7 +228,7 @@ formulation_validations = {
         ],
         "group_requirements": {
             "Glacier": {
-                "allowed_counts": [0]   # Change back to [0, 1], once Topoflow is allowed
+                "allowed_counts": [0]  # Change back to [0, 1], once Topoflow is allowed
             },
             "Snowmelt": {
                 "allowed_counts": [0, 1]
@@ -312,7 +311,7 @@ def validate_formulation(run, module_names):
         # Validate the count against allowed_counts
         if count not in allowed_counts:
             messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
-            group_requirements.append( {'group_name': group_name, 'required_count': allowed_counts, 'has_count': count })
+            group_requirements.append({'group_name': group_name, 'required_count': allowed_counts, 'has_count': count})
 
     nwm_warning = False
 

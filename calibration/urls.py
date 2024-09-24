@@ -59,7 +59,7 @@ urlpatterns = [
     ##################################
     # Run tab
     ##################################
-    path('calibration/is_ready/', calibration_run_views.is_ready, name="isReady"),
+    path('calibration/get_status/', calibration_run_views.get_status, name="getStatus"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
