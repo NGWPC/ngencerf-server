@@ -192,12 +192,6 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },
-        'file_simple': {
-            'level': 'DEBUG',
-            'class': 'logging.FileHandler',
-            'filename': Path(BASE_DIR) / 'cerfServer.log',
-            'formatter': 'verbose'
-        },
         'file': {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
