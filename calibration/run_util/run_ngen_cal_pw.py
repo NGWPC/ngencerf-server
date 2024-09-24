@@ -32,7 +32,7 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     payload = {
         'job_id': (None, Path(run.job_data_dir).name),
         'job_type': (None, 'calibration' if stage == JobStage.CALIBRATION else 'validation'),
-        'job_stage': (None, stage.value),
+        'job_stage': (None, stage.name),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
         'auth_token': (None, generate_custom_token(run.owner, token_slurm_scope))
