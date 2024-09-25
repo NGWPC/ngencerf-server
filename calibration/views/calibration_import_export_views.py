@@ -157,8 +157,12 @@ def import_calibration_run_data(request, calibration_run_data):
             return ResponseError(error_message)
 
         if module_names:
-            if not validate_formulation(run, module_names):
-                return ResponseError(f'Invalid formulation -  {module_names}')
+            messages, formulation_validation_json, nwm_warning = validate_formulation(run, module_names)
+            if messages:
+                return ResponseError(messages)
+        # if module_names:
+        #     if not validate_formulation(run, module_names):
+        #         return ResponseError(f'Invalid formulation -  {module_names}')
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -380,7 +384,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['formulation_name'] = run.user_formulation_name
     modules = get_my_modules(run)
     calibration_run_data['modules'] = modules
-    _, nwm_warning = validate_formulation(run, modules)
+    _, _, nwm_warning = validate_formulation(run, modules)
     if not export:
         calibration_run_data['nwm_warning'] = nwm_warning
 

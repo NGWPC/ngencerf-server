@@ -166,24 +166,24 @@ def get_gage(request):
 @api_view(['POST'])
 @handle_exceptions
 def save_gage_tab(request):
- """
-  Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
+    """
+     Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
 
-  run.forcing_hydrofabric_dir_path, observational_hydrofabric_file_path and run.geopackage_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
+     run.forcing_hydrofabric_dir_path, observational_hydrofabric_file_path and run.geopackage_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
 
-  User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
-  For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uplaods a file, then we use the job-specific path.
+     User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
+     For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uplaods a file, then we use the job-specific path.
 
-  The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
-  They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
+     The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
+     They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
 
-  For Forcing and Observational data, if the files are obtained from Hydrofabric, the job specific path remains empty,
-  until we build the config, at which point the Hydrofabric data is subsetted by time-range and the resulting files placed in the job-specific paths.
+     For Forcing and Observational data, if the files are obtained from Hydrofabric, the job specific path remains empty,
+     until we build the config, at which point the Hydrofabric data is subsetted by time-range and the resulting files placed in the job-specific paths.
 
-  Summary: For Forcing and Observational data, the job-specific paths are always the paths that are passed to ngen-cal.
-  They can contain either the unchanged user-uploaded data or subsetted Hyrofabric data.
-  For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
- """
+     Summary: For Forcing and Observational data, the job-specific paths are always the paths that are passed to ngen-cal.
+     They can contain either the unchanged user-uploaded data or subsetted Hyrofabric data.
+     For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
+    """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user} - {data}')
 
