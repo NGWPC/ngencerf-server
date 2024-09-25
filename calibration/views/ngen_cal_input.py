@@ -14,9 +14,9 @@ from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_observational_filename
+    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-from calibration.views.common import CerfException
+from calibration.views.common import CerfException, token_ngen, generate_custom_token
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,9 @@ config_template = {
 
     "General": {
         "calibration_run_id": 0,
-        "user": "",
+        # TODO Might not need this, since it's in the token
+        # "user": "",
+        "auth_token": "",
         "basin": "",
         "models": "",
 
@@ -156,7 +158,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         raise CerfException('Must pass a run instance to validate')
 
     general['calibration_run_id'] = run.id
-    general['user'] = run.owner.username
+    # general['user'] = run.owner.username
+    general['auth_token'] = generate_custom_token(run.owner, token_ngen)
 
     if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
@@ -214,7 +217,11 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                         logger.info(f"Renaming geopackage file from {str(user_uploaded_geopackage_file)} to {get_geopackage_file_for_job(run)}")
                         user_uploaded_geopackage_file.rename(Path(get_geopackage_file_for_job(run)))
 
-        datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+                        # For user uploads, use the job-specific location
+                    datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+            else:
+                # For data from Hydrofabric, we use the location that Hydrofabric gave us
+                datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
 
         nwm_retro = Path(NWM_RETROSPECTIVE_DIR) / f'{run.gage.gage_id}.csv'
         if nwm_retro.exists():

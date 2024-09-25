@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import shutil
 import traceback
@@ -14,7 +15,6 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun
-from calibration.util import ngen_locations
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])
 @handle_exceptions
 def load_gage_tab(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict().dict()
 
     logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
@@ -123,7 +123,7 @@ def load_gage_tab(request):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def get_gage(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict().dict()
 
     logger.debug(f'get_gage() request from {request.user} - {data}')
 
@@ -167,21 +167,23 @@ def get_gage(request):
 @handle_exceptions
 def save_gage_tab(request):
     """
-          Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
+     Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
 
-          run.forcing_hydrofabric_dir_path and observational_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
-          These paths are also not really used for anything, except as a reference for the unsubsetted data
+     run.forcing_hydrofabric_dir_path, observational_hydrofabric_file_path and run.geopackage_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
 
-          The actual paths that are eventually put in the input.config are not stored in the calibration_run object.
-          This path is deterministic and can be derived at the time we create input.config.  They are referred to use the job-specific paths.
-          It is obtained by ngen_locations.get_forcing_dir() and ngen_locations_get_observational_dir()
-          Files that are uploaded by the user are immediately saved in the job-specific path.  If the files are obtained from Hydrofabric,
-          the job specific path remains empty, until we build the config, at which point the Hydrofabric data is subsetted by time-range and the
-          resulting files placed in the job-specific paths.
+     User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
+     For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uplaods a file, then we use the job-specific path.
 
-          run.geopackage_hydrofabric_path is the path of the geopackage file from Hydrofabric.
-          This field is always used, since the geopackage files can't be uploaded.
-          """
+     The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
+     They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
+
+     For Forcing and Observational data, if the files are obtained from Hydrofabric, the job specific path remains empty,
+     until we build the config, at which point the Hydrofabric data is subsetted by time-range and the resulting files placed in the job-specific paths.
+
+     Summary: For Forcing and Observational data, the job-specific paths are always the paths that are passed to ngen-cal.
+     They can contain either the unchanged user-uploaded data or subsetted Hyrofabric data.
+     For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
+    """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user} - {data}')
 
@@ -208,7 +210,7 @@ def save_gage_tab(request):
 
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
+            geopackage_file = get_geopackage_file_for_job(run)
             # Delete if it's already there
             if Path(geopackage_file).exists():
                 Path(geopackage_file).unlink()
@@ -229,7 +231,7 @@ def save_gage_tab(request):
         # Get forcing and observational data
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            observational_file = ngen_locations.get_observational_file_for_job(run)
+            observational_file = get_observational_file_for_job(run)
             if Path(observational_file).exists():
                 Path(observational_file).unlink()
             try:
@@ -246,7 +248,7 @@ def save_gage_tab(request):
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
+            forcing_dir = get_forcing_dir_for_job(run)
             if Path(forcing_dir).exists():
                 shutil.rmtree(forcing_dir)
             try:
@@ -354,7 +356,7 @@ def upload_observational_data(request):
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
-    logger.info(f"Saving user-uploaded observational file as {user_observational_file.name}")
+    logger.info(f"Saving user-uploaded observational file to {os.path.join(fs.location, user_observational_file.name)}")
     # TODO Need to rename it later
     fs.save(user_observational_file.name, user_observational_file)
 
@@ -429,6 +431,7 @@ def upload_forcing_data(request):
             logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
             number_of_files -= 1
 
+        logger.info(f"Saving user-uploaded forcing file to {os.path.join(fs.location, forcing_file.name)}")
         fs.save(forcing_file.name, forcing_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
@@ -499,7 +502,7 @@ def upload_geopackage_data(request):
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
-    logger.info(f"Saving user-uploaded geopackage file as {user_geopackage_file.name}")
+    logger.info(f"Saving user-uploaded geopackage file to {os.path.join(fs.location, user_geopackage_file.name)}")
     # TODO Need to rename it later
     fs.save(user_geopackage_file.name, user_geopackage_file)
 

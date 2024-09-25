@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def get_plot_names(request):
     # TODO need to clean this up with final directory names, etc
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_plot_names() request from {request.user} - {data}')
 
@@ -99,7 +99,7 @@ def png_to_base64_url(png):
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_plot(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_plot() request from {request.user} - {data}')
 
