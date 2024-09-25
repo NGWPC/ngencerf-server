@@ -70,7 +70,7 @@ def create_calibration_run(request):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def get_jobs(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_jobs() request from {request.user} - {data}')
 
@@ -147,7 +147,7 @@ def get_footer(request):
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def load_calibration_run(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'load_calibration_run() request from {request.user} - {data}')
 
@@ -186,7 +186,7 @@ def load_calibration_run(request):
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def clone_job(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'clone_job() request from {request.user} - {data}')
 
@@ -232,7 +232,7 @@ def clone_job(request):
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def delete_job(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'delete_run() request from {request.user} - {data}')
 

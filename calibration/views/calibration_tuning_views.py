@@ -46,7 +46,7 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 @handle_exceptions
 # @permission_classes([AllowAny])
 def load_tuning_tab(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
 

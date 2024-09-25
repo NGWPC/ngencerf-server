@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])()
 @handle_exceptions
 def load_optimization_tab(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
 

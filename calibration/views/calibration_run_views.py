@@ -169,7 +169,7 @@ def process_calibration_output(request):
      It does not hurt to run this endpoint more than once.
      The 'rerun' option will delete any Iteration and related objects and re-create them
     """
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'process_calibration_output() request from {request.user} - {data}')
     validator, error_return = validate_request(ProcessCalibrationOutputRequest, data)
@@ -288,7 +288,7 @@ def report_iteration(request):
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_iteration(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_iteration() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
@@ -330,7 +330,7 @@ def get_iteration(request):
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def cancel_job(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'cancel_job() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)

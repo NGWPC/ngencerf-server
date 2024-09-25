@@ -38,7 +38,7 @@ SLOTH = 'SLoTH'
 @handle_exceptions
 # @permission_classes([AllowAny])()
 def load_formulation_tab(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
 

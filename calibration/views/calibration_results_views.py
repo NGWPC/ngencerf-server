@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])
 @handle_exceptions
 def get_job_results(request):
-    data = request.data if request.method == 'POST' else request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_job() request from {request.user} - {data}')
 
