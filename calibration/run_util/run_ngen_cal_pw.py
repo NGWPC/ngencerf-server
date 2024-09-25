@@ -10,6 +10,7 @@ from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
 from calibration.views.common import generate_custom_token, token_slurm_scope
 from cerfServer import settings
+from cerfServer.settings import SLURM_SUBMIT_JOB_ENDPOINT
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +39,6 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         'auth_token': (None, generate_custom_token(run.owner, token_slurm_scope))
     }
 
-    # TODO How do we set callback?
-    # callback = run_job_callback_slurm
-
     logger.info(f'slurm submit-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
@@ -52,20 +50,19 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
-        # logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
 
 
-def run_job_callback_slurm(current_stage: JobStage, process_id, run, slurm_status: SlurmStatusEnum):
+def run_job_callback_slurm(current_stage: JobStage | None, process_id, run, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
-    :param current_stage: The current job stage, as an Enum
+    :param current_stage: The current job stage, as an Enum (or None, if the job was cancelled)
     :param process_id: The process_id of the job (id_user)
     :param run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    logger.info(f'Job {process_id} completed stage {current_stage}')
+    logger.info(f'Job end callback received for job {process_id}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Job {process_id} was cancelled')
@@ -95,11 +92,11 @@ def cancel_slurm_job(run: CalibrationRun):
         response.raise_for_status()
         logger.info(f'Response from slurm: {response.json()}')
         logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
+        run_job_callback_slurm(None, f'{run.id}_{run.owner.username}', run, SlurmStatusEnum.CANCELED)
         return True
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to cancel job: {response.json().get('error')}, {str(e)}")
-        # logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             return False
         raise

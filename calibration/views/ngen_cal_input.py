@@ -181,15 +181,16 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
                 user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
+                logger.info(f'user_uploaded_observational_file: {user_uploaded_observational_file}')
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
-
-                # We need to rename the user-uploaded file.
-                observational_file_for_job_path = Path(get_observational_file_for_job(run))
-                # If the user uploaded it with the proper name, no need to rename
-                if user_uploaded_observational_file != observational_file_for_job_path:
-                    logger.info(f"Renaming observational file from {str(user_uploaded_observational_file)} to {get_observational_file_for_job(run)}")
-                    user_uploaded_observational_file.rename(Path(get_observational_file_for_job(run)))
+                else:
+                    # We need to rename the user-uploaded file.
+                    observational_file_for_job_path = Path(get_observational_file_for_job(run))
+                    # If the user uploaded it with the proper name, no need to rename
+                    if user_uploaded_observational_file != observational_file_for_job_path:
+                        logger.info(f"Renaming observational file from {str(user_uploaded_observational_file)} to {get_observational_file_for_job(run)}")
+                        user_uploaded_observational_file.rename(Path(get_observational_file_for_job(run)))
             elif build:
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
@@ -205,13 +206,13 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
                 if not user_uploaded_geopackage_file:
                     errors.append('Geopackage data must be uploaded')
-
-                # We need to rename the user-uploaded file.
-                geopackage_file_for_job_path = Path(get_geopackage_file_for_job(run))
-                # If the user uploaded it with the proper name, no need to rename
-                if user_uploaded_geopackage_file != geopackage_file_for_job_path:
-                    logger.info(f"Renaming geopackage file from {str(user_uploaded_geopackage_file)} to {get_geopackage_file_for_job(run)}")
-                    user_uploaded_geopackage_file.rename(Path(get_geopackage_file_for_job(run)))
+                else:
+                    # We need to rename the user-uploaded file.
+                    geopackage_file_for_job_path = Path(get_geopackage_file_for_job(run))
+                    # If the user uploaded it with the proper name, no need to rename
+                    if user_uploaded_geopackage_file != geopackage_file_for_job_path:
+                        logger.info(f"Renaming geopackage file from {str(user_uploaded_geopackage_file)} to {get_geopackage_file_for_job(run)}")
+                        user_uploaded_geopackage_file.rename(Path(get_geopackage_file_for_job(run)))
 
         datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
 
