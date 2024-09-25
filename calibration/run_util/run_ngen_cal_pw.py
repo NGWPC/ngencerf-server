@@ -39,9 +39,6 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
         'auth_token': (None, generate_custom_token(run.owner, token_slurm_scope))
     }
 
-    # TODO How do we set callback?
-    # callback = run_job_callback_slurm
-
     logger.info(f'slurm submit-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
@@ -53,7 +50,6 @@ def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
-        # logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         raise
 
 
@@ -61,12 +57,12 @@ def run_job_callback_slurm(current_stage: JobStage | None, process_id, run, slur
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
-    :param current_stage: The current job stage, as an Enum
+    :param current_stage: The current job stage, as an Enum (or None, if the job was cancelled)
     :param process_id: The process_id of the job (id_user)
     :param run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    logger.info(f'Job {process_id} completed stage {current_stage}')
+    logger.info(f'Job end callback received for job {process_id}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Job {process_id} was cancelled')
@@ -101,7 +97,6 @@ def cancel_slurm_job(run: CalibrationRun):
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to cancel job: {response.json().get('error')}, {str(e)}")
-        # logger.error(f"Response from Slurm: '{response.text}' - {str(e)}")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             return False
         raise
