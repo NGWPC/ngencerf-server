@@ -6,7 +6,9 @@ from functools import wraps
 from pathlib import Path
 from typing import List, cast, Optional, Tuple
 
+from django.contrib.auth import get_user_model
 from rest_framework import status
+from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
@@ -117,9 +119,10 @@ def create_calibration_run_internal(request) -> CalibrationRun:
 
 
 token_slurm_scope = 'slurm_callback'
+token_ngen = 'ngen'
 
 
-def generate_custom_token(user, scope):
+def generate_custom_token(user: get_user_model(), scope: str) -> str:
     """
     Generate a JWT access token for a user, with a custom scope and a 24-hour expiration.
 
@@ -137,10 +140,21 @@ def generate_custom_token(user, scope):
     return str(access)
 
 
-class IsSlurmCallbackToken(BasePermission):
+def auth_scope_required(scope):
     """
-    Permission class to check if the provided JWT token contains the 'slurm_callback' scope.
+    Custom decorator to require a specific token scope.
     """
+    return permission_classes([lambda: CheckTokenScope(scope)])
+
+
+class CheckTokenScope(BasePermission):
+    """
+    Permission class to check if the provided JWT token contains a specific scope.
+    """
+
+    def __init__(self, required_scope):
+        self.required_scope = required_scope
+
     def has_permission(self, request, view):
         # Ensure that the user is authenticated and has a valid token
         if not request.user or not request.auth:
@@ -150,8 +164,16 @@ class IsSlurmCallbackToken(BasePermission):
         # We should already have a validated token in request.auth
         token = request.auth
 
+        # Log the available scopes and the required one
+        token_scope = token.get('scope', '').split()
+        logger.debug(f"Token scope: {token_scope}, Required scope: {self.required_scope}")
+
         # Make sure we have our custom scope
-        return token_slurm_scope in token.get('scope', '').split()
+        if self.required_scope not in token_scope:
+            logger.debug(f"Permission denied: required scope '{self.required_scope}' not in token scope {token_scope}")
+            return False
+
+        return True
 
 
 # Function wrapper to implement common exception handling

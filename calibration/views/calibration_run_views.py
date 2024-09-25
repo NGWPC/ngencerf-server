@@ -22,8 +22,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
     SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, IsSlurmCallbackToken, \
-    generate_custom_token, token_slurm_scope
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, CheckTokenScope, \
+    generate_custom_token, token_slurm_scope, auth_scope_required
 from calibration.views.read_output import read_output, accumulate_iterations
 from cerfServer import settings
 
@@ -374,7 +374,7 @@ def cancel_job(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-@permission_classes([IsSlurmCallbackToken])  # Requires custom JWT token
+@auth_scope_required(token_slurm_scope)
 def slurm_callback(request):
     data = request.data
     logger.debug(f'slurm_callback() request from {request.user} - {data}')

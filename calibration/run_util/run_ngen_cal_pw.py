@@ -10,7 +10,6 @@ from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
 from calibration.views.common import generate_custom_token, token_slurm_scope
 from cerfServer import settings
-from cerfServer.settings import SLURM_SUBMIT_JOB_ENDPOINT
 
 logger = logging.getLogger(__name__)
 

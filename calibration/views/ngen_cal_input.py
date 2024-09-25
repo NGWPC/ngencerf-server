@@ -16,7 +16,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_observational_filename
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-from calibration.views.common import CerfException
+from calibration.views.common import CerfException, token_ngen, generate_custom_token
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,9 @@ config_template = {
 
     "General": {
         "calibration_run_id": 0,
-        "user": "",
+        # TODO Might not need this, since it's in the token
+        # "user": "",
+        "auth_token": "",
         "basin": "",
         "models": "",
 
@@ -156,7 +158,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         raise CerfException('Must pass a run instance to validate')
 
     general['calibration_run_id'] = run.id
-    general['user'] = run.owner.username
+    # general['user'] = run.owner.username
+    general['auth_token'] = generate_custom_token(run.owner, token_ngen)
 
     if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
