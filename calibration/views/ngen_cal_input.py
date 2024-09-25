@@ -26,6 +26,7 @@ config_template = {
         "calibration_run_id": 0,
         # TODO Might not need this, since it's in the token
         # "user": "",
+        "ngen_cerf": True,      # Indicate that we came from the ngenCerf server - Always true
         "auth_token": "",
         "basin": "",
         "models": "",
