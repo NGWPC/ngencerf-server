@@ -51,3 +51,31 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     shutil.copy2(source_file, destination_file)
 
     return f"File successfully copied from {source_file} to {destination_dir}."
+
+
+def delete_all_files_in_directory(source_dir):
+    dir_path = Path(source_dir)
+    if dir_path.exists():
+        for file in dir_path.iterdir():
+            if file.is_file():
+                file.unlink()
+
+
+def get_single_file(source_dir):
+    """
+    Retrieves the first file found in the given directory.
+    If the directory is empty, it returns None. The function does not check
+    for multiple files, so if more than one file exists, it returns the first one.
+
+    :param source_dir: Path to the directory where the file is located.
+    :return: Path object representing the first file found, or None if no file exists.
+    """
+    dir_path = Path(source_dir)
+    # Get all files in the directory (excluding directories)
+    files = [f for f in dir_path.iterdir() if f.is_file()]
+
+    # If there are no files in the directory, return None.
+    if len(files) == 0:
+        return None
+
+    return files[0]

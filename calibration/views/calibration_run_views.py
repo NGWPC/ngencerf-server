@@ -40,14 +40,14 @@ logger = logging.getLogger(__name__)
         ),
         500: ErrorResponseSerializer
     },
-    description="Check if a job is ready to run"
+    description="Return the status of a job"
 )
 @api_view(['GET', 'POST'])
 # @permission_classes([AllowAny])()
 @handle_exceptions
-def is_ready(request):
+def get_status(request):
     data = request.data
-    logger.debug(f'is_ready() request from {request.user} - {data}')
+    logger.debug(f'get_status() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -55,22 +55,22 @@ def is_ready(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
-    messages, _ = ngen_cal_input.ready_to_run(run)
+    messages = None
+    if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        messages, _ = ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name}
-    ready_not_ready = 'not ready' if messages else 'ready'
-    response['message'] = f'Calibration Run {run.id} is {ready_not_ready}'
+    response = {'message': f'Calibration Run {run.id}, status is {run.status.name}', 'calibration_run_id': run.id, 'status': run.status.name}
     if messages:
         response['errors'] = messages
 
     response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from is_ready() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from get_status() - {response_validator.data}')
     return Response(response_validator.data)
 
 

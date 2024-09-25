@@ -7,13 +7,14 @@ import toml
 from datetimerange import DateTimeRange
 from django.db.models import F
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
+from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
+    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_observational_filename
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException
 
@@ -136,7 +137,8 @@ def validate_times(run):
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
         if run.calibration_start_period and (run.calibration_start_period not in time_range or run.calibration_end_period not in time_range):
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.automatic_validation and run.validation_start_period and (run.validation_start_period not in time_range or run.validation_end_period not in time_range):
+        if run.automatic_validation and run.validation_start_period and (
+                run.validation_start_period not in time_range or run.validation_end_period not in time_range):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
@@ -165,7 +167,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             if is_forcing_upload:
                 forcing_dir = get_forcing_dir_for_job(run)
                 if not forcing_dir or not Path(forcing_dir).exists():
-                    errors.append('forcing data must be uploaded')
+                    errors.append('Forcing data must be uploaded')
             elif build:
                 # for non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
@@ -178,9 +180,16 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
-                observational_file = get_observational_file_for_job(run)
-                if not observational_file or not Path(observational_file).exists():
-                    errors.append('observational data must be uploaded')
+                user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
+                if not user_uploaded_observational_file:
+                    errors.append('Observational data must be uploaded')
+
+                # We need to rename the user-uploaded file.
+                observational_file_for_job_path = Path(get_observational_file_for_job(run))
+                # If the user uploaded it with the proper name, no need to rename
+                if user_uploaded_observational_file != observational_file_for_job_path:
+                    logger.info(f"Renaming observational file from {str(user_uploaded_observational_file)} to {get_observational_file_for_job(run)}")
+                    user_uploaded_observational_file.rename(Path(get_observational_file_for_job(run)))
             elif build:
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
@@ -190,6 +199,22 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
+        if not is_missing(run.geopackage_source, 'geopackage source', errors):
+            is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
+            if is_geopackage_upload:
+                user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
+                if not user_uploaded_geopackage_file:
+                    errors.append('Geopackage data must be uploaded')
+
+                # We need to rename the user-uploaded file.
+                geopackage_file_for_job_path = Path(get_geopackage_file_for_job(run))
+                # If the user uploaded it with the proper name, no need to rename
+                if user_uploaded_geopackage_file != geopackage_file_for_job_path:
+                    logger.info(f"Renaming geopackage file from {str(user_uploaded_geopackage_file)} to {get_geopackage_file_for_job(run)}")
+                    user_uploaded_geopackage_file.rename(Path(get_geopackage_file_for_job(run)))
+
+        datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+
         nwm_retro = Path(NWM_RETROSPECTIVE_DIR) / f'{run.gage.gage_id}.csv'
         if nwm_retro.exists():
             datafile['nwmretro_file'] = str(nwm_retro)
@@ -198,13 +223,13 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if error_message:
             errors.append(error_message)
 
-        if run.geopackage_hydrofabric_file_path and Path(run.geopackage_hydrofabric_file_path).exists():
-            datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
-        else:
-            if Path(get_geopackage_file_for_job(run)).exists():
-                datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
-            else:
-                errors.append('geopackage data must be uploaded')
+        # if run.geopackage_hydrofabric_file_path and Path(run.geopackage_hydrofabric_file_path).exists():
+        #     datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
+        # else:
+        #     if Path(get_geopackage_file_for_job(run)).exists():
+        #         datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+        #     else:
+        #         errors.append('geopackage data must be uploaded')
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = str(Path(PARQUET_DIR) / f'{run.gage.domain.name.lower()}_model_attributes.parquet')

@@ -135,11 +135,11 @@ def get_time_range(run):
     forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path, ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    logger.info(f'observation_path: {observation_path}, forcing_path: {forcing_path}')
+    logger.debug(f'Observation_path: {observation_path}, forcing_path: {forcing_path}')
     # If both paths are available, calculate intersection and update run
     if observation_path and forcing_path:
         daterange = get_date_range_intersection(observation_path, forcing_path)
-        logger.info(f'New data range: {daterange}')
+        logger.debug(f'New date range: {daterange}')
         if daterange:
             # Only update if it has changed
             if run.time_range_start != daterange.start_datetime or run.time_range_end != daterange.end_datetime:

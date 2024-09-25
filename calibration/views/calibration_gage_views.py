@@ -19,9 +19,10 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
+from calibration.util.file_util import delete_all_files_in_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_observational_dir_for_job, get_forcing_dir_for_job, get_observational_file_for_job, \
-    get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_filename, get_geopackage_filename, get_forcing_filename_pattern
+from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
+    get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
@@ -208,7 +209,7 @@ def save_gage_tab(request):
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
             geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
-            print('geopackage', geopackage_file)
+            # Delete if it's already there
             if Path(geopackage_file).exists():
                 Path(geopackage_file).unlink()
             try:
@@ -337,8 +338,8 @@ def upload_observational_data(request):
     if error_return:
         return error_return
 
-    if not run.gage:
-        return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
+    # if not run.gage:
+    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
     run.observational_source = ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
 
@@ -347,15 +348,15 @@ def upload_observational_data(request):
 
     files = request.FILES.getlist('observational_file')
 
-    observational_file = files[0]
-    if observational_file.name != get_observational_filename(run):
-        return ResponseError(f"Observational file must be named '{get_observational_filename(run)}'")
+    user_observational_file = files[0]
 
     run.observational_hydrofabric_file_path = None
 
-    if fs.exists(observational_file.name):
-        (Path(fs.location) / observational_file.name).unlink()
-    fs.save(observational_file.name, observational_file)
+    # Delete the file if it's already there
+    delete_all_files_in_directory(fs.location)
+    logger.info(f"Saving user-uploaded observational file as {user_observational_file.name}")
+    # TODO Need to rename it later
+    fs.save(user_observational_file.name, user_observational_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
     run.time_range_start = None
@@ -366,7 +367,7 @@ def upload_observational_data(request):
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f"Observational file '{observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+    response = {'message': f"Observational file '{user_observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
@@ -405,8 +406,8 @@ def upload_forcing_data(request):
     if error_return:
         return error_return
 
-    if not run.gage:
-        return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
+    # if not run.gage:
+    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
     run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
 
@@ -421,15 +422,13 @@ def upload_forcing_data(request):
 
     number_of_files = len(files)
 
+    delete_all_files_in_directory(fs.location)
+
     for forcing_file in files:
-        # Replace any existing files
-        if fs.exists(forcing_file.name):
-            forcing_file_path = Path(fs.location) / forcing_file.name
-            # Check name matching
-            if not re.match(get_forcing_filename_pattern(), forcing_file.name):
-                logger.warning(f'Skipping forcing file {forcing_file.name}')
-                number_of_files -= 1
-            Path(forcing_file_path).unlink()
+        if not re.match(get_forcing_filename_pattern(), forcing_file.name):
+            logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
+            number_of_files -= 1
+
         fs.save(forcing_file.name, forcing_file)
 
     # Invalidate the dates, since we'll have to compute the intersection again
@@ -484,8 +483,8 @@ def upload_geopackage_data(request):
     if error_return:
         return error_return
 
-    if not run.gage:
-        return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
+    # if not run.gage:
+    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
     run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
 
@@ -494,15 +493,15 @@ def upload_geopackage_data(request):
 
     files = request.FILES.getlist('geopackage_file')
 
-    geopackage_file = files[0]
-    if geopackage_file.name != get_geopackage_filename(run):
-        return ResponseError(f"Geopackage file must be named '{get_geopackage_filename(run)}'")
+    user_geopackage_file = files[0]
 
     run.geopackage_hydrofabric_file_path = None
 
-    if fs.exists(geopackage_file.name):
-        (Path(fs.location) / geopackage_file.name).unlink()
-    fs.save(geopackage_file.name, geopackage_file)
+    # Delete the file if it's already there
+    delete_all_files_in_directory(fs.location)
+    logger.info(f"Saving user-uploaded geopackage file as {user_geopackage_file.name}")
+    # TODO Need to rename it later
+    fs.save(user_geopackage_file.name, user_geopackage_file)
 
     geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
 
@@ -511,7 +510,7 @@ def upload_geopackage_data(request):
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f"Geopackage file '{geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+    response = {'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
                 'status': run.status.name}
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url
