@@ -59,7 +59,9 @@ def import_job(request):
 
     run_after_import = validator.get('run_after_import', False)
 
-    run, warnings, info_messages = import_calibration_run_data(request, validator)
+    run, warnings, info_messages, fatal_error = import_calibration_run_data(request, validator)
+    if fatal_error:
+        return fatal_error
 
     imported_and_submitted = 'imported'
 
@@ -80,6 +82,7 @@ def import_job(request):
         response['messages'] = info_messages
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
+    print('error_response', error_response)
     if error_response:
         return error_response
 
@@ -102,7 +105,7 @@ def import_calibration_run_data(request, calibration_run_data):
             try:
                 save_gage(run, gage_id)
             except Gage.DoesNotExist:
-                return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+                return None, None, None, ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
         forcing_source_name = calibration_run_data.get('forcing_source')
         run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
@@ -154,12 +157,12 @@ def import_calibration_run_data(request, calibration_run_data):
 
         error_message = validate_modules(run, module_names)
         if error_message:
-            return ResponseError(error_message)
+            return None, None, None, ResponseError(error_message)
 
         if module_names:
             messages, formulation_validation_json, nwm_warning = validate_formulation(run, module_names)
             if messages:
-                return ResponseError(messages)
+                return None, None, None, ResponseError(messages)
         # if module_names:
         #     if not validate_formulation(run, module_names):
         #         return ResponseError(f'Invalid formulation -  {module_names}')
@@ -173,7 +176,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 module_names.add(SLOTH)
         else:
             if sloth_parameters:
-                return ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
+                return None, None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
 
         # Create any new formulations
         for name in module_names:
@@ -182,7 +185,7 @@ def import_calibration_run_data(request, calibration_run_data):
         if sloth_parameters:
             error_message = add_sloth_parameters(run, sloth_parameters)
             if error_message:
-                return ResponseError(error_message)
+                return None, None, None, ResponseError(error_message)
 
         #############################
         # Tuning
@@ -198,24 +201,24 @@ def import_calibration_run_data(request, calibration_run_data):
         calibration_times = calibration_run_data.get('calibration_times')
         validation_times = calibration_run_data.get('validation_times')
         if not run.automatic_validation and validation_times:
-            return ResponseError('validation_times cannot be specified unless automatic_validation is True')
+            return None, None, None, ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
         error_message = validate_and_save_times(run, calibration_times, validation_times)
         if error_message:
-            return ResponseError(error_message)
+            return None, None, None, ResponseError(error_message)
 
         output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')
         parameters = calibration_run_data.get('parameters')
         if parameters and not modules:
-            return ResponseError('Parameters cannot be specified without modules')
+            return None, None, None, ResponseError('Parameters cannot be specified without modules')
 
         error_message = validate_parameters(run, parameters)
         if error_message:
-            return ResponseError(error_message)
+            return None, None, None, ResponseError(error_message)
 
         error_message = save_output_variable(run, output_variable_to_calibrate)
         if error_message:
-            return ResponseError(error_message)
+            return None, None, None, ResponseError(error_message)
 
         save_parameters(run, parameters)
 
@@ -232,16 +235,16 @@ def import_calibration_run_data(request, calibration_run_data):
 
         if not optimization_name:
             if optimization_inputs:
-                return ResponseError('Optimization inputs cannot be specified without an optimization name')
+                return None, None, None, ResponseError('Optimization inputs cannot be specified without an optimization name')
         else:
             optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
             if error_message:
-                return ResponseError(error_message)
+                return None, None, None, ResponseError(error_message)
             write_optimization_inputs(run, optimization, optimization_inputs)
 
         error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
         if error_message:
-            return ResponseError(error_message)
+            return None, None, None, ResponseError(error_message)
 
         run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
         run.save_output_iteration = calibration_run_data.get('save_output_iteration')
@@ -254,7 +257,7 @@ def import_calibration_run_data(request, calibration_run_data):
 
         run.save()
 
-    return run, warnings, info_messages
+    return run, warnings, info_messages, None
 
 
 @extend_schema(
