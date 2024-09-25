@@ -70,6 +70,7 @@ def get_single_file(source_dir):
     :param source_dir: Path to the directory where the file is located.
     :return: Path object representing the first file found, or None if no file exists.
     """
+    logger.info(f"Getting first file from {source_dir}")
     dir_path = Path(source_dir)
     if dir_path.exists():
         # Get all files in the directory (excluding directories)
