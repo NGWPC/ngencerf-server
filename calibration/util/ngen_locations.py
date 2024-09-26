@@ -114,6 +114,10 @@ def get_output_validation_run_dir(run: CalibrationRun) -> str:
     return str(Path(get_output_dir(run)) / 'Validation_Run')
 
 
+def get_full_worker_filename(worker_name) -> str:
+    return f'ngen_{worker_name}_worker'
+
+
 def get_worker_path(run: CalibrationRun, worker_name) -> str:
     return str(Path(get_output_calibration_run_dir(run)) / worker_name)
 
