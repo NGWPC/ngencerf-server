@@ -168,17 +168,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # -----------------------------
 # Hydrofabric
 # -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = "api/get_geopackage/geopackage/{gage_id}"
-HYDROFABRIC_MODULES_ENDPOINT = 'api/module_metadata/'
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = 'api/initial_parameters/get_parameters/'
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = 'api/observation_data/{gage_id}'
-HYDROFABRIC_FORCING_DATA_ENDPOINT = 'api/forcing_data/{gage_id}'
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = (False, "api/get_geopackage/geopackage/{gage_id}")
+HYDROFABRIC_MODULES_ENDPOINT = (False, 'api/module_metadata/')
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = (False, 'api/initial_parameters/get_parameters/')
+HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (False, 'api/observation_data/{gage_id}')
+HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'api/forcing_data/{gage_id}')
 
-HYDROFABRIC_URL = 'http://localhost:8001'
+HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
 
 S3_MOUNT_POINT = Path.home() / 's3'
-
-HYDROFABRIC = False
 
 # -----------------------------
 # Ngen/Ngen-cal Locations

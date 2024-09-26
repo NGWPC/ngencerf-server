@@ -7,7 +7,7 @@ from pathlib import Path
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY
-from cerfServer import settings
+from django.conf import settings
 from cerfServer.settings import NGEN_CAL_VENV
 from calibration.run_util.run_common import JobStage, set_job_status, job_registry, proceed_to_next_stage
 

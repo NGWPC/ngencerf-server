@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])
 @handle_exceptions
 def load_gage_tab(request):
-    data = request.data if request.method == 'POST' else request.query_params.dict().dict()
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'load_gage_tab() request from {request.user} - {data}')
 
@@ -123,7 +123,7 @@ def load_gage_tab(request):
 # @permission_classes([AllowAny])
 @handle_exceptions
 def get_gage(request):
-    data = request.data if request.method == 'POST' else request.query_params.dict().dict()
+    data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_gage() request from {request.user} - {data}')
 

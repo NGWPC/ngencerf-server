@@ -10,7 +10,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file
 from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
-from cerfServer import settings
+from django.conf import settings
 from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)

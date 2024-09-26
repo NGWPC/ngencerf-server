@@ -25,7 +25,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, CheckTokenScope, \
     generate_custom_token, token_slurm_scope, auth_scope_required
 from calibration.views.read_output import read_output, accumulate_iterations
-from cerfServer import settings
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -238,8 +238,7 @@ def report_iteration(request):
 
     starting_iteration = 0 if optimization == OptimizationEnum.DDS.value else 1
 
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.READY])
-    # run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 

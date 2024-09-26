@@ -9,7 +9,7 @@ from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
 from calibration.views.common import generate_custom_token, token_slurm_scope
-from cerfServer import settings
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
