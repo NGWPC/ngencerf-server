@@ -27,8 +27,6 @@ LOGGING['root']['level'] = 'INFO'
 VERSION = 0.0
 CONTACT_EMAIL = 'support@ngencerf.com'
 
-HYDROFABRIC_URL = 'http://localhost:8001'
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
