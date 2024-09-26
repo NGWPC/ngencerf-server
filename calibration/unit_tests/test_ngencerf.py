@@ -14,7 +14,7 @@ from calibration.models.plot_definitions import PlotDefinition
 from calibration.models.status import Status
 from calibration.views import calibration_import_export_views, calibration_plot_views
 from calibration.views.common import get_run
-from cerfServer import settings
+from django.conf import settings
 
 
 class CerfUnitTest(TestCase):

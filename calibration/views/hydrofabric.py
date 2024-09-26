@@ -11,7 +11,7 @@ from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
 from calibration.views.common import CerfException
-from cerfServer import settings
+from django.conf import settings
 from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, forcing_sample_data, \
     hydrofabric_module_metadata_real_data, module_sample_data
 

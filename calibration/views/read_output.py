@@ -89,6 +89,7 @@ def create_iteration_objects_for_all_workers(run: CalibrationRun):
         for _, row in metrics_df.iterrows():
             iteration_number = row['iteration']
 
+            # TODO Change worker name to just use the middle part
             logger.debug(f'{run.id}_{run.owner.username} Creating iteration {iteration_number} for worker {Path(worker_dir).name}, worker number {worker_number}')
             all_iteration_objects.append(Iteration(
                 iteration_num=iteration_number,
@@ -137,6 +138,7 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     :param iterations: A list of Iteration objects for the worker.
     """
     # Get the worker's path
+    # TODO Change worker name to be the middle part, so we would have to re-construct the name
     worker_path = get_worker_path(run, worker_name)
     if not Path(worker_path).is_dir():
         # TODO Need to make sure we're handling exceptions

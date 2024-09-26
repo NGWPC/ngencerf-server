@@ -17,7 +17,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, Status
 from calibration.util.calibration_validators import ErrorResponseSerializer
-from cerfServer import settings
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 

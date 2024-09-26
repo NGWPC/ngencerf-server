@@ -5,7 +5,7 @@ from django.db import transaction
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, ValidationRun
-from cerfServer import settings
+from django.conf import settings
 from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
