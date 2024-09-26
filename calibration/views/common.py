@@ -55,8 +55,8 @@ def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[Calibra
     if run.status not in allowed_statuses:
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
         return run, Response(
-            {'error': (f'Calibration Run {calibration_run_id} is not in the allowed statuses '
-                       f'({", ".join(allowed_status_names)}). '
+            {'error': (f'Calibration Run {calibration_run_id} is not '
+                       f'({join_with_or(allowed_status_names)}). '
                        f'Current status: {run.status.name}')},
             status=status.HTTP_400_BAD_REQUEST)
 
@@ -64,7 +64,7 @@ def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[Calibra
     return run, None
 
 
-def join(items):
+def join_with_or(items):
     """
        Join a list of strings into a single string, using commas and 'or' for the last item.
 

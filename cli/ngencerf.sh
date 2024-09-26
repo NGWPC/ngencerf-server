@@ -6,18 +6,22 @@ print_usage() {
     echo ""
     echo "  Commands:"
     echo "    import <file> : Import the provided JSON file."
-    echo "        Arguments:"
+    echo "        Optional arguments:"
     echo "          observational_file=<file path>    (optional) : Path to the observational data file (CSV format)."
     echo "          forcing_dir=<directory path>      (optional) : Path to the directory containing forcing data (CSV files)."
     echo "          geopackage_file=<file path>       (optional) : Path to the geopackage file (GPKG format)."
     echo "          run_after_import=true|false       (optional) : Whether to run the calibration job after import (default: false)."
     echo ""
     echo "    export <calibration_run_id> : Export the JSON data for the given calibration_run_id."
-    echo "        Arguments:"
+    echo "        Optional arguments:"
     echo "          output=<directory or file path>   (optional) : Path to save the exported file (default filename used if a directory is provided)."
     echo ""
     echo "    run <calibration_run_id> : Run the calibration_run_id job."
-    echo "        Arguments:"
+    echo "        Optional arguments:"
+    echo "          <None>"
+    echo ""
+    echo "    cancel <calibration_run_id> : Cancel the calibration_run_id job."
+    echo "        Optional arguments:"
     echo "          <None>"
     echo ""
     echo "  Example usage:"
@@ -168,6 +172,36 @@ run_job() {
     rm -f /tmp/curl_response
 }
 
+# Function to cancel the job
+cancel_job() {
+    local calibration_run_id=$1
+
+    echo "Cancelling calibration run job $calibration_run_id"
+
+    # Prepare the JSON payload
+    json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
+
+    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    --header 'Content-Type: application/json'\
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --data "$json_payload" \
+    "http://localhost:8000/calibration/cancel_job/")
+
+    # Extract HTTP status and response
+    http_status=$(tail -n1 <<< "$response")
+    response=$(cat /tmp/curl_response)
+
+    check_http_error "$http_status" "$response"
+
+    # Print the response
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
+       echo "Error parsing response."
+    fi
+
+    # Clean up the temporary file
+    rm -f /tmp/curl_response
+}
+
 
 # Check if operation and argument are provided
 if [ -z "$1" ] || [ -z "$2" ]; then
@@ -211,12 +245,6 @@ for arg in "$@"; do
     esac
 done
 
-# Ensure run_after_import is either true or false
-if [[ "$run_after_import" != "true" && "$run_after_import" != "false" ]]; then
-    echo "Error: run_after_import must be either 'true' or 'false'."
-    exit 1
-fi
-
 # Ensure all specified files and directories exist before proceeding
 if [ "$operation" == "import" ] && [ ! -f "$argument" ]; then
     echo "Error: Import file '$argument' not found."
@@ -236,6 +264,12 @@ fi
 
 if [ "$operation" == "output" ] && [ -f "run_after_import" ]; then
     echo "Error: The run_after_import option is only valid for import."
+    exit 1
+fi
+
+# Ensure run_after_import is either true or false
+if [[ "$run_after_import" != "true" && "$run_after_import" != "false" ]]; then
+    echo "Error: run_after_import must be either 'true' or 'false'."
     exit 1
 fi
 
@@ -394,13 +428,20 @@ elif [ "$operation" == "export" ]; then
     # Clean up the temporary file
     rm -f /tmp/curl_response
 
+# Handle run operation
 elif [ "$operation" == "run" ]; then
     calibration_run_id="$argument"
 
     run_job "$calibration_run_id"
 
+# Handle cancel operation
+elif [ "$operation" == "cancel" ]; then
+    calibration_run_id="$argument"
+
+    cancel_job "$calibration_run_id"
+
 else
-    echo You must enter 'import', 'export' or 'run'
+    echo You must enter 'import', 'export', 'run' or 'cancel'
     echo
     print_usage
 fi
