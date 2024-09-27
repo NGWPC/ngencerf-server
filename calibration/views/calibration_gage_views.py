@@ -268,6 +268,8 @@ def save_gage_tab(request):
 
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url}
+    if hydrofabric_errors:
+        response['hydrofabric_errors'] = hydrofabric_errors
 
     response_validator, error_response = validate_response(SaveGageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:
