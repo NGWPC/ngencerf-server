@@ -490,11 +490,11 @@ class S3UriField(serializers.CharField):
 
 
 class S3DirectoryValidator(BaseSerializer):
-    url = S3UriField(validate_directory=True)
+    uri = S3UriField(validate_directory=True)
 
 
-class S3FileValidator(serializers.Serializer):
-    url = S3UriField()
+class S3FileValidator(BaseSerializer):
+    uri = S3UriField()
 
 
 class SaveFormulationRequestSerializer(BaseSerializer):
