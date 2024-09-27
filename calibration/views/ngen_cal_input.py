@@ -222,7 +222,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                     datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
             else:
                 # For data from Hydrofabric, we use the location that Hydrofabric gave us
-                datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
+                if run.geopackage_hydrofabric_file_path:
+                    datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
 
         nwm_retro = Path(NWM_RETROSPECTIVE_DIR) / f'{run.gage.gage_id}.csv'
         if nwm_retro.exists():

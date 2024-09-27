@@ -226,8 +226,7 @@ def save_gage_tab(request):
         else:
             run.geopackage_hydrofabric_file_path = None
 
-        run.geopackage_source = GeopackageSourceEnum.from_enum(
-            GeopackageSourceEnum(geopackage_source_name)) if geopackage_source_name else None
+        run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
         geopackage_image_url = get_geopackage_image_url(run)
 
@@ -245,8 +244,7 @@ def save_gage_tab(request):
         else:
             run.observational_hydrofabric_file_path = None
 
-        run.observational_source = ObservationalSourceEnum.from_enum(
-            ObservationalSourceEnum(observational_source_name)) if observational_source_name else None
+        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
@@ -261,7 +259,7 @@ def save_gage_tab(request):
         else:
             run.forcing_hydrofabric_dir_path = None
 
-        run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
+        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
 
     with transaction.atomic():
         run.save()
