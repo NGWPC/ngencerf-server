@@ -1,6 +1,8 @@
 import json
 import logging
+import traceback
 
+import requests
 from django.db import transaction
 from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -52,7 +54,11 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    get_modules_from_hydrofabric(run)
+    try:
+        get_modules_from_hydrofabric(run)
+    except requests.exceptions.HTTPError:
+        traceback.print_exc()
+        # TODO What to do here?
 
     modules = get_all_modules(run)
 

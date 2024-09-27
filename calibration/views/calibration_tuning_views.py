@@ -1,11 +1,13 @@
 import io
 import logging
+import traceback
 from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import requests
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -67,10 +69,13 @@ def load_tuning_tab(request):
 
     module_list = []
     if modules and run.gage:
-        # Only do this if modules have been saved in the formulation tab and we have a gage
+        # Only do this if modules have been saved in the formulation tab, and we have a gage
 
-        # print('calling hydrofabric with', modules)
-        get_module_data_from_hydrofabric(run, modules)
+        try:
+            get_module_data_from_hydrofabric(run, modules)
+        except requests.exceptions.HTTPError:
+            traceback.print_exc()
+            # TODO What to do here?
 
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(modules)

@@ -33,7 +33,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
             logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
-            return
+            raise
     else:
         print('Getting dummy geopackage data')
         geopackage_json = geopackage_sample_data
@@ -58,7 +58,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
         except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
             logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
-            return
+            raise
     else:
         print('Getting dummy observational data')
         observational_json = observational_sample_data
@@ -84,7 +84,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
         except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
             logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
-            return
+            raise
     else:
         print('Getting dummy forcing data')
         forcing_json = forcing_sample_data
@@ -111,7 +111,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
         except requests.exceptions.HTTPError as e:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
             logger.error(f"Response from Hydrofabric: response.text - {str(e)}")
-            return
+            raise
     else:
         print('Getting dummy module metadata data')
         module_json = hydrofabric_module_metadata_real_data
@@ -190,7 +190,7 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
         except requests.exceptions.HTTPError:
             logger.error(f"Call to hydrofabric {url} failed with {response.status_code}.")
             print("Response from Hydrofabric:", response.text)
-            return
+            raise
     else:
         print('Getting dummy module data')
         module_json = module_sample_data
