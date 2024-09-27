@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
 from calibration.views.hydrofabric import get_module_data_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -129,10 +129,12 @@ def get_time_range(run):
     :param run:
     :return:
     """
-    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path, ObservationalSourceEnum.UPLOAD,
+    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
+                                      ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path, ForcingSourceEnum.UPLOAD,
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path,
+                                  ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
     logger.debug(f'Observation_path: {observation_path}, forcing_path: {forcing_path}')
@@ -150,22 +152,6 @@ def get_time_range(run):
     else:
         # We don't have the data,
         return {}
-
-
-def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
-    job_specific_file = get_path_func()
-    # print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
-
-    if source:
-        if source == upload_enum.from_enum(upload_enum):
-            # Check job-specific path first
-            if Path(job_specific_file).exists():
-                return job_specific_file
-        # If not found or source is different, check the hydrofabric path
-        if hydrofabric_path and Path(hydrofabric_path).exists():
-            return hydrofabric_path
-
-    return None
 
 
 def get_times(run):
@@ -380,7 +366,8 @@ def validate_parameters(run, parameters):
             return 'Modules and/or CalibrationParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
-            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run).exists():
+            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module'],
+                                                       calibration_formulation__calibration_run=run).exists():
                 return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
     return None
 

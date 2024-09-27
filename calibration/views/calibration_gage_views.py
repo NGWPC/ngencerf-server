@@ -24,7 +24,8 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url, \
+    truncate_large_fields, get_valid_path
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
 
 logger = logging.getLogger(__name__)
@@ -95,13 +96,13 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    serializer, error_response = validate_response(LoadGageResponseSerializer, response)
+    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"])
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
+    logger.debug(f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"])}')
 
-    return Response(serializer.data)
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -270,15 +271,19 @@ def save_gage_tab(request):
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url}
 
-    response_validator, error_response = validate_response(SaveGageResponseSerializer, response)
+    response_validator, error_response = validate_response(SaveGageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from save_gage_tab() - {response_validator.data}')
+    logger.debug(
+        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+
     return Response(response_validator.data)
 
 
 def get_geopackage_image_url(run: CalibrationRun):
-    geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_file_path
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_geopackage_file_for_job(run))
 
     if geopackage_path and Path(geopackage_path).exists():
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
@@ -486,9 +491,6 @@ def upload_geopackage_data(request):
     if error_return:
         return error_return
 
-    # if not run.gage:
-    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
-
     run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
 
     # Save to the run-specific geopackage directory
@@ -503,7 +505,6 @@ def upload_geopackage_data(request):
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
     logger.info(f"Saving user-uploaded geopackage file to {os.path.join(fs.location, user_geopackage_file.name)}")
-    # TODO Need to rename it later
     fs.save(user_geopackage_file.name, user_geopackage_file)
 
     geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
@@ -517,9 +518,11 @@ def upload_geopackage_data(request):
                 'status': run.status.name}
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url
+    print("response", response)
 
-    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response)
+    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from upload_geopackage_data() - {response_validator.data}')
+    logger.debug(
+        f'Returning to {request.user} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
     return Response(response_validator.data)
