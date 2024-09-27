@@ -27,7 +27,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_output_variable, \
-    save_parameters, get_module_data_from_hydrofabric, get_time_range
+    save_parameters, get_module_data_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 
@@ -394,6 +394,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['use_sloth'] = run.use_sloth
     if run.use_sloth:
         calibration_run_data['sloth_parameters'] = get_sloth_parameters(run)
+
+    calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
 
     #############################
     # Tuning

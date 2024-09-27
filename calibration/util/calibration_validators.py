@@ -297,6 +297,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    parameters_selected = serializers.BooleanField(required=True)
     nwm_warning = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
@@ -520,6 +521,7 @@ class LoadFormulationResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     modules = ModuleStaticSerializer(many=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 ##################################
@@ -578,9 +580,9 @@ class ModuleHydrofabricVersionSerializer(serializers.Serializer):
 # Module objects from Hydrofabric contain group names and version
 class ModuleHydrofabricSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
+    # TODO This should be required with no default
+    description = serializers.CharField(required=False, allow_blank=False, default='')
     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(required=True, allow_blank=False))
-    module_version = ModuleHydrofabricVersionSerializer(required=True)
 
 
 # List of module objects from Hydrofabric containing group names and version
@@ -611,6 +613,7 @@ class LoadTuningResponseSerializer(BaseSerializer):
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
     time_range = TimeRangeSerializerAllowEmpty(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 ##################################

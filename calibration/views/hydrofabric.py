@@ -22,27 +22,27 @@ headers = {
 }
 
 
-def fetch_from_hydrofabric(method, url, headers=None, json=None):
+def fetch_from_hydrofabric(method, url, headers=None, payload=None):
     """
     A generic function to handle HTTP requests to the Hydrofabric and handle exceptions.
 
     :param method: HTTP method (e.g., 'GET' or 'POST')
     :param url: The full URL to send the request to
     :param headers: Optional HTTP headers to include
-    :param json: Optional JSON payload for POST requests
+    :param payload: Optional JSON payload for POST requests
     :return: The response JSON data
     :raises: HydrofabricException for any HTTP or connection-related errors
     """
     # response = None
     status_code = None
     response_text = None
-    if json:
-        logger.info(f"Hydrofabric payload: {json}")
+    if payload:
+        logger.info(f"Hydrofabric payload: {payload}")
     try:
         if method == 'GET':
             response = requests.get(url, headers=headers)
         elif method == 'POST':
-            response = requests.post(url, headers=headers, json=json)
+            response = requests.post(url, headers=headers, json=payload)
         else:
             raise HydrofabricException(f"Unsupported HTTP method: {method}")
 
@@ -99,7 +99,9 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[0]:
         logger.info('Getting observational data from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
+        url = urljoin(settings.HYDROFABRIC_URL,
+                      settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id, agency=run.gage.agency,
+                                                                               domain=run.gage.domain.name))
         observational_json = fetch_from_hydrofabric('GET', url, headers=headers)
     else:
         logger.info('Getting dummy observational data')
@@ -137,7 +139,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
     if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
         logger.info('Getting module metadata from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
-        module_json = fetch_from_hydrofabric('POST', url, headers=headers, json={"modules": module_names})
+        module_json = fetch_from_hydrofabric('POST', url, headers=headers, payload={"modules": module_names})
     else:
         logger.info('Getting dummy module metadata data')
         module_json = hydrofabric_module_metadata_real_data

@@ -102,6 +102,13 @@ def get_output_variable_to_calibrate(run):
     } if run.module_output_variable else None
 
 
+def has_user_selected_tuning_parameters(modules):
+    for m in modules.prefetch_related('calibrationparameter_set'):
+        if m.calibrationparameter_set.filter(user_selected_for_tuning=True).exists():
+            return True
+    return False
+
+
 def get_parameters_and_output_variables(modules):
     module_list = []
     for m in modules.prefetch_related('calibrationparameter_set', 'output_variables'):

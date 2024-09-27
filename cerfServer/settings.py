@@ -168,10 +168,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # -----------------------------
 # Hydrofabric
 # -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = (False, "hydrofabric/2.1/geopackages?gage_id={gage_id}&source={agency}&domain={domain}")
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = (False, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={agency}&domain={domain}')
 HYDROFABRIC_MODULES_ENDPOINT = (False, 'hydrofabric/2.1/modules/')
 HYDROFABRIC_MODULE_METADATA_ENDPOINT = (False, 'hydrofabric/2.1/modules/parameters/')
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (False, 'hydrofabric/2.1/observational/')
+HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (False, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
 HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
 
 HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
