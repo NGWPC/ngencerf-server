@@ -779,9 +779,9 @@ class ImportSerializer(BaseSerializer):
 ##################################
 class ReportIterationSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    optimization = serializers.CharField(allow_blank=False, required=True, validators=[enum_validator(OptimizationEnum)])
     iteration = serializers.IntegerField(required=True, min_value=0)
     worker_name = serializers.CharField(required=True)
+    first_iteration_for_worker = serializers.BooleanField(required=True)
 
 
 class ErrorDetailListField(serializers.ListField):
