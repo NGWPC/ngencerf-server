@@ -5,7 +5,6 @@ import shutil
 import traceback
 from pathlib import Path
 
-import requests.exceptions
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
@@ -27,7 +26,8 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url, \
     truncate_large_fields, get_valid_path
-from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
+from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
+    HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -220,9 +220,9 @@ def save_gage_tab(request):
                 Path(geopackage_file).unlink()
             try:
                 get_geopackage_from_hydrofabric(run)
-            except requests.exceptions.HTTPError:
-                traceback.print_exc()
-                hydrofabric_errors.append('geopackage')
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
+                hydrofabric_errors.append({'name': 'geopackage', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.geopackage_hydrofabric_file_path = None
 
@@ -238,9 +238,9 @@ def save_gage_tab(request):
                 Path(observational_file).unlink()
             try:
                 get_observational_data_from_hydrofabric(run)
-            except requests.exceptions.HTTPError:
-                traceback.print_exc()
-                hydrofabric_errors.append('observational')
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
+                hydrofabric_errors.append({'name': 'observational', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.observational_hydrofabric_file_path = None
 
@@ -253,9 +253,9 @@ def save_gage_tab(request):
                 shutil.rmtree(forcing_dir)
             try:
                 get_forcing_data_from_hydrofabric(run)
-            except requests.exceptions.HTTPError:
-                traceback.print_exc()
-                hydrofabric_errors.append('forcing')
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
+                hydrofabric_errors.append({'name': 'forcing', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.forcing_hydrofabric_dir_path = None
 

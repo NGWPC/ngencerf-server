@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-import requests
 from datetimerange import DateTimeRange
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -21,7 +20,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
-from calibration.views.hydrofabric import get_module_data_from_hydrofabric
+from calibration.views.hydrofabric import get_module_data_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +66,17 @@ def load_tuning_tab(request):
 
     time_range = get_time_range(run)
 
+    hydrofabric_errors = []
+
     module_list = []
     if modules and run.gage:
         # Only do this if modules have been saved in the formulation tab, and we have a gage
 
         try:
             get_module_data_from_hydrofabric(run, modules)
-        except requests.exceptions.HTTPError:
-            traceback.print_exc()
-            # TODO What to do here?
+        except HydrofabricException as e:
+            logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+            hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(modules)
@@ -83,6 +84,8 @@ def load_tuning_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list, 'time_range': time_range}
+    if hydrofabric_errors:
+        response['hydrofabric_errors'] = hydrofabric_errors
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:

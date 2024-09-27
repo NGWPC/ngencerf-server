@@ -394,7 +394,7 @@ class SaveGageRequestSerializer(BaseSerializer):
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
-    hydrofabric_errors = serializers.ListSerializer(required=False, child=serializers.CharField(required=False))
+    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 class DomainResponseSerializer(BaseSerializer):

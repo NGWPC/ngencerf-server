@@ -231,28 +231,22 @@ def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
     :param max_length: The maximum number of characters/items to display before truncating.
     :return: Redacted dictionary for logging.
     """
-    print('truncate', fields_to_truncate)
     if fields_to_truncate is None:
         fields_to_truncate = []
 
     truncated_data = data.copy()
     for field in fields_to_truncate:
-        print('field', field)
 
         if field in truncated_data:
             value = truncated_data[field]
             # Truncate strings if they exceed max_length
             if isinstance(value, str) and len(value) > max_length:
-                print('str)')
                 truncated_data[field] = f"{value[:max_length]}... (truncated)"
             # Truncate lists if they exceed max_length
             elif isinstance(value, list) and len(value) > max_length:
-                print('list')
                 truncated_data[field] = value[:max_length] + [f"... (truncated, {len(value)} total items)"]
-                print('truncated', truncated_data[field])
             # Truncate dicts by taking the first max_length key-value pairs
             elif isinstance(value, dict) and len(value) > max_length:
-                print('dict')
                 truncated_dict = {k: value[k] for k in list(value)[:max_length]}
                 truncated_dict["..."] = f"(truncated, {len(value)} total keys)"
                 truncated_data[field] = truncated_dict
