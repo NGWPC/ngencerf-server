@@ -2,7 +2,7 @@
 
 # Function to print usage
 print_usage() {
-    echo "Usage: $0 [import|export|run] <file|calibration_run_id> [keyword arguments]"
+    echo "Usage: $0 [import|export|delete|cancel|run] <file|calibration_run_id> [keyword arguments]"
     echo ""
     echo "  Commands:"
     echo "    import <file> : Import the provided JSON file."
@@ -17,6 +17,10 @@ print_usage() {
     echo "          output=<directory or file path>   (optional) : Path to save the exported file (default filename used if a directory is provided)."
     echo ""
     echo "    run <calibration_run_id> : Run the calibration_run_id job."
+    echo "        Optional arguments:"
+    echo "          <None>"
+    echo ""
+    echo "    delete <calibration_run_id> : Delete the calibration_run_id job."
     echo "        Optional arguments:"
     echo "          <None>"
     echo ""
@@ -141,7 +145,6 @@ upload_forcing_data() {
     rm -f /tmp/curl_response
 }
 
-
 # Function to run the job
 run_job() {
     local calibration_run_id=$1
@@ -156,6 +159,36 @@ run_job() {
     --header "Authorization: Bearer $ACCESS_TOKEN" \
     --data "$json_payload" \
     "http://localhost:8000/calibration/run_calibration/")
+
+    # Extract HTTP status and response
+    http_status=$(tail -n1 <<< "$response")
+    response=$(cat /tmp/curl_response)
+
+    check_http_error "$http_status" "$response"
+
+    # Print the response
+    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
+       echo "Error parsing response."
+    fi
+
+    # Clean up the temporary file
+    rm -f /tmp/curl_response
+}
+
+# Function to delete the job
+delete_job() {
+    local calibration_run_id=$1
+
+    echo "Deleting calibration run job $calibration_run_id"
+
+    # Prepare the JSON payload
+    json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
+
+    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    --header 'Content-Type: application/json'\
+    --header "Authorization: Bearer $ACCESS_TOKEN" \
+    --data "$json_payload" \
+    "http://localhost:8000/calibration/delete_job/")
 
     # Extract HTTP status and response
     http_status=$(tail -n1 <<< "$response")
@@ -434,6 +467,12 @@ elif [ "$operation" == "run" ]; then
 
     run_job "$calibration_run_id"
 
+# Handle delete operation
+elif [ "$operation" == "delete" ]; then
+    calibration_run_id="$argument"
+
+    delete_job "$calibration_run_id"
+
 # Handle cancel operation
 elif [ "$operation" == "cancel" ]; then
     calibration_run_id="$argument"
@@ -441,7 +480,7 @@ elif [ "$operation" == "cancel" ]; then
     cancel_job "$calibration_run_id"
 
 else
-    echo You must enter 'import', 'export', 'run' or 'cancel'
+    echo You must enter 'import', 'export', 'run', 'delete' or 'cancel'
     echo
     print_usage
 fi
