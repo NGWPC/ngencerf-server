@@ -5,17 +5,15 @@ from pathlib import Path
 import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Max
 from drf_spectacular.utils import extend_schema, OpenApiResponse
-from git import Repo
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, OptimizationEnum
+from calibration.enums import StatusEnum
 from calibration.models import Iteration
 from calibration.run_util.run_common import run_job, cancel_job_common, JobStage
 from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm, SlurmStatusEnum
@@ -220,7 +218,6 @@ def process_calibration_output(request):
 )
 # Called by ngen_cal
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def report_iteration(request):
     data = request.data
@@ -231,21 +228,24 @@ def report_iteration(request):
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    optimization = validator.get('optimization')
     iteration_number = validator.get('iteration')
     worker_name = validator.get('worker_name')
+    first_iteration_for_worker = validator.get('first_iteration_for_worker')
 
-    starting_iteration = 0 if optimization == OptimizationEnum.DDS.value else 1
+    print(f'Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, worker: {worker_name}, first_iteration: {first_iteration_for_worker}')
 
+    # TODO Only Running
+    # run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.RUNNING])
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     with transaction.atomic():
-        if iteration_number == starting_iteration:
-            # New worker_name, get a new worker_number
+        if first_iteration_for_worker:
+            # New worker
             max_worker_number = Iteration.objects.filter(calibration_run=run).aggregate(Max('worker_number'))['worker_number__max']
             worker_number = (max_worker_number or 0) + 1
+            print(f"Creating new worker: '{worker_name}' #{worker_number}")
         else:
             # Existing worker, find the worker_number
             existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').first()
@@ -253,12 +253,13 @@ def report_iteration(request):
                 worker_number = existing_iteration.worker_number
             else:
                 # Handle case where worker_name does not exist
-                return ResponseError(f"Worker '{worker_name}' not found in calibration run {run.id}.")
+                return ResponseError(f"Worker '{worker_name}' not found for calibration run {run.id}.")
 
-        if Iteration.objects.filter(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name).exists():
-            return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
+        print("Dummy - creating Iteration object")
+        # iteration_object, created = Iteration.objects.get_or_create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, defaults={'worker_number': worker_number})
+        # if not created:
+        #     return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
-        Iteration.objects.create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, worker_number=worker_number)
         response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
                     'calibration_run_id': run.id,
                     'status': run.status.name}

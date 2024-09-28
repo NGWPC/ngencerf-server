@@ -240,7 +240,7 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'root': {
-        'handlers': ['console'],
+        'handlers': ['console', 'file'],
         'level': 'DEBUG'
     },
     'formatters': {
@@ -272,43 +272,47 @@ LOGGING = {
     },
     'loggers': {
         'django.db.backends': {
-            'handlers': ['console'],
+            'handlers': ['console', 'file'],
             'level': 'INFO',
+            'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
-            'propagate': False,
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'rest_framework_simplejwt': {
-            'handlers': ['console'],
+            'handlers': ['console', 'file'],
             'level': 'DEBUG',
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+
         },
         'django.request': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-            'propagate': False,
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
-        'calibration': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False
-        },
-        'cerfServer': {
-            'handlers': ['console', 'file'],
-            'level': 'DEBUG',
-            'propagate': False
-        },
+
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-            'propagate': False,
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
-            'propagate': False,
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+        },
+        'calibration': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+        },
+        'cerfServer': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
     }
 }
