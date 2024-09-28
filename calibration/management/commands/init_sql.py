@@ -123,7 +123,7 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             GeopackageSource.objects.all().delete()
 
-        values = [{"name": "EHS", "description": "Enterprise Hydrofabric Service", "is_active": False},
+        values = [{"name": "EHS", "description": "Enterprise Hydrofabric Service", "is_active": True},
                   {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 

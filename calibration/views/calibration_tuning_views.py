@@ -1,5 +1,6 @@
 import io
 import logging
+import traceback
 from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
@@ -18,8 +19,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request
-from calibration.views.hydrofabric import get_module_data_from_hydrofabric
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
+from calibration.views.hydrofabric import get_module_data_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -62,15 +63,27 @@ def load_tuning_tab(request):
 
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    print('modules', modules)
 
     time_range = get_time_range(run)
 
+    hydrofabric_errors = []
+
     module_list = []
     if modules and run.gage:
-        # Only do this if modules have been saved in the formulation tab and we have a gage
+        # Only do this if modules have been saved in the formulation tab, and we have a gage
 
-        # print('calling hydrofabric with', modules)
-        get_module_data_from_hydrofabric(run, modules)
+        # First time through, all modules will be missing parameters
+        # For subsequent times, mostly likely none of them will be missing, if the modules haven't changed.
+        modules_missing_parameters = modules_without_parameters(modules)
+        print('modules missing parameters', modules_missing_parameters)
+
+        if modules_missing_parameters.exists():
+            try:
+                get_module_data_from_hydrofabric(run, modules)
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(modules)
@@ -78,6 +91,8 @@ def load_tuning_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list, 'time_range': time_range}
+    if hydrofabric_errors:
+        response['hydrofabric_errors'] = hydrofabric_errors
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
@@ -87,11 +102,26 @@ def load_tuning_tab(request):
     return Response(response_validator.data)
 
 
+def modules_without_parameters(modules_in_use):
+    # Check if any of these modules are missing parameters
+    modules_missing_parameters = modules_in_use.exclude(
+        calibrationparameter__isnull=False
+    )
+    return modules_missing_parameters
+
+
 def get_output_variable_to_calibrate(run):
     return {
         'module': run.module_output_variable.calibration_formulation.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else None
+
+
+def has_user_selected_tuning_parameters(modules):
+    for m in modules.prefetch_related('calibrationparameter_set'):
+        if m.calibrationparameter_set.filter(user_selected_for_tuning=True).exists():
+            return True
+    return False
 
 
 def get_parameters_and_output_variables(modules):
@@ -129,13 +159,14 @@ def get_time_range(run):
     :param run:
     :return:
     """
-    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path, ObservationalSourceEnum.UPLOAD,
+    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
+                                      ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path, ForcingSourceEnum.UPLOAD,
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path,
+                                  ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    logger.debug(f'Observation_path: {observation_path}, forcing_path: {forcing_path}')
     # If both paths are available, calculate intersection and update run
     if observation_path and forcing_path:
         daterange = get_date_range_intersection(observation_path, forcing_path)
@@ -150,22 +181,6 @@ def get_time_range(run):
     else:
         # We don't have the data,
         return {}
-
-
-def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
-    job_specific_file = get_path_func()
-    # print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
-
-    if source:
-        if source == upload_enum.from_enum(upload_enum):
-            # Check job-specific path first
-            if Path(job_specific_file).exists():
-                return job_specific_file
-        # If not found or source is different, check the hydrofabric path
-        if hydrofabric_path and Path(hydrofabric_path).exists():
-            return hydrofabric_path
-
-    return None
 
 
 def get_times(run):
@@ -380,7 +395,8 @@ def validate_parameters(run, parameters):
             return 'Modules and/or CalibrationParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
         # Make sure the parameters we are trying to save exist
         for p in parameters:
-            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module'], calibration_formulation__calibration_run=run).exists():
+            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module'],
+                                                       calibration_formulation__calibration_run=run).exists():
                 return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
     return None
 

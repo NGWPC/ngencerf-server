@@ -206,6 +206,53 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
+# Get the valid path for a file that can come from Hydrofabric or user-upload
+def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
+    job_specific_file = get_path_func()
+    # print('get_valid_path', source, hydrofabric_path, upload_enum, get_path_func())
+
+    if source:
+        if source == upload_enum.from_enum(upload_enum):
+            # Check job-specific path first
+            if Path(job_specific_file).exists():
+                return job_specific_file
+        # If not found or source is different, check the hydrofabric path
+        if hydrofabric_path and Path(hydrofabric_path).exists():
+            return hydrofabric_path
+
+    return None
+
+
+def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
+    """
+    Truncate large fields (lists, dicts, strings) in the data to prevent logging large values.
+    :param data: Dictionary of response data.
+    :param fields_to_truncate: List of fields to truncate in logs.
+    :param max_length: The maximum number of characters/items to display before truncating.
+    :return: Redacted dictionary for logging.
+    """
+    if fields_to_truncate is None:
+        fields_to_truncate = []
+
+    truncated_data = data.copy()
+    for field in fields_to_truncate:
+
+        if field in truncated_data:
+            value = truncated_data[field]
+            # Truncate strings if they exceed max_length
+            if isinstance(value, str) and len(value) > max_length:
+                truncated_data[field] = f"{value[:max_length]}... (truncated)"
+            # Truncate lists if they exceed max_length
+            elif isinstance(value, list) and len(value) > max_length:
+                truncated_data[field] = value[:max_length] + [f"... (truncated, {len(value)} total items)"]
+            # Truncate dicts by taking the first max_length key-value pairs
+            elif isinstance(value, dict) and len(value) > max_length:
+                truncated_dict = {k: value[k] for k in list(value)[:max_length]}
+                truncated_dict["..."] = f"(truncated, {len(value)} total keys)"
+                truncated_data[field] = truncated_dict
+    return truncated_data
+
+
 def ResponseError(message, response_type='error', validation_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
     """
     Return a standardized error response, with optional validation errors.
@@ -246,15 +293,19 @@ def validate_request(serializer_class, data, context=None):
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
-def validate_response(serializer_class, data):
+def validate_response(serializer_class, data, fields_to_truncate=None):
     validator = None
     try:
         validator = serializer_class(data=data)
         validator.is_valid(raise_exception=True)
+
+        # Redact large fields before logging
+        logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate)}')
+
         return validator, None
     except ValidationError as e:
         # Log the full data and errors in case of validation failure
-        logger.error(f"Validation error with data: {data}")
+        logger.error(f"Validation error with data: {truncate_large_fields(data, fields_to_truncate)}")
         logger.error(f"Validation errors: {str(e)}")
 
         # Note that an exception here is most likely due to a coding error

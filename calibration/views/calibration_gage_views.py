@@ -19,13 +19,15 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
-from calibration.util.file_util import delete_all_files_in_directory
+from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url
-from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url, \
+    truncate_large_fields, get_valid_path
+from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
+    HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +97,13 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    serializer, error_response = validate_response(LoadGageResponseSerializer, response)
+    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"])
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from load_gage_tab() - {serializer.data}')
+    logger.debug(f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"])}')
 
-    return Response(serializer.data)
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -201,6 +203,8 @@ def save_gage_tab(request):
     if error_return:
         return error_return
 
+    hydrofabric_errors = []
+
     geopackage_image_url = None
     if gage_id:
         try:
@@ -210,57 +214,55 @@ def save_gage_tab(request):
 
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            geopackage_file = get_geopackage_file_for_job(run)
+            user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
             # Delete if it's already there
-            if Path(geopackage_file).exists():
-                Path(geopackage_file).unlink()
-            try:
-                get_geopackage_from_hydrofabric(run)
-            except Exception as e:
-                # TODO Probably just want to catch the HTTPError
-                traceback.print_exc()
-                return Response(f'Error retrieving geopackage from Hydrofabric.- {e}')
+            if user_uploaded_geopackage_file and Path(user_uploaded_geopackage_file).exists():
+                Path(user_uploaded_geopackage_file).unlink()
+            if not run.geopackage_hydrofabric_file_path:
+                try:
+                    get_geopackage_from_hydrofabric(run)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'geopackage', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.geopackage_hydrofabric_file_path = None
 
-        run.geopackage_source = GeopackageSourceEnum.from_enum(
-            GeopackageSourceEnum(geopackage_source_name)) if geopackage_source_name else None
+        run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
         geopackage_image_url = get_geopackage_image_url(run)
 
         # Get forcing and observational data
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            observational_file = get_observational_file_for_job(run)
-            if Path(observational_file).exists():
-                Path(observational_file).unlink()
-            try:
-                get_observational_data_from_hydrofabric(run)
-            except Exception as e:
-                # TODO Probably just want to catch the HTTPError
-                traceback.print_exc()
-                return Response(f'Error retrieving observation data from Hydrofabric.- {e}')
+            user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
+            if user_uploaded_observational_file and Path(user_uploaded_observational_file).exists():
+                Path(user_uploaded_observational_file).unlink()
+            if not run.observational_hydrofabric_file_path:
+                try:
+                    get_observational_data_from_hydrofabric(run)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'observational', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.observational_hydrofabric_file_path = None
 
-        run.observational_source = ObservationalSourceEnum.from_enum(
-            ObservationalSourceEnum(observational_source_name)) if observational_source_name else None
+        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            forcing_dir = get_forcing_dir_for_job(run)
-            if Path(forcing_dir).exists():
-                shutil.rmtree(forcing_dir)
-            try:
-                get_forcing_data_from_hydrofabric(run)
-            except Exception as e:
-                # TODO Probably just want to catch the HTTPError
-                traceback.print_exc()
-                return Response(f'Error retrieving forcing data from Hydrofabric.- {e}')
+            user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
+            if user_uploaded_forcing_dir and Path(user_uploaded_forcing_dir).exists():
+                shutil.rmtree(user_uploaded_forcing_dir)
+            if not run.forcing_hydrofabric_dir_path:
+                try:
+                    get_forcing_data_from_hydrofabric(run)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'forcing', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.forcing_hydrofabric_dir_path = None
 
-        run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum(forcing_source_name)) if forcing_source_name else None
+        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
 
     with transaction.atomic():
         run.save()
@@ -269,16 +271,22 @@ def save_gage_tab(request):
 
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url}
+    if hydrofabric_errors:
+        response['hydrofabric_errors'] = hydrofabric_errors
 
-    response_validator, error_response = validate_response(SaveGageResponseSerializer, response)
+    response_validator, error_response = validate_response(SaveGageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from save_gage_tab() - {response_validator.data}')
+    logger.debug(
+        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+
     return Response(response_validator.data)
 
 
 def get_geopackage_image_url(run: CalibrationRun):
-    geopackage_path = get_geopackage_file_for_job(run) or run.geopackage_hydrofabric_file_path
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_geopackage_file_for_job(run))
 
     if geopackage_path and Path(geopackage_path).exists():
         geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
@@ -486,9 +494,6 @@ def upload_geopackage_data(request):
     if error_return:
         return error_return
 
-    # if not run.gage:
-    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
-
     run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
 
     # Save to the run-specific geopackage directory
@@ -503,7 +508,6 @@ def upload_geopackage_data(request):
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
     logger.info(f"Saving user-uploaded geopackage file to {os.path.join(fs.location, user_geopackage_file.name)}")
-    # TODO Need to rename it later
     fs.save(user_geopackage_file.name, user_geopackage_file)
 
     geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
@@ -517,9 +521,11 @@ def upload_geopackage_data(request):
                 'status': run.status.name}
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url
+    print("response", response)
 
-    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response)
+    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from upload_geopackage_data() - {response_validator.data}')
+    logger.debug(
+        f'Returning to {request.user} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
     return Response(response_validator.data)

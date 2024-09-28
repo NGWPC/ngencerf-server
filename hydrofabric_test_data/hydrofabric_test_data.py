@@ -1,6 +1,5 @@
 geopackage_sample_data = {
-    "url": "s3://ngwpc-dev/Yuqiong.Liu/data/camels1/gauge_01123000.gpkg",
-    "creation_date": "2024-07-30T12:33:00.001Z"
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/camels1/gauge_01123000.gpkg",
 }
 
 forcing_sample_data = {
@@ -66,7 +65,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
     {
         "module_name": "CFE-S",
         "parameter_file": {
-            "url": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
+            "uri": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
         },
         "calibrate_parameters": [
             {

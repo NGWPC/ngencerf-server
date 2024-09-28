@@ -5,13 +5,14 @@ from pathlib import Path
 import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Max
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from git import Repo
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, OptimizationEnum
@@ -22,10 +23,9 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
     SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, CheckTokenScope, \
-    generate_custom_token, token_slurm_scope, auth_scope_required
+from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, generate_custom_token, \
+    token_slurm_scope, auth_scope_required
 from calibration.views.read_output import read_output, accumulate_iterations
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -133,10 +133,9 @@ def submit_job(run, config_file=None):
     logger.info(f'Return from create_input for Calibration Run {run.id}')
 
     # Need to return the commit hash as part of the Slurm job
-    if False:
-        # Save the latest git hash or ngen and ngen-cal
-        run.ngen_commit_hash = Repo(settings.NGEN_REPO_ROOT).head.object.hexsha
-        run.ngen_cal_commit_hash = Repo(settings.NGEN_CAL_REPO_ROOT).head.object.hexsha
+    # Save the latest git hash or ngen and ngen-cal
+    # run.ngen_commit_hash = Repo(settings.NGEN_REPO_ROOT).head.object.hexsha
+    # run.ngen_cal_commit_hash = Repo(settings.NGEN_CAL_REPO_ROOT).head.object.hexsha
 
     run.run_date = datetime.now(timezone.utc)
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)

@@ -1,6 +1,8 @@
 import json
 import logging
+import traceback
 
+import requests
 from django.db import transaction
 from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -12,7 +14,7 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
-from calibration.views.hydrofabric import get_modules_from_hydrofabric
+from calibration.views.hydrofabric import get_modules_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,17 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    get_modules_from_hydrofabric(run)
+    hydrofabric_errors = []
+
+    # Do we already have modules?
+    have_modules = CalibrationFormulation.objects.filter(calibration_run=run).exists()
+
+    if not have_modules:
+        try:
+            get_modules_from_hydrofabric(run)
+        except HydrofabricException as e:
+            logger.error(f"Error retrieving module data from Hydrofabric: {traceback.format_exc()}")
+            hydrofabric_errors.append({'name': 'modules', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
     modules = get_all_modules(run)
 
@@ -64,6 +76,8 @@ def load_formulation_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
+    if hydrofabric_errors:
+        response['hydrofabric_errors'] = hydrofabric_errors
 
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
