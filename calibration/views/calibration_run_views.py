@@ -232,8 +232,11 @@ def report_iteration(request):
     worker_name = validator.get('worker_name')
     first_iteration_for_worker = validator.get('first_iteration_for_worker')
 
+    print(f'Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, worker: {worker_name}, first_iteration: {first_iteration_for_worker}')
+
     # TODO Only Running
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.RUNNING])
+    # run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.RUNNING])
+    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -252,9 +255,10 @@ def report_iteration(request):
                 # Handle case where worker_name does not exist
                 return ResponseError(f"Worker '{worker_name}' not found for calibration run {run.id}.")
 
-        iteration_object, created = Iteration.objects.get_or_create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, defaults={'worker_number': 'worker_number'})
-        if not created:
-            return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
+        print("Dummy - creating Iteration object")
+        # iteration_object, created = Iteration.objects.get_or_create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, defaults={'worker_number': worker_number})
+        # if not created:
+        #     return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
         response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
                     'calibration_run_id': run.id,
