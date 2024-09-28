@@ -56,11 +56,15 @@ def load_formulation_tab(request):
 
     hydrofabric_errors = []
 
-    try:
-        get_modules_from_hydrofabric(run)
-    except HydrofabricException as e:
-        logger.error(f"Error retrieving module data from Hydrofabric: {traceback.format_exc()}")
-        hydrofabric_errors.append({'name': 'modules', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+    # Do we already have modules?
+    have_modules = CalibrationFormulation.objects.filter(calibration_run=run).exists()
+
+    if not have_modules:
+        try:
+            get_modules_from_hydrofabric(run)
+        except HydrofabricException as e:
+            logger.error(f"Error retrieving module data from Hydrofabric: {traceback.format_exc()}")
+            hydrofabric_errors.append({'name': 'modules', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
     modules = get_all_modules(run)
 

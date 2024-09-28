@@ -63,6 +63,7 @@ def load_tuning_tab(request):
 
     # Get the list of modules for this Run
     modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    print('modules', modules)
 
     time_range = get_time_range(run)
 
@@ -72,11 +73,17 @@ def load_tuning_tab(request):
     if modules and run.gage:
         # Only do this if modules have been saved in the formulation tab, and we have a gage
 
-        try:
-            get_module_data_from_hydrofabric(run, modules)
-        except HydrofabricException as e:
-            logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
-            hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+        # First time through, all modules will be missing parameters
+        # For subsequent times, mostly likely none of them will be missing, if the modules haven't changed.
+        modules_missing_parameters = modules_without_parameters(modules)
+        print('modules missing parameters', modules_missing_parameters)
+
+        if modules_missing_parameters.exists():
+            try:
+                get_module_data_from_hydrofabric(run, modules)
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(modules)
@@ -93,6 +100,14 @@ def load_tuning_tab(request):
     logger.debug(f'Returning to {request.user} from load_tuning_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
+
+
+def modules_without_parameters(modules_in_use):
+    # Check if any of these modules are missing parameters
+    modules_missing_parameters = modules_in_use.exclude(
+        calibrationparameter__isnull=False
+    )
+    return modules_missing_parameters
 
 
 def get_output_variable_to_calibrate(run):
@@ -152,7 +167,6 @@ def get_time_range(run):
                                   ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    logger.debug(f'Observation_path: {observation_path}, forcing_path: {forcing_path}')
     # If both paths are available, calculate intersection and update run
     if observation_path and forcing_path:
         daterange = get_date_range_intersection(observation_path, forcing_path)

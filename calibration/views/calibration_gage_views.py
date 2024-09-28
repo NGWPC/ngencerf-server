@@ -19,7 +19,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     SaveGageResponseSerializer, \
     LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
-from calibration.util.file_util import delete_all_files_in_directory
+from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
@@ -214,15 +214,16 @@ def save_gage_tab(request):
 
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            geopackage_file = get_geopackage_file_for_job(run)
+            user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
             # Delete if it's already there
-            if Path(geopackage_file).exists():
-                Path(geopackage_file).unlink()
-            try:
-                get_geopackage_from_hydrofabric(run)
-            except HydrofabricException as e:
-                logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
-                hydrofabric_errors.append({'name': 'geopackage', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+            if user_uploaded_geopackage_file and Path(user_uploaded_geopackage_file).exists():
+                Path(user_uploaded_geopackage_file).unlink()
+            if not run.geopackage_hydrofabric_file_path:
+                try:
+                    get_geopackage_from_hydrofabric(run)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'geopackage', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.geopackage_hydrofabric_file_path = None
 
@@ -233,14 +234,15 @@ def save_gage_tab(request):
         # Get forcing and observational data
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            observational_file = get_observational_file_for_job(run)
-            if Path(observational_file).exists():
-                Path(observational_file).unlink()
-            try:
-                get_observational_data_from_hydrofabric(run)
-            except HydrofabricException as e:
-                logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
-                hydrofabric_errors.append({'name': 'observational', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+            user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
+            if user_uploaded_observational_file and Path(user_uploaded_observational_file).exists():
+                Path(user_uploaded_observational_file).unlink()
+            if not run.observational_hydrofabric_file_path:
+                try:
+                    get_observational_data_from_hydrofabric(run)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'observational', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.observational_hydrofabric_file_path = None
 
@@ -248,14 +250,15 @@ def save_gage_tab(request):
 
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
-            forcing_dir = get_forcing_dir_for_job(run)
-            if Path(forcing_dir).exists():
-                shutil.rmtree(forcing_dir)
-            try:
-                get_forcing_data_from_hydrofabric(run)
-            except HydrofabricException as e:
-                logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
-                hydrofabric_errors.append({'name': 'forcing', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+            user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
+            if user_uploaded_forcing_dir and Path(user_uploaded_forcing_dir).exists():
+                shutil.rmtree(user_uploaded_forcing_dir)
+            if not run.forcing_hydrofabric_dir_path:
+                try:
+                    get_forcing_data_from_hydrofabric(run)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'forcing', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
         else:
             run.forcing_hydrofabric_dir_path = None
 
