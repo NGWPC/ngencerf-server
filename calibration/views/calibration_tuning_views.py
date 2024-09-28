@@ -73,11 +73,12 @@ def load_tuning_tab(request):
     if modules and run.gage:
         # Only do this if modules have been saved in the formulation tab, and we have a gage
 
-        # First time through, all modules will be missing parameters
-        # For subsequent times, mostly likely none of them will be missing, if the modules haven't changed.
+        # First time through, all modules will be missing parameters, so we'll call Hydrofabric
+        # For subsequent times, most likely none of them will be missing, if the modules haven't changed.
         modules_missing_parameters = modules_without_parameters(modules)
         print('modules missing parameters', modules_missing_parameters)
 
+        # Call Hydrofabric if any modules are missing paranerers
         if modules_missing_parameters.exists():
             try:
                 get_module_data_from_hydrofabric(run, modules)

@@ -207,7 +207,8 @@ def save_formulation_tab(request):
                 calibration_run=run, name__in=new_module_names
             ).update(used_by_calibration_run=True)
 
-            # Delete sloth params for this run if they've already been specified - no harm to just delete them all and re-save
+            # Delete sloth params for this run if they've already been specified since they might refer to modules no longer in use
+            # Easier to just delete them all and then re-validate  and re-save
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
             if use_sloth:
                 error_message = add_sloth_parameters(run, sloth_parameters)
@@ -340,6 +341,7 @@ def validate_formulation(run, module_names):
 
 
 def add_sloth_parameters(run, sloth_parameters):
+    # Get modules referenced by the sloth parameters
     modules = CalibrationFormulation.objects.filter(
         name__in=[s['maps_to_module'] for s in sloth_parameters],
         calibration_run=run,
