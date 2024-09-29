@@ -21,6 +21,8 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+SLOTH = 'SLoTH'
+
 
 def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
     """
@@ -185,6 +187,7 @@ def handle_exceptions(view_func):
     :param view_func: The view function to wrap.
     :return: The wrapped view function with exception handling.
     """
+
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         original_logger = logging.getLogger(view_func.__module__)

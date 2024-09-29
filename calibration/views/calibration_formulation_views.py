@@ -2,7 +2,6 @@ import json
 import logging
 import traceback
 
-import requests
 from django.db import transaction
 from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -13,12 +12,10 @@ from calibration.models import CalibrationFormulation, CalibrationSlothParam, Ca
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
 from calibration.views.hydrofabric import get_modules_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
-
-SLOTH = 'SLoTH'
 
 
 @extend_schema(
@@ -92,7 +89,6 @@ def load_formulation_tab(request):
 def get_all_modules(run):
     return list(
         CalibrationFormulation.objects.filter(calibration_run=run)
-        .exclude(name=SLOTH)
         .values('name', 'groups', 'used_by_calibration_run')
     )
 
@@ -101,7 +97,6 @@ def get_my_modules(run):
     return list(
         CalibrationFormulation.objects
         .filter(calibration_run=run, used_by_calibration_run=True)
-        .exclude(name=SLOTH)
         .values_list('name', flat=True)
     )
 
@@ -166,7 +161,6 @@ def save_formulation_tab(request):
         return ResponseError(messages, validation_errors=formulation_validation_json, response_type='formulation_error')
 
     if use_sloth:
-        new_module_names.add(SLOTH)
         if not sloth_parameters:
             return ResponseError(f"If 'use_sloth' is checked, you must enter {SLOTH} parameters")
     else:

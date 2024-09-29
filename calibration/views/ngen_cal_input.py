@@ -16,7 +16,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-from calibration.views.common import CerfException, token_ngen, generate_custom_token
+from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +251,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     if not is_missing(modules, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
         general['formulation'] = run.user_formulation_name
         general['models'] = ', '.join(module_dict.keys())
+        if run.use_sloth:
+            general['models'] += f', {SLOTH}'
 
         # Dynamically add keys and values from the module_dict to our config
         for key, value in module_dict.items():

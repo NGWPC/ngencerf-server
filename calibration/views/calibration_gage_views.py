@@ -521,7 +521,6 @@ def upload_geopackage_data(request):
                 'status': run.status.name}
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url
-    print("response", response)
 
     response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:

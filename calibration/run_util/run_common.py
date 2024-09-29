@@ -100,6 +100,7 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
         logger.info(f'Job {process_id} complete. No further stages.')
         set_job_status(run, StatusEnum.DONE)
 
+        # This can throw a CerfException, but not sure what to do with it
         read_output(run)
 
 

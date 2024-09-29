@@ -26,20 +26,16 @@ worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 # Function to read the output of a calibration run
 def read_output(run):
     """
-    Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name, and we create entries in the database.
-    Until we get that interface working, we'll create all the Iteration objects here
-    We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
-
     Process the output of a CalibrationRun. This function handles reading and
-    processing the worker directories and their iteration files. It creates Iteration
-    objects for each worker and processes them for metrics and parameters.
+    processing the worker directories and their iteration files.
 
     :param run: The CalibrationRun instance whose output is to be processed.
     """
     logger.info(f"Processing output for Calibration Run {run.id}")
 
+    # Iteration objects are created as the job progress by report_iteration
     # Create iteration objects for all worker directories
-    create_iteration_objects_for_all_workers(run)
+    # create_iteration_objects_for_all_workers(run)
 
     # Set the realization file path for the run
     run.realization_file_path = get_realization_file_path(run)
@@ -50,63 +46,64 @@ def read_output(run):
         process_iterations_for_all_workers(run)
 
 
-# Function to create iteration objects for all workers in a run
-def create_iteration_objects_for_all_workers(run: CalibrationRun):
-    """
-    Create Iteration objects for each worker directory in the CalibrationRun.
-    Iterates through the worker directories, reads the metrics file for each worker,
-    and creates corresponding Iteration entries.
-
-    :param run: The CalibrationRun instance whose worker directories are processed.
-    """
-    worker_number = 0  # Initialize worker number
-    all_iteration_objects = []  # List to accumulate Iteration objects
-
-    # Internal function to process each worker directory and create Iteration objects
-    def create_iteration_objects_for_a_worker(worker_dir, run):  # noqa : F811
-        nonlocal worker_number
-        """
-        Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name, and we create entries in the database.
-        Until we get that interface working, we'll have to figure out the iteration by brute force
-        We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
-        :return:
-        """
-        # Create iteration object for a given worker
-        worker_number += 1
-
-        # Get the metrics file for this worker
-        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
-
-        # Check if the file exists before proceeding
-        if not Path(metrics_iteration_file).is_file():
-            logger.error(f'Metrics iteration file not found in {worker_dir}')
-            return
-
-        # Use pandas to read the CSV file into a DataFrame
-        metrics_df = pd.read_csv(metrics_iteration_file, dtype={'iteration': int})
-
-        # Loop through each row and create Iteration objects
-        for _, row in metrics_df.iterrows():
-            iteration_number = row['iteration']
-
-            # TODO Change worker name to just use the middle part
-            logger.debug(f'{run.id}_{run.owner.username} Creating iteration {iteration_number} for worker {Path(worker_dir).name}, worker number {worker_number}')
-            all_iteration_objects.append(Iteration(
-                iteration_num=iteration_number,
-                calibration_run=run,
-                worker_name=Path(worker_dir).name,
-                worker_number=worker_number
-            ))
-
-    # Process all worker directories and create iteration objects
-    process_worker_dirs(run, create_iteration_objects_for_a_worker)
-
-    # Bulk create the iteration objects in batches
-    if all_iteration_objects:
-        with transaction.atomic():
-            for i in range(0, len(all_iteration_objects), BULK_CREATE_BATCH_SIZE):
-                Iteration.objects.bulk_create(all_iteration_objects[i:i + BULK_CREATE_BATCH_SIZE], batch_size=BULK_CREATE_BATCH_SIZE)
-
+#
+# # Function to create iteration objects for all workers in a run
+# def create_iteration_objects_for_all_workers(run: CalibrationRun):
+#     """
+#     Create Iteration objects for each worker directory in the CalibrationRun.
+#     Iterates through the worker directories, reads the metrics file for each worker,
+#     and creates corresponding Iteration entries.
+#
+#     :param run: The CalibrationRun instance whose worker directories are processed.
+#     """
+#     worker_number = 0  # Initialize worker number
+#     all_iteration_objects = []  # List to accumulate Iteration objects
+#
+#     # Internal function to process each worker directory and create Iteration objects
+#     def create_iteration_objects_for_a_worker(worker_dir, run):  # noqa : F811
+#         nonlocal worker_number
+#         """
+#         Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name, and we create entries in the database.
+#         Until we get that interface working, we'll have to figure out the iteration by brute force
+#         We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
+#         :return:
+#         """
+#         # Create iteration object for a given worker
+#         worker_number += 1
+#
+#         # Get the metrics file for this worker
+#         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
+#
+#         # Check if the file exists before proceeding
+#         if not Path(metrics_iteration_file).is_file():
+#             logger.error(f'Metrics iteration file not found in {worker_dir}')
+#             return
+#
+#         # Use pandas to read the CSV file into a DataFrame
+#         metrics_df = pd.read_csv(metrics_iteration_file, dtype={'iteration': int})
+#
+#         # Loop through each row and create Iteration objects
+#         for _, row in metrics_df.iterrows():
+#             iteration_number = row['iteration']
+#
+#             # TODO Change worker name to just use the middle part
+#             logger.debug(f'{run.id}_{run.owner.username} Creating iteration {iteration_number} for worker {Path(worker_dir).name}, worker number {worker_number}')
+#             all_iteration_objects.append(Iteration(
+#                 iteration_num=iteration_number,
+#                 calibration_run=run,
+#                 worker_name=Path(worker_dir).name,
+#                 worker_number=worker_number
+#             ))
+#
+#     # Process all worker directories and create iteration objects
+#     process_worker_dirs(run, create_iteration_objects_for_a_worker)
+#
+#     # Bulk create the iteration objects in batches
+#     if all_iteration_objects:
+#         with transaction.atomic():
+#             for i in range(0, len(all_iteration_objects), BULK_CREATE_BATCH_SIZE):
+#                 Iteration.objects.bulk_create(all_iteration_objects[i:i + BULK_CREATE_BATCH_SIZE], batch_size=BULK_CREATE_BATCH_SIZE)
+#
 
 # Function to process iterations for all workers in a run
 def process_iterations_for_all_workers(run: CalibrationRun):
@@ -134,15 +131,14 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     iteration for metrics and parameters creation.
 
     :param run: The CalibrationRun instance.
-    :param worker_name: The name of the worker.
+    :param worker_name: The name of the worker.  This is the middle part of the worker name.  Need to prefix with ngen_ and suffix with _worker
     :param iterations: A list of Iteration objects for the worker.
     """
     # Get the worker's path
-    # TODO Change worker name to be the middle part, so we would have to re-construct the name
     worker_path = get_worker_path(run, worker_name)
     if not Path(worker_path).is_dir():
-        # TODO Need to make sure we're handling exceptions
-        raise CerfException(f"{worker_path} does not exist")
+        # TODO Need to make sure we're handling exceptions in the caller
+        raise CerfException(f"{worker_path} does not exist or is not a directory")
 
     # Get the necessary files for metrics, parameters, and best objective function log
     metrics_iteration_file = get_metrics_iteration_file(run, worker_name)
@@ -329,7 +325,8 @@ def update_output_variables(metrics_iteration_file, run, worker_name):
             raise CerfException(
                 f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
 
-        logger.debug(f'{run.id}_{run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
+        logger.debug(
+            f'{run.id}_{run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
         iteration.calibration_output_variable_value = obj_fun_val
 
         # Add the modified object to the list

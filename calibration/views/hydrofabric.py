@@ -117,7 +117,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
-    if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
+    if settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[0]:
         logger.info('Getting forcing data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
         forcing_json = fetch_from_hydrofabric('GET', url, headers=headers)
@@ -133,13 +133,15 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
 
 
-def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[CalibrationFormulation]):
-    module_names = set(modules.values_list('name', flat=True))
+def get_module_metadata_from_hydrofabric(run: CalibrationRun, modules: QuerySet[CalibrationFormulation]):
+    module_names = list(modules.values_list('name', flat=True))
 
     if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
         logger.info('Getting module metadata from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
-        module_json = fetch_from_hydrofabric('POST', url, headers=headers, payload={"modules": module_names})
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1])
+        # TODO need them to return an object
+
+        module_json = {'modules': fetch_from_hydrofabric('POST', url, headers=headers, payload={'modules': module_names, 'gage_id': run.gage.gage_id})}
     else:
         logger.info('Getting dummy module metadata data')
         module_json = hydrofabric_module_metadata_real_data
@@ -150,6 +152,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
     hydrofabric_module_names = set([module['module_name'] for module in module_data['modules']])
     # print('hydrofabric_module_names:', hydrofabric_module_names)
 
+    module_names = set(module_names)
     missing_names = module_names - hydrofabric_module_names
     if missing_names:
         # TODO Needs to be an exception
@@ -170,17 +173,18 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
 
             # Save the config
             # print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
-            module.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['url'])
+            module.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['uri'])
             module.save(update_fields=['bmi_config_path'])
 
             # Save output variables
-            outputs = m['module_output_variables']
+            outputs = m['output_variables']
             o: dict
             for o in outputs:
                 ModuleOutputVariable.objects.update_or_create(
-                    name=o['name'],
+                    name=o['variable'],
                     calibration_formulation=module,
-                    defaults={'description': o['description']}
+                    # TODO Fix this.  Description is required
+                    defaults={'description': o['description'] if o['description'] else 'placeholder description'}
                 )
             # Save parameters
             parameters = m['calibrate_parameters']

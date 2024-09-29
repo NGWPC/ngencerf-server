@@ -555,15 +555,16 @@ class UserParameterFileUploadResponse(BaseSerializer):
 
 # Output variables from Hydrofabric
 class ModuleOutputVariablesSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
+    variable = serializers.CharField(required=True, allow_blank=False)
+    # TODO This is required, cannot be null
+    description = serializers.CharField(required=True, allow_blank=False, allow_null=True)
 
 
 # Module object from Hydrofabric containing module parameters and output variables
 class ModuleMetadataHydrofabricSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
-    module_output_variables = ModuleOutputVariablesSerializer(many=True)
+    output_variables = ModuleOutputVariablesSerializer(many=True)
     parameter_file = S3FileValidator(required=True)
 
 
@@ -573,8 +574,8 @@ class ModuleDataHydrofabricListSerializer(BaseSerializer):
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
-class ModuleHydrofabricVersionSerializer(serializers.Serializer):
-    commit_hash = serializers.CharField(required=True, allow_blank=False)
+# class ModuleHydrofabricVersionSerializer(serializers.Serializer):
+#     commit_hash = serializers.CharField(required=True, allow_blank=False)
 
 
 # Module objects from Hydrofabric contain group names and version
@@ -689,10 +690,6 @@ class SubmitJobResponseSerializer(GenericResponseSerializer):
 
 class GetIterationsResponseSerializer(GenericResponseSerializer):
     iterations = serializers.IntegerField(required=True)
-
-
-class ProcessCalibrationOutputRequest(CalibrationRunSerializer):
-    rerun = serializers.BooleanField(required=False, default=False)
 
 
 class SlurmCallbackRequestSerializer(BaseSerializer):

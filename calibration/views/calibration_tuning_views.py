@@ -20,7 +20,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
-from calibration.views.hydrofabric import get_module_data_from_hydrofabric, HydrofabricException
+from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +78,10 @@ def load_tuning_tab(request):
         modules_missing_parameters = modules_without_parameters(modules)
         print('modules missing parameters', modules_missing_parameters)
 
-        # Call Hydrofabric if any modules are missing paranerers
+        # Call Hydrofabric if any modules are missing parameters
         if modules_missing_parameters.exists():
             try:
-                get_module_data_from_hydrofabric(run, modules)
+                get_module_metadata_from_hydrofabric(run, modules_missing_parameters)
             except HydrofabricException as e:
                 logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                 hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
