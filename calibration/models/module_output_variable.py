@@ -1,13 +1,12 @@
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.calibration_formulation import CalibrationFormulation
 
 
 class ModuleOutputVariable(BaseModel):
     description = models.TextField(null=False)
     name = models.CharField(max_length=255, null=False)
-    calibration_formulation = models.ForeignKey(CalibrationFormulation, null=False, on_delete=models.CASCADE, related_name='output_variables')
+    calibration_formulation = models.ForeignKey('CalibrationFormulation', null=False, on_delete=models.CASCADE, related_name='output_variables')
 
     class Meta:
         db_table = 'module_output_variable'

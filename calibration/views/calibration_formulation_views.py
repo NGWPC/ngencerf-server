@@ -9,6 +9,8 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable
+from calibration.models.module import Module
+from calibration.models.module_group import ModuleGroup
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
@@ -51,30 +53,43 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    hydrofabric_errors = []
 
-    # Do we already have modules?
-    have_modules = CalibrationFormulation.objects.filter(calibration_run=run).exists()
+    # TODO Need to cache this
+    modules = Module.objects.prefetch_related(
+        Prefetch('groups', queryset=ModuleGroup.objects.only('name'))
+    )
+    module_groups_list = [
+        {
+            "name": module.name,
+            "groups": [group.name for group in module.groups.all()]
+        }
+        for module in modules
+    ]
 
-    if not have_modules:
-        try:
-            get_modules_from_hydrofabric(run)
-        except HydrofabricException as e:
-            logger.error(f"Error retrieving module data from Hydrofabric: {traceback.format_exc()}")
-            hydrofabric_errors.append({'name': 'modules', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
-
-    modules = get_all_modules(run)
-
-    # Unwrap the groups
-    for m in modules:
-        m['groups'] = json.loads(m['groups'])
-    module_list = list(modules)
+    # hydrofabric_errors = []
+    #
+    # # Do we already have modules?
+    # have_modules = CalibrationFormulation.objects.filter(calibration_run=run).exists()
+    #
+    # if not have_modules:
+    #     try:
+    #         get_modules_from_hydrofabric(run)
+    #     except HydrofabricException as e:
+    #         logger.error(f"Error retrieving module data from Hydrofabric: {traceback.format_exc()}")
+    #         hydrofabric_errors.append({'name': 'modules', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+    #
+    # modules = get_all_modules(run)
+    #
+    # # Unwrap the groups
+    # for m in modules:
+    #     m['groups'] = json.loads(m['groups'])
+    # module_list = list(modules)
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list}
-    if hydrofabric_errors:
-        response['hydrofabric_errors'] = hydrofabric_errors
+    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_groups_list}
+    # if hydrofabric_errors:
+    #     response['hydrofabric_errors'] = hydrofabric_errors
 
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
@@ -86,17 +101,20 @@ def load_formulation_tab(request):
     return Response(response_validator.data)
 
 
-def get_all_modules(run):
-    return list(
-        CalibrationFormulation.objects.filter(calibration_run=run)
-        .values('name', 'groups', 'used_by_calibration_run')
-    )
+# def get_all_modules(run):
+#     return list(
+#         CalibrationFormulation.objects.filter(calibration_run=run)
+#         .values('name', 'groups', 'used_by_calibration_run')
+#     )
+#
+#
 
 
+ # TODO Make sure this is right
 def get_my_modules(run):
     return list(
         CalibrationFormulation.objects
-        .filter(calibration_run=run, used_by_calibration_run=True)
+        .filter(calibration_run=run,)
         .values_list('name', flat=True)
     )
 
@@ -149,8 +167,8 @@ def save_formulation_tab(request):
     run.user_formulation_name = user_formulation_name
 
     # Did we get the names from Hydrofabric?
-    if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
-        return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
+    # if not CalibrationFormulation.objects.filter(calibration_run_id=run.id).exists():
+    #     return ResponseError('Modules have not been received from Hydrofabric.  Should be done on load_formulation_tab')
 
     error_message = validate_modules(run, new_module_names)
     if error_message:
@@ -171,7 +189,7 @@ def save_formulation_tab(request):
 
     # Get current new_module_names
     existing_module_names = set(CalibrationFormulation.objects
-                                .filter(calibration_run_id=run.id, used_by_calibration_run=True)
+                                .filter(calibration_run_id=run.id)
                                 .values_list('name', flat=True))
 
     print('old existing_module_names', existing_module_names)
@@ -183,23 +201,20 @@ def save_formulation_tab(request):
         print('to_be_unused', to_be_unused)
 
         with transaction.atomic():
-            # Turn off `used_by_calibration_run` for unused modules
-            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).update(used_by_calibration_run=False)
-
-            # Delete associated CalibrationParameters and ModuleOutputVariables explicitly
+            # Delete modules that are no longer used, as well as associated CalibrationParameters and ModuleOutputVariables
+            CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_unused).delete()
             CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run,
                                                 calibration_formulation__name__in=to_be_unused).delete()
             ModuleOutputVariable.objects.filter(calibration_formulation__name__in=to_be_unused).delete()
 
-            # Create any new formulations
-            # for name in new_module_names:
-            #     CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
-            # These objects should already exist.  Not sure why I was using update_or_create
+            for m in new_module_names:
+                m = Module.objects.get(name=m)
+                CalibrationFormulation.objects.get_or_create(calibration_run=run, module=m)
 
-            # Update existing formulations to set `used_by_calibration_run=True`
-            CalibrationFormulation.objects.filter(
-                calibration_run=run, name__in=new_module_names
-            ).update(used_by_calibration_run=True)
+            # # Update existing formulations to set `used_by_calibration_run=True`
+            # CalibrationFormulation.objects.filter(
+            #     calibration_run=run, name__in=new_module_names
+            # ).update(used_by_calibration_run=True)
 
             # Delete sloth params for this run if they've already been specified since they might refer to modules no longer in use
             # Easier to just delete them all and then re-validate  and re-save
@@ -222,9 +237,10 @@ def save_formulation_tab(request):
     return Response(response_validator.data)
 
 
+#TODO Need to cache the modules names
 def validate_modules(run, module_names):
     # Check that all the module names are valid
-    valid_names = set(CalibrationFormulation.objects.filter(calibration_run_id=run.id, name__in=module_names).values_list('name', flat=True))
+    valid_names = set(Module.objects.filter(name__in=module_names).values_list('name', flat=True))
     if module_names - valid_names:
         return f'Invalid modules - {module_names - valid_names}'
     return None
@@ -268,19 +284,26 @@ formulation_validations = {
 
 
 def validate_formulation(run, module_names):
-    calibration_formulations = CalibrationFormulation.objects.filter(
-        name__in=module_names,
-        calibration_run=run
+    my_modules = Module.objects.filter(
+        name__in=module_names
     )
 
-    # Create the list of dicts
-    formulation_dicts = []
-    for formulation in calibration_formulations:
-        groups = json.loads(formulation.groups)  # Parse the groups JSON string into a list
-        formulation_dicts.append({
-            "name": formulation.name,
-            "groups": groups  # Add the parsed groups list here
-        })
+    formulation_dicts = [
+        {
+            "name": module.name,
+            "groups": [group.name for group in module.groups.all()]
+        }
+        for module in my_modules
+    ]
+
+    # # Create the list of dicts
+    # formulation_dicts = []
+    # for m in my_modules:
+    #     groups = json.loads(m.groups)  # Parse the groups JSON string into a list
+    #     formulation_dicts.append({
+    #         "name": m.name,
+    #         "groups": groups  # Add the parsed groups list here
+    #     })
 
     # Initialize a dictionary to store the count of modules per group
     group_counts = {group_name: 0 for group_name in formulation_validations['formulation_rules']['group_requirements']}
@@ -289,8 +312,8 @@ def validate_formulation(run, module_names):
     module_set = set(module_names)
 
     # Parse the groups for each module once and update the group counts
-    for formulation in calibration_formulations:
-        groups = json.loads(formulation.groups)  # Parse the groups JSON string once
+    for m in my_modules:
+        groups = m.groups()  
         for group_name in groups:
             if group_name in group_counts:  # Only update if the group is in group_requirements
                 group_counts[group_name] += 1
@@ -339,7 +362,6 @@ def add_sloth_parameters(run, sloth_parameters):
     modules = CalibrationFormulation.objects.filter(
         name__in=[s['maps_to_module'] for s in sloth_parameters],
         calibration_run=run,
-        used_by_calibration_run=True
     )
 
     module_dict = {module.name: module for module in modules}

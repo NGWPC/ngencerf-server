@@ -1,13 +1,11 @@
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.calibration_run import CalibrationRun
-from calibration.models.module import Module
 
 
 class CalibrationFormulation(BaseModel):
     description = models.TextField()
-    module = models.ForeignKey(Module, null=False, on_delete=models.RESTRICT)
+    module = models.ForeignKey('Module', null=False, on_delete=models.RESTRICT)
     bmi_config_path = models.CharField(max_length=255, null=True)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.RESTRICT)
     module_commit_hash = models.CharField(max_length=50, null=True)
@@ -21,6 +19,6 @@ class CalibrationFormulation(BaseModel):
     def __str__(self):
         return (
             f"CalibrationFormulation: {self.id}, "
-            f"name: {module.name:20}, "
+            f"module: {self.module.name:20}, "
             f"calibration_run: {self.calibration_run.id}"
         )

@@ -2,7 +2,6 @@ from django.contrib.auth import get_user_model
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.status import Status
 
 
 class ValidationRun(BaseModel):
@@ -15,7 +14,7 @@ class ValidationRun(BaseModel):
     validation_eval_start_period = models.DateTimeField()
     validation_eval_end_period = models.DateTimeField()
     owner = models.ForeignKey(get_user_model(), null=False, on_delete=models.RESTRICT, db_index=True)
-    status = models.ForeignKey(Status, null=False, on_delete=models.CASCADE, db_index=True)
+    status = models.ForeignKey('Status', null=False, on_delete=models.CASCADE, db_index=True)
 
     class Meta:
         db_table = 'validation_run'

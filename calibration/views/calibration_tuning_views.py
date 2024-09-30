@@ -113,14 +113,14 @@ def modules_without_parameters(modules_in_use):
 
 def get_output_variable_to_calibrate(run):
     return {
-        'module': run.module_output_variable.calibration_formulation.name,
+        'module': run.module_output_variable.calibration_formulation.model.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else None
 
 
 def has_user_selected_tuning_parameters(modules):
     for m in modules.prefetch_related('calibrationparameter_set'):
-        if m.calibrationparameter_set.filter(user_selected_for_tuning=True).exists():
+        if m.calibrationparameter_set.exists():
             return True
     return False
 
@@ -144,7 +144,7 @@ def get_parameters_and_output_variables(modules):
 def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
-        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m, user_selected_for_tuning=True)
+        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
                                      .values('name', 'minimum', 'maximum', 'initial_value'))
 
         for p in calibrationParameters:
@@ -404,7 +404,7 @@ def validate_parameters(run, parameters):
 
 def save_output_variable(run, output_variable_to_calibrate):
     if output_variable_to_calibrate:
-        module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
+        module_with_output_variable = CalibrationFormulation.objects.filter(model_name=output_variable_to_calibrate['module'],
                                                                             calibration_run=run).first()
         if not module_with_output_variable:
             return "Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id)
@@ -424,7 +424,7 @@ def save_parameters(run, parameters):
         for p in parameters:
             calibration_param = CalibrationParameter.objects.filter(
                 name=p['name'],
-                calibration_formulation__name=p['module'],
+                calibration_formulation__model__name=p['module'],
                 calibration_formulation__calibration_run=run
             ).first()
             if calibration_param:
