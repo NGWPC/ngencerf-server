@@ -122,7 +122,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
         forcing_json = fetch_from_hydrofabric('GET', url, headers=headers)
     else:
-        logger.info('Getting dummy module metadata data')
+        logger.info('Getting dummy forcing data')
         forcing_json = hydrofabric_module_metadata_real_data
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
@@ -143,7 +143,7 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, modules: QuerySet[
 
         module_json = {'modules': fetch_from_hydrofabric('POST', url, headers=headers, payload={'modules': module_names, 'gage_id': run.gage.gage_id})}
     else:
-        logger.info('Getting dummy module metadata data')
+        logger.info('Getting dummy module metadata')
         module_json = hydrofabric_module_metadata_real_data
 
     module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
@@ -261,8 +261,7 @@ def get_modules_from_hydrofabric(run: CalibrationRun):
 def validate_response_data(serializer_class, data, error_message):
     validator = serializer_class(data=data)
     if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'{error_message} - {validator.errors}')
+        raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
     return validator.data
 
 
