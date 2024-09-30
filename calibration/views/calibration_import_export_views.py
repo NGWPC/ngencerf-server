@@ -242,7 +242,7 @@ def import_calibration_run_data(request, calibration_run_data):
             return None, None, None, ResponseError(error_message)
 
         run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
-        run.save_output_iteration = calibration_run_data.get('save_output_iteration')
+        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get('save_output_iteration') else False
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 

@@ -767,7 +767,7 @@ class ImportSerializer(BaseSerializer):
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
-    save_output_iteration = serializers.BooleanField(required=False, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
 
 
