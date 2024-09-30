@@ -244,7 +244,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         # Need to set parquet file based on domain
         datafile['attributes_file'] = str(Path(PARQUET_DIR) / f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values('name', 'bmi_config_path')
+    modules = CalibrationFormulation.objects.filter(calibration_run=run).values('name', 'bmi_config_path')
     # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
     module_dict = {module['name']: module['bmi_config_path'] for module in modules}
 

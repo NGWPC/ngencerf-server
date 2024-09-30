@@ -514,7 +514,7 @@ class SaveFormulationResponseSerializer(GenericResponseSerializer):
 class ModuleStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     groups = serializers.ListField(child=serializers.CharField(required=True))
-    used_by_calibration_run = serializers.BooleanField(required=True)
+    # used_by_calibration_run = serializers.BooleanField(required=True)
 
 
 class LoadFormulationResponseSerializer(BaseSerializer):

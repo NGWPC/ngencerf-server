@@ -1,6 +1,4 @@
-import json
 import logging
-import traceback
 
 from django.db import transaction
 from django.db.models import Prefetch
@@ -15,7 +13,6 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
-from calibration.views.hydrofabric import get_modules_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +49,6 @@ def load_formulation_tab(request):
     run, error_return = get_run(calibration_run_id, request.user)
     if error_return:
         return error_return
-
 
     # TODO Need to cache this
     modules = Module.objects.prefetch_related(
@@ -110,11 +106,11 @@ def load_formulation_tab(request):
 #
 
 
- # TODO Make sure this is right
+# TODO Make sure this is right
 def get_my_modules(run):
     return list(
         CalibrationFormulation.objects
-        .filter(calibration_run=run,)
+        .filter(calibration_run=run, )
         .values_list('name', flat=True)
     )
 
@@ -237,7 +233,7 @@ def save_formulation_tab(request):
     return Response(response_validator.data)
 
 
-#TODO Need to cache the modules names
+# TODO Need to cache the modules names
 def validate_modules(run, module_names):
     # Check that all the module names are valid
     valid_names = set(Module.objects.filter(name__in=module_names).values_list('name', flat=True))
@@ -313,7 +309,7 @@ def validate_formulation(run, module_names):
 
     # Parse the groups for each module once and update the group counts
     for m in my_modules:
-        groups = m.groups()  
+        groups = m.groups()
         for group_name in groups:
             if group_name in group_counts:  # Only update if the group is in group_requirements
                 group_counts[group_name] += 1

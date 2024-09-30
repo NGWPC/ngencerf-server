@@ -19,7 +19,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
+from calibration.views.calibration_formulation_views import get_sloth_parameters,  validate_modules, \
     SLOTH, add_sloth_parameters, get_my_modules, validate_formulation
 from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
@@ -30,6 +30,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
+from calibration.views.hydrofabric import get_modules_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ def import_calibration_run_data(request, calibration_run_data):
 
         # Create any new formulations
         for name in module_names:
-            CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+            CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name)
 
         if sloth_parameters:
             error_message = add_sloth_parameters(run, sloth_parameters)
@@ -186,7 +187,7 @@ def import_calibration_run_data(request, calibration_run_data):
         # Tuning
         #############################
         # Get the list of modules for this Run
-        modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+        modules = CalibrationFormulation.objects.filter(calibration_run=run)
 
         if modules and run.gage:
             get_module_metadata_from_hydrofabric(run, modules)
@@ -310,7 +311,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     if time_range:
         time_range['start_time'] = time_range['start_time'].isoformat()
         time_range['end_time'] = time_range['end_time'].isoformat()
-    module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
         metadata = {'source_calibration_run_id': run.id, 'time_range': time_range}

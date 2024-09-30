@@ -62,7 +62,7 @@ def load_tuning_tab(request):
         return error_return
 
     # Get the list of modules for this Run
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    modules = CalibrationFormulation.objects.filter(calibration_run=run)
     print('modules', modules)
 
     time_range = get_time_range(run)
