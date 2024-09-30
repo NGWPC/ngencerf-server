@@ -217,7 +217,7 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     if source:
         if source == upload_enum.from_enum(upload_enum):
             # Check job-specific path first
-            if Path(job_specific_file).exists():
+            if job_specific_file and Path(job_specific_file).exists():
                 return job_specific_file
         # If not found or source is different, check the hydrofabric path
         if hydrofabric_path and Path(hydrofabric_path).exists():
