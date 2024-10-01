@@ -4,7 +4,6 @@ from calibration.models.base_model import BaseModel
 
 
 class CalibrationFormulation(BaseModel):
-    description = models.TextField()
     module = models.ForeignKey('Module', null=False, on_delete=models.RESTRICT)
     bmi_config_path = models.CharField(max_length=255, null=True)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.RESTRICT)

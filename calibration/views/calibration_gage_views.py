@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from pyogrio.errors import DataLayerError
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -289,9 +290,18 @@ def get_geopackage_image_url(run: CalibrationRun):
                                      lambda: get_geopackage_file_for_job(run))
 
     if geopackage_path and Path(geopackage_path).exists():
-        geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
-
-        return png_str_to_base64_url(geopackage_png.getvalue())
+        try:
+            # Attempt to convert the GeoPackage to PNG for selected layers
+            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+            return png_str_to_base64_url(geopackage_png.getvalue())
+        except DataLayerError as e:
+            # Log the error and return None if the layer could not be opened
+            logger.error(f"DataLayerError - {e} - while processing geopackage: {geopackage_path}")
+            return None
+        except Exception as e:
+            # Handle any other exceptions
+            logger.error(f"An unexpected error occurred: {e} - while processing geopackage: {geopackage_path}")
+            return None
     else:
         return None
 

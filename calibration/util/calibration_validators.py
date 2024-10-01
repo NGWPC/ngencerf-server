@@ -215,7 +215,7 @@ class LoadTuningParametersSerializer(BaseSerializer):
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
     user_selected_for_tuning = serializers.BooleanField(required=True)
-    units = serializers.CharField(required=False, allow_null=True)
+    units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 class OptimizationInputsSerializer(BaseSerializer):
@@ -514,7 +514,7 @@ class SaveFormulationResponseSerializer(GenericResponseSerializer):
 class ModuleStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     groups = serializers.ListField(child=serializers.CharField(required=True))
-    # used_by_calibration_run = serializers.BooleanField(required=True)
+    is_active = serializers.BooleanField(required=True)
 
 
 class LoadFormulationResponseSerializer(BaseSerializer):

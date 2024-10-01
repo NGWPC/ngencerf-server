@@ -18,7 +18,5 @@ class ModuleOutputVariable(BaseModel):
         return (
             f"ModuleOutputVariable: {self.id}, "
             f"name: {self.name:20}, "
-            f"calibration_formulation: {self.calibration_formulation.id} ({self.calibration_formulation.name})"
+            f"calibration_formulation: {self.calibration_formulation.id} ({self.calibration_formulation.module.name})"
         )
-
-

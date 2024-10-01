@@ -11,7 +11,7 @@ class CalibrationSlothParam(BaseModel):
     param_units = models.TextField()
     param_location = models.TextField()
     param_value = models.FloatField()
-    maps_to_module = models.ForeignKey('CalibrationFormulation', null=False, on_delete=models.CASCADE)
+    maps_to_module = models.ForeignKey('Module', null=False, on_delete=models.CASCADE)
     maps_to_variable_name = models.TextField()
 
     class Meta:

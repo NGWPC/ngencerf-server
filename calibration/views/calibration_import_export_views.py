@@ -19,8 +19,8 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import get_sloth_parameters,  validate_modules, \
-    SLOTH, add_sloth_parameters, get_my_modules, validate_formulation
+from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
+    SLOTH, add_sloth_parameters, get_my_modules, validate_formulation, get_cached_module_by_name
 from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
@@ -30,7 +30,6 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
-from calibration.views.hydrofabric import get_modules_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
@@ -150,17 +149,18 @@ def import_calibration_run_data(request, calibration_run_data):
         #############################
         # Formulations
         #############################
-        get_modules_from_hydrofabric(run)
+        # TODO Check that this works
+        # get_modules_from_hydrofabric(run)
         # List of module names
         modules_list = calibration_run_data.get('modules')
         module_names = set(modules_list) if modules_list else set()
 
-        error_message = validate_modules(run, module_names)
+        error_message = validate_modules(module_names)
         if error_message:
             return None, None, None, ResponseError(error_message)
 
         if module_names:
-            messages, formulation_validation_json, nwm_warning = validate_formulation(run, module_names)
+            messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
             if messages:
                 return None, None, None, ResponseError(messages)
         # if module_names:
@@ -175,8 +175,9 @@ def import_calibration_run_data(request, calibration_run_data):
             return None, None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
 
         # Create any new formulations
-        for name in module_names:
-            CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name)
+        for m_name in module_names:
+            module_instance = get_cached_module_by_name(m_name)
+            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
         if sloth_parameters:
             error_message = add_sloth_parameters(run, sloth_parameters)
@@ -243,7 +244,8 @@ def import_calibration_run_data(request, calibration_run_data):
             return None, None, None, ResponseError(error_message)
 
         run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
-        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get('save_output_iteration') else False
+        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get(
+            'save_output_iteration') else False
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
@@ -383,7 +385,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['formulation_name'] = run.user_formulation_name
     modules = get_my_modules(run)
     calibration_run_data['modules'] = modules
-    _, _, nwm_warning = validate_formulation(run, modules)
+    _, _, nwm_warning = validate_formulation(modules)
     if not export:
         calibration_run_data['nwm_warning'] = nwm_warning
 
@@ -403,7 +405,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['validation_times'] = validation_times
 
     output_variable_to_calibrate = {
-        'module': run.module_output_variable.calibration_formulation.name,
+        'module': run.module_output_variable.calibration_formulation.module.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else {}
 
