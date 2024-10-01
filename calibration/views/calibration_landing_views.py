@@ -14,10 +14,10 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
-    GageIdOptionalSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer
+    GetJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
-    validate_request
+    validate_request, truncate_large_fields
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ def create_calibration_run(request):
 
 
 @extend_schema(
-    request=GageIdOptionalSerializer,
+    request=GetJobsRequestSerializer,
     responses={
         200: GetJobsResponseSerializer,
         400: OpenApiResponse(
@@ -74,11 +74,13 @@ def get_jobs(request):
 
     logger.debug(f'get_jobs() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(GageIdOptionalSerializer, data)
+    validator, error_return = validate_request(GetJobsRequestSerializer, data)
     if error_return:
         return error_return
 
     gage_id = validator.get('gage_id')
+    include_validations = validator.get('include_validations')
+    print('include_validations', include_validations)
 
     query = Q(owner=request.user) & Q(is_deleted=False)
 
@@ -88,26 +90,33 @@ def get_jobs(request):
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
         query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
 
-    jobs = CalibrationRun.objects.filter(query)
+    runs = CalibrationRun.objects.filter(query).values(
+        'id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
+        'status__name', 'owner__username', 'objective_function__name', 'optimization__name', formulation_name=F('user_formulation_name')
+    )
 
-    # Get all jobs for this user
-    runs = list(jobs
-                .values('id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-                        'status__name', 'owner__username', formulation_name=F('user_formulation_name')))
+    # Conditionally include validation_runs if the flag is set
+    if include_validations:
+        # For now, just faking out data
+        for r in runs:
+            r['validation_runs'] = 2
 
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
         r['status'] = r.pop('status__name')
+        r['objective_function'] = r.pop('objective_function__name')
+        r['optimization_algorithm'] = r.pop('optimization__name')
         r['owner'] = r.pop('owner__username')
 
-    response = {'jobs': runs}
+    response = {'jobs': list(runs)}
 
-    response_validator, error_response = validate_response(GetJobsResponseSerializer, response)
+    response_validator, error_response = validate_response(GetJobsResponseSerializer, response, fields_to_truncate=['runs'])
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from get_jobs() - {response_validator.data}')
+    logger.debug(
+        f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=2)}')
     return Response(response_validator.data)
 
 
@@ -203,7 +212,8 @@ def clone_job(request):
     calibration_run_data = load_calibration_run_data(run, export=True)
     new_run, warnings, info_messages = import_calibration_run_data(request, calibration_run_data)
 
-    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id, 'status': new_run.status.name}
+    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
+                'status': new_run.status.name}
     if warnings:
         response['errors'] = warnings
     if info_messages:
