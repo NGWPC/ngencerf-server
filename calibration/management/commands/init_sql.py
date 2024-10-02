@@ -56,7 +56,7 @@ class Command(BaseCommand):
                   {"name": "Evapotranspiration"},
                   {"name": "Rainfall Runoff"},
                   {"name": "Soil Moisture"},
-                  {"name": "Routing",}
+                  {"name": "Routing"}
                   ]
 
         for v in values:

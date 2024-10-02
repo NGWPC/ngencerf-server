@@ -296,19 +296,19 @@ def validate_request(serializer_class, data, context=None):
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
-def validate_response(serializer_class, data, fields_to_truncate=None):
+def validate_response(serializer_class, data, fields_to_truncate=None, max_length=100):
     validator = None
     try:
         validator = serializer_class(data=data)
         validator.is_valid(raise_exception=True)
 
         # Redact large fields before logging
-        logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate)}')
+        logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate, max_length)}')
 
         return validator, None
     except ValidationError as e:
         # Log the full data and errors in case of validation failure
-        logger.error(f"Validation error with data: {truncate_large_fields(data, fields_to_truncate)}")
+        logger.error(f"Validation error with data: {truncate_large_fields(data, fields_to_truncate, max_length)}")
         logger.error(f"Validation errors: {str(e)}")
 
         # Note that an exception here is most likely due to a coding error

@@ -111,12 +111,12 @@ def get_jobs(request):
 
     response = {'jobs': list(runs)}
 
-    response_validator, error_response = validate_response(GetJobsResponseSerializer, response, fields_to_truncate=['runs'])
+    response_validator, error_response = validate_response(GetJobsResponseSerializer, response, fields_to_truncate=['runs'], max_length=10)
     if error_response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=2)}')
+        f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
     return Response(response_validator.data)
 
 

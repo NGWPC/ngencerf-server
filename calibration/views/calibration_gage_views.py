@@ -98,11 +98,11 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"])
+    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"], max_length=50)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"])}')
+    logger.debug(f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
 
     return Response(response_validator.data)
 
