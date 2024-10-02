@@ -21,7 +21,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_cached_module_by_name
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path, \
+    create_validation_run_internal
 from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
@@ -252,6 +253,8 @@ def save_tuning_tab(request):
         return error_return
 
     run.automatic_validation = automatic_validation
+    if run.automatic_validation:
+        validation_run = create_validation_run_internal(run)
 
     error_message = validate_and_save_times(run, calibration_times, validation_times)
     if error_message:
