@@ -150,7 +150,6 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
                                              'Module metadata from Hydrofabric is not in the expected format')
 
     hydrofabric_module_names = set([module['module_name'] for module in module_metadata['modules']])
-    # print('hydrofabric_module_names:', hydrofabric_module_names)
 
     my_module_names = set(my_module_names)
     missing_names = my_module_names - hydrofabric_module_names
@@ -165,6 +164,7 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
             if m['module_name'] in extra_names:
                 # Ignore any extra names that Hydrofabric sent us
                 logger.warning(f'Ignore extra module from Hydrofabric - {m["module_name"]}')
+                continue
 
             module_instance = get_cached_module_by_name(m['module_name'])
 
