@@ -91,8 +91,6 @@ def load_formulation_tab(request):
     # if hydrofabric_errors:
     #     response['hydrofabric_errors'] = hydrofabric_errors
 
-    response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
-
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
     if error_response:
         return error_response
