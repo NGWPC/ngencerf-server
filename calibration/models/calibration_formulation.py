@@ -18,6 +18,6 @@ class CalibrationFormulation(BaseModel):
     def __str__(self):
         return (
             f"CalibrationFormulation: {self.id}, "
-            f"module: {self.module.name:20}, "
+            f"module: {self.module.name:20} ({self.module.id}), "
             f"calibration_run: {self.calibration_run.id}"
         )
