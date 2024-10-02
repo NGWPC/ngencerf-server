@@ -14,10 +14,10 @@ from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
-    GetJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer
+    GetJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, CreateValidationRunSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
-    validate_request, truncate_large_fields
+    validate_request, truncate_large_fields, create_validation_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def create_calibration_run(request):
     logger.debug(f'create_calibration_run() request from {request.user}')
 
     with transaction.atomic():
-        run = create_calibration_run_internal(request)
+        run = create_calibration_run_internal(request.user)
 
         response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
 
@@ -53,6 +53,53 @@ def create_calibration_run(request):
             return error_response
 
         logger.debug(f'Returning to {request.user} from create_calibration_run() - {response_validator.data}')
+        return Response(response_validator.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        201: CreateValidationRunSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Create a new validation"
+)
+@api_view(['POST'])
+@handle_exceptions
+# @permission_classes([AllowAny])
+def create_validation_run(request):
+    data = request.data
+    logger.debug(f'create_validation_run() request from {request.user}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    # TODO What status?
+    run, error_return = get_run(calibration_run_id, request.user)
+    if error_return:
+        return error_return
+
+    with transaction.atomic():
+        validation = create_validation_run_internal(run)
+
+        response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                    'validation_run_id': validation.id}
+
+        response_validator, error_response = validate_response(CreateValidationRunSerializer, response)
+        if error_response:
+            return error_response
+
+        logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -130,7 +177,7 @@ def get_jobs(request):
     request=None,
     responses={
         200: FooterResponseSerializer,
-         500: OpenApiResponse(
+        500: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Internal server error"
         )

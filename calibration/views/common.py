@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Status
+from calibration.models import CalibrationRun, Status, ValidationRun
 from calibration.util.calibration_validators import ErrorResponseSerializer
 from django.conf import settings
 
@@ -95,29 +95,40 @@ def png_str_to_base64_url(png_str):
         return None
 
 
-def create_calibration_run_internal(request) -> CalibrationRun:
+def create_calibration_run_internal(user) -> CalibrationRun:
     """
-     Create a new CalibrationRun object for the user making the request.
-     Ensures that the job directory is created and assigns the 'SAVED' status by default.
+    Create a new CalibrationRun object for the user making the request.
+    Ensures that the job directory is created and assigns the 'SAVED' status by default.
 
-     :param request: The request object containing the authenticated user.
-     :return: The newly created CalibrationRun instance.
+    :param user: The owner of the calibration run.
+    :return: The newly created CalibrationRun instance.
      """
-    run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+    run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.from_enum(StatusEnum.SAVED))
 
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
-    job_data_dir_path = Path(run.job_data_dir)
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory now
-    if job_data_dir_path.exists():
+    if run.job_data_dir.exists():
         # Rename the existing one
         # This should never happen in production, but just in case
-        new_name = job_data_dir_path.with_name(f"{job_data_dir_path.name}_{datetime.now().isoformat()}")
-        job_data_dir_path.rename(new_name)
+        new_name = run.job_data_dir.with_name(f"{run.job_data_dir.name}_{datetime.now().isoformat()}")
+        run.job_data_dir.rename(new_name)
 
     # This is always true
     run.automatic_validation = True
     run.save(update_fields=['job_data_dir', 'automatic_validation'])
     return run
+
+
+def create_validation_run_internal(run: CalibrationRun) -> ValidationRun:
+    """
+    Create a new ValidationRun object for the given CalibrationRun.
+
+    :param run: The calibration run that this validation run is associated with.
+    :return: The newly created ValidationRun instance.
+    """
+    validation = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED), calibration_run=run)
+
+    return validation
 
 
 token_slurm_scope = 'slurm_callback'

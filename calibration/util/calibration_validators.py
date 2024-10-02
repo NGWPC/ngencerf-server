@@ -447,6 +447,12 @@ class CreateCalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class CreateValidationRunSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    validation_run_id = serializers.IntegerField(required=True)
+
+
 class GenericMessageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
 
