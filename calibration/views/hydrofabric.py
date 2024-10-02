@@ -1,4 +1,3 @@
-import json
 import logging
 from urllib.parse import urljoin
 
@@ -9,15 +8,15 @@ from django.db.models import QuerySet
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
-from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, ModuleHydrofabricListSerializer, S3FileValidator, \
+from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
+from calibration.views.calibration_formulation_views import get_cached_module_by_name
 from calibration.views.common import CerfException
-from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, hydrofabric_module_metadata_real_data, \
-    module_sample_data
+from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, hydrofabric_module_metadata_real_data
 
 logger = logging.getLogger(__name__)
 
-headers = {
+default_headers = {
     "Content-Type": "application/json"
 }
 
@@ -83,7 +82,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         logger.info('Getting geopackage from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id, agency=run.gage.agency,
                                                                                                    domain=run.gage.domain.name))
-        geopackage_json = fetch_from_hydrofabric('GET', url, headers=headers)
+        geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy geopackage data')
         geopackage_json = geopackage_sample_data
@@ -102,7 +101,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
         url = urljoin(settings.HYDROFABRIC_URL,
                       settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id, agency=run.gage.agency,
                                                                                domain=run.gage.domain.name))
-        observational_json = fetch_from_hydrofabric('GET', url, headers=headers)
+        observational_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy observational data')
         observational_json = observational_sample_data
@@ -117,12 +116,12 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
-    if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
+    if settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[0]:
         logger.info('Getting forcing data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
-        forcing_json = fetch_from_hydrofabric('GET', url, headers=headers)
+        forcing_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
-        logger.info('Getting dummy module metadata data')
+        logger.info('Getting dummy forcing data')
         forcing_json = hydrofabric_module_metadata_real_data
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
@@ -133,54 +132,58 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
 
 
-def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[CalibrationFormulation]):
-    module_names = set(modules.values_list('name', flat=True))
+def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation]):
+    my_module_names = list(calibration_formulations.values_list('module__name', flat=True))
 
     if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
         logger.info('Getting module metadata from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
-        module_json = fetch_from_hydrofabric('POST', url, headers=headers, payload={"modules": module_names})
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1])
+        # TODO need them to return an object
+
+        module_json = {
+            'modules': fetch_from_hydrofabric('POST', url, headers=default_headers, payload={'modules': my_module_names, 'gage_id': run.gage.gage_id})}
     else:
-        logger.info('Getting dummy module metadata data')
+        logger.info('Getting dummy module metadata')
         module_json = hydrofabric_module_metadata_real_data
 
-    module_data = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
-                                         'Module metadata from Hydrofabric is not in the expected format')
+    module_metadata = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
+                                             'Module metadata from Hydrofabric is not in the expected format')
 
-    hydrofabric_module_names = set([module['module_name'] for module in module_data['modules']])
+    hydrofabric_module_names = set([module['module_name'] for module in module_metadata['modules']])
     # print('hydrofabric_module_names:', hydrofabric_module_names)
 
-    missing_names = module_names - hydrofabric_module_names
+    my_module_names = set(my_module_names)
+    missing_names = my_module_names - hydrofabric_module_names
     if missing_names:
-        # TODO Needs to be an exception
-        # raise CerfException(f'Response from Hydrofabric is missing entries for {missing_names}')
-        pass
-    extra_names = hydrofabric_module_names - module_names
-    if extra_names:
-        logger.error(f'Response from Hyrofabric has extra entries for {extra_names}')
+        raise CerfException(f'Response from Hydrofabric is missing entries for {missing_names}')
+
+    extra_names = hydrofabric_module_names - my_module_names
 
     # Save the output variables and parameters for each module
     with transaction.atomic():
-        for m in module_data.get('modules'):
+        for m in module_metadata.get('modules'):
             if m['module_name'] in extra_names:
                 # Ignore any extra names that Hydrofabric sent us
-                continue
+                logger.warning(f'Ignore extra module from Hydrofabric - {m["module_name"]}')
+
+            module_instance = get_cached_module_by_name(m['module_name'])
+
             # Get the modules object from our list
-            module = modules.filter(name=m['module_name']).first()
+            calibration_formulation = calibration_formulations.get(module=module_instance)
 
             # Save the config
-            # print('parameter url', convert_s3_uri_to_fs(m['parameter_file']['url']))
-            module.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['url'])
-            module.save(update_fields=['bmi_config_path'])
+            calibration_formulation.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['uri'])
+            calibration_formulation.save(update_fields=['bmi_config_path'])
 
             # Save output variables
-            outputs = m['module_output_variables']
+            outputs = m['output_variables']
             o: dict
             for o in outputs:
                 ModuleOutputVariable.objects.update_or_create(
-                    name=o['name'],
-                    calibration_formulation=module,
-                    defaults={'description': o['description']}
+                    name=o['variable'],
+                    calibration_formulation=calibration_formulation,
+                    # TODO Fix this.  Description is required
+                    defaults={'description': o['description'] if o['description'] else 'placeholder description'}
                 )
             # Save parameters
             parameters = m['calibrate_parameters']
@@ -191,7 +194,7 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
                 # Using get_or_create because we don't want to override any values the user has already entered
                 CalibrationParameter.objects.get_or_create(
                     name=p['name'],
-                    calibration_formulation=module,
+                    calibration_formulation=calibration_formulation,
                     defaults={'data_type': p['data_type'],
                               'description': p['description'],
                               'initial_value': str_to_float(p['initial_value']),
@@ -207,58 +210,59 @@ def get_module_data_from_hydrofabric(run: CalibrationRun, modules: QuerySet[Cali
     return
 
 
-def get_modules_from_hydrofabric(run: CalibrationRun):
-    if settings.HYDROFABRIC_MODULES_ENDPOINT[0]:
-        logger.info('Getting module data from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULES_ENDPOINT[1])
-        module_json = fetch_from_hydrofabric('GET', url, headers=headers)
-    else:
-        logger.info('Getting dummy module data')
-        module_json = module_sample_data
-
-    current_module_names = set(
-        CalibrationFormulation.objects.filter(calibration_run=run)
-        .values_list('name', flat=True)
-    )
-
-    print('current_module_names', current_module_names)
-
-    module_data = validate_response_data(ModuleHydrofabricListSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
-
-    module_data = module_data.get('modules')
-    new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
-    print('new_modules_names', new_modules_names)
-
-    with transaction.atomic():
-        if current_module_names != new_modules_names:
-            # Delete only if the modules names have changed
-            to_be_deleted = current_module_names - new_modules_names
-
-            if to_be_deleted:
-                CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
-
-            # Create the new ones, if they don't already exist
-            new_modules = []
-            for m in module_data:
-                if m['module_name'] not in current_module_names:
-                    new_modules.append(CalibrationFormulation(
-                        name=m['module_name'],
-                        calibration_run=run,
-                        groups=json.dumps(m['groups']),
-                        description=m['description']
-                    ))
-            # Use bulk_create to minimize the number of insert queries
-            if new_modules:
-                CalibrationFormulation.objects.bulk_create(new_modules)
-
-    return
-
+#
+# def get_modules_from_hydrofabric(run: CalibrationRun):
+#     if settings.HYDROFABRIC_MODULES_ENDPOINT[0]:
+#         logger.info('Getting module data from Hydrofabric')
+#         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULES_ENDPOINT[1])
+#         module_json = fetch_from_hydrofabric('GET', url, headers=headers)
+#     else:
+#         logger.info('Getting dummy module data')
+#         module_json = module_sample_data
+#
+#     current_module_names = set(
+#         CalibrationFormulation.objects.filter(calibration_run=run)
+#         .values_list('module__name', flat=True)
+#     )
+#
+#     print('current_module_names', current_module_names)
+#
+#     module_data = validate_response_data(ModuleHydrofabricListSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
+#
+#     module_data = module_data.get('modules')
+#     new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
+#     print('new_modules_names', new_modules_names)
+#
+#     with transaction.atomic():
+#         if current_module_names != new_modules_names:
+#             # Delete only if the modules names have changed
+#             to_be_deleted = current_module_names - new_modules_names
+#
+#             if to_be_deleted:
+#                 CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
+#
+#             # Create the new ones, if they don't already exist
+#             new_modules = []
+#             for m in module_data:
+#                 if m['module_name'] not in current_module_names:
+#                     module_instance = Module.objects.get(name=m['module_name'])
+#                     new_modules.append(CalibrationFormulation(
+#                         module=module_instance,
+#                         calibration_run=run,
+#                         groups=json.dumps(m['groups']),
+#                         description=m['description']
+#                     ))
+#             # Use bulk_create to minimize the number of insert queries
+#             if new_modules:
+#                 CalibrationFormulation.objects.bulk_create(new_modules)
+#
+#     return
+#
 
 def validate_response_data(serializer_class, data, error_message):
     validator = serializer_class(data=data)
     if not validator.is_valid():
-        logger.debug(validator.errors)
-        raise CerfException(f'{error_message} - {validator.errors}')
+        raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
     return validator.data
 
 

@@ -2,17 +2,14 @@ from django.contrib.auth import get_user_model
 from django.db import models
 
 from calibration.models.base_model import BaseModel
-from calibration.models.gage import Gage
-from calibration.models.module_output_variable import ModuleOutputVariable
-from calibration.models.optimization import Optimization
 
 
 class CalibrationRun(BaseModel):
     is_active = models.BooleanField(null=False, default=True)
-    gage = models.ForeignKey(Gage, null=True, on_delete=models.RESTRICT)
+    gage = models.ForeignKey('Gage', null=True, on_delete=models.RESTRICT)
     job_data_dir = models.CharField(max_length=255, null=False)
-    optimization = models.ForeignKey(Optimization, null=True, on_delete=models.RESTRICT)
-    module_output_variable = models.ForeignKey(ModuleOutputVariable, null=True, on_delete=models.RESTRICT)
+    optimization = models.ForeignKey('Optimization', null=True, on_delete=models.RESTRICT)
+    module_output_variable = models.ForeignKey('ModuleOutputVariable', null=True, on_delete=models.RESTRICT)
     run_date = models.DateTimeField(null=True)
     objective_function = models.ForeignKey('Metric', null=True, on_delete=models.RESTRICT)
     time_range_start = models.DateTimeField(null=True)

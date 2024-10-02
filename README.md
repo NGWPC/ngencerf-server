@@ -120,10 +120,10 @@ run  `runCerf.sh` with the `--load-static` argument.
 These are the steps the `runCert` is performing.  You can skip them if you've successfully run `runCerf`.
 
 Ensure that you are still in the `.venv-cerf` virtual environment
-Run `pip install -r requirements.txt` to update any dependence
+Run `pip install -r requirements.txt` to update any dependencies
 Run `manage.py migrate` to create all the tables
 ```
-(.venv-cerf) pip install r requirements.txt
+(.venv-cerf) pip install -r requirements.txt
 (.venv-cerf) $ python manage.py migrate
 ```
 

@@ -215,7 +215,7 @@ class LoadTuningParametersSerializer(BaseSerializer):
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
     user_selected_for_tuning = serializers.BooleanField(required=True)
-    units = serializers.CharField(required=False, allow_null=True)
+    units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
 
 class OptimizationInputsSerializer(BaseSerializer):
@@ -265,8 +265,11 @@ class JobsResponseSerializer(BaseSerializer):
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
+    objective_function = serializers.CharField(required=False, allow_null=True)
+    optimization_algorithm = serializers.CharField(required=False, allow_null=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
     owner = serializers.CharField(required=True, allow_null=True)
+    validation_runs = serializers.IntegerField(required=False)
 
 
 class GetJobsResponseSerializer(BaseSerializer):
@@ -336,8 +339,9 @@ class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
 
-class GageIdOptionalSerializer(BaseSerializer):
+class GetJobsRequestSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=False)
+    include_validations = serializers.BooleanField(required=False, default=False)
 
 
 class UploadForcingSerializer(BaseSerializer):
@@ -443,6 +447,12 @@ class CreateCalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class CreateValidationRunSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    validation_run_id = serializers.IntegerField(required=True)
+
+
 class GenericMessageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
 
@@ -514,7 +524,7 @@ class SaveFormulationResponseSerializer(GenericResponseSerializer):
 class ModuleStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     groups = serializers.ListField(child=serializers.CharField(required=True))
-    used_by_calibration_run = serializers.BooleanField(required=True)
+    is_active = serializers.BooleanField(required=True)
 
 
 class LoadFormulationResponseSerializer(BaseSerializer):
@@ -555,15 +565,16 @@ class UserParameterFileUploadResponse(BaseSerializer):
 
 # Output variables from Hydrofabric
 class ModuleOutputVariablesSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
+    variable = serializers.CharField(required=True, allow_blank=False)
+    # TODO This is required, cannot be null
+    description = serializers.CharField(required=True, allow_blank=False, allow_null=True)
 
 
 # Module object from Hydrofabric containing module parameters and output variables
 class ModuleMetadataHydrofabricSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
-    module_output_variables = ModuleOutputVariablesSerializer(many=True)
+    output_variables = ModuleOutputVariablesSerializer(many=True)
     parameter_file = S3FileValidator(required=True)
 
 
@@ -573,8 +584,8 @@ class ModuleDataHydrofabricListSerializer(BaseSerializer):
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
-class ModuleHydrofabricVersionSerializer(serializers.Serializer):
-    commit_hash = serializers.CharField(required=True, allow_blank=False)
+# class ModuleHydrofabricVersionSerializer(serializers.Serializer):
+#     commit_hash = serializers.CharField(required=True, allow_blank=False)
 
 
 # Module objects from Hydrofabric contain group names and version
@@ -691,10 +702,6 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
     iterations = serializers.IntegerField(required=True)
 
 
-class ProcessCalibrationOutputRequest(CalibrationRunSerializer):
-    rerun = serializers.BooleanField(required=False, default=False)
-
-
 class SlurmCallbackRequestSerializer(BaseSerializer):
     process_id = serializers.CharField(required=True)
     stage = serializers.CharField(required=True)
@@ -770,7 +777,7 @@ class ImportSerializer(BaseSerializer):
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
-    save_output_iteration = serializers.BooleanField(required=False, allow_null=True)
+    save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
 
 

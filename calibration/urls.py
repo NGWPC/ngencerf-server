@@ -9,6 +9,7 @@ urlpatterns = [
     # Landing page
     ##################################
     path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
+    path('calibration/create_validation_run/', calibration_landing_views.create_validation_run, name="createValidationRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_jobs/', calibration_landing_views.get_jobs, name="getJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),

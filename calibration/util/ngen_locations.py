@@ -119,7 +119,7 @@ def get_full_worker_filename(worker_name) -> str:
 
 
 def get_worker_path(run: CalibrationRun, worker_name) -> str:
-    return str(Path(get_output_calibration_run_dir(run)) / worker_name)
+    return str(Path(get_output_calibration_run_dir(run)) / get_full_worker_filename(worker_name))
 
 
 def get_metrics_iteration_csv(run: CalibrationRun) -> str:

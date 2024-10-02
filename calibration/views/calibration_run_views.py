@@ -8,18 +8,18 @@ from datetimerange import DateTimeRange
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Max
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import Iteration
+from calibration.models import Iteration, IterationMetric
 from calibration.run_util.run_common import run_job, cancel_job_common, JobStage
 from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, ProcessCalibrationOutputRequest, \
-    SlurmCallbackRequestSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, generate_custom_token, \
     token_slurm_scope, auth_scope_required
@@ -36,7 +36,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Return the status of a job"
 )
@@ -80,7 +83,10 @@ def get_status(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Run a calibration"
 )
@@ -145,14 +151,17 @@ def submit_job(run, config_file=None):
 
 
 @extend_schema(
-    request=ProcessCalibrationOutputRequest,
+    request=CalibrationRunSerializer,
     responses={
-        200: ProcessCalibrationOutputRequest,
+        200: GenericResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Process the output of a calibration run"
 )
@@ -163,32 +172,24 @@ def process_calibration_output(request):
      This endpoint is mostly for testing, to kick of the processing of output for a completed job
      Normally read_output() is called automatically when a job completes.
      This endpoint can be used in case the output processing doesn't work.
-     It does not hurt to run this endpoint more than once.
-     The 'rerun' option will delete any Iteration and related objects and re-create them
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'process_calibration_output() request from {request.user} - {data}')
-    validator, error_return = validate_request(ProcessCalibrationOutputRequest, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    rerun = validator.get('rerun')
 
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
 
     if error_return:
         return error_return
 
-    iteration_objects = Iteration.objects.filter(calibration_run=run)
-    if iteration_objects.exists():
-        if rerun:
-            iteration_objects.delete()
-        else:
-            return ResponseError(f"End of job processing has already been completed Calibration Run {run.id}")
-
-    # If we have a repeat option then iteration_objects.delete()
+    iteration_metric_objects = IterationMetric.objects.filter(iteration__calibration_run=run).exists()
+    if iteration_metric_objects.exists():
+        return ResponseError(f"End of job processing has already been completed Calibration Run {run.id}")
 
     read_output(run)
 
@@ -212,7 +213,10 @@ def process_calibration_output(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Report iteration of a running calibration"
 )
@@ -232,7 +236,8 @@ def report_iteration(request):
     worker_name = validator.get('worker_name')
     first_iteration_for_worker = validator.get('first_iteration_for_worker')
 
-    print(f'Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, worker: {worker_name}, first_iteration: {first_iteration_for_worker}')
+    print(
+        f'Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, worker: {worker_name}, first_iteration: {first_iteration_for_worker}')
 
     # TODO Only Running
     # run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.RUNNING])
@@ -255,10 +260,10 @@ def report_iteration(request):
                 # Handle case where worker_name does not exist
                 return ResponseError(f"Worker '{worker_name}' not found for calibration run {run.id}.")
 
-        print("Dummy - creating Iteration object")
-        # iteration_object, created = Iteration.objects.get_or_create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name, defaults={'worker_number': worker_number})
-        # if not created:
-        #     return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
+        iteration_object, created = Iteration.objects.get_or_create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name,
+                                                                    defaults={'worker_number': worker_number})
+        if not created:
+            return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
         response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
                     'calibration_run_id': run.id,
@@ -280,7 +285,10 @@ def report_iteration(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Get iteration of a running calibration"
 )
@@ -322,7 +330,10 @@ def get_iteration(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Cancel a running job"
 )
@@ -367,9 +378,12 @@ def cancel_job(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
-    description="Cancel a running job"
+    description="Callback for slurm to call when a job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
@@ -401,6 +415,30 @@ def slurm_callback(request):
     return Response(status=status.HTTP_202_ACCEPTED)
 
 
+@extend_schema(
+    request=None,
+    responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,  # Indicates the response is an object
+            description="Success",
+            examples=[
+                OpenApiExample(
+                    'Example response',
+                    value={'access': 'your_access_token_here'}
+                )
+            ],  # Defines the example using OpenApiExample
+        ),
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Return a token for use by slurm"
+)
 @api_view(['GET'])
 @handle_exceptions
 def get_slurm_token(request):

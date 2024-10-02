@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from pyogrio.errors import DataLayerError
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -44,7 +45,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Gage not found"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -97,11 +101,12 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"])
+    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"], max_length=50)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"])}')
+    logger.debug(
+        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
 
     return Response(response_validator.data)
 
@@ -114,7 +119,10 @@ def load_gage_tab(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -161,7 +169,10 @@ def get_gage(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Save gage tab data"
 )
@@ -289,9 +300,18 @@ def get_geopackage_image_url(run: CalibrationRun):
                                      lambda: get_geopackage_file_for_job(run))
 
     if geopackage_path and Path(geopackage_path).exists():
-        geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
-
-        return png_str_to_base64_url(geopackage_png.getvalue())
+        try:
+            # Attempt to convert the GeoPackage to PNG for selected layers
+            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+            return png_str_to_base64_url(geopackage_png.getvalue())
+        except DataLayerError as e:
+            # Log the error and return None if the layer could not be opened
+            logger.error(f"DataLayerError - {e} - while processing geopackage: {geopackage_path}")
+            return None
+        except Exception as e:
+            # Handle any other exceptions
+            logger.error(f"An unexpected error occurred: {e} - while processing geopackage: {geopackage_path}")
+            return None
     else:
         return None
 
@@ -327,7 +347,10 @@ def save_gage(run, gage_id):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload observational data"
 )
@@ -395,7 +418,10 @@ def upload_observational_data(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload observational data"
 )
@@ -472,7 +498,10 @@ def upload_forcing_data(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload geopackage data"
 )
@@ -521,7 +550,6 @@ def upload_geopackage_data(request):
                 'status': run.status.name}
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url
-    print("response", response)
 
     response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:

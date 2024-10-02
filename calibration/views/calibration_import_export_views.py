@@ -19,15 +19,15 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import get_sloth_parameters, get_modules_from_hydrofabric, validate_modules, \
-    SLOTH, add_sloth_parameters, get_my_modules, validate_formulation
+from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
+    SLOTH, add_sloth_parameters, get_my_modules, validate_formulation, get_cached_module_by_name
 from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_output_variable, \
-    save_parameters, get_module_data_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
+    save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 
@@ -42,7 +42,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Import a job"
 )
@@ -51,7 +54,7 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def import_job(request):
     data = request.data
-    logger.debug(f'export() request from {request.user} - {data}')
+    logger.debug(f'import_job() request from {request.user} - {data}')
 
     validator, error_return = validate_request(ImportSerializer, data)
     if error_return:
@@ -82,7 +85,6 @@ def import_job(request):
         response['messages'] = info_messages
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
-    print('error_response', error_response)
     if error_response:
         return error_response
 
@@ -150,17 +152,18 @@ def import_calibration_run_data(request, calibration_run_data):
         #############################
         # Formulations
         #############################
-        get_modules_from_hydrofabric(run)
+        # TODO Check that this works
+        # get_modules_from_hydrofabric(run)
         # List of module names
         modules_list = calibration_run_data.get('modules')
         module_names = set(modules_list) if modules_list else set()
 
-        error_message = validate_modules(run, module_names)
+        error_message = validate_modules(module_names)
         if error_message:
             return None, None, None, ResponseError(error_message)
 
         if module_names:
-            messages, formulation_validation_json, nwm_warning = validate_formulation(run, module_names)
+            messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
             if messages:
                 return None, None, None, ResponseError(messages)
         # if module_names:
@@ -171,16 +174,13 @@ def import_calibration_run_data(request, calibration_run_data):
 
         run.use_sloth = calibration_run_data.get('use_sloth')
         sloth_parameters = calibration_run_data.get('sloth_parameters')
-        if run.use_sloth:
-            if module_names:
-                module_names.add(SLOTH)
-        else:
-            if sloth_parameters:
-                return None, None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
+        if not run.use_sloth and sloth_parameters:
+            return None, None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
 
         # Create any new formulations
-        for name in module_names:
-            CalibrationFormulation.objects.update_or_create(calibration_run=run, name=name, defaults={'used_by_calibration_run': True})
+        for m_name in module_names:
+            module_instance = get_cached_module_by_name(m_name)
+            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
         if sloth_parameters:
             error_message = add_sloth_parameters(run, sloth_parameters)
@@ -191,10 +191,10 @@ def import_calibration_run_data(request, calibration_run_data):
         # Tuning
         #############################
         # Get the list of modules for this Run
-        modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+        modules = CalibrationFormulation.objects.filter(calibration_run=run)
 
         if modules and run.gage:
-            get_module_data_from_hydrofabric(run, modules)
+            get_module_metadata_from_hydrofabric(run, modules)
 
         run.automatic_validation = calibration_run_data.get('automatic_validation')
 
@@ -247,7 +247,8 @@ def import_calibration_run_data(request, calibration_run_data):
             return None, None, None, ResponseError(error_message)
 
         run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
-        run.save_output_iteration = calibration_run_data.get('save_output_iteration')
+        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get(
+            'save_output_iteration') else False
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
@@ -268,7 +269,10 @@ def import_calibration_run_data(request, calibration_run_data):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Export a job"
 )
@@ -315,7 +319,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     if time_range:
         time_range['start_time'] = time_range['start_time'].isoformat()
         time_range['end_time'] = time_range['end_time'].isoformat()
-    module_objects = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
+    module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
         metadata = {'source_calibration_run_id': run.id, 'time_range': time_range}
@@ -387,7 +391,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['formulation_name'] = run.user_formulation_name
     modules = get_my_modules(run)
     calibration_run_data['modules'] = modules
-    _, _, nwm_warning = validate_formulation(run, modules)
+    _, _, nwm_warning = validate_formulation(modules)
     if not export:
         calibration_run_data['nwm_warning'] = nwm_warning
 
@@ -407,7 +411,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['validation_times'] = validation_times
 
     output_variable_to_calibrate = {
-        'module': run.module_output_variable.calibration_formulation.name,
+        'module': run.module_output_variable.calibration_formulation.module.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else {}
 

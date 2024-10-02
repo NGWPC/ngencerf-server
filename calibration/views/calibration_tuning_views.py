@@ -9,18 +9,21 @@ from pathlib import Path
 import pandas as pd
 from datetimerange import DateTimeRange
 from django.db import transaction
+from django.db.models import QuerySet
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import CalibrationFormulation, CalibrationParameter
+from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
-from calibration.views.hydrofabric import get_module_data_from_hydrofabric, HydrofabricException
+from calibration.views.calibration_formulation_views import get_cached_module_by_name
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path, \
+    create_validation_run_internal
+from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,10 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -62,32 +68,35 @@ def load_tuning_tab(request):
         return error_return
 
     # Get the list of modules for this Run
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True)
-    print('modules', modules)
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
+        'calibrationparameter_set', 'output_variables'
+    )
+
+    print('load_tuning_tab modules', formulations)
 
     time_range = get_time_range(run)
 
     hydrofabric_errors = []
 
     module_list = []
-    if modules and run.gage:
+    if formulations and run.gage:
         # Only do this if modules have been saved in the formulation tab, and we have a gage
 
         # First time through, all modules will be missing parameters, so we'll call Hydrofabric
         # For subsequent times, most likely none of them will be missing, if the modules haven't changed.
-        modules_missing_parameters = modules_without_parameters(modules)
+        modules_missing_parameters = modules_without_parameters(formulations)
         print('modules missing parameters', modules_missing_parameters)
 
-        # Call Hydrofabric if any modules are missing paranerers
+        # Call Hydrofabric if any modules are missing parameters
         if modules_missing_parameters.exists():
             try:
-                get_module_data_from_hydrofabric(run, modules)
+                get_module_metadata_from_hydrofabric(run, modules_missing_parameters)
             except HydrofabricException as e:
                 logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                 hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
         # For each module, get the Parameters and Output Variables
-        module_list = get_parameters_and_output_variables(modules)
+        module_list = get_parameters_and_output_variables(formulations)
 
     ngen_cal_input.ready_to_run(run)
 
@@ -113,38 +122,42 @@ def modules_without_parameters(modules_in_use):
 
 def get_output_variable_to_calibrate(run):
     return {
-        'module': run.module_output_variable.calibration_formulation.name,
+        'module': run.module_output_variable.calibration_formulation.model.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else None
 
 
 def has_user_selected_tuning_parameters(modules):
     for m in modules.prefetch_related('calibrationparameter_set'):
-        if m.calibrationparameter_set.filter(user_selected_for_tuning=True).exists():
+        if m.calibrationparameter_set.exists():
             return True
     return False
 
 
-def get_parameters_and_output_variables(modules):
+def get_parameters_and_output_variables(modules: QuerySet(CalibrationFormulation)):
     module_list = []
-    for m in modules.prefetch_related('calibrationparameter_set', 'output_variables'):
-        calibration_parameters = m.calibrationparameter_set.values(
-            'name', 'minimum', 'maximum', 'initial_value', 'units', 'data_type', 'description', 'user_selected_for_tuning'
-        )
-        output_variables = m.output_variables.values('name', 'description')
-        module_entry = {
-            'name': m.name,
-            'parameters': list(calibration_parameters),
-            'output_variables': list(output_variables)
-        }
-        module_list.append(module_entry)
+
+    for formulation in modules.prefetch_related('calibrationparameter_set', 'output_variables'):
+        module = get_cached_module_by_name(formulation.module.name)
+
+        if module:
+            calibration_parameters = formulation.calibrationparameter_set.values(
+                'name', 'minimum', 'maximum', 'initial_value', 'units', 'data_type', 'description', 'user_selected_for_tuning'
+            )
+            output_variables = formulation.output_variables.values('name', 'description')
+            module_entry = {
+                'name': formulation.module.name,
+                'parameters': list(calibration_parameters),
+                'output_variables': list(output_variables)
+            }
+            module_list.append(module_entry)
     return module_list
 
 
 def get_parameters_for_export(modules):
     parameter_list = []
     for m in modules:
-        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m, user_selected_for_tuning=True)
+        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
                                      .values('name', 'minimum', 'maximum', 'initial_value'))
 
         for p in calibrationParameters:
@@ -209,12 +222,15 @@ def get_times(run):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Save tuning tab data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
+# @permission_classes([AllowAny])f
 @handle_exceptions
 def save_tuning_tab(request):
     data = request.data
@@ -237,6 +253,8 @@ def save_tuning_tab(request):
         return error_return
 
     run.automatic_validation = automatic_validation
+    if run.automatic_validation:
+        validation_run = create_validation_run_internal(run)
 
     error_message = validate_and_save_times(run, calibration_times, validation_times)
     if error_message:
@@ -273,7 +291,10 @@ def save_tuning_tab(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload observational data"
 )
@@ -390,21 +411,37 @@ def validate_and_save_times(run, calibration_times, validation_times):
         run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times else None
 
 
-def validate_parameters(run, parameters):
+def validate_parameters(run: CalibrationRun, parameters):
     if parameters:
-        if not CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run).exists():
-            return 'Modules and/or CalibrationParameters have not been received from Hydrofabric.  Should be done on load_formulation_tab and load_tuning_tab.'
-        # Make sure the parameters we are trying to save exist
+        # Fetch all CalibrationParameters for the given calibration run and related modules in one query
+        existing_parameters = CalibrationParameter.objects.filter(
+            calibration_formulation__calibration_run=run
+        ).select_related('calibration_formulation__module')
+
+        # Create a lookup dictionary for existing parameters by module name and parameter name
+        parameter_lookup = {
+            (param.calibration_formulation.module.name, param.name): param
+            for param in existing_parameters
+        }
+
+        # Validate each parameter in the input
+        invalid_parameters = []
         for p in parameters:
-            if not CalibrationParameter.objects.filter(name=p['name'], calibration_formulation__name=p['module'],
-                                                       calibration_formulation__calibration_run=run).exists():
-                return "Invalid parameter '{}' specified for module '{}'".format(p['name'], p['module'])
+            key = (p['module'], p['name'])
+            if key not in parameter_lookup:
+                invalid_parameters.append(key)
+
+        # If any invalid parameters are found, return an error message
+        if invalid_parameters:
+            invalid_param_list = [f"'{name}' for module '{module}'" for module, name in invalid_parameters]
+            return f"Invalid parameters: {', '.join(invalid_param_list)}"
+
     return None
 
 
 def save_output_variable(run, output_variable_to_calibrate):
     if output_variable_to_calibrate:
-        module_with_output_variable = CalibrationFormulation.objects.filter(name=output_variable_to_calibrate['module'],
+        module_with_output_variable = CalibrationFormulation.objects.filter(module__name=output_variable_to_calibrate['module'],
                                                                             calibration_run=run).first()
         if not module_with_output_variable:
             return "Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id)
@@ -421,20 +458,31 @@ def save_output_variable(run, output_variable_to_calibrate):
 def save_parameters(run, parameters):
     if parameters:
         parameters_to_update = []
-        for p in parameters:
-            calibration_param = CalibrationParameter.objects.filter(
-                name=p['name'],
-                calibration_formulation__name=p['module'],
-                calibration_formulation__calibration_run=run
-            ).first()
-            if calibration_param:
-                calibration_param.minimum = p['minimum']
-                calibration_param.maximum = p['maximum']
-                calibration_param.initial_value = p['initial_value']
-                calibration_param.user_selected_for_tuning = True
-                parameters_to_update.append(calibration_param)
 
-        CalibrationParameter.objects.bulk_update(parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning'])
+        # Fetch all CalibrationParameters for the given calibration run in one query
+        existing_parameters = CalibrationParameter.objects.filter(
+            calibration_formulation__calibration_run=run
+        ).select_related('calibration_formulation__module')
+
+        # Create a lookup dictionary for existing parameters by module name and parameter name
+        parameter_lookup = {
+            (param.calibration_formulation.module.name, param.name): param
+            for param in existing_parameters
+        }
+
+        # Update the parameters based on the input
+        for p in parameters:
+            calibration_param = parameter_lookup[(p['module'], p['name'])]
+            calibration_param.minimum = p['minimum']
+            calibration_param.maximum = p['maximum']
+            calibration_param.initial_value = p['initial_value']
+            calibration_param.user_selected_for_tuning = True
+            parameters_to_update.append(calibration_param)
+
+        # Use bulk_update to update all parameters at once
+        CalibrationParameter.objects.bulk_update(
+            parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning']
+        )
 
 
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range

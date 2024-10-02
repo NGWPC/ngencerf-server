@@ -15,11 +15,13 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Status
+from calibration.models import CalibrationRun, Status, ValidationRun
 from calibration.util.calibration_validators import ErrorResponseSerializer
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+SLOTH = 'SLoTH'
 
 
 def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
@@ -93,29 +95,40 @@ def png_str_to_base64_url(png_str):
         return None
 
 
-def create_calibration_run_internal(request) -> CalibrationRun:
+def create_calibration_run_internal(user) -> CalibrationRun:
     """
-     Create a new CalibrationRun object for the user making the request.
-     Ensures that the job directory is created and assigns the 'SAVED' status by default.
+    Create a new CalibrationRun object for the user making the request.
+    Ensures that the job directory is created and assigns the 'SAVED' status by default.
 
-     :param request: The request object containing the authenticated user.
-     :return: The newly created CalibrationRun instance.
+    :param user: The owner of the calibration run.
+    :return: The newly created CalibrationRun instance.
      """
-    run = CalibrationRun.objects.create(is_active=True, owner=request.user, status=Status.objects.get(name=StatusEnum.SAVED.value))
+    run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.from_enum(StatusEnum.SAVED))
 
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
-    job_data_dir_path = Path(run.job_data_dir)
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory now
-    if job_data_dir_path.exists():
+    if run.job_data_dir.exists():
         # Rename the existing one
         # This should never happen in production, but just in case
-        new_name = job_data_dir_path.with_name(f"{job_data_dir_path.name}_{datetime.now().isoformat()}")
-        job_data_dir_path.rename(new_name)
+        new_name = run.job_data_dir.with_name(f"{run.job_data_dir.name}_{datetime.now().isoformat()}")
+        run.job_data_dir.rename(new_name)
 
     # This is always true
     run.automatic_validation = True
     run.save(update_fields=['job_data_dir', 'automatic_validation'])
     return run
+
+
+def create_validation_run_internal(run: CalibrationRun) -> ValidationRun:
+    """
+    Create a new ValidationRun object for the given CalibrationRun.
+
+    :param run: The calibration run that this validation run is associated with.
+    :return: The newly created ValidationRun instance.
+    """
+    validation = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED), calibration_run=run)
+
+    return validation
 
 
 token_slurm_scope = 'slurm_callback'
@@ -185,6 +198,7 @@ def handle_exceptions(view_func):
     :param view_func: The view function to wrap.
     :return: The wrapped view function with exception handling.
     """
+
     @wraps(view_func)
     def _wrapped_view(request, *args, **kwargs):
         original_logger = logging.getLogger(view_func.__module__)
@@ -214,7 +228,7 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     if source:
         if source == upload_enum.from_enum(upload_enum):
             # Check job-specific path first
-            if Path(job_specific_file).exists():
+            if job_specific_file and Path(job_specific_file).exists():
                 return job_specific_file
         # If not found or source is different, check the hydrofabric path
         if hydrofabric_path and Path(hydrofabric_path).exists():
@@ -293,19 +307,19 @@ def validate_request(serializer_class, data, context=None):
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
-def validate_response(serializer_class, data, fields_to_truncate=None):
+def validate_response(serializer_class, data, fields_to_truncate=None, max_length=100):
     validator = None
     try:
         validator = serializer_class(data=data)
         validator.is_valid(raise_exception=True)
 
         # Redact large fields before logging
-        logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate)}')
+        logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate, max_length)}')
 
         return validator, None
     except ValidationError as e:
         # Log the full data and errors in case of validation failure
-        logger.error(f"Validation error with data: {truncate_large_fields(data, fields_to_truncate)}")
+        logger.error(f"Validation error with data: {truncate_large_fields(data, fields_to_truncate, max_length)}")
         logger.error(f"Validation errors: {str(e)}")
 
         # Note that an exception here is most likely due to a coding error

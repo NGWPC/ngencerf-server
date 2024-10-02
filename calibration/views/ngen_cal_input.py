@@ -16,7 +16,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-from calibration.views.common import CerfException, token_ngen, generate_custom_token
+from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +24,7 @@ config_template = {
 
     "General": {
         "calibration_run_id": 0,
-        # TODO Might not need this, since it's in the token
-        # "user": "",
-        "ngen_cerf": True,      # Indicate that we came from the ngenCerf server - Always true
+        "ngen_cerf": True,  # Indicate that we came from the ngenCerf server - Always true
         "auth_token": "",
         "basin": "",
         "models": "",
@@ -175,9 +173,12 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             elif build:
                 # for non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
-                subset_directory_by_time_range(source_dir, get_forcing_dir_for_job(run),
-                                               DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                                             max(run.calibration_end_period, run.validation_end_period)))
+                subset_directory_by_time_range(
+                    source_dir,
+                    get_forcing_dir_for_job(run),
+                    DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                  max(run.calibration_end_period, run.validation_end_period))
+                )
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -185,7 +186,6 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
                 user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
-                logger.info(f'user_uploaded_observational_file: {user_uploaded_observational_file}')
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
                 else:
@@ -193,14 +193,18 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                     observational_file_for_job_path = Path(get_observational_file_for_job(run))
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_observational_file != observational_file_for_job_path:
-                        logger.info(f"Renaming observational file from {str(user_uploaded_observational_file)} to {get_observational_file_for_job(run)}")
+                        logger.info(
+                            f"Renaming observational file from {str(user_uploaded_observational_file)} to {get_observational_file_for_job(run)}")
                         user_uploaded_observational_file.rename(Path(get_observational_file_for_job(run)))
             elif build:
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
-                subset_by_time_range(source_file, get_observational_file_for_job(run),
-                                     DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                                   max(run.calibration_end_period, run.validation_end_period)))
+                subset_by_time_range(
+                    source_file,
+                    get_observational_file_for_job(run),
+                    DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                  max(run.calibration_end_period, run.validation_end_period))
+                )
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
@@ -233,24 +237,19 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         if error_message:
             errors.append(error_message)
 
-        # if run.geopackage_hydrofabric_file_path and Path(run.geopackage_hydrofabric_file_path).exists():
-        #     datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
-        # else:
-        #     if Path(get_geopackage_file_for_job(run)).exists():
-        #         datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
-        #     else:
-        #         errors.append('geopackage data must be uploaded')
-
         # Need to set parquet file based on domain
         datafile['attributes_file'] = str(Path(PARQUET_DIR) / f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
-    modules = CalibrationFormulation.objects.filter(calibration_run=run, used_by_calibration_run=True).values('name', 'bmi_config_path')
-    # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
-    module_dict = {module['name']: module['bmi_config_path'] for module in modules}
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    if not is_missing(modules, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
+    # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
+    module_dict = {formulation.module.name: formulation.bmi_config_path for formulation in formulations}
+
+    if not is_missing(formulations, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
         general['formulation'] = run.user_formulation_name
         general['models'] = ', '.join(module_dict.keys())
+        if run.use_sloth:
+            general['models'] += f', {SLOTH}'
 
         # Dynamically add keys and values from the module_dict to our config
         for key, value in module_dict.items():
@@ -263,10 +262,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     if build:
         Path(job_data_dir).mkdir(parents=True, exist_ok=True)
 
-    if any(field is None for field in
-           [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
-        errors.append(
-            'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
+    if any(field is None for field in [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
+        errors.append('calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
         calibration['calib_start_period'] = run.calibration_start_period.strftime(DATE_FORMAT)
         calibration['calib_end_period'] = run.calibration_end_period.strftime(DATE_FORMAT)
@@ -274,10 +271,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         calibration['calib_eval_end_period'] = run.calibration_eval_end_period.strftime(DATE_FORMAT)
 
     if run.automatic_validation:
-        if any(field is None for field in
-               [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
-            errors.append(
-                'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+        if any(field is None for field in [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
+            errors.append('validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
             calibration['valid_start_period'] = run.validation_start_period.strftime(DATE_FORMAT)
             calibration['valid_end_period'] = run.validation_end_period.strftime(DATE_FORMAT)
@@ -328,7 +323,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
     if not is_missing(run.module_output_variable, 'output variable to calibrate', errors):
         calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
-        calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.name
+        calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.module.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
@@ -372,10 +367,12 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
             datafile['sloth_parameter_file'] = str(sloth_parameter_file)
 
+    # Get formulations related to the run
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
     params = list(CalibrationParameter.objects
-                  .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
+                  .filter(calibration_formulation__in=formulations, user_selected_for_tuning=True)
                   .select_related('calibration_formulation')
-                  .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__name')))
+                  .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__module__name')))
     param_error = False
     for p in params:
         # Make sure everything is specified

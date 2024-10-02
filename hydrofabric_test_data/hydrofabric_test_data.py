@@ -10,56 +10,56 @@ observational_sample_data = {
     "url": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
 }
 
-# For testing
-module_metadata_sample_data = {"modules": [
-    {
-        "module_name": "Noah-OWP-Modular",
-        "module_output_variables": [
-            {
-                "name": "QINSUR",
-                "description": "description of variable",
-            },
-            {
-                "name": "ETRAN",
-                "description": "description of variable",
-            },
-            {
-                "name": "QSEVA",
-                "description": "description of variable",
-            },
-        ],
-        "module_parameters": [
-            {
-                "name": "parameter1",
-                "data_type": "double",
-                "description": "description of variable",
-                "initial_value": 0.0,
-                "minimum": 0.0,
-                "maximum": 0.0
-            },
-
-            {
-                "name": "parameter2",
-                "data_type": "double",
-                "description": "description of variable",
-                "initial_value": 0.0,
-                "minimum": 0.0,
-                "maximum": 0.0
-            },
-            {
-                "name": "parameter3",
-                "data_type": "double",
-                "description": "description of variable",
-                # "units": "m/s",
-                "initial_value": 0.0,
-                "minimum": 0.0,
-                "maximum": 0.0
-            }
-
-        ]
-    },
-]
-}
+# # For testing
+# module_metadata_sample_data = {"modules": [
+#     {
+#         "module_name": "Noah-OWP-Modular",
+#         "output_variables": [
+#             {
+#                 "variable": "QINSUR",
+#                 "description": "description of variable",
+#             },
+#             {
+#                 "variable": "ETRAN",
+#                 "description": "description of variable",
+#             },
+#             {
+#                 "variable": "QSEVA",
+#                 "description": "description of variable",
+#             },
+#         ],
+#         "module_parameters": [
+#             {
+#                 "name": "parameter1",
+#                 "data_type": "double",
+#                 "description": "description of variable",
+#                 "initial_value": 0.0,
+#                 "minimum": 0.0,
+#                 "maximum": 0.0
+#             },
+#
+#             {
+#                 "name": "parameter2",
+#                 "data_type": "double",
+#                 "description": "description of variable",
+#                 "initial_value": 0.0,
+#                 "minimum": 0.0,
+#                 "maximum": 0.0
+#             },
+#             {
+#                 "name": "parameter3",
+#                 "data_type": "double",
+#                 "description": "description of variable",
+#                 # "units": "m/s",
+#                 "initial_value": 0.0,
+#                 "minimum": 0.0,
+#                 "maximum": 0.0
+#             }
+#
+#         ]
+#     },
+# ]
+# }
 
 hydrofabric_module_metadata_real_data = {"modules": [
     {
@@ -149,13 +149,13 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "calibratable": "true"
             }
         ],
-        "module_output_variables": [
+        "output_variables": [
             {
-                "name": "outputVariable1",
+                "variable": "outputVariable1",
                 "description": "decsription for var 1"
             },
             {
-                "name": "outputVariable2",
+                "variable": "outputVariable2",
                 "description": "decsription for var 2"
             }
         ]
@@ -163,7 +163,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
     {
         "module_name": "CFE-X",
         "parameter_file": {
-            "url": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
+            "uri": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
         },
         "calibrate_parameters": [
             {
@@ -277,13 +277,13 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "calibratable": "true"
             }
         ],
-        "module_output_variables": [
+        "output_variables": [
             {
-                "name": "outputVariable1",
+                "variable": "outputVariable1",
                 "description": "decsription for var 1"
             },
             {
-                "name": "outputVariable2",
+                "variable": "outputVariable2",
                 "description": "decsription for var 2"
             }
         ]
@@ -291,7 +291,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
     {
         "module_name": "Noah-OWP-Modular",
         "parameter_file": {
-            "url": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
+            "uri": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
         },
         "calibrate_parameters": [
             {
@@ -355,33 +355,33 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "calibratable": True,
             }
         ],
-        "module_output_variables": [
+        "output_variables": [
             {
-                "name": "ETRAN",
+                "variable": "ETRAN",
                 "description": "transpiration rate (mm/s)"
             },
             {
-                "name": "EVAPOTRANS",
+                "variable": "EVAPOTRANS",
                 "description": "evapotranspiration rate (m/s)"
             },
             {
-                "name": "QINSUR",
+                "variable": "QINSUR",
                 "description": "total liquid water input to surface rate (m/s)"
             },
             {
-                "name": "QSEVA",
+                "variable": "QSEVA",
                 "description": "evaporation rate (m/s)"
             },
             {
-                "name": "SNEQV",
+                "variable": "SNEQV",
                 "description": "snow water equivalent (mm)"
             },
             {
-                "name": "TG",
+                "variable": "TG",
                 "description": "surface/ground temperature (becomes snow surface temperature when snow is present)"
             },
             {
-                "name": "TGS",
+                "variable": "TGS",
                 "description": "ground temperature (K) (is equal to TG when no snow and equal to bottom snow element temperature when there is snow)"
             }
         ]
@@ -389,14 +389,14 @@ hydrofabric_module_metadata_real_data = {"modules": [
     {
         "module_name": "T-Route",
         "parameter_file": {
-            "url": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
+            "uri": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
         },
         "calibrate_parameters": [
 
         ],
-        "module_output_variables": [
+        "output_variables": [
             {
-                "name": "ETRAN",
+                "variable": "ETRAN",
                 "description": "transpiration rate (mm/s)"
             }
         ]
@@ -409,11 +409,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "Topoflow",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Glacier"
         ]
@@ -421,11 +421,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "Noah-OWP-Modular",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Snowmelt",
             "Evapotranspiration"
@@ -434,11 +434,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "Snow-17",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Snowmelt"
         ]
@@ -446,11 +446,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "UEB",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Snowmelt"
         ]
@@ -458,11 +458,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "CFE-S",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Rainfall Runoff"
         ],
@@ -470,11 +470,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "CFE-X",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Rainfall Runoff"
         ],
@@ -482,11 +482,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "PET",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Evapotranspiration"
         ]
@@ -494,11 +494,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "TopModel",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -506,11 +506,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "Sac-SMA",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -518,11 +518,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "LASAM",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Rainfall Runoff"
         ]
@@ -530,11 +530,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "SMP",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Soil Moisture"
         ]
@@ -542,11 +542,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "SFT",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Soil Moisture"
         ]
@@ -554,11 +554,11 @@ module_sample_data = {"modules": [
     {
         "module_name": "T-Route",
         "description": "description of module",
-        "module_version": {
-            "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
-            "version_url": "https://www.acme-corp.com",
-            "version_date": "2024-08-29T09:12:33.001Z"
-        },
+        # "module_version": {
+        #     "commit_hash": "CFE:d290f1ee-6c54-4b01-90e6-d701748f0851",
+        #     "version_url": "https://www.acme-corp.com",
+        #     "version_date": "2024-08-29T09:12:33.001Z"
+        # },
         "groups": [
             "Routing"
         ],

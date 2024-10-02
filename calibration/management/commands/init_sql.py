@@ -5,6 +5,8 @@ from calibration.enums import DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
     GeopackageSource
 from calibration.models.forcing_source import ForcingSource
+from calibration.models.module import Module
+from calibration.models.module_group import ModuleGroup
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
 
@@ -33,6 +35,8 @@ class Command(BaseCommand):
         self.user = get_user_model().objects.get(username='admin')
         self.stdout.write(f"In init_sql: username: {self.user.username}, email: {self.user.email}")
 
+        self.define_module_groups()
+        self.define_modules()
         self.define_domains()
         self.define_rfc()
         self.define_forcing_source()
@@ -42,6 +46,75 @@ class Command(BaseCommand):
         self.define_metric()
         self.define_status()
         self.define_plot_definitions()
+
+    def define_module_groups(self):
+        if self.DELETE_FLAG:
+            ModuleGroup.objects.all().delete()
+
+        values = [{"name": "Glacier"},
+                  {"name": "Snowmelt"},
+                  {"name": "Evapotranspiration"},
+                  {"name": "Rainfall Runoff"},
+                  {"name": "Soil Moisture"},
+                  {"name": "Routing"}
+                  ]
+
+        for v in values:
+            ModuleGroup.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                           "created_by": self.user})
+
+    def define_modules(self):
+        if self.DELETE_FLAG:
+            Module.objects.all().delete()
+
+        values = [{"name": "Topoflow",
+                   "description": "description",
+                   "groups": ["Glacier"]},
+                  {"name": "Noah-OWP-Modular",
+                   "description": "An extended, refactored version of the Noah-MP land surface model",
+                   "groups": ["Snowmelt", "Evapotranspiration"]},
+                  {"name": "Snow-17",
+                   "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
+                   "groups": ["Snowmelt"]},
+                  {"name": "UEB", "description": "description", "groups": ["Snowmelt"]},
+                  {"name": "CFE-S",
+                   "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
+                   "groups": ["Rainfall Runoff"]},
+                  {"name": "CFE-X",
+                   "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
+                   "groups": ["Rainfall Runoff"]},
+                  {"name": "PET", "description": "description", "groups": ["Evapotranspiration"]},
+                  {"name": "TopModel",
+                   "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
+                   "groups": ["Rainfall Runoff"]},
+                  {"name": "Sac-SMA",
+                   "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrologic response units (HRUs) to be modeled at once.",
+                   "groups": ["Rainfall Runoff"]},
+                  {"name": "LASAM",
+                   "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
+                   "groups": ["Rainfall Runoff"]},
+                  {"name": "SMP",
+                   "description": "The soil moisture profiles schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
+                   "groups": ["Soil Moisture"]},
+                  {"name": "SFT",
+                   "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
+                   "groups": ["Soil Moisture"]},
+                  {"name": "T-Route",
+                   "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
+                   "groups": ["Routing"]},
+
+                  ]
+
+        for v in values:
+            module, _ = Module.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                                  "description": v['description'],
+                                                                                  "created_by": self.user})
+
+            group_names = v['groups']
+            groups = ModuleGroup.objects.filter(name__in=group_names)
+
+            module.groups.set(groups)
+            module.save()
 
     def define_domains(self):
         if self.DELETE_FLAG:
