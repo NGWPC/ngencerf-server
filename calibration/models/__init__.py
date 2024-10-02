@@ -13,6 +13,8 @@ from .iteration_metric import IterationMetric
 from .iteration_result import IterationResult
 from .iteration_parameter import IterationParameter
 from .metric import Metric
+from .module import Module
+from .module_group import ModuleGroup
 from .module_output_variable import ModuleOutputVariable
 from .observational_source import ObservationalSource
 from .optimization import Optimization
