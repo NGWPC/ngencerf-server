@@ -31,6 +31,15 @@ echo
 echo "Running migrate"
 python3 manage.py migrate
 
+# Run this every time, since sometimes there are updates and it is very quick
+echo
+echo "Calling init_sql"
+python3 manage.py init_sql
+if [ $? -ne 0 ]; then
+    echo "Warning: init_sql encountered an error, but continuing..."
+fi
+echo
+
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
 if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
     echo
@@ -41,17 +50,15 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
         --password admin \
         --email admin@nextgenwaterprediction.com
     echo
+    echo "Calling init_sql"
+    python3 manage.py init_sql
+    echo
     echo "Calling init_gages"
     python3 manage.py init_gages
 
     touch "${CERF_LOAD_STATIC_DATA}"
 fi
 
-# Run this every time, since sometimes there are updates and it is very quick
-echo
-echo "Calling init_sql"
-python3 manage.py init_sql
-echo
 echo
 echo "Running pre_start"
 python3 "$cerfServer"/manage.py pre_start

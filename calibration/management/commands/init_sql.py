@@ -1,4 +1,7 @@
+import sys
+
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DataTypeEnum
@@ -31,8 +34,13 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.stdout.write('Initializing static tables')
-        # need to get a user that is guaranteed to be there, such as admin
-        self.user = get_user_model().objects.get(username='admin')
+        try:
+            # need to get a user that is guaranteed to be there, such as admin
+            self.user = get_user_model().objects.get(username='admin')
+        except ObjectDoesNotExist:
+            self.stdout.write(self.style.ERROR('Admin user does not exist.'))
+            sys.exit(1)
+
         self.stdout.write(f"In init_sql: username: {self.user.username}, email: {self.user.email}")
 
         self.define_module_groups()
