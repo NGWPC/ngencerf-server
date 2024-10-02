@@ -94,7 +94,7 @@ def import_job(request):
 
 def import_calibration_run_data(request, calibration_run_data):
     with transaction.atomic():
-        run = create_calibration_run_internal(request)
+        run = create_calibration_run_internal(request.user)
 
         warnings = []
         info_messages = []
