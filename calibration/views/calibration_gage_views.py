@@ -45,7 +45,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Gage not found"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -102,7 +105,8 @@ def load_gage_tab(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
+    logger.debug(
+        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
 
     return Response(response_validator.data)
 
@@ -115,7 +119,10 @@ def load_gage_tab(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -162,7 +169,10 @@ def get_gage(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Save gage tab data"
 )
@@ -337,7 +347,10 @@ def save_gage(run, gage_id):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload observational data"
 )
@@ -405,7 +418,10 @@ def upload_observational_data(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload observational data"
 )
@@ -482,7 +498,10 @@ def upload_forcing_data(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload geopackage data"
 )

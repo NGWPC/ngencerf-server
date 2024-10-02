@@ -27,7 +27,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -128,7 +131,10 @@ def get_sloth_parameters(run):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Save formulation tab data"
 )

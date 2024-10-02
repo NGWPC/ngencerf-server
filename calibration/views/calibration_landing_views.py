@@ -30,7 +30,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Create a new calibration"
 )
@@ -61,7 +64,10 @@ def create_calibration_run(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
 
     description="Get all jobs"
@@ -124,7 +130,10 @@ def get_jobs(request):
     request=None,
     responses={
         200: FooterResponseSerializer,
-        500: ErrorResponseSerializer
+         500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Load gage tab data"
 )
@@ -149,7 +158,10 @@ def get_footer(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Load all data for a previously saved calibration"
 )
@@ -188,7 +200,10 @@ def load_calibration_run(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Delete a calibration run job"
 )
@@ -235,7 +250,10 @@ def clone_job(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Delete a calibration run job"
 )

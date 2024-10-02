@@ -38,7 +38,10 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -218,7 +221,10 @@ def get_times(run):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Save tuning tab data"
 )
@@ -282,7 +288,10 @@ def save_tuning_tab(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Allow user to upload observational data"
 )

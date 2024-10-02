@@ -42,7 +42,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Import a job"
 )
@@ -266,7 +269,10 @@ def import_calibration_run_data(request, calibration_run_data):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Export a job"
 )

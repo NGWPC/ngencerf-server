@@ -28,7 +28,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
@@ -89,7 +92,10 @@ def png_to_base64_url(png):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)

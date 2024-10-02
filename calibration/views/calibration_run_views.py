@@ -8,7 +8,8 @@ from datetimerange import DateTimeRange
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Max
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -35,7 +36,10 @@ logger = logging.getLogger(__name__)
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Return the status of a job"
 )
@@ -79,7 +83,10 @@ def get_status(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Run a calibration"
 )
@@ -151,7 +158,10 @@ def submit_job(run, config_file=None):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Process the output of a calibration run"
 )
@@ -203,7 +213,10 @@ def process_calibration_output(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Report iteration of a running calibration"
 )
@@ -272,7 +285,10 @@ def report_iteration(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Get iteration of a running calibration"
 )
@@ -314,7 +330,10 @@ def get_iteration(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
     description="Cancel a running job"
 )
@@ -359,9 +378,12 @@ def cancel_job(request):
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
         ),
-        500: ErrorResponseSerializer
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
     },
-    description="Cancel a running job"
+    description="Callback for slurm to call when a job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
@@ -393,6 +415,30 @@ def slurm_callback(request):
     return Response(status=status.HTTP_202_ACCEPTED)
 
 
+@extend_schema(
+    request=None,
+    responses={
+        200: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,  # Indicates the response is an object
+            description="Success",
+            examples=[
+                OpenApiExample(
+                    'Example response',
+                    value={'access': 'your_access_token_here'}
+                )
+            ],  # Defines the example using OpenApiExample
+        ),
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Return a token for use by slurm"
+)
 @api_view(['GET'])
 @handle_exceptions
 def get_slurm_token(request):
