@@ -55,15 +55,14 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    module_names = get_my_modules(run)
+    modules = Module.objects.prefetch_related('groups')
     module_groups_list = [
         {
-            "name": module_name,
+            "name": module.name,
             "is_active": module.is_active,
             "groups": [group.name for group in module.groups.all()]
         }
-        for module_name in module_names
-        for module in [get_cached_module_by_name(module_name)]
+        for module in modules
     ]
 
     # hydrofabric_errors = []
