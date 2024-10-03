@@ -258,7 +258,7 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 ##################################
 
 
-class JobsResponseSerializer(BaseSerializer):
+class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=True, allow_null=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
@@ -272,8 +272,23 @@ class JobsResponseSerializer(BaseSerializer):
     validation_runs = serializers.IntegerField(required=False)
 
 
-class GetJobsResponseSerializer(BaseSerializer):
-    jobs = serializers.ListSerializer(child=JobsResponseSerializer(), required=True, allow_empty=True)
+class GetCalibrationJobsResponseSerializer(BaseSerializer):
+    jobs = serializers.ListSerializer(child=CalibrationJobsResponseSerializer(), required=True, allow_empty=True)
+
+
+class ValidationJobsParameter(BaseSerializer):
+    name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    value = serializers.FloatField(required=True, allow_null=False)
+
+
+class ValidationJobsResponseSerializer(BaseSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
+    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
+
+
+class GetValidationJobsResponseSerializer(BaseSerializer):
+    validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 class FooterResponseSerializer(BaseSerializer):
@@ -339,8 +354,13 @@ class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
 
-class GetJobsRequestSerializer(BaseSerializer):
+class GetCalibrationJobsRequestSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=False)
+    include_validations = serializers.BooleanField(required=False, default=False)
+
+
+class GetValidationJobsRequestSerializer(BaseSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
     include_validations = serializers.BooleanField(required=False, default=False)
 
 
