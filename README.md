@@ -124,7 +124,8 @@ These are the steps the `runCert` is performing.  You can skip them if you've su
 Run `pip install -r requirements.txt` to update any dependencies
 Run `manage.py migrate` to create all the tables
 ```
-(.venv-cerf) pip install -r requirements.txt
+source $cerfServer/.venv-cerf/bin/activate
+pip install -r requirements.txt
 python manage.py migrate
 ```
 
