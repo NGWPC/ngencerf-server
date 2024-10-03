@@ -34,9 +34,10 @@ python3 manage.py migrate
 # Run this every time, since sometimes there are updates and it is very quick
 echo
 echo "Calling init_sql"
-python3 manage.py init_sql
-if [ $? -ne 0 ]; then
-    echo "Warning: init_sql encountered an error, but continuing..."
+if ! python3 manage.py init_sql; then
+    echo "Warning: 'init_sql' encountered an error, but continuing..."
+    echo "This warning can be ignored if you are re-initializing the database."
+    echo "In that case, 'init_sql' will be run again"
 fi
 echo
 

@@ -1,5 +1,5 @@
 import logging
-from typing import Set
+from typing import Dict, Optional
 
 from django.core.cache import cache
 from django.db import transaction
@@ -55,34 +55,18 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    modules = Module.objects.prefetch_related('groups')
+    # Directly get all modules and their groups from the cached result
+    cached_modules = get_cached_modules_with_groups()
+
+    # Convert the cached Module instances to a list of dictionaries with the desired structure
     module_groups_list = [
         {
             "name": module.name,
             "is_active": module.is_active,
             "groups": [group.name for group in module.groups.all()]
         }
-        for module in modules
+        for module in cached_modules.values()
     ]
-
-    # hydrofabric_errors = []
-    #
-    # # Do we already have modules?
-    # have_modules = CalibrationFormulation.objects.filter(calibration_run=run).exists()
-    #
-    # if not have_modules:
-    #     try:
-    #         get_modules_from_hydrofabric(run)
-    #     except HydrofabricException as e:
-    #         logger.error(f"Error retrieving module data from Hydrofabric: {traceback.format_exc()}")
-    #         hydrofabric_errors.append({'name': 'modules', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
-    #
-    # modules = get_all_modules(run)
-    #
-    # # Unwrap the groups
-    # for m in modules:
-    #     m['groups'] = json.loads(m['groups'])
-    # module_list = list(modules)
 
     ngen_cal_input.ready_to_run(run)
 
@@ -96,14 +80,6 @@ def load_formulation_tab(request):
     logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
-
-
-def get_my_modules(run):
-    return list(
-        CalibrationFormulation.objects
-        .filter(calibration_run=run,)
-        .values_list('module__name', flat=True)
-    )
 
 
 def get_sloth_parameters(run):
@@ -146,7 +122,7 @@ def save_formulation_tab(request):
     if error_return:
         return error_return
 
-    new_module_names = set(validator.get('modules'))
+    new_module_names = validator.get('modules')
     calibration_run_id = validator.get('calibration_run_id')
     user_formulation_name = validator.get('formulation_name')
     use_sloth = validator.get('use_sloth')
@@ -184,6 +160,7 @@ def save_formulation_tab(request):
     print('new existing_module_names', new_module_names)
 
     # Only if the module names have changed
+    new_module_names = set(new_module_names)
     if new_module_names != existing_module_names:
         to_be_unused = existing_module_names - new_module_names
         print('to_be_unused', to_be_unused)
@@ -220,13 +197,14 @@ def save_formulation_tab(request):
     return Response(response_validator.data)
 
 
-def validate_modules(module_names):
+def validate_modules(module_names: list[str]):
     """
     Validate that all the provided module names exist in the cached modules.
     """
     # Check that all the module names are valid
     valid_names = set(module_name for module_name in module_names if get_cached_module_by_name(module_name))
 
+    module_names = set(module_names)
     if module_names - valid_names:
         return f'Invalid modules - {module_names - valid_names}'
     return None
@@ -269,11 +247,11 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: Set[str]):
+def validate_formulation(module_names: list[str]):
     # modules = get_cached_modules()
 
     # Filter cached modules to match the given module names
-    my_modules = [get_cached_module_by_name(module_name) for module_name in module_names if get_cached_module_by_name(module_name)]
+    my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
 
     print('my_modules', my_modules)
 
@@ -288,7 +266,6 @@ def validate_formulation(module_names: Set[str]):
         for group in module.groups.all():
             if group.name in group_counts:  # Only count groups that are in the group_requirements
                 group_counts[group.name] += 1
-    print('group_counts', group_counts)
 
     # Check for module exclusions
     messages = []
@@ -353,21 +330,31 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters):
     CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
 
-MODULE_CACHE_KEY = 'module_cache_by_name'
+MODULE_CACHE_KEY = 'module_cache_with_groups'
 
 
-def get_cached_module_by_name(module_name):
-    # Check if the cache already has the module dictionary
-    cached_modules = cache.get(MODULE_CACHE_KEY)
 
-    # If not cached, retrieve the modules from the database and cache them
+def get_cached_modules_with_groups() -> Dict[str, Module]:
+    """
+    Fetches and caches the Module objects with prefetch of groups.
+    Returns the cached data if it exists, otherwise queries the database and caches the result.
+    """
+    cached_modules: Dict[str, Module] = cache.get(MODULE_CACHE_KEY)
+
     if cached_modules is None:
         # Prefetch related groups when querying for modules
         modules = Module.objects.prefetch_related(
-            Prefetch('groups', queryset=ModuleGroup.objects.only('name'))  # Fix: Replace with ModuleGroup
+            Prefetch('groups', queryset=ModuleGroup.objects.only('name'))
         )
+        # Cache all modules
         cached_modules = {module.name: module for module in modules}
-        cache.set(MODULE_CACHE_KEY, cached_modules, None)
+        cache.set(MODULE_CACHE_KEY, cached_modules, None)  # Cache indefinitely or set a timeout if needed
 
-    # Return the module instance for the given name or None if not found
+    return cached_modules
+
+
+# Access a specific module by its name using the cache
+def get_cached_module_by_name(module_name: str) -> Optional[Module]:
+    cached_modules: Dict[str, Module] = get_cached_modules_with_groups()
+    # Return the module instance from the cached modules
     return cached_modules.get(module_name)

@@ -1,7 +1,9 @@
 import csv
+import sys
 from pathlib import Path
 
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DomainEnum
@@ -42,8 +44,13 @@ class Command(BaseCommand):
 
         # Gage.objects.all().delete()
 
-        # need to get a user that is guaranteed to be there, such as admin
-        user = get_user_model().objects.get(username='admin')
+        try:
+            # need to get a user that is guaranteed to be there, such as admin
+            user = get_user_model().objects.get(username='admin')
+        except ObjectDoesNotExist:
+            self.stdout.write(self.style.ERROR('Admin user does not exist.'))
+            sys.exit(1)
+
         print(f"In init_gages: username: {user.username}, email: {user.email}")
 
         add_usgs_gages(data_dir / 'USGS_gages_CONUS.csv', conus_domain)
