@@ -390,7 +390,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     #############################
     calibration_run_data['formulation_name'] = run.user_formulation_name
 
-    modules = list(
+    modules = set(
         CalibrationFormulation.objects
         .filter(calibration_run=run)
         .values_list('module__name', flat=True)

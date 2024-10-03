@@ -11,6 +11,7 @@ from django.db import transaction
 
 from calibration.enums import OptimizationEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric
+from calibration.run_util.run_common import JobStage
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir
 from calibration.views.common import CerfException
@@ -24,14 +25,15 @@ worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
 # Function to read the output of a calibration run
-def read_output(run):
+def read_output(run: CalibrationRun, stage: JobStage):
     """
     Process the output of a CalibrationRun. This function handles reading and
     processing the worker directories and their iteration files.
 
     :param run: The CalibrationRun instance whose output is to be processed.
+    :param stage: The state of the run, either Calibration, Validation_Control or Validation_Best
     """
-    logger.info(f"Processing output for Calibration Run {run.id}")
+    logger.info(f"Processing output for Calibration Run {run.id}, stage {stage}")
 
     # Iteration objects are created as the job progress by report_iteration
     # Create iteration objects for all worker directories
@@ -46,64 +48,8 @@ def read_output(run):
         process_iterations_for_all_workers(run)
 
 
-#
-# # Function to create iteration objects for all workers in a run
-# def create_iteration_objects_for_all_workers(run: CalibrationRun):
-#     """
-#     Create Iteration objects for each worker directory in the CalibrationRun.
-#     Iterates through the worker directories, reads the metrics file for each worker,
-#     and creates corresponding Iteration entries.
-#
-#     :param run: The CalibrationRun instance whose worker directories are processed.
-#     """
-#     worker_number = 0  # Initialize worker number
-#     all_iteration_objects = []  # List to accumulate Iteration objects
-#
-#     # Internal function to process each worker directory and create Iteration objects
-#     def create_iteration_objects_for_a_worker(worker_dir, run):  # noqa : F811
-#         nonlocal worker_number
-#         """
-#         Normally, ngen_cal sends us the iteration using the report_iteration endpoint.  We get the iteration # and worker name, and we create entries in the database.
-#         Until we get that interface working, we'll have to figure out the iteration by brute force
-#         We'll look for all the worker directories and create an iteration object for each record in the metrics_iteration.csv file
-#         :return:
-#         """
-#         # Create iteration object for a given worker
-#         worker_number += 1
-#
-#         # Get the metrics file for this worker
-#         metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
-#
-#         # Check if the file exists before proceeding
-#         if not Path(metrics_iteration_file).is_file():
-#             logger.error(f'Metrics iteration file not found in {worker_dir}')
-#             return
-#
-#         # Use pandas to read the CSV file into a DataFrame
-#         metrics_df = pd.read_csv(metrics_iteration_file, dtype={'iteration': int})
-#
-#         # Loop through each row and create Iteration objects
-#         for _, row in metrics_df.iterrows():
-#             iteration_number = row['iteration']
-#
-#             # TODO Change worker name to just use the middle part
-#             logger.debug(f'{run.id}_{run.owner.username} Creating iteration {iteration_number} for worker {Path(worker_dir).name}, worker number {worker_number}')
-#             all_iteration_objects.append(Iteration(
-#                 iteration_num=iteration_number,
-#                 calibration_run=run,
-#                 worker_name=Path(worker_dir).name,
-#                 worker_number=worker_number
-#             ))
-#
-#     # Process all worker directories and create iteration objects
-#     process_worker_dirs(run, create_iteration_objects_for_a_worker)
-#
-#     # Bulk create the iteration objects in batches
-#     if all_iteration_objects:
-#         with transaction.atomic():
-#             for i in range(0, len(all_iteration_objects), BULK_CREATE_BATCH_SIZE):
-#                 Iteration.objects.bulk_create(all_iteration_objects[i:i + BULK_CREATE_BATCH_SIZE], batch_size=BULK_CREATE_BATCH_SIZE)
-#
+def process_validation_for_calibration_run:
+    pass
 
 # Function to process iterations for all workers in a run
 def process_iterations_for_all_workers(run: CalibrationRun):

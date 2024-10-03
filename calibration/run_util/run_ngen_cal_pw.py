@@ -6,7 +6,7 @@ import requests
 from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, ValidationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
 from calibration.util.calibration_validators import SlurmSubmitJobResponse
 from calibration.views.common import generate_custom_token, token_slurm_scope
@@ -56,7 +56,42 @@ def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: J
     logger.info(f"Job submitted successfully! Slurm id: {calibration_run.slurm_job_id}")
 
 
-def run_job_callback_slurm(current_stage: JobStage | None, process_id, run, slurm_status: SlurmStatusEnum):
+def run_validation_job_parallel_works(validation_run: ValidationRun, input_file, output_file):
+    """
+    Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
+    with appropriate input and output file arguments, and registering a callback for job stage transitions.
+    :param validation_run: The CalibrationRun object representing the job run.
+    :param input_file: Path to the input file for the stage.
+    :param output_file: Path to the output file for the stage.
+    """
+    slurm_token = generate_custom_token(validation_run.calibration_run.owner, token_slurm_scope)
+    print(f'slurm token: {slurm_token}')
+    # Slurm uses multipart form-data
+    url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
+    payload = {
+        'job_id': (None, Path(validation_run.calibration_run.job_data_dir).name),
+        'job_type': (None, 'validation'),
+        # 'job_stage': (None, stage.name),
+        'input_file': (None, input_file),
+        'output_file': (None, output_file),
+        'auth_token': (None, generate_custom_token(validation_run.calibration_run.owner, token_slurm_scope))
+    }
+
+    logger.info(f'slurm submit-job payload: {payload}')
+    response = requests.post(url, files=payload)
+    try:
+        response.raise_for_status()
+        logger.info(f'Response from slurm: {response.json()}')
+        validation_run.slurm_job_id = response.json().get('slurm_job_id')
+        validation_run.save()
+        logger.info(f"Job submitted successfully! Slurm id: {validation_run.slurm_job_id}")
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
+        logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
+        raise
+
+
+def run_calibration_job_callback_slurm(current_stage: JobStage | None, process_id, run, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.

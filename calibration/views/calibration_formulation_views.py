@@ -193,7 +193,7 @@ def save_formulation_tab(request):
     return Response(response_validator.data)
 
 
-def validate_modules(module_names: list[str]):
+def validate_modules(module_names: set[str]):
     """
     Validate that all the provided module names exist in the cached modules.
     """
@@ -243,7 +243,7 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: list[str]):
+def validate_formulation(module_names: set[str]):
     # modules = get_cached_modules()
 
     # Filter cached modules to match the given module names

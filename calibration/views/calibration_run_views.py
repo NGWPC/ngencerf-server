@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.models import Iteration, IterationMetric
 from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage
-from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm, SlurmStatusEnum
+from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
@@ -408,7 +408,7 @@ def slurm_callback(request):
         return error_return
 
     slurm_status = SlurmStatusEnum[job_status]
-    run_job_callback_slurm(JobStage[current_stage], process_id, run, slurm_status)
+    run_calibration_job_callback_slurm(JobStage[current_stage], process_id, run, slurm_status)
 
     logger.debug(f'Returning to {request.user} from slurm_callback()')
 

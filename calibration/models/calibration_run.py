@@ -45,7 +45,6 @@ class CalibrationRun(BaseModel):
     slurm_job_id = models.IntegerField(null=True)
     performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.RESTRICT)
 
-
     class Meta:
         db_table = 'calibration_run'
 
