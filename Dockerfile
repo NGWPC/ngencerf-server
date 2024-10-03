@@ -37,7 +37,8 @@ RUN set -eux; \
     pip3 install -r requirements.txt; \
 # Lock numpy and netcdf4 versions so t-route doesn't break
     pip3 install "numpy==1.26.4" "pandas~=2.2.2" ; \
-    pip3 cache purge
+    pip3 cache purge ; \
+    rm --force /root/.gitconfig
 
 COPY . /ngencerf/ngencerf-server/
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
