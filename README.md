@@ -11,8 +11,8 @@ Once you are in the virtual environment, you can use `python`
 $ cd $cerfServer
 $ python3.11 -m venv .venv-cerf
 $ source $cerfServer/.venv-cerf/bin/activate
-(.venv-cerf) $ pip install --upgrade pip
-(.venv-cerf) $ pip install -r requirements.txt
+pip install --upgrade pip
+pip install -r requirements.txt
 ```
 
 # Setup local configuration
@@ -21,8 +21,8 @@ The `settings.py` file contains settings that are applicable to all environments
 
 You should make copies of `__local_settings.py` and `__.env`. 
 ```
-(.venv-cerf) $ cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
-(.venv-cerf) $ cp $cerfServer/cerfServer/__.env cerfServer/.env
+cp $cerfServer/cerfServer/__local_settings.py cerfServer/local_settings.py
+cp $cerfServer/cerfServer/__.env cerfServer/.env
 ```
 The 2 template files are suitable for development and no changes need to be made.
 Note that these files are not checked in to Git
@@ -119,12 +119,14 @@ run  `runCerf.sh` with the `--load-static` argument.
 ## Manual Steps (optional if you're using runCerf.sh)
 These are the steps the `runCert` is performing.  You can skip them if you've successfully run `runCerf`.
 
-Ensure that you are still in the `.venv-cerf` virtual environment
+**Ensure that you are still in the `.venv-cerf` virtual environment**
+
 Run `pip install -r requirements.txt` to update any dependencies
 Run `manage.py migrate` to create all the tables
 ```
-(.venv-cerf) pip install -r requirements.txt
-(.venv-cerf) $ python manage.py migrate
+source $cerfServer/.venv-cerf/bin/activate
+pip install -r requirements.txt
+python manage.py migrate
 ```
 
 Create a superuser called `admin` that is used for initializing 
@@ -132,12 +134,12 @@ the static tables.  Use `createsuperuser_docker` even though you are not creatin
 It is a locally modified version of `createsuperuser` that allows you to enter the password on the command line.
 
 ```
-(.venv-cerf) $ python manage.py createsuperuser_docker --username admin --password admin
+python manage.py createsuperuser_docker --username admin --password admin
 ```
 Run `init_sql` and `init_gages` to initialize the static tables
 ```
-(.venv-cerf) $ python manage.py init_sql
-(.venv-cerf) $ python manage.py init_gages
+python manage.py init_sql
+python manage.py init_gages
 ```
 
 **_Important:_**
@@ -160,8 +162,8 @@ where `public` is the name of your schema.
 After pulling the latest updates from the repo, you should update any dependencies and apply any database changes.  
 Both of these commands can be run multiple times without any harm.  `runCerf.sh` will automatically take care of these steps
 ```
-(.venv-cerf) $ pip install -r requirements.txt
-(.venv-cerf) $ python manage.py migrate
+pip install -r requirements.txt
+python manage.py migrate
 ```
 
 # Running the server
