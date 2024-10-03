@@ -295,22 +295,20 @@ def validate_request(serializer_class, data, context=None):
     :param context: Optional context for the serializer.
     :return: The validated data or an error response.
     """
-    validator = None
+    validator = serializer_class(data=data, context=context)
     try:
-        validator = serializer_class(data=data, context=context)
         validator.is_valid(raise_exception=True)
         return validator.data, None
     except ValidationError as e:
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
-        message = f"called from {calling_function}"
+        message = f"called from {calling_function}, validated by {validator.__class__.__name__}"
         validation_errors = validator.errors if validator else str(e)
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
 def validate_response(serializer_class, data, fields_to_truncate=None, max_length=100):
-    validator = None
+    validator = serializer_class(data=data)
     try:
-        validator = serializer_class(data=data)
         validator.is_valid(raise_exception=True)
 
         # Redact large fields before logging
@@ -324,7 +322,7 @@ def validate_response(serializer_class, data, fields_to_truncate=None, max_lengt
 
         # Note that an exception here is most likely due to a coding error
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
-        message = f"Data format error in response returning from {calling_function}"
+        message = f"Data format error in response returning from {calling_function} - validated by {validator.__class__.__name__}"
         validation_errors = validator.errors if validator else str(e)
         return None, ResponseError(message, response_type='validation_error_response', validation_errors=validation_errors)
 

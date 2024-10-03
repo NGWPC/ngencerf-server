@@ -1,5 +1,6 @@
 import logging
 import shutil
+from datetime import datetime, timezone
 
 from django.conf import settings
 from django.db import transaction, router
@@ -12,9 +13,10 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
-from calibration.util.calibration_validators import GetJobsResponseSerializer, FooterResponseSerializer, \
+from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
-    GetJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, CreateValidationRunSerializer
+    GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, CreateValidationRunSerializer, \
+    GetValidationJobsResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
@@ -104,9 +106,9 @@ def create_validation_run(request):
 
 
 @extend_schema(
-    request=GetJobsRequestSerializer,
+    request=GetCalibrationJobsRequestSerializer,
     responses={
-        200: GetJobsResponseSerializer,
+        200: GetCalibrationJobsResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -122,12 +124,12 @@ def create_validation_run(request):
 @api_view(['POST', 'GET'])
 # @permission_classes([AllowAny])
 @handle_exceptions
-def get_jobs(request):
+def get_calibration_jobs(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_jobs() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(GetJobsRequestSerializer, data)
+    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
         return error_return
 
@@ -164,12 +166,59 @@ def get_jobs(request):
 
     response = {'jobs': list(runs)}
 
-    response_validator, error_response = validate_response(GetJobsResponseSerializer, response, fields_to_truncate=['runs'], max_length=10)
+    response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['runs'], max_length=10)
     if error_response:
         return error_response
 
     logger.debug(
         f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GetValidationJobsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+
+    description="Get all jobs"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_validation_jobs(request):
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'get_validation_jobs() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    # Create dummy data for now
+    validation_jobs = [{'validation_run_id': 62, 'run_date': datetime(2024, 10, 1, 12, 0, 0, tzinfo=timezone.utc),
+                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
+                       {'validation_run_id': 67, 'run_date': datetime(2024, 10, 2, 12, 0, 0, tzinfo=timezone.utc),
+                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
+                       {'validation_run_id': 69, 'run_date': datetime(2024, 10, 3, 12, 0, 0, tzinfo=timezone.utc),
+                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]}]
+
+    response = {'validation_jobs': validation_jobs}
+
+    response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user} from get_validation_jobs() - {response_validator.data}')
     return Response(response_validator.data)
 
 
