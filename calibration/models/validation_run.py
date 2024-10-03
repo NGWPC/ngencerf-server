@@ -12,6 +12,8 @@ class ValidationRun(BaseModel):
     # validation_eval_end_period = models.DateTimeField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     run_date = models.DateTimeField(null=True)
+    performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.RESTRICT)
+
 
     class Meta:
         db_table = 'validation_run'
