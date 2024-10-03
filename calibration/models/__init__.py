@@ -19,6 +19,7 @@ from .module_output_variable import ModuleOutputVariable
 from .observational_source import ObservationalSource
 from .optimization import Optimization
 from .optimization_input import OptimizationInput
+from .performance_metrics import PerformanceMetrics
 from .plot_definitions import PlotDefinition
 from .rfc import Rfc
 from .status import Status
