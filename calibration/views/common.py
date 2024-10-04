@@ -208,7 +208,7 @@ class CheckTokenScope(BasePermission):
 
         # Log the available scopes and the required one
         token_scope = token.get('scope', '').split()
-        logger.debug(f"Token scope: {token_scope}, Required scope: {self.required_scope}")
+        logger.debug(f"Validating token: Token scope: {token_scope}, Required scope: {self.required_scope}")
 
         # Make sure we have our custom scope
         if self.required_scope not in token_scope:

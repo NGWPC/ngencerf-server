@@ -250,12 +250,11 @@ def report_iteration(request):
             worker_number = (max_worker_number or 0) + 1
             print(f"Creating new worker: '{worker_name}' #{worker_number}")
         else:
-            try:
-                # Use get() to fetch the latest iteration for the given worker_name and run
-                existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').get()
+            # Use get() to fetch the latest iteration for the given worker_name and run
+            existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').first()
+            if existing_iteration:
                 worker_number = existing_iteration.worker_number
-            except Iteration.DoesNotExist:
-                # Handle case where worker_name does not exist
+            else:
                 return ResponseError(f"Worker '{worker_name}' not found for calibration run {run.id}.")
 
         iteration_object, created = Iteration.objects.get_or_create(calibration_run=run, iteration_num=iteration_number, worker_name=worker_name,
