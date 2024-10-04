@@ -6,14 +6,9 @@ from calibration.models.base_model import BaseModel
 class ValidationRun(BaseModel):
     calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="validations", on_delete=models.CASCADE, db_index=True)
     iteration = models.IntegerField(null=True)
-    # validation_start_period = models.DateTimeField(null=True)
-    # validation_end_period = models.DateTimeField(null=True)
-    # validation_eval_start_period = models.DateTimeField(null=True)
-    # validation_eval_end_period = models.DateTimeField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     run_date = models.DateTimeField(null=True)
     performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.RESTRICT)
-
 
     class Meta:
         db_table = 'validation_run'

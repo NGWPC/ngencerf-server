@@ -67,7 +67,7 @@ class JobStageTransitionManager:
 
 
 # Map the cmd values to the corresponding functions
-file_funcs = {
+calibration_file_funcs = {
     JobStage.CALIBRATION: (get_calibration_input_file, get_calibration_stdout_file),
     JobStage.VALIDATION_CONTROL: (get_validation_control_input_file, get_validation_control_stdout_file),
     JobStage.VALIDATION_BEST: (get_validation_best_input_file, get_validation_best_stdout_file)
@@ -104,18 +104,18 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
         read_output(run)
 
 
-def run_calibration_job(calibration_run: CalibrationRun, cmd: JobStage):
+def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
     """
     Start the execution of a job at a specific stage by retrieving the input/output file paths
     and delegating the job to either a local or Docker execution environment.
     :param calibration_run: The CalibrationRun object representing the job run.
-    :param cmd: The current job stage.
+    :param stage: The current job stage.
     """
     # Retrieve the input and output file functions as a tuple from the dictionary
-    file_funcs_tuple = file_funcs.get(cmd)
+    file_funcs_tuple = calibration_file_funcs.get(stage)
 
     if file_funcs_tuple is None:
-        raise CerfException(f"Unsupported command: {cmd}")
+        raise CerfException(f"Unsupported command: {stage}")
 
     # Unpack and call the functions to get input/output file paths
     input_file_func, output_file_func = file_funcs_tuple
@@ -128,10 +128,10 @@ def run_calibration_job(calibration_run: CalibrationRun, cmd: JobStage):
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
-            run_calibration_job_local(calibration_run, cmd, input_file, output_file)
+            run_calibration_job_local(calibration_run, stage, input_file, output_file)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
-            run_calibration_job_parallel_works(calibration_run, cmd, input_file, output_file)
+            run_calibration_job_parallel_works(calibration_run, stage, input_file, output_file)
 
 
 def cancel_job_common(run_id):

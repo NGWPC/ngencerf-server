@@ -4,9 +4,11 @@ import logging
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import List, cast, Optional, Tuple
+from typing import List, cast, Optional, Tuple, Dict
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.db.models import Prefetch
 from rest_framework import status
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
@@ -15,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationRun, Status, ValidationRun
+from calibration.models import CalibrationRun, Status, ValidationRun, Module, ModuleGroup
 from calibration.util.calibration_validators import ErrorResponseSerializer
 from django.conf import settings
 
@@ -93,6 +95,35 @@ def png_str_to_base64_url(png_str):
         return f'data:image/png;base64,{base64_str}'
     else:
         return None
+
+
+MODULE_CACHE_KEY = 'module_cache_with_groups'
+
+
+def get_cached_modules_with_groups() -> Dict[str, Module]:
+    """
+    Fetches and caches the Module objects with prefetch of groups.
+    Returns the cached data if it exists, otherwise queries the database and caches the result.
+    """
+    cached_modules: Dict[str, Module] = cache.get(MODULE_CACHE_KEY)
+
+    if cached_modules is None:
+        # Prefetch related groups when querying for modules
+        modules = Module.objects.prefetch_related(
+            Prefetch('groups', queryset=ModuleGroup.objects.only('name'))
+        )
+        # Cache all modules
+        cached_modules = {module.name: module for module in modules}
+        cache.set(MODULE_CACHE_KEY, cached_modules, None)  # Cache indefinitely or set a timeout if needed
+
+    return cached_modules
+
+
+# Access a specific module by its name using the cache
+def get_cached_module_by_name(module_name: str) -> Optional[Module]:
+    cached_modules: Dict[str, Module] = get_cached_modules_with_groups()
+    # Return the module instance from the cached modules
+    return cached_modules.get(module_name)
 
 
 def create_calibration_run_internal(user) -> CalibrationRun:
@@ -325,6 +356,13 @@ def validate_response(serializer_class, data, fields_to_truncate=None, max_lengt
         message = f"Data format error in response returning from {calling_function} - validated by {validator.__class__.__name__}"
         validation_errors = validator.errors if validator else str(e)
         return None, ResponseError(message, response_type='validation_error_response', validation_errors=validation_errors)
+
+
+def validate_response_data(serializer_class, data, error_message):
+    validator = serializer_class(data=data)
+    if not validator.is_valid():
+        raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
+    return validator.data
 
 
 class CerfException(Exception):
