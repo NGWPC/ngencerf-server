@@ -95,7 +95,7 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
 
     if next_stage:
         logger.info(f'Job {process_id} proceeding to stage {next_stage}')
-        run_job(run, next_stage)
+        run_calibration_job(run, next_stage)
     else:
         logger.info(f'Job {process_id} complete. No further stages.')
         set_job_status(run, StatusEnum.DONE)
@@ -104,11 +104,11 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage, do_valid
         read_output(run)
 
 
-def run_job(run: CalibrationRun, cmd: JobStage):
+def run_calibration_job(calibration_run: CalibrationRun, cmd: JobStage):
     """
     Start the execution of a job at a specific stage by retrieving the input/output file paths
     and delegating the job to either a local or Docker execution environment.
-    :param run: The CalibrationRun object representing the job run.
+    :param calibration_run: The CalibrationRun object representing the job run.
     :param cmd: The current job stage.
     """
     # Retrieve the input and output file functions as a tuple from the dictionary
@@ -119,19 +119,19 @@ def run_job(run: CalibrationRun, cmd: JobStage):
 
     # Unpack and call the functions to get input/output file paths
     input_file_func, output_file_func = file_funcs_tuple
-    input_file = input_file_func(run)
-    output_file = output_file_func(run)
+    input_file = input_file_func(calibration_run)
+    output_file = output_file_func(calibration_run)
 
-    run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+    calibration_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
 
     # Run the job locally or in Docker (Docker is currently unsupported)
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
-            run_calibration_job_local(run, cmd, input_file, output_file)
+            run_calibration_job_local(calibration_run, cmd, input_file, output_file)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
-            run_calibration_job_parallel_works(run, cmd, input_file, output_file)
+            run_calibration_job_parallel_works(calibration_run, cmd, input_file, output_file)
 
 
 def cancel_job_common(run_id):

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import Iteration, IterationMetric
-from calibration.run_util.run_common import run_job, cancel_job_common, JobStage
+from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage
 from calibration.run_util.run_ngen_cal_pw import run_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer
@@ -145,7 +145,7 @@ def submit_job(run, config_file=None):
     run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
     run.save()
 
-    run_job(run, JobStage.CALIBRATION)
+    run_calibration_job(run, JobStage.CALIBRATION)
 
     return None
 

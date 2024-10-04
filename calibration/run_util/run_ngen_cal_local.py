@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def run_calibration_job_local(calibration_run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
-    Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
+    Executes a local calibration job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
     :param calibration_run: The CalibrationRun object representing the job run.
     :param stage: The current job stage.
@@ -36,7 +36,7 @@ def run_calibration_job_local(calibration_run: CalibrationRun, stage: JobStage, 
     # Bind the callback function for the job stage transition
     job_callback = functools.partial(run_calibration_job_callback_local, stage, calibration_run.automatic_validation, calibration_run)
 
-    execute(calibration_run, stage, args, callback_function=job_callback)
+    execute_calibration_job(calibration_run, stage, args, callback_function=job_callback)
 
 
 def run_calibration_job_callback_local(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
@@ -77,33 +77,33 @@ def run_calibration_job_callback_local(current_stage: JobStage, do_validation: b
 pool = ThreadPoolExecutor()
 
 
-def execute(run: CalibrationRun, current_stage, args, callback_function):
+def execute_calibration_job(calibration_run: CalibrationRun, current_stage, args, callback_function):
     """
     Spawn a process to run the run_ngen_cal.sh script which will call the appropriate Python script (Calibration or Validation).
     See https://stackoverflow.com/questions/28866651/python-concurrent-futures-using-subprocess-with-a-callback
     Also see https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.Future
 
     This function handles process execution and registers the callback for when the process completes.
-    :param run: The CalibrationRun object representing the job run.
+    :param calibration_run: The CalibrationRun object representing the job run.
     :param current_stage: The current job stage.
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    process_id = Path(run.job_data_dir).name
+    process_id = Path(calibration_run.job_data_dir).name
 
-    logger.info(f"Spawning process: {process_id} in stage {current_stage.name} with {args}")
+    logger.info(f"Spawning process: Calibration Job {process_id} in stage {current_stage.name} with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
 
         # Register job for future reference
-        job_registry[run.id] = process
+        job_registry[calibration_run.id] = process
 
         future.add_done_callback(callback_function)
     except Exception as e:
         logger.error(f"Failed to execute command: {str(e)}")
         raise
-    logger.info(f'Process {process_id} in stage {current_stage.name} is running in the background')
+    logger.info(f'Process Calibration Job {process_id} in stage {current_stage.name} is running in the background')
 
 
 def cancel_local_job(run: CalibrationRun):
