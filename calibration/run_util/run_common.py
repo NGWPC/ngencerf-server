@@ -94,6 +94,7 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage):
     """
 
     try:
+        logger.info(f'Calling read_output for stage {current_stage}')
         read_output(run, current_stage)
     except CerfException as e:
         logger.error(f'Exception while running read_output for job {run.id} in stage {current_stage} - {str(e)}')

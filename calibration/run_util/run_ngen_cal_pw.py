@@ -97,7 +97,7 @@ def run_calibration_job_callback_slurm(current_stage: JobStage | None, process_i
     :param run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    logger.info(f'Job end callback received for job {process_id}')
+    logger.info(f'Job end callback received for job {process_id} in stage {current_stage} with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Job {process_id} was cancelled')
@@ -139,5 +139,5 @@ def cancel_slurm_job(run: CalibrationRun):
                                             'Cancel job response data from Slurm is not in the expected format')
 
     logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
-    run_job_callback_slurm(None, f'{run.id}_{run.owner.username}', run, SlurmStatusEnum.CANCELED)
+    run_calibration_job_callback_slurm(None, f'{run.id}_{run.owner.username}', run, SlurmStatusEnum.CANCELED)
     return True
