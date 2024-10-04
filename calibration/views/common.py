@@ -43,13 +43,11 @@ def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[Calibra
     # Convert the StatusEnum instances to Status model instances - we cast explicitly to avoid PyCharm warnings
     allowed_statuses: List[Status] = [cast(Status, StatusEnum.from_enum(status_enum)) for status_enum in run_status]
 
-    # Query the CalibrationRun without filtering by status
-    run = (CalibrationRun.objects.filter(id=calibration_run_id, owner=user, is_deleted=False)
-           .select_related('status', 'gage')
-           .only('id', 'status', 'gage', 'owner')
-           .first())
-
-    if not run:
+    try:
+        # Attempt to get the CalibrationRun with related status and gage, optimizing field selection
+        run = CalibrationRun.objects.select_related('status', 'gage').only('id', 'status', 'gage', 'owner').get(
+            id=calibration_run_id, owner=user, is_deleted=False)
+    except CalibrationRun.DoesNotExist:
         # Return error if no CalibrationRun is found for the given ID and user
         return None, Response(
             {'error': f'Calibration Run {calibration_run_id} does not exist or is not owned by {user.username}'},

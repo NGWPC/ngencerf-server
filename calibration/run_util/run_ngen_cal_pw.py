@@ -21,7 +21,7 @@ def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: J
     """
     Executes a local calibration job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
-    :param calibration_run: The CalibrationRun object representing the job run.
+    :param calibration_run: The CalibrationRun object representing the job run.sl
     :param stage: The current job stage, as an enum
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
@@ -64,9 +64,6 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
-    slurm_token = generate_custom_token(validation_run.calibration_run.owner, token_slurm_scope)
-    print(f'slurm token: {slurm_token}')
-    # Slurm uses multipart form-data
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
     payload = {
         'job_id': (None, Path(validation_run.calibration_run.job_data_dir).name),
@@ -77,7 +74,7 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
         'auth_token': (None, generate_custom_token(validation_run.calibration_run.owner, token_slurm_scope))
     }
 
-    logger.info(f'slurm submit-job payload: {payload}')
+    logger.info(f'slurm submit-validation-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
@@ -109,7 +106,7 @@ def run_calibration_job_callback_slurm(current_stage: JobStage | None, process_i
         logger.error(f'Job {process_id} ending due to abnormal return code')
         set_job_status(run, StatusEnum.FAILED)
     else:
-        proceed_to_next_stage(run, current_stage, run.automatic_validation)
+        proceed_to_next_stage(run, current_stage)
 
 
 def cancel_slurm_job(run: CalibrationRun):

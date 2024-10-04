@@ -1,12 +1,11 @@
 import logging
 import subprocess
-from enum import auto, StrEnum
 from pathlib import Path
 from typing import Optional, Dict
 
 from django.conf import settings
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, JobStage
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_input_file, \
@@ -16,15 +15,6 @@ from calibration.views.read_output import read_output
 from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
-
-
-class JobStage(StrEnum):
-    """
-    Enum representing the stages of a job.
-    """
-    CALIBRATION = auto()
-    VALIDATION_CONTROL = auto()
-    VALIDATION_BEST = auto()
 
 
 class JobStageTransitionManager:
@@ -77,8 +67,7 @@ calibration_file_funcs = {
 }
 
 
-def get_validation_file_funcs():
-    return get_validation_iteration_input_file, get_validation_iteration_stdout_file
+validation_file_funcs = get_validation_iteration_input_file, get_validation_iteration_stdout_file
 
 
 # Store future and process objects by job id
@@ -105,7 +94,7 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage):
     """
 
     try:
-        read_output(current_stage)
+        read_output(run, current_stage)
     except CerfException as e:
         logger.error(f'Exception while running read_output for job {run.id} in stage {current_stage} - {str(e)}')
         raise
@@ -160,11 +149,9 @@ def run_validation_job(validation_run: ValidationRun, worker_name: str, iteratio
     :param worker_name: Worker name which contains the parameters we want to use
     :param iteration: Iteration which contains the parameters we want to use
     """
-    # Retrieve the input and output file functions as a tuple from the dictionary
-    file_funcs_tuple = get_validation_file_funcs()
 
     # Unpack and call the functions to get input/output file paths
-    input_file_func, output_file_func = file_funcs_tuple
+    input_file_func, output_file_func = validation_file_funcs
     input_file = input_file_func(validation_run.calibration_run, worker_name, iteration)
     output_file = output_file_func(validation_run.calibration_run, worker_name, iteration)
 

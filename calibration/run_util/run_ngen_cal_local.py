@@ -34,7 +34,7 @@ def run_calibration_job_local(calibration_run: CalibrationRun, stage: JobStage, 
     args = [shell_script, NGEN_CAL_VENV, output_file, cal_or_valid_script] + args_to_calibrate_or_validate
 
     # Bind the callback function for the job stage transition
-    job_callback = functools.partial(run_calibration_job_callback_local, stage, calibration_run.automatic_validation, calibration_run)
+    job_callback = functools.partial(run_calibration_job_callback_local, stage, calibration_run)
 
     execute_calibration_job(calibration_run, stage, args, callback_function=job_callback)
 

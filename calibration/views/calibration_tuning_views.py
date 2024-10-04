@@ -15,7 +15,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
@@ -438,15 +438,25 @@ def validate_parameters(run: CalibrationRun, parameters):
 
 def save_output_variable(run, output_variable_to_calibrate):
     if output_variable_to_calibrate:
-        module_with_output_variable = CalibrationFormulation.objects.filter(module__name=output_variable_to_calibrate['module'],
-                                                                            calibration_run=run).first()
-        if not module_with_output_variable:
+
+        try:
+            # Get the CalibrationFormulation object with the specified module and run
+            module_with_output_variable = CalibrationFormulation.objects.get(
+                module__name=output_variable_to_calibrate['module'],
+                calibration_run=run
+            )
+        except CalibrationFormulation.DoesNotExist:
             return "Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id)
-        module_output_variable = module_with_output_variable.output_variables.all().filter(
-            name=output_variable_to_calibrate['name']).first()
-        if not module_output_variable:
+
+        try:
+            # Get the output variable from the module's output variables
+            module_output_variable = module_with_output_variable.output_variables.get(
+                name=output_variable_to_calibrate['name']
+            )
+        except ModuleOutputVariable.DoesNotExist:
             return "Module output variable '{}' not found in module '{}' for this run".format(
-                output_variable_to_calibrate['name'], output_variable_to_calibrate['module'])
+                output_variable_to_calibrate['name'], output_variable_to_calibrate['module']
+            )
 
         run.module_output_variable = module_output_variable
         return None

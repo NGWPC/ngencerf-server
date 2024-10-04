@@ -193,9 +193,12 @@ def save_optimization_tab(request):
 
 
 def validate_optimizations(run, optimization_name, optimization_inputs):
-    optimization = Optimization.objects.filter(name=optimization_name, is_active=True).first() if optimization_name else None
-    if not optimization:
-        return None, "Invalid optimization - '{}'".format(optimization_name)
+    optimization = None
+    if optimization_name:
+        try:
+            optimization = Optimization.objects.get(name=optimization_name, is_active=True)
+        except Optimization.DoesNotExist:
+            return None, "Invalid optimization - '{}'".format(optimization_name)
 
     run.optimization = optimization
 
@@ -242,8 +245,11 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
 
 def validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold):
     if objective_function_name:
-        objective_function = Metric.objects.filter(name=objective_function_name, is_active=True).first()
-        if not objective_function:
+
+        try:
+            # Use get() to fetch the metric object with the specified name and is_active status
+            objective_function = Metric.objects.get(name=objective_function_name, is_active=True)
+        except Metric.DoesNotExist:
             return "Invalid metric specified for objective function - '{}'".format(objective_function_name)
 
         run.objective_function = objective_function

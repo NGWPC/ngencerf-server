@@ -249,8 +249,6 @@ def validate_formulation(module_names: set[str]):
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
 
-    print('my_modules', my_modules)
-
     # Initialize a dictionary to store the count of modules per group
     group_counts = {group_name: 0 for group_name in formulation_validations['formulation_rules']['group_requirements']}
 

@@ -7,13 +7,15 @@ from pathlib import Path
 from typing import Dict
 
 import pandas as pd
+from django.core.cache import cache
 from django.db import transaction
 
-from calibration.enums import OptimizationEnum
+from calibration.enums import OptimizationEnum, ValidationGlobalMetricPeriod, JobStage, ValidationGlobalMetricRunType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric
-from calibration.run_util.run_common import JobStage
+from calibration.models.validation_global_metric import ValidationGlobalMetric
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
-    get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir
+    get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
+    get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file
 from calibration.views.common import CerfException
 
 logger = logging.getLogger(__name__)
@@ -35,21 +37,90 @@ def read_output(run: CalibrationRun, stage: JobStage):
     """
     logger.info(f"Processing output for Calibration Run {run.id}, stage {stage}")
 
-    # Iteration objects are created as the job progress by report_iteration
-    # Create iteration objects for all worker directories
-    # create_iteration_objects_for_all_workers(run)
+    if stage != JobStage.CALIBRATION:
+        process_validation_for_calibration_run(run, stage)
+    else:
+        # Handle Calibration output
+        if IterationMetric.objects.filter(iteration__calibration_run=run).exists():
+            raise CerfException(f"End of job processing has already been completed for Calibration Run {run.id} for stage {stage.value}")
 
-    # Set the realization file path for the run
-    run.realization_file_path = get_realization_file_path(run)
+        # Set the realization file path for the run
+        run.realization_file_path = get_realization_file_path(run)
 
-    # Save the run and process iterations within a transaction
-    with transaction.atomic():
-        run.save()
-        process_iterations_for_all_workers(run)
+        # Save the run and process iterations within a transaction
+        with transaction.atomic():
+            run.save()
+            process_iterations_for_all_workers(run)
 
 
-def process_validation_for_calibration_run:
-    pass
+def process_validation_for_calibration_run(run: CalibrationRun, stage: JobStage):
+    """
+    Read the single file that is created by the Validation run, either Control or Best.
+    Processes the metrics and updates the corresponding IterationMetric entries.
+
+    :param run: The CalibrationRun instance.
+    :param stage: The stage of the run, either VALIDATION_CONTROL or VALIDATION_BEST.
+    :return: None
+    """
+
+    metrics_file = get_validation_metrics_valid_control_file(run) if stage == JobStage.VALIDATION_CONTROL else get_validation_metrics_valid_best_file(
+        run)
+    expected_run_type = ValidationGlobalMetricRunType.valid_control.value if stage == JobStage.VALIDATION_CONTROL else ValidationGlobalMetricRunType.valid_best.value
+
+    if ValidationGlobalMetric.objects.filter(calibration_run=run, run_type=expected_run_type).exists():
+        raise CerfException(f"End of job processing has already been completed for Calibration Run {run.id} for stage {stage.value}")
+
+    # Check if the file exists
+    if not Path(metrics_file).is_file():
+        raise CerfException(f'{metrics_file} does not exist')
+
+    # Read the metrics file using pandas
+    metrics_df = pd.read_csv(metrics_file)
+
+    # Prefetch metrics for quick lookup
+    metrics_lookup = get_cached_metrics()
+
+    metrics_to_create = []  # List to accumulate metrics to be created
+
+    # Loop over each row in the metrics file
+    for _, row in metrics_df.iterrows():
+        # 'run' and 'period' are the first two columns, remaining are metrics
+        run_type = row['run']
+        if run_type != expected_run_type:
+            logger.info(f'Unexpected run_type in {metrics_file} - {run_type}')
+        period = row['period']
+        if period not in ValidationGlobalMetricPeriod.get_names():
+            logger.info('Unexpected period in {metric_file} - {period}')
+
+        # Extract the metrics starting from the third column onwards
+        metrics_row = row[2:]
+
+        # For each metric in the row, create or update the ValidationGlobalMetric
+        for metric_name, value in metrics_row.items():
+            # Perform case-insensitive lookup for the metric
+            metric = metrics_lookup.get(metric_name.lower())
+            if not metric:
+                raise CerfException(f"Could not find metric '{metric_name}' in the database")
+
+            # Prepare metric value (handling empty values if necessary)
+            metric_value = float(value) if value else None
+
+            # Create the IterationMetric object
+            metric_obj = ValidationGlobalMetric(
+                metric=metric,
+                run_type=run_type,
+                period=period,
+                metric_value=metric_value,
+                calibration_run=run
+            )
+            logger.debug(
+                f'{run.id}_{run.owner.username} Creating validation global metric for Run Type: {run_type},  Period: {period},  {metric_name} with value {metric_value}')
+            metrics_to_create.append(metric_obj)
+
+    # Bulk create the metrics in the database
+    if metrics_to_create:
+        ValidationGlobalMetric.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+
 
 # Function to process iterations for all workers in a run
 def process_iterations_for_all_workers(run: CalibrationRun):
@@ -80,10 +151,13 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     :param worker_name: The name of the worker.  This is the middle part of the worker name.  Need to prefix with ngen_ and suffix with _worker
     :param iterations: A list of Iteration objects for the worker.
     """
+
+    # Get the cached metrics once for this batch of processing
+    metrics_lookup = get_cached_metrics()
+
     # Get the worker's path
     worker_path = get_worker_path(run, worker_name)
     if not Path(worker_path).is_dir():
-        # TODO Need to make sure we're handling exceptions in the caller
         raise CerfException(f"{worker_path} does not exist or is not a directory")
 
     # Get the necessary files for metrics, parameters, and best objective function log
@@ -135,7 +209,7 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
 
         # Process metrics and parameters for this iteration
-        process_metrics_row(run, iteration, metrics_row[1], metrics_to_create)
+        process_metrics_row_for_calibration(run, iteration, metrics_row[1], metrics_to_create, metrics_lookup)
         process_params_row(run, iteration, params_row[1], params_to_create, best_iteration_for_worker)
 
     # Bulk create IterationMetric and IterationParameter objects in chunks
@@ -149,7 +223,7 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
 
 
 # Function to process a single metrics row
-def process_metrics_row(run, iteration, metrics_row, metrics_to_create):
+def process_metrics_row_for_calibration(run, iteration, metrics_row, metrics_to_create, metrics_lookup):
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
@@ -157,12 +231,10 @@ def process_metrics_row(run, iteration, metrics_row, metrics_to_create):
     :param iteration: The Iteration object for the current iteration.
     :param metrics_row: The row of metrics data from the file.
     :param metrics_to_create: The list to accumulate created IterationMetric objects.
+    :param metrics_lookup: Cache to avoid repeated lookups of Metrics
     """
     # Get rid of 'iteration' and 'objFunVal' columns
     metrics_row = {k: v for k, v in metrics_row.items() if k not in ['iteration', 'objFunVal']}
-
-    # Prefetch metrics for quick lookup
-    metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
 
     for metric_name, value in metrics_row.items():
         # Perform case-insensitive lookup for the metric
@@ -357,3 +429,16 @@ def count_rows_in_csv(file_path):
     with open(file_path, 'r') as file:
         # Count the lines and subtract 1 for the header
         return sum(1 for _ in file) - 1
+
+
+def get_cached_metrics():
+    """
+    Retrieve the Metric objects from cache or from the database if not cached.
+    """
+    # Check if the cache already exists
+    metrics_lookup = cache.get('metrics_cache')
+    if not metrics_lookup:
+        # Fetch from the database and cache the results
+        metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
+        cache.set('metrics_cache', metrics_lookup, None)  # Cache indefinitely
+    return metrics_lookup

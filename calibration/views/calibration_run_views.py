@@ -15,11 +15,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import Iteration, IterationMetric
+from calibration.models import Iteration
 from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer, \
+    ReadOutputRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, generate_custom_token, \
     token_slurm_scope, auth_scope_required
@@ -176,22 +177,19 @@ def process_calibration_output(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'process_calibration_output() request from {request.user} - {data}')
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(ReadOutputRequestSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    job_stage = validator.get('job_stage')
 
     run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
 
     if error_return:
         return error_return
 
-    iteration_metric_objects = IterationMetric.objects.filter(iteration__calibration_run=run).exists()
-    if iteration_metric_objects.exists():
-        return ResponseError(f"End of job processing has already been completed Calibration Run {run.id}")
-
-    read_output(run)
+    read_output(run, JobStage.from_string(job_stage))
 
     response = {'message': f"End of job processing completed for Calibration Run {run.id}",
                 'calibration_run_id': run.id,
@@ -236,7 +234,7 @@ def report_iteration(request):
     worker_name = validator.get('worker_name')
     first_iteration_for_worker = validator.get('first_iteration_for_worker')
 
-    print(
+    logger.debug(
         f'Report Iteration for calibration_run_id {calibration_run_id}, iteration number: {iteration_number}, worker: {worker_name}, first_iteration: {first_iteration_for_worker}')
 
     # TODO Only Running
@@ -252,11 +250,11 @@ def report_iteration(request):
             worker_number = (max_worker_number or 0) + 1
             print(f"Creating new worker: '{worker_name}' #{worker_number}")
         else:
-            # Existing worker, find the worker_number
-            existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').first()
-            if existing_iteration:
+            try:
+                # Use get() to fetch the latest iteration for the given worker_name and run
+                existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').get()
                 worker_number = existing_iteration.worker_number
-            else:
+            except Iteration.DoesNotExist:
                 # Handle case where worker_name does not exist
                 return ResponseError(f"Worker '{worker_name}' not found for calibration run {run.id}.")
 
