@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
-    Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
+    Executes a local calibration job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
     :param calibration_run: The CalibrationRun object representing the job run.
     :param stage: The current job stage, as an enum
@@ -36,7 +36,7 @@ def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: J
         'auth_token': (None, generate_custom_token(calibration_run.owner, token_slurm_scope))
     }
 
-    logger.info(f'slurm submit-job payload: {payload}')
+    logger.info(f'slurm submit-calibration-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
