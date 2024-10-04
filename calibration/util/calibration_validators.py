@@ -607,18 +607,18 @@ class ModuleDataHydrofabricListSerializer(BaseSerializer):
 # class ModuleHydrofabricVersionSerializer(serializers.Serializer):
 #     commit_hash = serializers.CharField(required=True, allow_blank=False)
 
+#
+# # Module objects from Hydrofabric contain group names and version
+# class ModuleHydrofabricSerializer(BaseSerializer):
+#     module_name = serializers.CharField(required=True, allow_blank=False)
+#     # TODO This should be required with no default
+#     description = serializers.CharField(required=False, allow_blank=False, default='')
+#     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(required=True, allow_blank=False))
 
-# Module objects from Hydrofabric contain group names and version
-class ModuleHydrofabricSerializer(BaseSerializer):
-    module_name = serializers.CharField(required=True, allow_blank=False)
-    # TODO This should be required with no default
-    description = serializers.CharField(required=False, allow_blank=False, default='')
-    groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(required=True, allow_blank=False))
 
-
-# List of module objects from Hydrofabric containing group names and version
-class ModuleHydrofabricListSerializer(BaseSerializer):
-    modules = ModuleHydrofabricSerializer(many=True, min_length=1, required=True)
+# # List of module objects from Hydrofabric containing group names and version
+# class ModuleHydrofabricListSerializer(BaseSerializer):
+#     modules = ModuleHydrofabricSerializer(many=True, min_length=1, required=True)
 
 
 class SaveTuningRequestSerializer(BaseSerializer):
@@ -830,3 +830,11 @@ class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=True)
+
+##################################
+# Slurm
+##################################
+class SlurmSubmitJobResponse(BaseSerializer):
+    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
+    ngen_cal_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    ngen__commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)

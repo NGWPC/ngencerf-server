@@ -14,11 +14,11 @@ from calibration.run_util.run_common import JobStage, set_job_status, job_regist
 logger = logging.getLogger(__name__)
 
 
-def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
+def run_calibration_job_local(calibration_run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
     Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
-    :param run: The CalibrationRun object representing the job run.
+    :param calibration_run: The CalibrationRun object representing the job run.
     :param stage: The current job stage.
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
@@ -34,12 +34,12 @@ def run_local(run: CalibrationRun, stage: JobStage, input_file, output_file):
     args = [shell_script, NGEN_CAL_VENV, output_file, cal_or_valid_script] + args_to_calibrate_or_validate
 
     # Bind the callback function for the job stage transition
-    job_callback = functools.partial(run_job_callback_local, stage, run.automatic_validation, run)
+    job_callback = functools.partial(run_calibration_job_callback_local, stage, calibration_run.automatic_validation, calibration_run)
 
-    execute(run, stage, args, callback_function=job_callback)
+    execute(calibration_run, stage, args, callback_function=job_callback)
 
 
-def run_job_callback_local(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
+def run_calibration_job_callback_local(current_stage: JobStage, do_validation: bool, run: CalibrationRun, future: Future):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
