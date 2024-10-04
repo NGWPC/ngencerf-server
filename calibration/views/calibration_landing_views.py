@@ -1,4 +1,5 @@
 import logging
+import os
 import shutil
 from datetime import datetime, timezone
 
@@ -410,4 +411,5 @@ def hard_delete(run):
     job_data_dir = run.job_data_dir
     run.delete()
     logger.debug(f'Deleting directory {job_data_dir}')
-    shutil.rmtree(job_data_dir)
+    if os.path.exists(job_data_dir):
+        shutil.rmtree(job_data_dir)

@@ -154,20 +154,20 @@ def get_parameters_and_output_variables(modules: QuerySet(CalibrationFormulation
     return module_list
 
 
-def get_parameters_for_export(modules):
+def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]):
     parameter_list = []
     for m in modules:
         calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
                                      .values('name', 'minimum', 'maximum', 'initial_value'))
 
         for p in calibrationParameters:
-            p['module'] = m.name
+            p['module'] = m.module.name
             parameter_list.append(p)
 
     return parameter_list
 
 
-def get_time_range(run):
+def get_time_range(run: CalibrationRun):
     """
     Get data range intersection of observational and forcing data if we don't already have it
     :param run:
