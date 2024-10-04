@@ -195,7 +195,7 @@ NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 # This is the mount point for docker containers
 NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
 
-NGEN_LOGGING_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngencerf-server-logs'
+NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
 
 NGEN_STATIC_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-static-files'
 
