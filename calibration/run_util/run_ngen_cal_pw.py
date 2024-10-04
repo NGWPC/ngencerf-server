@@ -8,7 +8,7 @@ from rest_framework import status
 from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
-from calibration.util.calibration_validators import SlurmSubmitJobResponse
+from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
 from calibration.views.common import generate_custom_token, token_slurm_scope
 from django.conf import settings
 
@@ -134,8 +134,7 @@ def cancel_slurm_job(run: CalibrationRun):
 
     logger.info(f'Response from slurm: {response.json()}')
 
-    # TODO Fix this
-    slurm_response = validate_response_data(..., response.json(),
+    slurm_response = validate_response_data(GenericMessageResponseSerializer, response.json(),
                                             'Cancel job response data from Slurm is not in the expected format')
 
     logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
