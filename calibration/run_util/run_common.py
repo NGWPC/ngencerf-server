@@ -4,13 +4,14 @@ from enum import auto, StrEnum
 from pathlib import Path
 from typing import Optional, Dict
 
+from django.conf import settings
+
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file
 from calibration.views.common import CerfException
 from calibration.views.read_output import read_output
-from django.conf import settings
 from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,6 @@ file_funcs = {
 job_registry: Dict[int, subprocess.Popen] = {}
 
 
-# TODO Need 2 versions of this, or an argument
 def set_job_status(run: CalibrationRun, status: StatusEnum):
     """Set the status for the CalibrationRun and save it."""
     run.status = StatusEnum.from_enum(status)
@@ -127,11 +127,11 @@ def run_job(run: CalibrationRun, cmd: JobStage):
     # Run the job locally or in Docker (Docker is currently unsupported)
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
-            from calibration.run_util.run_ngen_cal_local import run_local
-            run_local(run, cmd, input_file, output_file)
+            from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
+            run_calibration_job_local(run, cmd, input_file, output_file)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
-            from calibration.run_util.run_ngen_cal_pw import run_parallel_works
-            run_parallel_works(run, cmd, input_file, output_file)
+            from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
+            run_calibration_job_parallel_works(run, cmd, input_file, output_file)
 
 
 def cancel_job_common(run_id):

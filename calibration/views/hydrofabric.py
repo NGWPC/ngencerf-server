@@ -210,55 +210,6 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
     return
 
 
-#
-# def get_modules_from_hydrofabric(run: CalibrationRun):
-#     if settings.HYDROFABRIC_MODULES_ENDPOINT[0]:
-#         logger.info('Getting module data from Hydrofabric')
-#         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULES_ENDPOINT[1])
-#         module_json = fetch_from_hydrofabric('GET', url, headers=headers)
-#     else:
-#         logger.info('Getting dummy module data')
-#         module_json = module_sample_data
-#
-#     current_module_names = set(
-#         CalibrationFormulation.objects.filter(calibration_run=run)
-#         .values_list('module__name', flat=True)
-#     )
-#
-#     print('current_module_names', current_module_names)
-#
-#     module_data = validate_response_data(ModuleHydrofabricListSerializer, module_json, 'Module data from Hydrofabric is not in the expected format')
-#
-#     module_data = module_data.get('modules')
-#     new_modules_names = set(map(lambda mod: mod['module_name'], module_data))
-#     print('new_modules_names', new_modules_names)
-#
-#     with transaction.atomic():
-#         if current_module_names != new_modules_names:
-#             # Delete only if the modules names have changed
-#             to_be_deleted = current_module_names - new_modules_names
-#
-#             if to_be_deleted:
-#                 CalibrationFormulation.objects.filter(calibration_run=run, name__in=to_be_deleted).delete()
-#
-#             # Create the new ones, if they don't already exist
-#             new_modules = []
-#             for m in module_data:
-#                 if m['module_name'] not in current_module_names:
-#                     module_instance = Module.objects.get(name=m['module_name'])
-#                     new_modules.append(CalibrationFormulation(
-#                         module=module_instance,
-#                         calibration_run=run,
-#                         groups=json.dumps(m['groups']),
-#                         description=m['description']
-#                     ))
-#             # Use bulk_create to minimize the number of insert queries
-#             if new_modules:
-#                 CalibrationFormulation.objects.bulk_create(new_modules)
-#
-#     return
-#
-
 def validate_response_data(serializer_class, data, error_message):
     validator = serializer_class(data=data)
     if not validator.is_valid():
