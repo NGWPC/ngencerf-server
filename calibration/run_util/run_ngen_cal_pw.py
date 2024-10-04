@@ -8,48 +8,52 @@ from rest_framework import status
 from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
+from calibration.util.calibration_validators import SlurmSubmitJobResponse
 from calibration.views.common import generate_custom_token, token_slurm_scope
 from django.conf import settings
+
+from calibration.views.hydrofabric import validate_response_data
 
 logger = logging.getLogger(__name__)
 
 
-def run_parallel_works(run: CalibrationRun, stage: JobStage, input_file, output_file):
+def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
-    Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
+    Executes a local calibration job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
-    :param run: The CalibrationRun object representing the job run.
+    :param calibration_run: The CalibrationRun object representing the job run.
     :param stage: The current job stage, as an enum
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
-    logger.info(f'in run_parallel_works: {type(stage)}, {stage}')
-
-    slurm_token = generate_custom_token(run.owner, token_slurm_scope)
-    print(f'slurm token: {slurm_token}')
-    # Slurm uses multipart form-data
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
     payload = {
-        'job_id': (None, Path(run.job_data_dir).name),
+        'job_id': (None, Path(calibration_run.job_data_dir).name),
         'job_type': (None, 'calibration' if stage == JobStage.CALIBRATION else 'validation'),
         'job_stage': (None, stage.name),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
-        'auth_token': (None, generate_custom_token(run.owner, token_slurm_scope))
+        'auth_token': (None, generate_custom_token(calibration_run.owner, token_slurm_scope))
     }
 
-    logger.info(f'slurm submit-job payload: {payload}')
+    logger.info(f'slurm submit-calibration-job payload: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
-        logger.info(f'Response from slurm: {response.json()}')
-        run.slurm_job_id = response.json().get('slurm_job_id')
-        run.save()
-        logger.info(f"Job submitted successfully! Slurm id: {run.slurm_job_id}")
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
         raise
+
+    logger.info(f'Response from slurm: {response.json()}')
+    slurm_response = validate_response_data(SlurmSubmitJobResponse, response.json(),
+                                            'Submit job response data from Slurm is not in the expected format')
+
+    calibration_run.slurm_job_id = slurm_response.get('slurm_job_id')
+    calibration_run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
+    calibration_run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
+    calibration_run.save(update_fields=['slurm_job_id', 'ngen_commit_hash', 'ngen_cal_commit_hash'])
+    logger.info(f"Job submitted successfully! Slurm id: {calibration_run.slurm_job_id}")
 
 
 def run_job_callback_slurm(current_stage: JobStage | None, process_id, run, slurm_status: SlurmStatusEnum):
@@ -89,13 +93,19 @@ def cancel_slurm_job(run: CalibrationRun):
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
-        logger.info(f'Response from slurm: {response.json()}')
-        logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
-        run_job_callback_slurm(None, f'{run.id}_{run.owner.username}', run, SlurmStatusEnum.CANCELED)
-        return True
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to cancel job: {response.json().get('error')}, {str(e)}")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             return False
         raise
+
+    logger.info(f'Response from slurm: {response.json()}')
+
+    # TODO Fix this
+    slurm_response = validate_response_data(..., response.json(),
+                                            'Cancel job response data from Slurm is not in the expected format')
+
+    logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
+    run_job_callback_slurm(None, f'{run.id}_{run.owner.username}', run, SlurmStatusEnum.CANCELED)
+    return True
