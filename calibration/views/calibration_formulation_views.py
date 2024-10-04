@@ -1,20 +1,16 @@
 import logging
-from typing import Dict, Optional
 
-from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun
-from calibration.models.module import Module
-from calibration.models.module_group import ModuleGroup
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
+from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, get_cached_module_by_name, \
+    get_cached_modules_with_groups
 
 logger = logging.getLogger(__name__)
 
@@ -329,32 +325,3 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters):
 
     CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
-
-MODULE_CACHE_KEY = 'module_cache_with_groups'
-
-
-
-def get_cached_modules_with_groups() -> Dict[str, Module]:
-    """
-    Fetches and caches the Module objects with prefetch of groups.
-    Returns the cached data if it exists, otherwise queries the database and caches the result.
-    """
-    cached_modules: Dict[str, Module] = cache.get(MODULE_CACHE_KEY)
-
-    if cached_modules is None:
-        # Prefetch related groups when querying for modules
-        modules = Module.objects.prefetch_related(
-            Prefetch('groups', queryset=ModuleGroup.objects.only('name'))
-        )
-        # Cache all modules
-        cached_modules = {module.name: module for module in modules}
-        cache.set(MODULE_CACHE_KEY, cached_modules, None)  # Cache indefinitely or set a timeout if needed
-
-    return cached_modules
-
-
-# Access a specific module by its name using the cache
-def get_cached_module_by_name(module_name: str) -> Optional[Module]:
-    cached_modules: Dict[str, Module] = get_cached_modules_with_groups()
-    # Return the module instance from the cached modules
-    return cached_modules.get(module_name)

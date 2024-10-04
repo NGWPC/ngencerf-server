@@ -10,8 +10,7 @@ from calibration.models import CalibrationParameter, ModuleOutputVariable, Calib
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
-from calibration.views.calibration_formulation_views import get_cached_module_by_name
-from calibration.views.common import CerfException
+from calibration.views.common import CerfException, validate_response_data, get_cached_module_by_name
 from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, hydrofabric_module_metadata_real_data
 
 logger = logging.getLogger(__name__)
@@ -141,7 +140,8 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
         # TODO need them to return an object
 
         module_json = {
-            'modules': fetch_from_hydrofabric('POST', url, headers=default_headers, payload={'modules': my_module_names, 'gage_id': run.gage.gage_id})}
+            'modules': fetch_from_hydrofabric('POST', url, headers=default_headers,
+                                              payload={'modules': my_module_names, 'gage_id': run.gage.gage_id})}
     else:
         logger.info('Getting dummy module metadata')
         module_json = hydrofabric_module_metadata_real_data
@@ -208,13 +208,6 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
         run.save()
 
     return
-
-
-def validate_response_data(serializer_class, data, error_message):
-    validator = serializer_class(data=data)
-    if not validator.is_valid():
-        raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
-    return validator.data
 
 
 def str_to_float(value):
