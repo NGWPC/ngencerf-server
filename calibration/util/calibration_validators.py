@@ -831,10 +831,11 @@ class ErrorResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=True)
 
+
 ##################################
 # Slurm
 ##################################
 class SlurmSubmitJobResponse(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
     ngen_cal_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
-    ngen__commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
