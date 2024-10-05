@@ -394,21 +394,21 @@ def validate_times(run, calibration_times, validation_times):
     return None
 
 
-def validate_and_save_times(run, calibration_times, validation_times):
+def validate_and_save_times(run: CalibrationRun, calibration_times, validation_times):
     error_message = validate_times(run, calibration_times, validation_times)
     if error_message:
         return error_message
 
-    run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times['simulation_start_time'] else None
-    run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times['simulation_end_time'] else None
-    run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times['calibration_start_time'] else None
-    run.calibration_eval_end_period = datetime.fromisoformat(calibration_times['calibration_end_time']) if calibration_times['calibration_end_time'] else None
+    run.calibration_start_period = calibration_times['simulation_start_time']
+    run.calibration_end_period = calibration_times['simulation_end_time']
+    run.calibration_eval_start_period = calibration_times['calibration_start_time']
+    run.calibration_eval_end_period = calibration_times['calibration_end_time']
 
     if run.automatic_validation:
-        run.validation_start_period = datetime.fromisoformat(validation_times['simulation_start_time']) if validation_times['simulation_start_time'] else None
-        run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times['simulation_end_time'] else None
-        run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times['validation_start_time'] else None
-        run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times['validation_end_time'] else None
+        run.validation_start_period = validation_times['simulation_start_time']
+        run.validation_end_period = validation_times['simulation_end_time']
+        run.validation_eval_start_period = validation_times['validation_start_time']
+        run.validation_eval_end_period = validation_times['validation_end_time']
 
 
 def validate_parameters(run: CalibrationRun, parameters):
