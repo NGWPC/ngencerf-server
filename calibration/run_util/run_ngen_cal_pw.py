@@ -112,16 +112,15 @@ def run_calibration_job_callback_slurm(current_stage: JobStage | None, process_i
         proceed_to_next_stage(calibration_run, current_stage)
 
 
-def run_validation_job_callback_slurm(current_stage: JobStage | None, process_id, validation_run: ValidationRun, slurm_status: SlurmStatusEnum):
+def run_validation_job_callback_slurm(process_id, validation_run: ValidationRun, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
-    :param current_stage: The current job stage, as an Enum (or None, if the job was cancelled)
     :param process_id: The process_id of the job (id_user)
     :param validation_run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    logger.info(f'Job end callback received for job {process_id} in stage {current_stage} with status {slurm_status}')
+    logger.info(f'Job end callback received for validation job {process_id} with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Job {process_id} was cancelled')
