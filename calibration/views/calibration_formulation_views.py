@@ -9,7 +9,7 @@ from calibration.models import CalibrationFormulation, CalibrationSlothParam, Ca
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, get_cached_module_by_name, \
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, get_cached_module_by_name, \
     get_cached_modules_with_groups
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def load_formulation_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -124,7 +124,7 @@ def save_formulation_tab(request):
     use_sloth = validator.get('use_sloth')
     sloth_parameters = validator.get('sloth_parameters')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 

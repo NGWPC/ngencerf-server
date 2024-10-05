@@ -12,7 +12,7 @@ from calibration.models import Optimization, Metric, OptimizationInput, Calibrat
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def load_optimization_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -149,7 +149,7 @@ def save_optimization_tab(request):
     save_plot_iteration_frequency = validator.get('save_plot_iteration_frequency')
     save_output_iteration = validator.get('save_output_iteration')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 

@@ -13,7 +13,7 @@ from calibration.models import PlotDefinition, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_run_dir
-from calibration.views.common import get_run, handle_exceptions, validate_response, validate_request, CerfException, png_str_to_base64_url, \
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, png_str_to_base64_url, \
     ResponseError
 from calibration.views.read_output import process_worker_dirs
 
@@ -52,7 +52,7 @@ def get_plot_names(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 
@@ -116,7 +116,7 @@ def get_plot(request):
     calibration_run_id = validator.get('calibration_run_id')
     plot_name = validator.get('plot_name')
 
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 

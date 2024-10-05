@@ -11,7 +11,7 @@ from django.core.cache import cache
 from django.db import transaction
 
 from calibration.enums import OptimizationEnum, ValidationGlobalMetricPeriod, JobStage, ValidationGlobalMetricRunType
-from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric
+from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun
 from calibration.models.validation_global_metric import ValidationGlobalMetric
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
@@ -26,49 +26,56 @@ BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
+def read_validation_output(validation_run: ValidationRun):
+    pass
+
+
 # Function to read the output of a calibration run
-def read_output(run: CalibrationRun, stage: JobStage):
+def read_calibration_output(calibration_run: CalibrationRun, stage: JobStage):
     """
     Process the output of a CalibrationRun. This function handles reading and
     processing the worker directories and their iteration files.
 
-    :param run: The CalibrationRun instance whose output is to be processed.
+    A Calibration job has multiple stages, which include Validations.  Not to be confused with a Validation job
+
+    :param calibration_run: The CalibrationRun instance whose output is to be processed.
     :param stage: The state of the run, either Calibration, Validation_Control or Validation_Best
     """
-    logger.info(f"Processing output for Calibration Run {run.id}, stage {stage}")
+    logger.info(f"Processing output for Calibration Run {calibration_run.id}, stage {stage}")
 
     if stage != JobStage.CALIBRATION:
-        process_validation_for_calibration_run(run, stage)
+        process_validation_for_calibration_run(calibration_run, stage)
     else:
         # Handle Calibration output
-        if IterationMetric.objects.filter(iteration__calibration_run=run).exists():
-            raise CerfException(f"End of job processing has already been completed for Calibration Run {run.id} for stage {stage.value}")
+        if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
+            raise CerfException(f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
 
         # Set the realization file path for the run
-        run.realization_file_path = get_realization_file_path(run)
+        calibration_run.realization_file_path = get_realization_file_path(calibration_run)
 
         # Save the run and process iterations within a transaction
         with transaction.atomic():
-            run.save()
-            process_iterations_for_all_workers(run)
+            calibration_run.save()
+            process_iterations_for_all_workers(calibration_run)
 
 
-def process_validation_for_calibration_run(run: CalibrationRun, stage: JobStage):
+def process_validation_for_calibration_run(calibration_run: CalibrationRun, stage: JobStage):
     """
     Read the single file that is created by the Validation run, either Control or Best.
     Processes the metrics and updates the corresponding IterationMetric entries.
 
-    :param run: The CalibrationRun instance.
+    :param calibration_run: The CalibrationRun instance.
     :param stage: The stage of the run, either VALIDATION_CONTROL or VALIDATION_BEST.
     :return: None
     """
 
-    metrics_file = get_validation_metrics_valid_control_file(run) if stage == JobStage.VALIDATION_CONTROL else get_validation_metrics_valid_best_file(
-        run)
+    metrics_file = get_validation_metrics_valid_control_file(
+        calibration_run) if stage == JobStage.VALIDATION_CONTROL else get_validation_metrics_valid_best_file(
+        calibration_run)
     expected_run_type = ValidationGlobalMetricRunType.valid_control.value if stage == JobStage.VALIDATION_CONTROL else ValidationGlobalMetricRunType.valid_best.value
 
-    if ValidationGlobalMetric.objects.filter(calibration_run=run, run_type=expected_run_type).exists():
-        raise CerfException(f"End of job processing has already been completed for Calibration Run {run.id} for stage {stage.value}")
+    if ValidationGlobalMetric.objects.filter(calibration_run=calibration_run, run_type=expected_run_type).exists():
+        raise CerfException(f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
 
     # Check if the file exists
     if not Path(metrics_file).is_file():
@@ -111,10 +118,10 @@ def process_validation_for_calibration_run(run: CalibrationRun, stage: JobStage)
                 run_type=run_type,
                 period=period,
                 metric_value=metric_value,
-                calibration_run=run
+                calibration_run=calibration_run
             )
             logger.debug(
-                f'{run.id}_{run.owner.username} Creating validation global metric for Run Type: {run_type},  Period: {period},  {metric_name} with value {metric_value}')
+                f'{calibration_run.id}_{calibration_run.owner.username} Creating validation global metric for Run Type: {run_type},  Period: {period},  {metric_name} with value {metric_value}')
             metrics_to_create.append(metric_obj)
 
     # Bulk create the metrics in the database
@@ -123,31 +130,32 @@ def process_validation_for_calibration_run(run: CalibrationRun, stage: JobStage)
 
 
 # Function to process iterations for all workers in a run
-def process_iterations_for_all_workers(run: CalibrationRun):
+def process_iterations_for_all_workers(calibration_run: CalibrationRun):
     """
     Process all Iteration objects for the workers of a given CalibrationRun.
     It uses prefetching to optimize database queries and processes the iterations
     for each worker based on their metrics and parameters.
 
-    :param run: The CalibrationRun instance.
+    :param calibration_run: The CalibrationRun instance.
     """
     # Query all Iteration objects for the calibration run and prefetch related metrics and parameters
-    iterations = Iteration.objects.filter(calibration_run=run).order_by('worker_name', 'iteration_num').prefetch_related('iterationmetric_set',
-                                                                                                                         'iterationparameter_set')
+    iterations = Iteration.objects.filter(calibration_run=calibration_run).order_by('worker_name', 'iteration_num').prefetch_related(
+        'iterationmetric_set',
+        'iterationparameter_set')
 
     # Group the iterations by worker and process them
     for worker_name, worker_iterations in groupby(iterations, key=attrgetter('worker_name')):
-        process_iterations_for_a_worker(run, worker_name, list(worker_iterations))
+        process_iterations_for_a_worker(calibration_run, worker_name, list(worker_iterations))
 
 
 # Function to process iterations for a specific worker
-def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, iterations):
+def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations):
     """
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
     iteration for metrics and parameters creation.
 
-    :param run: The CalibrationRun instance.
+    :param calibration_run: The CalibrationRun instance.
     :param worker_name: The name of the worker.  This is the middle part of the worker name.  Need to prefix with ngen_ and suffix with _worker
     :param iterations: A list of Iteration objects for the worker.
     """
@@ -156,15 +164,15 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     metrics_lookup = get_cached_metrics()
 
     # Get the worker's path
-    worker_path = get_worker_path(run, worker_name)
+    worker_path = get_worker_path(calibration_run, worker_name)
     if not Path(worker_path).is_dir():
         raise CerfException(f"{worker_path} does not exist or is not a directory")
 
     # Get the necessary files for metrics, parameters, and best objective function log
-    metrics_iteration_file = get_metrics_iteration_file(run, worker_name)
-    params_iteration_file = get_params_iteration_file(run, worker_name)
+    metrics_iteration_file = get_metrics_iteration_file(calibration_run, worker_name)
+    params_iteration_file = get_params_iteration_file(calibration_run, worker_name)
     # Contains the best for DDS
-    objective_log_best_file = get_objective_log_best_file(run, worker_name)
+    objective_log_best_file = get_objective_log_best_file(calibration_run, worker_name)
 
     # Check if the files exist
     if not Path(metrics_iteration_file).is_file():
@@ -174,7 +182,7 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
 
     # Check for the best iteration based on optimization type (DDS, GWO, PSO)
     best_iteration_for_worker = -1
-    if run.optimization.name == 'DDS':
+    if calibration_run.optimization.name == 'DDS':
         if not Path(objective_log_best_file).is_file():
             raise CerfException(f'{objective_log_best_file} does not exist')
         # Read the best iteration from the log
@@ -199,7 +207,7 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
     params_to_create = []  # List to accumulate parameters to be created
 
     # Update the output variables for the worker's iterations
-    update_output_variables(metrics_iteration_file, run, worker_name)
+    update_output_variables(metrics_iteration_file, calibration_run, worker_name)
 
     # Loop over both metrics and parameters DataFrames row by row
     for _, (metrics_row, params_row) in enumerate(zip(metrics_df.iterrows(), params_df.iterrows())):
@@ -209,8 +217,8 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
 
         # Process metrics and parameters for this iteration
-        process_metrics_row_for_calibration(run, iteration, metrics_row[1], metrics_to_create, metrics_lookup)
-        process_params_row(run, iteration, params_row[1], params_to_create, best_iteration_for_worker)
+        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row[1], metrics_to_create, metrics_lookup)
+        process_params_row(calibration_run, iteration, params_row[1], params_to_create, best_iteration_for_worker)
 
     # Bulk create IterationMetric and IterationParameter objects in chunks
     if metrics_to_create:
@@ -223,11 +231,11 @@ def process_iterations_for_a_worker(run: CalibrationRun, worker_name: str, itera
 
 
 # Function to process a single metrics row
-def process_metrics_row_for_calibration(run, iteration, metrics_row, metrics_to_create, metrics_lookup):
+def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iteration: Iteration, metrics_row, metrics_to_create, metrics_lookup):
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
-    :param run: The CalibrationRun instance.
+    :param calibration_run: The CalibrationRun instance.
     :param iteration: The Iteration object for the current iteration.
     :param metrics_row: The row of metrics data from the file.
     :param metrics_to_create: The list to accumulate created IterationMetric objects.
@@ -248,16 +256,16 @@ def process_metrics_row_for_calibration(run, iteration, metrics_row, metrics_to_
             metric=metric,
             metric_value=metric_value
         )
-        logger.debug(f'{run.id}_{run.owner.username} Creating Iteration metric for {metric_obj}')
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Creating Iteration metric for {metric_obj}')
         metrics_to_create.append(metric_obj)
 
 
 # Function to process a single parameters row
-def process_params_row(run, iteration, params_row, params_to_create, best_iteration_for_worker):
+def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, params_row, params_to_create, best_iteration_for_worker):
     """
     Process a single row from the parameters file and create IterationParameter objects.
 
-    :param run: The CalibrationRun instance.
+    :param calibration_run: The CalibrationRun instance.
     :param iteration: The Iteration object for the current iteration.
     :param params_row: The row of parameter data from the file.
     :param params_to_create: The list to accumulate created IterationParameter objects.
@@ -268,8 +276,8 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
 
     # Initialize global_best_params_dict if not using DDS optimization
     best_params_dict: Dict[str, float] = {}
-    if run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
-        global_best_params_file = get_global_best_params_file(run)
+    if calibration_run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
+        global_best_params_file = get_global_best_params_file(calibration_run)
         if not Path(global_best_params_file).is_file():
             raise CerfException(f"{global_best_params_file} does not exist")
 
@@ -286,7 +294,7 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
                 for param_name, value in params_row.items())
     )
     if is_best_match:
-        logger.debug(f'{run.id}_{run.owner.username} Found best match: {params_row}')
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best match: {params_row}')
 
     # Prefetch CalibrationParameter objects for quick lookup
     params_lookup = {p.name.lower(): p for p in CalibrationParameter.objects.all()}
@@ -308,23 +316,23 @@ def process_params_row(run, iteration, params_row, params_to_create, best_iterat
             tuned_value=tuned_value,
             best=best
         )
-        logger.debug(f'{run.id}_{run.owner.username} Creating Iteration parameter for {param_obj}')
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Creating Iteration parameter for {param_obj}')
         params_to_create.append(param_obj)
 
 
 # Function to update the output variables for the worker's iterations
-def update_output_variables(metrics_iteration_file, run, worker_name):
+def update_output_variables(metrics_iteration_file, calibration_run: CalibrationRun, worker_name):
     """
     Update the output variable values for each iteration in a worker's metrics file.
 
     :param metrics_iteration_file: The path to the metrics file.
-    :param run: The CalibrationRun instance.
+    :param calibration_run: The CalibrationRun instance.
     :param worker_name: The name of the worker.
     """
     # Prefetch all relevant Iteration objects and create a dictionary keyed by iteration_num
     iterations_dict = {
         iteration.iteration_num: iteration
-        for iteration in Iteration.objects.filter(calibration_run=run, worker_name=worker_name)
+        for iteration in Iteration.objects.filter(calibration_run=calibration_run, worker_name=worker_name)
     }
 
     # Read the metrics file using pandas
@@ -341,10 +349,10 @@ def update_output_variables(metrics_iteration_file, run, worker_name):
         iteration = iterations_dict.get(iteration_num)
         if not iteration:
             raise CerfException(
-                f"Cannot find Iteration object for calibration run {run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
+                f"Cannot find Iteration object for calibration run {calibration_run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
 
         logger.debug(
-            f'{run.id}_{run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
+            f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
         iteration.calibration_output_variable_value = obj_fun_val
 
         # Add the modified object to the list
@@ -370,14 +378,14 @@ def read_last_line(filename):
 
 
 # Function to process worker directories for a CalibrationRun
-def process_worker_dirs(run: CalibrationRun, worker_lambda):
+def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda):
     """
     Loops through directories matching the pattern "ngen_xxxxx_worker" and applies the worker_lambda function.
 
-    :param run: The CalibrationRun instance to process.
+    :param calibration_run: The CalibrationRun instance to process.
     :param worker_lambda: A lambda function that processes each worker directory.
     """
-    output_calibration_run_dir = get_output_calibration_run_dir(run)
+    output_calibration_run_dir = get_output_calibration_run_dir(calibration_run)
     output_calibration_run_dir_path = Path(output_calibration_run_dir)
     if not output_calibration_run_dir_path.exists():
         raise CerfException(f"Cannot find expected data at {output_calibration_run_dir}")
@@ -385,25 +393,25 @@ def process_worker_dirs(run: CalibrationRun, worker_lambda):
         # Check if the item is a directory and matches the pattern
         if item.is_dir() and worker_directory_pattern.match(item.name):
             worker_dir = output_calibration_run_dir_path / item
-            logger.debug(f'{run.id}_{run.owner.username} Processing worker directory: {worker_dir}')
-            worker_lambda(worker_dir, run)
+            logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Processing worker directory: {worker_dir}')
+            worker_lambda(worker_dir, calibration_run)
 
 
 # Function to accumulate the total number of iterations across worker directories
-def accumulate_iterations(run: CalibrationRun):
+def accumulate_iterations(calibration_run: CalibrationRun):
     """
     Loops through worker directories, counts the iterations in each worker's metrics file,
     and returns the total iterations across all workers.
 
-    :param run: The CalibrationRun instance to process.
+    :param calibration_run: The CalibrationRun instance to process.
     :return: Total number of iterations across all worker directories.
     """
     total_iterations = 0  # Initialize the accumulator
 
     # Define the lambda function to process each worker directory and count iterations
-    def count_iterations_for_worker(worker_dir, run: CalibrationRun):  # noqa : F811
+    def count_iterations_for_worker(worker_dir, calibration_run: CalibrationRun):  # noqa : F811
         nonlocal total_iterations
-        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(run, worker_dir)
+        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(calibration_run, worker_dir)
 
         if not Path(metrics_iteration_file).is_file():
             logger.error(f'File {metrics_iteration_file} not found in {worker_dir}')
@@ -413,7 +421,7 @@ def accumulate_iterations(run: CalibrationRun):
             total_iterations += rows
 
     # Call process_worker_dirs with the defined lambda function
-    process_worker_dirs(run, count_iterations_for_worker)
+    process_worker_dirs(calibration_run, count_iterations_for_worker)
 
     return total_iterations  # Return the accumulated total iterations
 

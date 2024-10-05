@@ -11,7 +11,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_input_file, \
     get_validation_iteration_stdout_file
 from calibration.views.common import CerfException
-from calibration.views.read_output import read_output
+from calibration.views.read_output import read_calibration_output
 from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -66,16 +66,14 @@ calibration_file_funcs = {
     JobStage.VALIDATION_BEST: (get_validation_best_input_file, get_validation_best_stdout_file),
 }
 
-
 validation_file_funcs = get_validation_iteration_input_file, get_validation_iteration_stdout_file
-
 
 # Store future and process objects by job id
 # Need to change this to a compound key.  Either calibration_id or calibration_id#validation_id
 job_registry: Dict[int, subprocess.Popen] = {}
 
 
-def set_job_status(run: CalibrationRun, status: StatusEnum):
+def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
     """Set the status for the CalibrationRun and save it."""
     run.status = StatusEnum.from_enum(status)
     # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
@@ -92,10 +90,9 @@ def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage):
     :param run: CalibrationRun
     :param current_stage: current stage
     """
-
     try:
         logger.info(f'Calling read_output for stage {current_stage}')
-        read_output(run, current_stage)
+        read_calibration_output(run, current_stage)
     except CerfException as e:
         logger.error(f'Exception while running read_output for job {run.id} in stage {current_stage} - {str(e)}')
         raise
@@ -130,9 +127,7 @@ def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
     input_file = input_file_func(calibration_run)
     output_file = output_file_func(calibration_run)
 
-    calibration_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
-
-    # Run the job locally or in Docker (Docker is currently unsupported)
+    # Run the job locally or in Docker
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
@@ -144,7 +139,7 @@ def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
 
 def run_validation_job(validation_run: ValidationRun, worker_name: str, iteration: int):
     """
-    Start the execution of a validation job at a specific stage by retrieving the input/output file paths
+    Start the execution of a validation job
     and delegating the job to either a local or Docker execution environment.
     :param validation_run: The ValidationRun object representing the job run.
     :param worker_name: Worker name which contains the parameters we want to use
@@ -156,16 +151,14 @@ def run_validation_job(validation_run: ValidationRun, worker_name: str, iteratio
     input_file = input_file_func(validation_run.calibration_run, worker_name, iteration)
     output_file = output_file_func(validation_run.calibration_run, worker_name, iteration)
 
-    validation_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
-
-    # Run the job locally or in Docker (Docker is currently unsupported)
+    # Run the job locally or in Docker
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
             from calibration.run_util.run_ngen_cal_local import run_validation_job_local
-            run_validation_job_local(validation_run, input_file, output_file)
+            run_validation_job_local(validation_run, input_file, output_file, worker_name, iteration)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
             from calibration.run_util.run_ngen_cal_pw import run_validation_job_parallel_works
-            run_validation_job_parallel_works(validation_run, input_file, output_file)
+            run_validation_job_parallel_works(validation_run, input_file, output_file, worker_name, iteration)
 
 
 def cancel_job_common(run_id):

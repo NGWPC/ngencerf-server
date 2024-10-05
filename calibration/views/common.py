@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 SLOTH = 'SLoTH'
 
 
-def get_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
+def get_calibration_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
     """
     Get an instance of a CalibrationRun by id, but only if it's owned by the user
     and is one of the passed-in statuses. If the CalibrationRun exists but has a

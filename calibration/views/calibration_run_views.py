@@ -15,16 +15,17 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import Iteration
-from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage
+from calibration.models import Iteration, ValidationRun, CalibrationRun
+from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage, run_validation_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer, \
     ReadOutputRequestSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, get_run, handle_exceptions, validate_response, validate_request, generate_custom_token, \
+from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
+    generate_custom_token, \
     token_slurm_scope, auth_scope_required
-from calibration.views.read_output import read_output, accumulate_iterations
+from calibration.views.read_output import read_calibration_output, accumulate_iterations
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ def get_status(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
@@ -103,12 +104,11 @@ def run_calibration(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
-    # TODO Need to Catch exception from Slurm
-    response = submit_job(run)
+    response = submit_calibration_job(run)
     if response:
         return response
 
@@ -121,32 +121,89 @@ def run_calibration(request):
     return Response(response_validator.data)
 
 
-def submit_job(run, config_file=None):
+@extend_schema(
+    request=None,
+    responses={
+        200: GenericResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Run a validation"
+)
+@api_view(['POST'])
+@handle_exceptions
+def run_validation(request):
+    data = request.data
+    logger.debug(f'run_validation() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+    worker_name = validator.get('worker_name')
+    iteration = validator.get('iteration')
+    # TODO Need worker name and iteration
+
+    run, error_return = get_calibration_run(validation_run_id, request.user)
+    if error_return:
+        return error_return
+
+    # TODO Doesn't return anything.  Can any errors occur?
+    response = submit_validation_job(run, worker_name, iteration)
+    if response:
+        return response
+
+    response = {'message': f'Validation Run {run.id} has been submitted', 'validation_run_id': validation_run_id,
+                'status': run.status.name, 'run_date': run.run_date}
+
+    response_validator, error_response = validate_response(SubmitJobResponseSerializer, response)
+    logger.debug(f'Returning to {request.user} from run_validation() - {response_validator.data}')
+
+    return Response(response_validator.data)
+
+
+def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
     # If config is passed, then don't need to validate
     if not config_file:
-        messages, config_file = ngen_cal_input.ready_to_run(run, build=True)
+        messages, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
 
         if messages:
-            return ResponseError(f'Calibration Run {run.id} is not ready', validation_errors=messages)
+            return ResponseError(f'Calibration Run {calibration_run.id} is not ready', validation_errors=messages)
 
     try:
-        logger.info(f'Running create_input for Calibration Run {run.id}')
+        logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
         create_input(config_file)
     except Exception as e:
         return ResponseError(f'Exception from create_input - {str(e)}')
 
-    logger.info(f'Return from create_input for Calibration Run {run.id}')
+    logger.info(f'Return from create_input for Calibration Run {calibration_run.id}')
 
-    # Need to return the commit hash as part of the Slurm job
-    # Save the latest git hash or ngen and ngen-cal
-    # run.ngen_commit_hash = Repo(settings.NGEN_REPO_ROOT).head.object.hexsha
-    # run.ngen_cal_commit_hash = Repo(settings.NGEN_CAL_REPO_ROOT).head.object.hexsha
+    with transaction.atomic():
+        calibration_run.run_date = datetime.now(timezone.utc)
+        calibration_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+        calibration_run.save(update_fields=['run_date', 'status'])
 
-    run.run_date = datetime.now(timezone.utc)
-    run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
-    run.save()
+        run_calibration_job(calibration_run, JobStage.CALIBRATION)
 
-    run_calibration_job(run, JobStage.CALIBRATION)
+    return None
+
+
+def submit_validation_job(validation_run: ValidationRun, worker_name: str, iteration: int):
+    # TODO Do we need to check if the job is ready?  I don't think we need anything
+
+    with transaction.atomic():
+        validation_run.run_date = datetime.now(timezone.utc)
+        validation_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+        validation_run.save(update_fields=['run_date', 'status'])
+
+        run_validation_job(validation_run, worker_name, iteration)
 
     return None
 
@@ -184,12 +241,12 @@ def process_calibration_output(request):
     calibration_run_id = validator.get('calibration_run_id')
     job_stage = validator.get('job_stage')
 
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
 
     if error_return:
         return error_return
 
-    read_output(run, JobStage.from_string(job_stage))
+    read_calibration_output(run, JobStage.from_string(job_stage))
 
     response = {'message': f"End of job processing completed for Calibration Run {run.id}",
                 'calibration_run_id': run.id,
@@ -239,7 +296,7 @@ def report_iteration(request):
 
     # TODO Only Running
     # run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.SAVED, StatusEnum.RUNNING])
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -301,7 +358,7 @@ def get_iteration(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if error_return:
         return error_return
 
@@ -346,7 +403,7 @@ def cancel_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -400,7 +457,7 @@ def slurm_callback(request):
     calibration_run_id, owner_name = process_id.split('_')
     owner = get_user_model().objects.get(username=owner_name)
 
-    run, error_return = get_run(calibration_run_id, owner, run_status=[StatusEnum.RUNNING])
+    run, error_return = get_calibration_run(calibration_run_id, owner, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 

@@ -8,7 +8,8 @@ class ValidationRun(BaseModel):
     iteration = models.IntegerField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     run_date = models.DateTimeField(null=True)
-    performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.RESTRICT)
+    performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.CASCADE)
+    slurm_job_id = models.IntegerField(null=True)
 
     class Meta:
         db_table = 'validation_run'

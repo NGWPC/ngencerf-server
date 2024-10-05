@@ -21,7 +21,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_cached_module_by_name
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
 from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ def load_tuning_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -247,7 +247,7 @@ def save_tuning_tab(request):
 
     output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -307,7 +307,7 @@ def upload_user_parameters(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
