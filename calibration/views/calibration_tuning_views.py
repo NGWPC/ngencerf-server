@@ -15,14 +15,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
-from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_cached_module_by_name
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path, \
-    create_validation_run_internal
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
 from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,7 @@ def load_tuning_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -248,13 +247,11 @@ def save_tuning_tab(request):
 
     output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
     run.automatic_validation = automatic_validation
-    if run.automatic_validation:
-        validation_run = create_validation_run_internal(run)
 
     error_message = validate_and_save_times(run, calibration_times, validation_times)
     if error_message:
@@ -310,7 +307,7 @@ def upload_user_parameters(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -394,21 +391,21 @@ def validate_times(run, calibration_times, validation_times):
     return None
 
 
-def validate_and_save_times(run, calibration_times, validation_times):
+def validate_and_save_times(run: CalibrationRun, calibration_times, validation_times):
     error_message = validate_times(run, calibration_times, validation_times)
     if error_message:
         return error_message
 
-    run.calibration_start_period = datetime.fromisoformat(calibration_times['simulation_start_time']) if calibration_times['simulation_start_time'] else None
-    run.calibration_end_period = datetime.fromisoformat(calibration_times['simulation_end_time']) if calibration_times['simulation_end_time'] else None
-    run.calibration_eval_start_period = datetime.fromisoformat(calibration_times['calibration_start_time']) if calibration_times['calibration_start_time'] else None
-    run.calibration_eval_end_period = datetime.fromisoformat(calibration_times['calibration_end_time']) if calibration_times['calibration_end_time'] else None
+    run.calibration_start_period = calibration_times['simulation_start_time']
+    run.calibration_end_period = calibration_times['simulation_end_time']
+    run.calibration_eval_start_period = calibration_times['calibration_start_time']
+    run.calibration_eval_end_period = calibration_times['calibration_end_time']
 
     if run.automatic_validation:
-        run.validation_start_period = datetime.fromisoformat(validation_times['simulation_start_time']) if validation_times['simulation_start_time'] else None
-        run.validation_end_period = datetime.fromisoformat(validation_times['simulation_end_time']) if validation_times['simulation_end_time'] else None
-        run.validation_eval_start_period = datetime.fromisoformat(validation_times['validation_start_time']) if validation_times['validation_start_time'] else None
-        run.validation_eval_end_period = datetime.fromisoformat(validation_times['validation_end_time']) if validation_times['validation_end_time'] else None
+        run.validation_start_period = validation_times['simulation_start_time']
+        run.validation_end_period = validation_times['simulation_end_time']
+        run.validation_eval_start_period = validation_times['validation_start_time']
+        run.validation_eval_end_period = validation_times['validation_end_time']
 
 
 def validate_parameters(run: CalibrationRun, parameters):
@@ -441,15 +438,25 @@ def validate_parameters(run: CalibrationRun, parameters):
 
 def save_output_variable(run, output_variable_to_calibrate):
     if output_variable_to_calibrate:
-        module_with_output_variable = CalibrationFormulation.objects.filter(module__name=output_variable_to_calibrate['module'],
-                                                                            calibration_run=run).first()
-        if not module_with_output_variable:
+
+        try:
+            # Get the CalibrationFormulation object with the specified module and run
+            module_with_output_variable = CalibrationFormulation.objects.get(
+                module__name=output_variable_to_calibrate['module'],
+                calibration_run=run
+            )
+        except CalibrationFormulation.DoesNotExist:
             return "Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id)
-        module_output_variable = module_with_output_variable.output_variables.all().filter(
-            name=output_variable_to_calibrate['name']).first()
-        if not module_output_variable:
+
+        try:
+            # Get the output variable from the module's output variables
+            module_output_variable = module_with_output_variable.output_variables.get(
+                name=output_variable_to_calibrate['name']
+            )
+        except ModuleOutputVariable.DoesNotExist:
             return "Module output variable '{}' not found in module '{}' for this run".format(
-                output_variable_to_calibrate['name'], output_variable_to_calibrate['module'])
+                output_variable_to_calibrate['name'], output_variable_to_calibrate['module']
+            )
 
         run.module_output_variable = module_output_variable
         return None

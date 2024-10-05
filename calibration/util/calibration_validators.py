@@ -6,7 +6,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobStage
 
 
 class BaseSerializer(serializers.Serializer):
@@ -23,6 +23,10 @@ class BaseSerializer(serializers.Serializer):
 
 
 def enum_validator(enum_class):
+    """
+    Should be used for enum class that extend AbstractEnum only
+    """
+
     def validate_enum(value):
         if value not in enum_class.get_names():
             raise serializers.ValidationError(f"This field must be one of {enum_class.get_names()}")
@@ -37,6 +41,10 @@ def no_space_validator(value):
 
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+
+
+class ReadOutputRequestSerializer(CalibrationRunSerializer):
+    job_stage = serializers.CharField(required=True, validators=[enum_validator(JobStage)])
 
 
 ##################################

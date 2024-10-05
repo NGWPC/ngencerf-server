@@ -19,7 +19,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, CreateValidationRunSerializer, \
     GetValidationJobsResponseSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
-from calibration.views.common import handle_exceptions, validate_response, get_run, create_calibration_run_internal, ResponseError, \
+from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ def create_validation_run(request):
     calibration_run_id = validator.get('calibration_run_id')
 
     # TODO What status?
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -275,7 +275,7 @@ def load_calibration_run(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
@@ -317,7 +317,7 @@ def clone_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
@@ -369,7 +369,7 @@ def delete_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 

@@ -25,7 +25,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url, \
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url, \
     truncate_large_fields, get_valid_path
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
     HydrofabricException
@@ -69,7 +69,7 @@ def load_gage_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -210,7 +210,7 @@ def save_gage_tab(request):
     observational_source_name = validator.get('observational_source')
     geopackage_source_name = validator.get('geopackage_source')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -367,7 +367,7 @@ def upload_observational_data(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -438,7 +438,7 @@ def upload_forcing_data(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
@@ -519,7 +519,7 @@ def upload_geopackage_data(request):
     calibration_run_id = validator.get('calibration_run_id')
     return_geopackage_url = validator.get('return_geopackage_url')  # default=True
 
-    run, error_return = get_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 

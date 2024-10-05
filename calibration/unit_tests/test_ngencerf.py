@@ -13,7 +13,7 @@ from calibration.enums import StatusEnum
 from calibration.models.plot_definitions import PlotDefinition
 from calibration.models.status import Status
 from calibration.views import calibration_import_export_views, calibration_plot_views
-from calibration.views.common import get_run
+from calibration.views.common import get_calibration_run
 from django.conf import settings
 
 
@@ -52,7 +52,7 @@ class CerfUnitTest(TestCase):
         self.run_id = res["calibration_run_id"]
         print(f"Executing setUp(): Calibration run ID = {self.run_id}")
         # verify the record for calibration_run_id
-        run, error_return = get_run(self.run_id, user)
+        run, error_return = get_calibration_run(self.run_id, user)
         if error_return:
             return error_return
         status = Status.objects.get(name=StatusEnum.RUNNING.value)
@@ -71,7 +71,7 @@ class CerfUnitTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # assemble the expected response data
-        run, error_return = get_run(calibration_run_id, user, run_status=[StatusEnum.RUNNING])
+        run, error_return = get_calibration_run(calibration_run_id, user, run_status=[StatusEnum.RUNNING])
         if error_return:
             return error_return
 
@@ -102,7 +102,7 @@ class CerfUnitTest(TestCase):
         # check if transaction was successful
         self.assertEqual(response.status_code, 200)
 
-        run, error_return = get_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
         if error_return:
             return error_return
 

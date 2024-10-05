@@ -24,11 +24,11 @@ from calibration.views.calibration_formulation_views import get_sloth_parameters
 from calibration.views.calibration_gage_views import save_gage
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
-from calibration.views.calibration_run_views import submit_job
+from calibration.views.calibration_run_views import submit_calibration_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_output_variable, \
     save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
-from calibration.views.common import get_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 
 logger = logging.getLogger(__name__)
@@ -74,8 +74,7 @@ def import_job(request):
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
-            # TODO Need to catch exceptions from Slurm
-            submit_job(run, config_file=config_file)
+            submit_calibration_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 
     response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
@@ -290,7 +289,7 @@ def export_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
     if error_return:
         return error_return
 
@@ -390,7 +389,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     #############################
     calibration_run_data['formulation_name'] = run.user_formulation_name
 
-    modules = list(
+    modules = set(
         CalibrationFormulation.objects
         .filter(calibration_run=run)
         .values_list('module__name', flat=True)

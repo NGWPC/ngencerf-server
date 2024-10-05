@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import List, Dict, Any, Type
 
 from django.core.cache import cache
@@ -128,3 +128,47 @@ class UnitsEnum(StrEnum):
     def get_names(cls) -> List[str]:
         # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
+
+
+class ValidationGlobalMetricRunType(StrEnum):
+    valid_best = auto()
+    valid_control = auto()
+
+    @classmethod
+    def get_names(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
+        return [e.value for e in cls]
+
+
+class ValidationGlobalMetricPeriod(StrEnum):
+    calib = auto()
+    valid = auto()
+    full = auto()
+
+    @classmethod
+    def get_names(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
+        return [e.value for e in cls]
+
+
+class JobStage(StrEnum):
+    """
+    Enum representing the stages of a job.
+    """
+    CALIBRATION = auto()
+    VALIDATION_CONTROL = auto()
+    VALIDATION_BEST = auto()
+
+    @classmethod
+    def get_names(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
+        return [e.value for e in cls]
+
+    @classmethod
+    def from_string(cls, name: str) -> 'JobStage':
+        """Get an enum object from its string value, case-insensitive."""
+        try:
+            # Look for the enum member using its value, which is case-insensitive here
+            return cls(name.lower())
+        except ValueError:
+            raise ValueError(f"{name} is not a valid {cls.__name__}")
