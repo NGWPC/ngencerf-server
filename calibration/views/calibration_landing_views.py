@@ -322,7 +322,9 @@ def clone_job(request):
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, warnings, info_messages = import_calibration_run_data(request, calibration_run_data)
+    new_run, warnings, info_messages, fatal_error = import_calibration_run_data(request, calibration_run_data)
+    if fatal_error:
+        return fatal_error
 
     response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
