@@ -321,7 +321,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     # geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
-    data_errors = serializers.JSONField(required=False)
+    external_data_errors = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     parameters_selected = serializers.BooleanField(required=True)
