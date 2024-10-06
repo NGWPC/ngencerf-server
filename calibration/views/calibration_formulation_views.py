@@ -67,8 +67,6 @@ def load_formulation_tab(request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_groups_list}
-    # if hydrofabric_errors:
-    #     response['hydrofabric_errors'] = hydrofabric_errors
 
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
     if error_response:

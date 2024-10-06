@@ -17,11 +17,11 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
-    get_geopackage_dir_for_job, get_geopackage_file_for_job
+    get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
     SLOTH, add_sloth_parameters, validate_formulation, get_cached_module_by_name
-from calibration.views.calibration_gage_views import save_gage
+from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_calibration_job
@@ -29,7 +29,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_output_variable, \
     save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request
+    validate_request, get_valid_path
 
 logger = logging.getLogger(__name__)
 
@@ -350,6 +350,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and Path(
             user_uploaded_forcing_dir).exists() else None
 
+        calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
+        calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
+        calibration_run_data['geopackage_hydrofabric_file_path'] = run.geopackage_hydrofabric_file_path
+
+
+
     else:
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['run_date'] = run.run_date
@@ -361,8 +367,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        # geopackage_path = run.geopackage_hydrofabric_file_path if run.geopackage_hydrofabric_file_path and Path(
-        #     run.geopackage_hydrofabric_file_path).exists() else get_geopackage_file_for_job(run)
         geopackage_path = get_geopackage_file_for_job(run) if run.geopackage_source == GeopackageSourceEnum.from_enum(
             GeopackageSourceEnum.UPLOAD) else run.geopackage_hydrofabric_file_path
         if geopackage_path and Path(geopackage_path).exists():
@@ -371,18 +375,18 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
             geopackage_image_url = f'data:image/png;base64,{base64_str}'
             calibration_run_data['geopackage_image_url'] = geopackage_image_url
 
+        # Have files been uploaded or made available?
+        calibration_run_data['data_errors'] = get_data_files_status(run)
+        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
+
     #############################
     # Gage
     #############################
-
     calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
-    calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
 
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
-    calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
 
     calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
-    calibration_run_data['geopackage_hydrofabric_file_path'] = run.geopackage_hydrofabric_file_path
 
     #############################
     # Formulation
@@ -404,8 +408,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['use_sloth'] = run.use_sloth
     if run.use_sloth:
         calibration_run_data['sloth_parameters'] = get_sloth_parameters(run)
-
-    calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
 
     #############################
     # Tuning
