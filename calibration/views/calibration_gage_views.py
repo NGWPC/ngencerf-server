@@ -25,7 +25,8 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, png_str_to_base64_url, \
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
+    png_str_to_base64_url, \
     truncate_large_fields, get_valid_path
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
     HydrofabricException
@@ -557,3 +558,27 @@ def upload_geopackage_data(request):
     logger.debug(
         f'Returning to {request.user} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
     return Response(response_validator.data)
+
+
+def get_data_files_status(run: CalibrationRun):
+    data_errors = []
+    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
+                                      ObservationalSourceEnum.UPLOAD,
+                                      lambda: get_observational_file_for_job(run))
+
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path,
+                                  ForcingSourceEnum.UPLOAD,
+                                  lambda: get_forcing_dir_for_job(run))
+
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_geopackage_file_for_job(run))
+
+    if not observation_path:
+        data_errors.append({'name': 'observational', 'message': 'Observational data is not available'})
+    if not forcing_path:
+        data_errors.append({'name': 'forcing', 'message': 'Forcing data is not available'})
+    if not geopackage_path:
+        data_errors.append({'name': 'geopackage', 'message': 'Geopackage data is not available'})
+
+    return data_errors

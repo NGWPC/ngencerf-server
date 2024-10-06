@@ -315,12 +315,13 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     run_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    # forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    # observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    # geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
+    data_errors = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     parameters_selected = serializers.BooleanField(required=True)
@@ -420,9 +421,9 @@ class UploadGeopackageResponseSerializer(GenericResponseSerializer):
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
-    forcing_source = serializers.CharField(required=False, validators=[enum_validator(ForcingSourceEnum)])
-    observational_source = serializers.CharField(required=False, validators=[enum_validator(ObservationalSourceEnum)])
-    geopackage_source = serializers.CharField(required=False, validators=[enum_validator(GeopackageSourceEnum)])
+    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
+    geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
 
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
