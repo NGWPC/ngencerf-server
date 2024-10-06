@@ -420,9 +420,9 @@ class UploadGeopackageResponseSerializer(GenericResponseSerializer):
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
-    forcing_source = serializers.CharField(required=False, validators=[enum_validator(ForcingSourceEnum)])
-    observational_source = serializers.CharField(required=False, validators=[enum_validator(ObservationalSourceEnum)])
-    geopackage_source = serializers.CharField(required=False, validators=[enum_validator(GeopackageSourceEnum)])
+    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
+    geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
 
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
