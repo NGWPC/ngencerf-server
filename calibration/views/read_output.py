@@ -19,7 +19,8 @@ from calibration.models.validation_global_metric import ValidationGlobalMetric
 from calibration.models.validation_metric import ValidationMetric
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
-    get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file
+    get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
+    get_validation_performance_file, get_calibration_performance_file
 from calibration.views.common import CerfException
 
 logger = logging.getLogger(__name__)
@@ -31,7 +32,14 @@ worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
 def read_validation_output(validation_run: ValidationRun, worker_name: str, iteration: int):
-    process_validation_for_validation_run(validation_run, worker_name, iteration)
+    logger.info(f"Processing output for Validation Run {validation_run.id}")
+
+    with transaction.atomic():
+        metrics = parse_performance_metrics(get_validation_performance_file(validation_run.calibration_run, worker_name, iteration))
+        validation_run.performance_metrics = metrics
+        validation_run.save(update_fields=['performance_metrics'])
+
+        process_validation_for_validation_run(validation_run, worker_name, iteration)
 
 
 # Function to read the output of a calibration run
@@ -47,20 +55,27 @@ def read_calibration_output(calibration_run: CalibrationRun, stage: JobStage):
     """
     logger.info(f"Processing output for Calibration Run {calibration_run.id}, stage {stage}")
 
-    if stage != JobStage.CALIBRATION:
-        process_validation_for_calibration_run(calibration_run, stage)
-    else:
-        # Handle Calibration output
-        if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
-            raise CerfException(f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
+    with transaction.atomic():
+        # TODO Which metrics do we want to save?
+        metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
+        calibration_run.performance_metrics = metrics
 
-        # Set the realization file path for the run
-        calibration_run.realization_file_path = get_realization_file_path(calibration_run)
+        if stage != JobStage.CALIBRATION:
+            process_validation_for_calibration_run(calibration_run, stage)
+        else:
+            # Handle Calibration output
+            if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
+                raise CerfException(
+                    f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
 
-        # Save the run and process iterations within a transaction
-        with transaction.atomic():
+            # Set the realization file path for the run
+            calibration_run.realization_file_path = get_realization_file_path(calibration_run)
+
+            # Save the run and process iterations within a transaction
             calibration_run.save()
             process_iterations_for_all_workers(calibration_run)
+
+        calibration_run.save()
 
 
 def process_validation_metrics(run: CalibrationRun | ValidationRun, metrics_file: str, expected_run_type: str,
@@ -656,9 +671,10 @@ def parse_duration(duration_str):
 
 def parse_performance_metrics(file_path):
     """
-    Opens the pipe-delimited file, parses the content, and extracts performance metrics.
+    Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database
     Expects the file to have exactly two lines of data.
     """
+    logger.info(f'Reading performance metrcis from {file_path}')
     reserved_time = None
     batch_metrics = None
 

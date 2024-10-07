@@ -147,6 +147,10 @@ def get_calibration_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_calibration_run_dir(run)) / 'ngen-cal_calibration_stdout.log')
 
 
+def get_calibration_performance_file(run: CalibrationRun) -> str:
+    return str(Path(get_output_calibration_run_dir(run)) / 'ngen-cal_calibration_performance.log')
+
+
 def get_global_best_params_file(run: CalibrationRun) -> str:
     return str(Path(get_output_calibration_run_dir(run)) / f'{run.gage.gage_id}_global_best_params.csv')
 
@@ -161,6 +165,11 @@ def get_validation_best_input_file(run: CalibrationRun) -> str:
 
 def get_validation_best_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / 'ngen-cal_validation_best_stdout.log')
+
+
+# TODO Need to check this
+def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'ngen-cal_validation_{worker_name}_iter{iteration}_performance.log')
 
 
 def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:
@@ -185,9 +194,8 @@ def get_validation_metrics_valid_control_file(run: CalibrationRun) -> str:
 
 
 def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
-    return str(Path(get_worker_path(run, worker_name)) / f'ngen-cal_validation_{worker_name}{iteration}_stdout.log')
+    return str(Path(get_worker_path(run, worker_name)) / f'ngen-cal_validation_{worker_name}_iter{iteration}_stdout.log')
 
 
 def get_validation_metrics_valid_iteration_file(run, worker_name: str, iteration: int) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_{worker_name}_iter{iteration}.csv')
-
