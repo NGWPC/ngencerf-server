@@ -17,7 +17,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
-    get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_file_for_job
+    get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
     SLOTH, add_sloth_parameters, validate_formulation, get_cached_module_by_name
@@ -29,7 +29,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_output_variable, \
     save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request, get_valid_path
+    validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -353,9 +353,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
         calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
         calibration_run_data['geopackage_hydrofabric_file_path'] = run.geopackage_hydrofabric_file_path
-
-
-
     else:
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['run_date'] = run.run_date

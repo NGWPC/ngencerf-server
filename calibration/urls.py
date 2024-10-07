@@ -66,7 +66,8 @@ urlpatterns = [
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
-    path('calibration/slurm_callback/', calibration_run_views.slurm_callback, name="slurmCallback"),
+    path('calibration/calibration_job_slurm_callback/', calibration_run_views.calibration_job_slurm_callback, name="calibrationJobSlurmCallback"),
+    path('calibration/validatoin_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
 
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
@@ -75,7 +76,7 @@ urlpatterns = [
     # Import/Export
     ##################################
     path('calibration/export/', calibration_import_export_views.export_job, name="export"),
-    path('calibration/import/', calibration_import_export_views.import_job, name="export"),
+    path('calibration/import/', calibration_import_export_views.import_job, name="import"),
 
     ##################################
     # Swagger - drf_spectacular

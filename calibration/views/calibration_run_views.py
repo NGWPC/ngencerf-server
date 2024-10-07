@@ -5,7 +5,6 @@ from pathlib import Path
 import pandas as pd
 from createInput import create_input
 from datetimerange import DateTimeRange
-from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Max
 from drf_spectacular.types import OpenApiTypes
@@ -17,14 +16,15 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.models import Iteration, ValidationRun, CalibrationRun
 from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage, run_validation_job
-from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum
+from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, SlurmCallbackRequestSerializer, \
-    ReadOutputRequestSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, \
+    CalibrationJobSlurmCallbackRequestSerializer, \
+    ReadOutputRequestSerializer, ValidationJobSlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
-    token_slurm_scope, auth_scope_required
+    token_slurm_scope, auth_scope_required, get_validation_run
 from calibration.views.read_output import read_calibration_output, accumulate_iterations
 
 logger = logging.getLogger(__name__)
@@ -149,9 +149,8 @@ def run_validation(request):
     validation_run_id = validator.get('validation_run_id')
     worker_name = validator.get('worker_name')
     iteration = validator.get('iteration')
-    # TODO Need worker name and iteration
 
-    run, error_return = get_calibration_run(validation_run_id, request.user)
+    run, error_return = get_validation_run(validation_run_id, request.user)
     if error_return:
         return error_return
 
@@ -425,7 +424,7 @@ def cancel_job(request):
 
 
 @extend_schema(
-    request=SlurmCallbackRequestSerializer,
+    request=CalibrationJobSlurmCallbackRequestSerializer,
     responses={
         202: None,
         400: OpenApiResponse(
@@ -437,34 +436,72 @@ def cancel_job(request):
             description="Internal server error"
         )
     },
-    description="Callback for slurm to call when a job ends"
+    description="Callback for slurm to call when a calibration job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
-def slurm_callback(request):
+def calibration_job_slurm_callback(request):
     data = request.data
-    logger.debug(f'slurm_callback() request from {request.user} - {data}')
+    logger.debug(f'calibration_job_slurm_callback() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(SlurmCallbackRequestSerializer, data)
+    validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
     if error_return:
         return error_return
 
-    process_id = validator.get('process_id')
+    calibration_run_id = validator.get('calibration_job_id')
     current_stage = validator.get('stage')
     job_status = validator.get('job_status')
 
-    calibration_run_id, owner_name = process_id.split('_')
-    owner = get_user_model().objects.get(username=owner_name)
-
-    run, error_return = get_calibration_run(calibration_run_id, owner, run_status=[StatusEnum.RUNNING])
+    run, error_return = get_calibration_run(calibration_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     slurm_status = SlurmStatusEnum[job_status]
-    run_calibration_job_callback_slurm(JobStage[current_stage], process_id, run, slurm_status)
+    run_calibration_job_callback_slurm(JobStage[current_stage], run, slurm_status)
 
-    logger.debug(f'Returning to {request.user} from slurm_callback()')
+    logger.debug(f'Returning to {request.user} from calibration_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    request=ValidationJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for slurm to call when a validation job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def validation_job_slurm_callback(request):
+    data = request.data
+    logger.debug(f'validation_job_slurm_callback() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_job_id')
+    job_status = validator.get('job_status')
+
+    run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum[job_status]
+    run_validation_job_callback_slurm(run, slurm_status)
+
+    logger.debug(f'Returning to {request.user} from validation_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 

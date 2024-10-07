@@ -1,8 +1,8 @@
 import logging
-from pathlib import Path
 from urllib.parse import urljoin
 
 import requests
+from django.conf import settings
 from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
@@ -10,8 +10,6 @@ from calibration.models import CalibrationRun, ValidationRun
 from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
 from calibration.views.common import generate_custom_token, token_slurm_scope
-from django.conf import settings
-
 from calibration.views.hydrofabric import validate_response_data
 from calibration.views.read_output import read_validation_output
 
@@ -27,9 +25,9 @@ def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: J
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
-    url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
+    url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT)
     payload = {
-        'job_id': (None, Path(calibration_run.job_data_dir).name),
+        'calibration_run_id': (None, calibration_run.id),
         'job_type': (None, 'calibration' if stage == JobStage.CALIBRATION else 'validation'),
         'job_stage': (None, stage.name),
         'input_file': (None, input_file),
@@ -46,18 +44,18 @@ def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: J
         logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
         raise
 
-    logger.info(f'Response from slurm: {response.json()}')
+    logger.info(f'Response from slurm for submit-calibration-job: {response.json()}')
     slurm_response = validate_response_data(SlurmSubmitJobResponse, response.json(),
-                                            'Submit job response data from Slurm is not in the expected format')
+                                            'Submit calibration job response data from Slurm is not in the expected format')
 
     calibration_run.slurm_job_id = slurm_response.get('slurm_job_id')
     calibration_run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
     calibration_run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
     calibration_run.save(update_fields=['slurm_job_id', 'ngen_commit_hash', 'ngen_cal_commit_hash'])
-    logger.info(f"Job submitted successfully! Slurm id: {calibration_run.slurm_job_id}")
+    logger.info(f"Calibration job submitted successfully! Slurm id: {calibration_run.slurm_job_id}")
 
 
-def run_validation_job_parallel_works(validation_run: ValidationRun, input_file, output_file, worker_name, iteration):
+def run_validation_job_parallel_works(validation_run: ValidationRun, input_file, output_file, worker_name: str, iteration: int):
     """
     Executes a local job for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
@@ -67,11 +65,9 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
     :param worker_name
     :param iteration
     """
-    url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_JOB_ENDPOINT)
+    url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT)
     payload = {
-        'job_id': (None, Path(validation_run.calibration_run.job_data_dir).name),
-        'job_type': (None, 'validation'),
-        # 'job_stage': (None, stage.name),
+        'validation_run_id': (None, validation_run.id),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
         'auth_token': (None, generate_custom_token(validation_run.calibration_run.owner, token_slurm_scope))
@@ -81,63 +77,69 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
-        logger.info(f'Response from slurm: {response.json()}')
-        validation_run.slurm_job_id = response.json().get('slurm_job_id')
-        validation_run.save()
-        logger.info(f"Job submitted successfully! Slurm id: {validation_run.slurm_job_id}")
     except requests.exceptions.HTTPError as e:
         logger.error(f"Call to Slurm {url} failed with {response.status_code}.")
         logger.error(f"Failed to submit job: {response.json().get('error')}, {str(e)}")
         raise
 
+    logger.info(f'Response from slurm for submit-validation-job: {response.json()}')
+    slurm_response = validate_response_data(SlurmSubmitJobResponse, response.json(),
+                                            'Submit validation job response data from Slurm is not in the expected format')
 
-def run_calibration_job_callback_slurm(current_stage: JobStage | None, process_id, calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum):
+    validation_run.slurm_job_id = response.json().get('slurm_job_id')
+    validation_run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
+    validation_run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
+    validation_run.save(update_fields=['slurm_job_id', 'ngen_commit_hash', 'ngen_cal_commit_hash'])
+    logger.info(f"Validation job submitted successfully! Slurm id: {validation_run.slurm_job_id}")
+
+
+def run_calibration_job_callback_slurm(current_stage: JobStage | None, calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
     :param current_stage: The current job stage, as an Enum (or None, if the job was cancelled)
-    :param process_id: The process_id of the job (id_user)
     :param calibration_run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    logger.info(f'Job end callback received for job {process_id} in stage {current_stage} with status {slurm_status}')
+    logger.info(
+        f'Job end callback received for job {calibration_run.id}/{calibration_run.owner.username} in stage {current_stage} with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'Job {process_id} was cancelled')
+        logger.error(f'Calibration job {calibration_run.id}/{calibration_run.owner.sername} was cancelled')
         set_job_status(calibration_run, StatusEnum.CANCELLED)
     elif slurm_status == SlurmStatusEnum.FAILED:
-        logger.error(f'Job {process_id} ending due to abnormal return code')
+        logger.error(f'Calibration job {calibration_run.id}/{calibration_run.owner.username} ending due to abnormal return code')
         set_job_status(calibration_run, StatusEnum.FAILED)
     else:
         proceed_to_next_stage(calibration_run, current_stage)
 
 
-def run_validation_job_callback_slurm(process_id, validation_run: ValidationRun, slurm_status: SlurmStatusEnum):
+def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage (if validation is enabled) or finishing the job.
-    :param process_id: The process_id of the job (id_user)
     :param validation_run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
-    logger.info(f'Job end callback received for validation job {process_id} with status {slurm_status}')
+    logger.info(
+        f'Job end callback received for validation job {validation_run.id}/{validation_run.calibration_run.owner.username} with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'Job {process_id} was cancelled')
+        logger.error(f'Validation job {validation_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
         set_job_status(validation_run, StatusEnum.CANCELLED)
     elif slurm_status == SlurmStatusEnum.FAILED:
-        logger.error(f'Job {process_id} ending due to abnormal return code')
+        logger.error(f'Validation job {validation_run.id}/{validation_run.calibration_run.owner.username}ending due to abnormal return code')
         set_job_status(validation_run, StatusEnum.FAILED)
     else:
         read_validation_output(validation_run)
 
 
-def cancel_slurm_job(run: CalibrationRun):
+def cancel_slurm_job(run: CalibrationRun | ValidationRun):
     """
      Terminates a job with the given calibration_run_id by sending a request to slurm.
      :param run: The CalibrationRun to terminate.
      """
-    logger.info(f'Cancelling slurm job {run.slurm_job_id} for Calibration Run {run.id}')
+    logger.info(f"Cancelling slurm job {run.slurm_job_id} for {'Calibration' if isinstance(run, CalibrationRun) else 'Validation'}  Run {run.id}")
 
     url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
     payload = {
@@ -155,11 +157,11 @@ def cancel_slurm_job(run: CalibrationRun):
             return False
         raise
 
-    logger.info(f'Response from slurm: {response.json()}')
+    logger.info(f'Response from cancel slurm: {response.json()}')
 
-    slurm_response = validate_response_data(GenericMessageResponseSerializer, response.json(),
-                                            'Cancel job response data from Slurm is not in the expected format')
+    validate_response_data(GenericMessageResponseSerializer, response.json(),
+                           'Cancel job response data from Slurm is not in the expected format')
 
-    logger.info(f"Job {payload['slurm_job_id']} cancelled successfully")
-    run_calibration_job_callback_slurm(None, f'{run.id}_{run.owner.username}', run, SlurmStatusEnum.CANCELED)
+    logger.info(f"{'Calibration' if isinstance(run, CalibrationRun) else 'Validation'} job {payload['slurm_job_id']} cancelled successfully")
+    run_calibration_job_callback_slurm(None, run, SlurmStatusEnum.CANCELED)
     return True
