@@ -561,7 +561,6 @@ def upload_geopackage_data(request):
 
 
 def get_data_files_status(run: CalibrationRun):
-    external_data_errors = []
     observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
                                       ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
@@ -574,11 +573,6 @@ def get_data_files_status(run: CalibrationRun):
                                      GeopackageSourceEnum.UPLOAD,
                                      lambda: get_geopackage_file_for_job(run))
 
-    if not observation_path:
-        external_data_errors.append({'name': 'observational', 'message': 'Observational data is not available'})
-    if not forcing_path:
-        external_data_errors.append({'name': 'forcing', 'message': 'Forcing data is not available'})
-    if not geopackage_path:
-        external_data_errors.append({'name': 'geopackage', 'message': 'Geopackage data is not available'})
-
-    return external_data_errors
+    return [{'name': 'observational', 'status': bool(observation_path)},
+            {'name': 'forcing', 'status': bool(forcing_path)},
+            {'name': 'geopackage', 'status': bool(geopackage_path)}]
