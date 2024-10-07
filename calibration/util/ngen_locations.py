@@ -30,7 +30,9 @@ files = [
     SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
 
     CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
-    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py')
+    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
+    # TODO Check thename
+    VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
 ]
 
 
@@ -161,6 +163,10 @@ def get_validation_best_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / 'ngen-cal_validation_best_stdout.log')
 
 
+def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_best.csv')
+
+
 def get_validation_control_input_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_control.yaml')
 
@@ -169,18 +175,19 @@ def get_validation_control_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / 'ngen-cal_validation_control_stdout.log')
 
 
+def get_validation_metrics_valid_control_file(run: CalibrationRun) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_control.csv')
+
+
 # TODO Might not need this.  Used internally by validation_iteration
-def get_validation_iteration_input_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
-    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_{worker_name}{iteration}.yaml')
+# def get_validation_iteration_input_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
+#     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_{worker_name}_iter{iteration}.yaml')
 
 
 def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
     return str(Path(get_worker_path(run, worker_name)) / f'ngen-cal_validation_{worker_name}{iteration}_stdout.log')
 
 
-def get_validation_metrics_valid_control_file(run) -> str:
-    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_control.csv')
+def get_validation_metrics_valid_iteration_file(run, worker_name: str, iteration: int) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_{worker_name}_iter{iteration}.csv')
 
-
-def get_validation_metrics_valid_best_file(run) -> str:
-    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_best.csv')

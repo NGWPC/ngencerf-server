@@ -1,21 +1,25 @@
+import csv
 import logging
 import re
 from collections import deque
+from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Type
 
 import pandas as pd
 from django.core.cache import cache
 from django.db import transaction
 
 from calibration.enums import OptimizationEnum, ValidationGlobalMetricPeriod, JobStage, ValidationGlobalMetricRunType
-from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun
+from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun, \
+    PerformanceMetrics
 from calibration.models.validation_global_metric import ValidationGlobalMetric
+from calibration.models.validation_metric import ValidationMetric
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
-    get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file
+    get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file
 from calibration.views.common import CerfException
 
 logger = logging.getLogger(__name__)
@@ -26,8 +30,8 @@ BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
-def read_validation_output(validation_run: ValidationRun):
-    pass
+def read_validation_output(validation_run: ValidationRun, worker_name: str, iteration: int):
+    process_validation_for_validation_run(validation_run, worker_name, iteration)
 
 
 # Function to read the output of a calibration run
@@ -59,24 +63,20 @@ def read_calibration_output(calibration_run: CalibrationRun, stage: JobStage):
             process_iterations_for_all_workers(calibration_run)
 
 
-def process_validation_for_calibration_run(calibration_run: CalibrationRun, stage: JobStage):
+def process_validation_metrics(run: CalibrationRun | ValidationRun, metrics_file: str, expected_run_type: str,
+                               metric_model: Type[ValidationGlobalMetric | ValidationMetric],
+                               run_relation_field: str
+                               ) -> None:
     """
-    Read the single file that is created by the Validation run, either Control or Best.
-    Processes the metrics and updates the corresponding IterationMetric entries.
+    Generic function to process validation metrics from a CSV file and create corresponding Metric objects.
 
-    :param calibration_run: The CalibrationRun instance.
-    :param stage: The stage of the run, either VALIDATION_CONTROL or VALIDATION_BEST.
+    :param run: The CalibrationRun or ValidationRun instance.
+    :param metrics_file: The file path of the metrics CSV file.
+    :param expected_run_type: The expected run type to validate.
+    :param metric_model: The model class to use for creating the metric objects (e.g., ValidationGlobalMetric or ValidationMetric).
+    :param run_relation_field: The field name that relates the metric to the CalibrationRun or ValidationRun.
     :return: None
     """
-
-    metrics_file = get_validation_metrics_valid_control_file(
-        calibration_run) if stage == JobStage.VALIDATION_CONTROL else get_validation_metrics_valid_best_file(
-        calibration_run)
-    expected_run_type = ValidationGlobalMetricRunType.valid_control.value if stage == JobStage.VALIDATION_CONTROL else ValidationGlobalMetricRunType.valid_best.value
-
-    if ValidationGlobalMetric.objects.filter(calibration_run=calibration_run, run_type=expected_run_type).exists():
-        raise CerfException(f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
-
     # Check if the file exists
     if not Path(metrics_file).is_file():
         raise CerfException(f'{metrics_file} does not exist')
@@ -91,42 +91,237 @@ def process_validation_for_calibration_run(calibration_run: CalibrationRun, stag
 
     # Loop over each row in the metrics file
     for _, row in metrics_df.iterrows():
-        # 'run' and 'period' are the first two columns, remaining are metrics
+        # Extract the run type and period fields
         run_type = row['run']
         if run_type != expected_run_type:
             logger.info(f'Unexpected run_type in {metrics_file} - {run_type}')
         period = row['period']
         if period not in ValidationGlobalMetricPeriod.get_names():
-            logger.info('Unexpected period in {metric_file} - {period}')
+            logger.info(f'Unexpected period in {metrics_file} - {period}')
 
         # Extract the metrics starting from the third column onwards
         metrics_row = row[2:]
 
-        # For each metric in the row, create or update the ValidationGlobalMetric
+        # For each metric in the row, create or update the relevant Metric model
         for metric_name, value in metrics_row.items():
             # Perform case-insensitive lookup for the metric
             metric = metrics_lookup.get(metric_name.lower())
             if not metric:
-                raise CerfException(f"Could not find metric '{metric_name}' in the database")
+                raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database for run {run.id}")
 
             # Prepare metric value (handling empty values if necessary)
             metric_value = float(value) if value else None
 
-            # Create the IterationMetric object
-            metric_obj = ValidationGlobalMetric(
+            # Create the metric object (ValidationGlobalMetric or ValidationMetric)
+            metric_obj = metric_model(
                 metric=metric,
                 run_type=run_type,
                 period=period,
                 metric_value=metric_value,
-                calibration_run=calibration_run
+                **{run_relation_field: run}
             )
             logger.debug(
-                f'{calibration_run.id}_{calibration_run.owner.username} Creating validation global metric for Run Type: {run_type},  Period: {period},  {metric_name} with value {metric_value}')
+                f'Run {run.id} Creating validation metric for Run Type: {run_type}, Period: {period}, {metric_name} with value {metric_value}')
             metrics_to_create.append(metric_obj)
 
     # Bulk create the metrics in the database
     if metrics_to_create:
-        ValidationGlobalMetric.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+        metric_model.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+
+
+def process_validation_for_calibration_run(calibration_run: CalibrationRun, stage: JobStage) -> None:
+    """
+    Read the single file that is created by the Validation run, either Control or Best.
+    Processes the metrics and updates the corresponding ValidationGlobalMetric entries.
+
+    :param calibration_run: The CalibrationRun instance.
+    :param stage: The stage of the run, either VALIDATION_CONTROL or VALIDATION_BEST.
+    :return: None
+    """
+    metrics_file = get_validation_metrics_valid_control_file(
+        calibration_run) if stage == JobStage.VALIDATION_CONTROL else get_validation_metrics_valid_best_file(
+        calibration_run)
+    # Casting to str since Pycharm is confused
+    expected_run_type = ValidationGlobalMetricRunType.valid_control.value if stage == JobStage.VALIDATION_CONTROL else ValidationGlobalMetricRunType.valid_best.value
+    print('type expected_run_type', type(expected_run_type))
+
+    if ValidationGlobalMetric.objects.filter(calibration_run=calibration_run, run_type=expected_run_type).exists():
+        raise CerfException(f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
+
+    process_validation_metrics(
+        run=calibration_run,
+        metrics_file=metrics_file,
+        expected_run_type=expected_run_type,
+        metric_model=ValidationGlobalMetric,
+        run_relation_field='calibration_run'
+    )
+
+
+def process_validation_for_validation_run(validation_run: ValidationRun, worker_name: str, iteration: int) -> None:
+    """
+    Read the single file that is created by the Validation run for the specific iteration.
+    Processes the metrics and updates the corresponding ValidationMetric entries.
+
+    :param validation_run: The ValidationRun instance.
+    :param worker_name: The worker's name associated with the validation run.
+    :param iteration: The specific iteration number.
+    :return: None
+    """
+    metrics_file = get_validation_metrics_valid_iteration_file(validation_run.calibration_run, worker_name, iteration)
+    expected_run_type = f'valid_{worker_name}_iter{iteration}'
+
+    if ValidationMetric.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
+        raise CerfException(f"End of job processing has already been completed for Validation Run {validation_run.id}")
+
+    process_validation_metrics(
+        run=validation_run,
+        metrics_file=metrics_file,
+        expected_run_type=expected_run_type,
+        metric_model=ValidationMetric,
+        run_relation_field='validation_run'
+    )
+
+
+#
+# def process_validation_for_calibration_run(calibration_run: CalibrationRun, stage: JobStage):
+#     """
+#     Read the single file that is created by the Validation run, either Control or Best.
+#     Processes the metrics and updates the corresponding IterationMetric entries.
+#
+#     :param calibration_run: The CalibrationRun instance.
+#     :param stage: The stage of the run, either VALIDATION_CONTROL or VALIDATION_BEST.
+#     :return: None
+#     """
+#
+#     metrics_file = get_validation_metrics_valid_control_file(
+#         calibration_run) if stage == JobStage.VALIDATION_CONTROL else get_validation_metrics_valid_best_file(
+#         calibration_run)
+#     expected_run_type = ValidationGlobalMetricRunType.valid_control.value if stage == JobStage.VALIDATION_CONTROL else ValidationGlobalMetricRunType.valid_best.value
+#
+#     if ValidationGlobalMetric.objects.filter(calibration_run=calibration_run, run_type=expected_run_type).exists():
+#         raise CerfException(f"End of job processing has already been completed for Calibration Run {calibration_run.id} for stage {stage.value}")
+#
+#     # Check if the file exists
+#     if not Path(metrics_file).is_file():
+#         raise CerfException(f'{metrics_file} does not exist')
+#
+#     # Read the metrics file using pandas
+#     metrics_df = pd.read_csv(metrics_file)
+#
+#     # Prefetch metrics for quick lookup
+#     metrics_lookup = get_cached_metrics()
+#
+#     metrics_to_create = []  # List to accumulate metrics to be created
+#
+#     # Loop over each row in the metrics file
+#     for _, row in metrics_df.iterrows():
+#         # 'run' and 'period' are the first two columns, remaining are metrics
+#         run_type = row['run']
+#         if run_type != expected_run_type:
+#             logger.info(f'Unexpected run_type in {metrics_file} - {run_type}')
+#         period = row['period']
+#         if period not in ValidationGlobalMetricPeriod.get_names():
+#             logger.info('Unexpected period in {metric_file} - {period}')
+#
+#         # Extract the metrics starting from the third column onwards
+#         metrics_row = row[2:]
+#
+#         # For each metric in the row, create or update the ValidationGlobalMetric
+#         for metric_name, value in metrics_row.items():
+#             # Perform case-insensitive lookup for the metric
+#             metric = metrics_lookup.get(metric_name.lower())
+#             if not metric:
+#                 raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database Validation Run {calibration_run.id}")
+#
+#             # Prepare metric value (handling empty values if necessary)
+#             metric_value = float(value) if value else None
+#
+#             # Create the IterationMetric object
+#             metric_obj = ValidationGlobalMetric(
+#                 metric=metric,
+#                 run_type=run_type,
+#                 period=period,
+#                 metric_value=metric_value,
+#                 calibration_run=calibration_run
+#             )
+#             logger.debug(
+#                 f'Calibration Run {calibration_run.id} Stage: {stage} Creating validation global metric for Run Type: {run_type},  Period: {period},  {metric_name} with value {metric_value}')
+#             metrics_to_create.append(metric_obj)
+#
+#     # Bulk create the metrics in the database
+#     if metrics_to_create:
+#         ValidationGlobalMetric.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+#
+#
+# def process_validation_for_validation_run(validation_run: ValidationRun, worker_name: str, iteration: int):
+#     """
+#     Read the single file that is created by the Validation run for the specific iteration.
+#     Processes the metrics and updates the corresponding IterationMetric entries.
+#
+#     :param validation_run: The ValidationRun instance.
+#     :param worker_name
+#     :param iteration
+#     :return: None
+#     """
+#
+#     metrics_file = get_validation_metrics_valid_iteration_file(validation_run.calibration_run, worker_name, iteration)
+#
+#     expected_run_type = f'valid_{worker_name}_iter{iteration}'
+#
+#     if ValidationMetric.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
+#         raise CerfException(f"End of job processing has already been completed for Validation Run {validation_run.id}")
+#
+#     # Check if the file exists
+#     if not Path(metrics_file).is_file():
+#         raise CerfException(f'{metrics_file} does not exist')
+#
+#     # Read the metrics file using pandas
+#     metrics_df = pd.read_csv(metrics_file)
+#
+#     # Prefetch metrics for quick lookup
+#     metrics_lookup = get_cached_metrics()
+#
+#     metrics_to_create = []  # List to accumulate metrics to be created
+#
+#     # Loop over each row in the metrics file
+#     for _, row in metrics_df.iterrows():
+#         # 'run' and 'period' are the first two columns, remaining are metrics
+#         run_type = row['run']
+#         if run_type != expected_run_type:
+#             logger.info(f'Unexpected run_type in {metrics_file} - {run_type}')
+#         period = row['period']
+#         if period not in ValidationGlobalMetricPeriod.get_names():
+#             logger.info('Unexpected period in {metric_file} - {period}')
+#
+#         # Extract the metrics starting from the third column onwards
+#         metrics_row = row[2:]
+#
+#         # For each metric in the row, create or update the ValidationGlobalMetric
+#         for metric_name, value in metrics_row.items():
+#             # Perform case-insensitive lookup for the metric
+#             metric = metrics_lookup.get(metric_name.lower())
+#             if not metric:
+#                 raise CerfException(
+#                     f"Could not find metric '{metric_name}' from {metrics_file} in the database for Validation Run {validation_run.id}")
+#
+#             # Prepare metric value (handling empty values if necessary)
+#             metric_value = float(value) if value else None
+#
+#             # Create the IterationMetric object
+#             metric_obj = ValidationMetric(
+#                 metric=metric,
+#                 run_type=run_type,
+#                 period=period,
+#                 metric_value=metric_value,
+#                 validation_run=validation_run
+#             )
+#             logger.debug(
+#                 f'Validation Run {validation_run.id} Worker: {worker_name}, Iteration: {iteration} Creating validation metric for Run Type: {run_type},  Period: {period},  {metric_name} with value {metric_value}')
+#             metrics_to_create.append(metric_obj)
+#
+#     # Bulk create the metrics in the database
+#     if metrics_to_create:
+#         ValidationGlobalMetric.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
 
 
 # Function to process iterations for all workers in a run
@@ -439,9 +634,10 @@ def count_rows_in_csv(file_path):
         return sum(1 for _ in file) - 1
 
 
-def get_cached_metrics():
+def get_cached_metrics() -> dict:
     """
     Retrieve the Metric objects from cache or from the database if not cached.
+    :return: A dictionary of metric names (lowercased) mapped to Metric objects.
     """
     # Check if the cache already exists
     metrics_lookup = cache.get('metrics_cache')
@@ -450,3 +646,60 @@ def get_cached_metrics():
         metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
         cache.set('metrics_cache', metrics_lookup, None)  # Cache indefinitely
     return metrics_lookup
+
+
+def parse_duration(duration_str):
+    """Converts a duration string (HH:MM:SS) into a timedelta object."""
+    hours, minutes, seconds = map(int, duration_str.split(':'))
+    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+
+def parse_performance_metrics(file_path):
+    """
+    Opens the pipe-delimited file, parses the content, and extracts performance metrics.
+    Expects the file to have exactly two lines of data.
+    """
+    reserved_time = None
+    batch_metrics = None
+
+    with open(file_path, 'r') as file:
+        reader = csv.DictReader(file, delimiter='|')
+
+        for row in reader:
+            job_id = row['JobID']
+
+            if job_id.endswith('.batch'):
+                # Collect data from the .batch line
+                batch_metrics = {
+                    'slurm_job_id': job_id,
+                    'elapsed_time': parse_duration(row['Elapsed']),
+                    'num_cpus': int(row['NCPUS']),
+                    'cpu_time': parse_duration(row['CPUTime']),
+                    'max_rss': row['MaxRSS'] or None,
+                    'max_disk_read': row['MaxDiskRead'] or None,
+                    'max_disk_write': row['MaxDiskWrite'] or None,
+                    'reserved_time': reserved_time  # This will be updated later if available
+                }
+            else:
+                # Save the reserved time from the non-.batch line
+                reserved_time = parse_duration(row['Reserved']) if row['Reserved'] else None
+
+    if batch_metrics:
+        # Now update the reserved_time for the batch metrics
+        batch_metrics['reserved_time'] = reserved_time
+
+        # Create or update the PerformanceMetrics record
+        metrics = PerformanceMetrics.objects.create(
+            job_id=batch_metrics['job_id'],
+            elapsed_time=batch_metrics['elapsed_time'],
+            num_cpus=batch_metrics['num_cpus'],
+            cpu_time=batch_metrics['cpu_time'],
+            max_rss=batch_metrics['max_rss'],
+            max_disk_read=batch_metrics['max_disk_read'],
+            max_disk_write=batch_metrics['max_disk_write'],
+            reserved_time=batch_metrics['reserved_time']
+        )
+
+        return metrics
+
+    return None

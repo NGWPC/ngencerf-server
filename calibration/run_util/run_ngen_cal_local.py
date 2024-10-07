@@ -6,7 +6,7 @@ from pathlib import Path
 
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, ValidationRun
-from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY
+from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, VALIDATION_ITERATION_PY
 from django.conf import settings
 
 from calibration.views.read_output import read_validation_output
@@ -52,8 +52,7 @@ def run_validation_job_local(validation_run: ValidationRun, input_file, output_f
     :param iteration
     """
     simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
-    validation_script = VALIDATION_PY
-    # validation_script = VALIDATION_ITERATION_PY
+    validation_script = VALIDATION_ITERATION_PY
     validation_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'ngen_cal_simulation.py') if simulate else validation_script
 
     shell_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'run_ngen_cal.sh')

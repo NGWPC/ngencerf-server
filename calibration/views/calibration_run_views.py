@@ -493,13 +493,15 @@ def validation_job_slurm_callback(request):
 
     validation_run_id = validator.get('validation_job_id')
     job_status = validator.get('job_status')
+    worker_name = validator.get('worker_name')
+    iteration = validator.get('iteration')
 
     run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     slurm_status = SlurmStatusEnum[job_status]
-    run_validation_job_callback_slurm(run, slurm_status)
+    run_validation_job_callback_slurm(run, worker_name, iteration, slurm_status)
 
     logger.debug(f'Returning to {request.user} from validation_job_slurm_callback()')
 
