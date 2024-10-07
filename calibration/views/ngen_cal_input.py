@@ -24,7 +24,7 @@ config_template = {
 
     "General": {
         "calibration_run_id": 0,
-        "ngen_cerf": True,  # Indicate that we came from the ngenCerf server - Always true
+        "ngencerf": True,  # Indicate that we came from the ngenCerf server - Always true
         "auth_token": "",
         "basin": "",
         "models": "",
