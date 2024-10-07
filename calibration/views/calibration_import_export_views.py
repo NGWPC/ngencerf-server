@@ -376,7 +376,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
             calibration_run_data['geopackage_image_url'] = geopackage_image_url
 
         # Have files been uploaded or made available?
-        calibration_run_data['data_errors'] = get_data_files_status(run)
+        calibration_run_data['external_data_errors'] = get_data_files_status(run)
         calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
 
     #############################
