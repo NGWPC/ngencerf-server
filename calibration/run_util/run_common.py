@@ -83,30 +83,30 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
         job_registry.pop(run.id, None)
 
 
-def proceed_to_next_stage(run: CalibrationRun, current_stage: JobStage):
+def proceed_to_next_stage(calibration_run: CalibrationRun, current_stage: JobStage):
     """
     Handle the logic to proceed to the next stage of the job.
     Only a CalibrationRun has multiple states (calibration, validation control and optionally, validation best
-    :param run: CalibrationRun
+    :param calibration_run: CalibrationRun
     :param current_stage: current stage
     """
     try:
         logger.info(f'Calling read_output for stage {current_stage}')
-        read_calibration_output(run, current_stage)
+        read_calibration_output(calibration_run, current_stage)
     except CerfException as e:
-        logger.error(f'Exception while running read_output for job {run.id} in stage {current_stage} - {str(e)}')
+        logger.error(f'Exception while running read_output for job {calibration_run.id} in stage {current_stage} - {str(e)}')
         raise
 
-    process_id = Path(run.job_data_dir).name
-    transition_manager = JobStageTransitionManager(validation_enabled=run.automatic_validation)
+    process_id = Path(calibration_run.job_data_dir).name
+    transition_manager = JobStageTransitionManager(validation_enabled=calibration_run.automatic_validation)
     next_stage = transition_manager.get_next_stage(current_stage)
 
     if next_stage:
         logger.info(f'Job {process_id} proceeding to stage {next_stage}')
-        run_calibration_job(run, next_stage)
+        run_calibration_job(calibration_run, next_stage)
     else:
         logger.info(f'Job {process_id} complete. No further stages.')
-        set_job_status(run, StatusEnum.DONE)
+        set_job_status(calibration_run, StatusEnum.DONE)
 
 
 def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
