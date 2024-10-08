@@ -10,7 +10,7 @@ from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, VALID
 from django.conf import settings
 
 from calibration.views.calibration_run_views import submit_validation_job
-from calibration.views.common import create_validation_run_internal
+from calibration.views.common import create_validation_run_internal, CerfException
 from calibration.views.read_output import read_validation_output, read_calibration_output
 from cerfServer.settings import NGEN_CAL_VENV
 from calibration.run_util.run_common import JobStage, set_job_status, job_registry
@@ -100,11 +100,10 @@ def run_calibration_job_callback_local(current_stage: JobStage, calibration_run:
             set_job_status(calibration_run, StatusEnum.FAILED)
         else:
             read_calibration_output(calibration_run)
+            set_job_status(calibration_run, StatusEnum.DONE)
             # Always submit a control run
             validation_run = create_validation_run_internal(calibration_run, validation_type=ValidationType.VALID_CONTROL)
             submit_validation_job(validation_run, None, None)
-
-            # proceed_to_next_stage(calibration_run, current_stage)
     except Exception as e:
         logger.error(f"Error in callback for Calibration Job {calibration_run.id} at stage {current_stage.name}: {str(e)}")
         set_job_status(calibration_run, StatusEnum.FAILED)
@@ -139,6 +138,7 @@ def run_validation_job_callback_local(validation_run: ValidationRun, worker_name
         else:
             # Process the validation output
             read_validation_output(validation_run, worker_name, iteration)
+            set_job_status(validation_run, StatusEnum.DONE)
 
             # If we just ran Validation Control, see if we want to run Validation Best
             if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
@@ -166,9 +166,7 @@ def execute_calibration_job(calibration_run: CalibrationRun, current_stage, args
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    process_id = Path(calibration_run.job_data_dir).name
-
-    logger.info(f"Spawning process: Calibration Job {process_id} in stage {current_stage.name} with {args}")
+    logger.info(f"Spawning process: Calibration Job {calibration_run.id}/{calibration_run.owner.username} in stage {current_stage.name} with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
@@ -180,7 +178,7 @@ def execute_calibration_job(calibration_run: CalibrationRun, current_stage, args
     except Exception as e:
         logger.error(f"Failed to execute command: {str(e)}")
         raise
-    logger.info(f'Process Calibration Job {process_id} in stage {current_stage.name} is running in the background')
+    logger.info(f'Process Calibration Job {calibration_run.id}/{calibration_run.owner.username} in stage {current_stage.name} is running in the background')
 
 
 def execute_validation_job(validation_run: ValidationRun, args, callback_function):
@@ -194,9 +192,7 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    process_id = Path(validation_run.calibration_run.job_data_dir).name
-
-    logger.info(f"Spawning process: Validation Job {process_id}  with {args}")
+    logger.info(f"Spawning process: Validation Job {validation_run.id}/{validation_run.calibration_run.owner.usernamea}  with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
@@ -208,7 +204,7 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
     except Exception as e:
         logger.error(f"Failed to execute command: {str(e)}")
         raise
-    logger.info(f'Process Validation Job {process_id} is running in the background')
+    logger.info(f'Process Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} is running in the background')
 
 
 def cancel_local_job(run: CalibrationRun | ValidationRun):

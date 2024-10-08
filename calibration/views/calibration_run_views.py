@@ -1,9 +1,7 @@
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
-from createInput import create_input
 from datetimerange import DateTimeRange
 from django.db import transaction
 from django.db.models import Max
@@ -14,12 +12,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import Iteration, ValidationRun, CalibrationRun
-from calibration.run_util.run_common import run_calibration_job, cancel_job_common, JobStage, run_validation_job
+from calibration.models import Iteration
+from calibration.run_util.run_common import cancel_job_common, JobStage, submit_validation_job, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
-    ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer
+    ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
+    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, ValidationRunSerializer, \
+    SubmitValidationJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
@@ -114,14 +113,14 @@ def run_calibration(request):
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name, 'run_date': run.run_date}
 
-    response_validator, error_response = validate_response(SubmitJobResponseSerializer, response)
+    response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user} from run_calibration() - {response_validator.data}')
 
     return Response(response_validator.data)
 
 
 @extend_schema(
-    request=None,
+    request=ValidationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -141,7 +140,7 @@ def run_validation(request):
     data = request.data
     logger.debug(f'run_validation() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
         return error_return
 
@@ -161,49 +160,10 @@ def run_validation(request):
     response = {'message': f'Validation Run {run.id} has been submitted', 'validation_run_id': validation_run_id,
                 'status': run.status.name, 'run_date': run.run_date}
 
-    response_validator, error_response = validate_response(SubmitJobResponseSerializer, response)
+    response_validator, error_response = validate_response(SubmitValidationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user} from run_validation() - {response_validator.data}')
 
     return Response(response_validator.data)
-
-
-def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
-    # If config is passed, then don't need to validate
-    if not config_file:
-        messages, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
-
-        if messages:
-            return ResponseError(f'Calibration Run {calibration_run.id} is not ready', validation_errors=messages)
-
-    try:
-        logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
-        create_input(config_file)
-    except Exception as e:
-        return ResponseError(f'Exception from create_input - {str(e)}')
-
-    logger.info(f'Return from create_input for Calibration Run {calibration_run.id}')
-
-    with transaction.atomic():
-        calibration_run.run_date = datetime.now(timezone.utc)
-        calibration_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
-        calibration_run.save(update_fields=['run_date', 'status'])
-
-        run_calibration_job(calibration_run, JobStage.CALIBRATION)
-
-    return None
-
-
-def submit_validation_job(validation_run: ValidationRun, worker_name: str | None, iteration: int | None):
-    # TODO Do we need to check if the job is ready?  I don't think we need anything
-
-    with transaction.atomic():
-        validation_run.run_date = datetime.now(timezone.utc)
-        validation_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
-        validation_run.save(update_fields=['run_date', 'status'])
-
-        run_validation_job(validation_run, worker_name, iteration)
-
-    return None
 
 
 @extend_schema(
@@ -302,7 +262,7 @@ def report_iteration(request):
             # New worker
             max_worker_number = Iteration.objects.filter(calibration_run=run).aggregate(Max('worker_number'))['worker_number__max']
             worker_number = (max_worker_number or 0) + 1
-            print(f"Creating new worker: '{worker_name}' #{worker_number}")
+            logger.debug(f"Creating new worker: '{worker_name}' #{worker_number}")
         else:
             # Use get() to fetch the latest iteration for the given worker_name and run
             existing_iteration = Iteration.objects.filter(calibration_run=run, worker_name=worker_name).order_by('-iteration_num').first()

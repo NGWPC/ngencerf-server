@@ -41,6 +41,8 @@ def read_validation_output(validation_run: ValidationRun, worker_name: str, iter
 
         process_validation_for_validation_run(validation_run, worker_name, iteration)
 
+    logger.info(f"End of processing output for Validation Run {validation_run.id}")
+
 
 # Function to read the output of a calibration run
 def read_calibration_output(calibration_run: CalibrationRun):
@@ -70,6 +72,8 @@ def read_calibration_output(calibration_run: CalibrationRun):
         process_iterations_for_all_workers(calibration_run)
 
         calibration_run.save()
+
+    logger.info(f"End of processing output for Calibration Run {calibration_run.id}")
 
 
 def process_validation_metrics(validation_run: ValidationRun, metrics_file: str, expected_run_type: str) -> None:

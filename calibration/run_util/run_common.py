@@ -1,13 +1,19 @@
 import logging
+import os
 import subprocess
+from datetime import datetime, timezone
 from typing import Dict
+from createInput import create_input
 
 from django.conf import settings
+from django.db import transaction
 
 from calibration.enums import StatusEnum, JobStage, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file
+from calibration.views import ngen_cal_input
+from calibration.views.common import ResponseError, CerfException
 from cerfServer.settings import EnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -61,7 +67,7 @@ logger = logging.getLogger(__name__)
 #     JobStage.VALIDATION_CONTROL: (get_validation_control_input_file, get_validation_control_stdout_file),
 #     JobStage.VALIDATION_BEST: (get_validation_best_input_file, get_validation_best_stdout_file),
 # }
-calibration_file_funcs = (get_calibration_input_file, get_calibration_stdout_file)
+# calibration_file_funcs = (get_calibration_input_file, get_calibration_stdout_file)
 
 # validation_file_funcs = (get_calibration_input_file, get_validation_iteration_stdout_file)
 # validation_best_file_funcs = (get_validation_best_input_file, get_validation_best_stdout_file)
@@ -80,6 +86,7 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
     run.save(update_fields=['status', 'slurm_job_id'])
     if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
         job_registry.pop(run.id, None)
+
 
 #
 # def proceed_to_next_stage(calibration_run: CalibrationRun, current_stage: JobStage):
@@ -119,9 +126,11 @@ def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
     :param calibration_run: The CalibrationRun object representing the job run.
     :param stage: The current job stage.
     """
-    input_file_func, output_file_func = calibration_file_funcs
-    input_file = input_file_func(calibration_run)
-    output_file = output_file_func(calibration_run)
+    input_file = get_calibration_input_file(calibration_run)
+    if not os.path.exists(input_file):
+        raise CerfException(f"Input file '{input_file}' does not exist for Calibration Run {calibration_run.id}, user: {calibration_run.owner.username}")
+
+    output_file = get_calibration_stdout_file(calibration_run)
 
     # Run the job locally or in Docker
     match settings.NGEN_ENVIRONMENT:
@@ -153,6 +162,9 @@ def run_validation_job(validation_run: ValidationRun, worker_name: str | None, i
         input_file = get_calibration_input_file(validation_run.calibration_run)
         output_file = get_validation_iteration_stdout_file(validation_run.calibration_run, worker_name, iteration)
 
+    if not os.path.exists(input_file):
+        raise CerfException(f"Input file '{input_file}' does not exist for Validation Run {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
+
     # Run the job locally or in Docker
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
@@ -170,3 +182,42 @@ def cancel_job_common(run_id):
         return cancel_local_job(run_id)
     else:
         return cancel_slurm_job(run_id)
+
+
+def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
+    # If config is passed, then don't need to validate
+    if not config_file:
+        messages, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
+
+        if messages:
+            return ResponseError(f'Calibration Run {calibration_run.id} is not ready', validation_errors=messages)
+
+    try:
+        logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
+        create_input(config_file)
+    except Exception as e:
+        return ResponseError(f'Exception from create_input - {str(e)}')
+
+    logger.info(f'Return from create_input for Calibration Run {calibration_run.id}')
+
+    with transaction.atomic():
+        calibration_run.run_date = datetime.now(timezone.utc)
+        calibration_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+        calibration_run.save(update_fields=['run_date', 'status'])
+
+        message = run_calibration_job(calibration_run, JobStage.CALIBRATION)
+
+    return None
+
+
+def submit_validation_job(validation_run: ValidationRun, worker_name: str | None, iteration: int | None):
+    # TODO Do we need to check if the job is ready?  I don't think we need anything
+
+    with transaction.atomic():
+        validation_run.run_date = datetime.now(timezone.utc)
+        validation_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+        validation_run.save(update_fields=['run_date', 'status'])
+
+        message = run_validation_job(validation_run, worker_name, iteration)
+
+    return None

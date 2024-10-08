@@ -43,6 +43,10 @@ class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class ValidationRunSerializer(BaseSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
+
+
 ##################################
 # Common serializers that need to be defined before usage
 ##################################
@@ -719,7 +723,14 @@ class ImportResponseSerializer(GenericResponseSerializer):
     messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
-class SubmitJobResponseSerializer(GenericResponseSerializer):
+class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
+    run_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+class SubmitValidationJobResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    validation_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=False)
 
 

@@ -215,11 +215,13 @@ def create_validation_run_internal(calibration_run: CalibrationRun, validation_t
     :return: The newly created ValidationRun instance.
     """
 
+    validation_type = validation_type or ValidationType.VALID_ITERATION
+
     print(f"Creating validation_run for Calibration {calibration_run.id} with validation_type {validation_type}")
     validation_data = {
         'status': StatusEnum.from_enum(StatusEnum.SAVED),
         'calibration_run': calibration_run,
-        'validation_type': (validation_type or ValidationType.VALID_CONTROL).value
+        'validation_type': validation_type.value
     }
 
     return ValidationRun.objects.create(**validation_data)
