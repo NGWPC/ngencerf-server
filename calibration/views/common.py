@@ -16,7 +16,7 @@ from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun, Status, ValidationRun, Module, ModuleGroup
 from calibration.util.calibration_validators import ErrorResponseSerializer
 from django.conf import settings
@@ -94,7 +94,7 @@ def get_validation_run(validation_run_id, user, run_status=None) -> Tuple[Option
 
     try:
         # Build the base queryset for CalibrationRun, filtering by id and not deleted
-        run_query = ValidationRun.objects.select_related('status', 'gage').only('id', 'status', 'gage', 'owner').filter(
+        run_query = ValidationRun.objects.select_related('calibration_run').filter(
             id=validation_run_id, calibration_run__is_deleted=False)
 
         # If user is provided, filter by owner
@@ -206,16 +206,23 @@ def create_calibration_run_internal(user) -> CalibrationRun:
     return run
 
 
-def create_validation_run_internal(run: CalibrationRun) -> ValidationRun:
+def create_validation_run_internal(calibration_run: CalibrationRun, validation_type: ValidationType = None) -> ValidationRun:
     """
     Create a new ValidationRun object for the given CalibrationRun.
 
-    :param run: The calibration run that this validation run is associated with.
+    :param calibration_run: The calibration run that this validation run is associated with.
+    :param validation_type: optional value to store in Validation Run object
     :return: The newly created ValidationRun instance.
     """
-    validation = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED), calibration_run=run)
 
-    return validation
+    print(f"Creating validation_run for Calibration {calibration_run.id} with validation_type {validation_type}")
+    validation_data = {
+        'status': StatusEnum.from_enum(StatusEnum.SAVED),
+        'calibration_run': calibration_run,
+        'validation_type': (validation_type or ValidationType.VALID_CONTROL).value
+    }
+
+    return ValidationRun.objects.create(**validation_data)
 
 
 token_slurm_scope = 'slurm_callback'

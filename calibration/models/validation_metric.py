@@ -18,7 +18,7 @@ class ValidationMetric(BaseModel):
 
     def __str__(self):
         return (
-            f"ValidationGlobalMetric: {self.id}, "
+            f"ValidationMetric: {self.id}, "
             f"Metric: {self.metric.name:10}, "
             f"Value: {self.metric_value}, "
             f"Validation Run: {self.validation_run_id}"

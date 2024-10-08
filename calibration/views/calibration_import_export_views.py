@@ -128,7 +128,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
             else:
                 if geopackage_user_uploaded_file_path:
-                    warnings.append(f"Unable to access user uploaded geopackage data from '{geopackage_user_uploaded_file_path}'")
+                    warnings.append(f"User uploaded geopackage data from '{geopackage_user_uploaded_file_path}' not found")
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
@@ -137,7 +137,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
             else:
                 if forcing_user_uploaded_dir_path:
-                    warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
+                    warnings.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
 
         if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
@@ -146,7 +146,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
             else:
                 if observational_user_uploaded_file_path:
-                    warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
+                    warnings.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
 
         #############################
         # Formulations

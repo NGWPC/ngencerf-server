@@ -19,8 +19,7 @@ from calibration.run_util.run_common import run_calibration_job, cancel_job_comm
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, \
-    ReadOutputRequestSerializer, ValidationJobSlurmCallbackRequestSerializer
+    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
@@ -194,7 +193,7 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
     return None
 
 
-def submit_validation_job(validation_run: ValidationRun, worker_name: str, iteration: int):
+def submit_validation_job(validation_run: ValidationRun, worker_name: str | None, iteration: int | None):
     # TODO Do we need to check if the job is ready?  I don't think we need anything
 
     with transaction.atomic():
@@ -233,19 +232,18 @@ def process_calibration_output(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'process_calibration_output() request from {request.user} - {data}')
-    validator, error_return = validate_request(ReadOutputRequestSerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    job_stage = validator.get('job_stage')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
 
     if error_return:
         return error_return
 
-    read_calibration_output(run, JobStage.from_string(job_stage))
+    read_calibration_output(run)
 
     response = {'message': f"End of job processing completed for Calibration Run {run.id}",
                 'calibration_run_id': run.id,

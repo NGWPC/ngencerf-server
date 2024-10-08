@@ -31,7 +31,6 @@ files = [
 
     CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
     VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
-    # TODO Check thename
     VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
 ]
 

@@ -5,22 +5,23 @@ import requests
 from django.conf import settings
 from rest_framework import status
 
-from calibration.enums import StatusEnum, SlurmStatusEnum
+from calibration.enums import StatusEnum, SlurmStatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
-from calibration.run_util.run_common import JobStage, set_job_status, proceed_to_next_stage
+from calibration.run_util.run_common import JobStage, set_job_status
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
-from calibration.views.common import generate_custom_token, token_slurm_scope
+from calibration.views.calibration_run_views import submit_validation_job
+from calibration.views.common import generate_custom_token, token_slurm_scope, create_validation_run_internal
 from calibration.views.hydrofabric import validate_response_data
-from calibration.views.read_output import read_validation_output
+from calibration.views.read_output import read_validation_output, read_calibration_output
 
 logger = logging.getLogger(__name__)
 
 
 def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: JobStage, input_file, output_file):
     """
-    Executes a local calibration job for either CALIBRATION or VALIDATION stages by calling the shell script
+    Executes a calibration job via Slurm for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
-    :param calibration_run: The CalibrationRun object representing the job run.sl
+    :param calibration_run: The CalibrationRun object representing the job run.
     :param stage: The current job stage, as an enum
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
@@ -62,8 +63,8 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
     :param validation_run: The CalibrationRun object representing the job run.
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
-    :param worker_name that contains parameters we want to use
-    :param iteration specific iteration that contains parameters we want to use
+    :param worker_name: worker that contains parameters we want to use
+    :param iteration: specific iteration that contains parameters we want to use
     """
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT)
     payload = {
@@ -98,7 +99,7 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
 def run_calibration_job_callback_slurm(current_stage: JobStage | None, calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
-    moving to the next stage (if validation is enabled) or finishing the job.
+    moving to the next stage or finishing the job.
     :param current_stage: The current job stage, as an Enum (or None, if the job was cancelled)
     :param calibration_run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
@@ -107,26 +108,28 @@ def run_calibration_job_callback_slurm(current_stage: JobStage | None, calibrati
         f'Job end callback received for job {calibration_run.id}/{calibration_run.owner.username} in stage {current_stage} with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'Calibration job {calibration_run.id}/{calibration_run.owner.sername} was cancelled')
+        logger.error(f'Calibration job {calibration_run.id}/{calibration_run.owner.username} was cancelled')
         set_job_status(calibration_run, StatusEnum.CANCELLED)
     elif slurm_status == SlurmStatusEnum.FAILED:
         logger.error(f'Calibration job {calibration_run.id}/{calibration_run.owner.username} ending due to abnormal return code')
         set_job_status(calibration_run, StatusEnum.FAILED)
     else:
-        proceed_to_next_stage(calibration_run, current_stage)
+        read_calibration_output(calibration_run)
+        # Always submit a control run
+        validation_run = create_validation_run_internal(calibration_run, validation_type=ValidationType.VALID_CONTROL)
+        submit_validation_job(validation_run, None, None)
 
 
 def run_validation_job_callback_slurm(validation_run: ValidationRun, worker_name: str, iteration: int, slurm_status: SlurmStatusEnum):
     """
-    Callback function that gets executed when a job stage completes. It handles job stage transitions, including
-    moving to the next stage (if validation is enabled) or finishing the job.
-    :param validation_run: The CalibrationRun object representing the job run.
-    :param worker_name worker that has the parameters we want
-    :param iteration iteration that has the parameters we want
+    Callback function that gets executed when a validation job completes.
+    :param validation_run: The ValidationRun object representing the job run.
+    :param worker_name: worker that has the parameters we want
+    :param iteration: iteration that has the parameters we want
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
     logger.info(
-        f'Job end callback received for validation job {validation_run.id}/{validation_run.calibration_run.owner.username} with status {slurm_status}')
+        f'Job end callback received for Validation job {validation_run.id}/{validation_run.calibration_run.owner.username} with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Validation job {validation_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
@@ -135,7 +138,14 @@ def run_validation_job_callback_slurm(validation_run: ValidationRun, worker_name
         logger.error(f'Validation job {validation_run.id}/{validation_run.calibration_run.owner.username}ending due to abnormal return code')
         set_job_status(validation_run, StatusEnum.FAILED)
     else:
+        # Process the validation output
         read_validation_output(validation_run, worker_name, iteration)
+
+        # If we just ran Validation Control, see if we want to run Validation Best
+        if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
+            if validation_run.calibration_run.automatic_validation:
+                new_validation_run = create_validation_run_internal(validation_run.calibration_run, validation_type=ValidationType.VALID_BEST)
+                submit_validation_job(new_validation_run, None, None)
 
 
 def cancel_slurm_job(run: CalibrationRun | ValidationRun):
