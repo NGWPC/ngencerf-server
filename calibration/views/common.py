@@ -327,7 +327,7 @@ def validate_request(serializer_class, data, context=None):
     validator = serializer_class(data=data, context=context)
     try:
         validator.is_valid(raise_exception=True)
-        return validator.data, None
+        return validator.validated_data, None
     except ValidationError as e:
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
         message = f"called from {calling_function}, validated by {validator.__class__.__name__}"
