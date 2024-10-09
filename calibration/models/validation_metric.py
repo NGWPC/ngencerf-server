@@ -3,23 +3,23 @@ from django.db import models
 from calibration.models.base_model import BaseModel
 
 
-class ValidationGlobalMetric(BaseModel):
+class ValidationMetric(BaseModel):
     run_type = models.CharField(max_length=20, null=False)
     period = models.CharField(max_length=20, null=False)
     metric = models.ForeignKey('Metric', null=False, on_delete=models.RESTRICT)
     metric_value = models.FloatField(null=False)
-    calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.RESTRICT)
+    validation_run = models.ForeignKey('ValidationRun', null=False, on_delete=models.RESTRICT)
 
     class Meta:
-        db_table = 'validation_global_metric'
+        db_table = 'validation_metric'
         constraints = [
-            models.UniqueConstraint(fields=['metric', 'period',  'run_type', 'calibration_run'], name='validation_global_metric__metric__period__run_type__calibration_run__unique')
+            models.UniqueConstraint(fields=['metric', 'period',  'run_type', 'validation_run'], name='validation_metric__metric__period__run_type__validation_run__unique')
         ]
 
     def __str__(self):
         return (
-            f"ValidationGlobalMetric: {self.id}, "
+            f"ValidationMetric: {self.id}, "
             f"Metric: {self.metric.name:10}, "
             f"Value: {self.metric_value}, "
-            f"Calibration Run: {self.calibration_run_id}"
+            f"Validation Run: {self.validation_run_id}"
         )

@@ -25,13 +25,13 @@ files = [
     SFT_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilFreezeThaw/cmake_build/libsftbmi.so'),
     SMP_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/SoilMoistureProfiles/cmake_build/libsmpbmi.so'),
     LASAM_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/LASAM/cmake_build/liblasambmi.so'),
-    # TODO This path is not correct
-    PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/pet/cmake_build/libpetbmi.so'),
+    PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/evapotranspiration/evapotranspiration/cmake_build/libpetbmi.so'),
     SNOW17_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so'),
     SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
 
     CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
-    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py')
+    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
+    VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
 ]
 
 
@@ -146,6 +146,10 @@ def get_calibration_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_calibration_run_dir(run)) / 'ngen-cal_calibration_stdout.log')
 
 
+def get_calibration_performance_file(run: CalibrationRun) -> str:
+    return str(Path(get_output_calibration_run_dir(run)) / 'ngen-cal_calibration_performance.log')
+
+
 def get_global_best_params_file(run: CalibrationRun) -> str:
     return str(Path(get_output_calibration_run_dir(run)) / f'{run.gage.gage_id}_global_best_params.csv')
 
@@ -162,6 +166,15 @@ def get_validation_best_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / 'ngen-cal_validation_best_stdout.log')
 
 
+# TODO Need to check this
+def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'ngen-cal_validation_{worker_name}_iter{iteration}_performance.log')
+
+
+def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_best.csv')
+
+
 def get_validation_control_input_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_control.yaml')
 
@@ -170,18 +183,18 @@ def get_validation_control_stdout_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / 'ngen-cal_validation_control_stdout.log')
 
 
-# TODO Might not need this.  Used internally by validation_iteration
-def get_validation_iteration_input_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
-    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_{worker_name}{iteration}.yaml')
-
-
-def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
-    return str(Path(get_worker_path(run, worker_name)) / f'ngen-cal_validation_{worker_name}{iteration}_stdout.log')
-
-
-def get_validation_metrics_valid_control_file(run) -> str:
+def get_validation_metrics_valid_control_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_control.csv')
 
 
-def get_validation_metrics_valid_best_file(run) -> str:
-    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_best.csv')
+# TODO Might not need this.  Used internally by validation_iteration
+# def get_validation_iteration_input_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
+#     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_{worker_name}_iter{iteration}.yaml')
+
+
+def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
+    return str(Path(get_worker_path(run, worker_name)) / f'ngen-cal_validation_{worker_name}_iter{iteration}_stdout.log')
+
+
+def get_validation_metrics_valid_iteration_file(run, worker_name: str, iteration: int) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_{worker_name}_iter{iteration}.csv')

@@ -9,6 +9,7 @@ class Iteration(BaseModel):
     calibration_output_variable_value = models.FloatField(null=True)
     worker_name = models.TextField(null=False)
     worker_number = models.PositiveIntegerField(null=False)
+    best_params = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'iteration'

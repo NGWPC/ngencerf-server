@@ -17,7 +17,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Im
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
-    get_geopackage_dir_for_job, get_geopackage_file_for_job, get_observational_file_for_job
+    get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
     SLOTH, add_sloth_parameters, validate_formulation, get_cached_module_by_name
@@ -29,7 +29,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_output_variable, \
     save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request, get_valid_path
+    validate_request
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
             else:
                 if geopackage_user_uploaded_file_path:
-                    warnings.append(f"Unable to access user uploaded geopackage data from '{geopackage_user_uploaded_file_path}'")
+                    warnings.append(f"User uploaded geopackage data from '{geopackage_user_uploaded_file_path}' not found")
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
@@ -137,7 +137,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
             else:
                 if forcing_user_uploaded_dir_path:
-                    warnings.append(f"Unable to access user uploaded forcing data from '{forcing_user_uploaded_dir_path}'")
+                    warnings.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
 
         if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
@@ -146,7 +146,7 @@ def import_calibration_run_data(request, calibration_run_data):
                 info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
             else:
                 if observational_user_uploaded_file_path:
-                    warnings.append(f"Unable to access user uploaded observational data from '{observational_user_uploaded_file_path}'")
+                    warnings.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
 
         #############################
         # Formulations
@@ -289,7 +289,7 @@ def export_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
     if error_return:
         return error_return
 
@@ -353,9 +353,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
         calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
         calibration_run_data['geopackage_hydrofabric_file_path'] = run.geopackage_hydrofabric_file_path
-
-
-
     else:
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['run_date'] = run.run_date

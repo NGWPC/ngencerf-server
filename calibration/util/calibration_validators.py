@@ -6,7 +6,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobStage
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -43,8 +43,14 @@ class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class ReadOutputRequestSerializer(CalibrationRunSerializer):
-    job_stage = serializers.CharField(required=True, validators=[enum_validator(JobStage)])
+class ValidationRunSerializer(BaseSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
+
+
+class RunValidationRequestSerializer(ValidationRunSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
+    iteration = serializers.IntegerField(required=True, min_value=0)
+    worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
 
 
 ##################################
@@ -723,7 +729,14 @@ class ImportResponseSerializer(GenericResponseSerializer):
     messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
 
 
-class SubmitJobResponseSerializer(GenericResponseSerializer):
+class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
+    run_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+class SubmitValidationJobResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    validation_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
@@ -731,9 +744,14 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
     iterations = serializers.IntegerField(required=True)
 
 
-class SlurmCallbackRequestSerializer(BaseSerializer):
+class CalibrationJobSlurmCallbackRequestSerializer(BaseSerializer):
     process_id = serializers.CharField(required=True)
     stage = serializers.CharField(required=True)
+    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
+class ValidationJobSlurmCallbackRequestSerializer(BaseSerializer):
+    process_id = serializers.CharField(required=True)
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 

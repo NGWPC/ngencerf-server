@@ -573,6 +573,6 @@ def get_data_files_status(run: CalibrationRun):
                                      GeopackageSourceEnum.UPLOAD,
                                      lambda: get_geopackage_file_for_job(run))
 
-    return [{'name': 'observational', 'status': bool(observation_path)},
-            {'name': 'forcing', 'status': bool(forcing_path)},
-            {'name': 'geopackage', 'status': bool(geopackage_path)}]
+    return {'observational': bool(observation_path),
+            'forcing': bool(forcing_path),
+            'geopackage': bool(geopackage_path)}

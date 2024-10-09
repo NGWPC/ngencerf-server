@@ -130,9 +130,10 @@ class UnitsEnum(StrEnum):
         return [e.value for e in cls]
 
 
-class ValidationGlobalMetricRunType(StrEnum):
-    valid_best = auto()
-    valid_control = auto()
+class ValidationType(StrEnum):
+    VALID_BEST = auto()
+    VALID_CONTROL = auto()
+    VALID_ITERATION = auto()
 
     @classmethod
     def get_names(cls) -> List[str]:
@@ -140,7 +141,7 @@ class ValidationGlobalMetricRunType(StrEnum):
         return [e.value for e in cls]
 
 
-class ValidationGlobalMetricPeriod(StrEnum):
+class ValidationMetricPeriod(StrEnum):
     calib = auto()
     valid = auto()
     full = auto()

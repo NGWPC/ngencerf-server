@@ -2,7 +2,8 @@ from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_results_views, calibration_gage_views, \
-    calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views
+    calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
+    calibration_evaluation_views
 
 urlpatterns = [
     ##################################
@@ -63,10 +64,17 @@ urlpatterns = [
     ##################################
     path('calibration/get_status/', calibration_run_views.get_status, name="getStatus"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
+    path('calibration/run_validation/', calibration_run_views.run_validation, name="runValidation"),
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
-    path('calibration/slurm_callback/', calibration_run_views.slurm_callback, name="slurmCallback"),
+    path('calibration/calibration_job_slurm_callback/', calibration_run_views.calibration_job_slurm_callback, name="calibrationJobSlurmCallback"),
+    path('calibration/validatinn_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
+
+    ##################################
+    # Evaluation
+    ##################################
+    path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration, name="getCalibrationDataByIteration"),
 
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
@@ -75,7 +83,7 @@ urlpatterns = [
     # Import/Export
     ##################################
     path('calibration/export/', calibration_import_export_views.export_job, name="export"),
-    path('calibration/import/', calibration_import_export_views.import_job, name="export"),
+    path('calibration/import/', calibration_import_export_views.import_job, name="import"),
 
     ##################################
     # Swagger - drf_spectacular
