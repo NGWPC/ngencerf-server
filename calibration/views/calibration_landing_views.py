@@ -135,7 +135,6 @@ def get_calibration_jobs(request):
 
     gage_id = validator.get('gage_id')
     include_validations = validator.get('include_validations')
-    print('include_validations', include_validations)
 
     query = Q(owner=request.user) & Q(is_deleted=False)
 
@@ -145,14 +144,30 @@ def get_calibration_jobs(request):
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
         query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
 
-    # Annotate to count the number of validation runs for each calibration run, excluding VALID_CONTROL
-    runs = CalibrationRun.objects.filter(query).annotate(
-        validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
-    ).values(
+    # Base query without validation_runs_count
+    runs_query = CalibrationRun.objects.filter(query)
+
+    # Annotate validation_runs_count if include_validations is True
+    if include_validations:
+        runs_query = runs_query.annotate(
+            validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
+        ).filter(validation_runs_count__gt=0)
+
+    # Annotate to rename 'user_formulation_name' to 'formulation_name'
+    runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
+
+    # Build the list of fields for the values clause
+    selected_fields = [
         'id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-        'status__name', 'owner__username', 'objective_function__name', 'optimization__name', 'validation_runs_count',
-        formulation_name=F('user_formulation_name')
-    )
+        'status__name', 'owner__username', 'objective_function__name', 'optimization__name',
+        'formulation_name'  # Now you can use 'formulation_name' directly
+    ]
+
+    # Add validation_runs_count if requested
+    if include_validations:
+        selected_fields.append('validation_runs_count')
+
+    runs = runs_query.values(*selected_fields)
 
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
@@ -162,10 +177,9 @@ def get_calibration_jobs(request):
         r['optimization_algorithm'] = r.pop('optimization__name')
         r['owner'] = r.pop('owner__username')
 
-        # Include validation_runs only if requested
+        # Only include validation_runs if requested and present in the result
         if include_validations:
-            r['validation_runs'] = r.pop('validation_runs_count', 0)
-
+            r['validation_runs'] = r.pop('validation_runs_count')
     response = {'jobs': list(runs)}
 
     response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['runs'], max_length=10)
@@ -191,7 +205,7 @@ def get_calibration_jobs(request):
         )
     },
 
-    description="Get all jobs"
+    description="Get validation jobs with starting parameter values"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
@@ -206,6 +220,7 @@ def get_validation_jobs(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
+    # https://www.figma.com/design/hOfHWLfcRjaSNzKimvLTzD/Evaluation-Workflow---ngenCERF?node-id=5-545&node-type=canvas&t=oTqvFQ5lmuiAhIpv-0
     # Create dummy data for now
     validation_jobs = [{'validation_run_id': 62, 'run_date': datetime(2024, 10, 1, 12, 0, 0, tzinfo=timezone.utc),
                         'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
@@ -276,7 +291,7 @@ def load_calibration_run(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
@@ -318,7 +333,7 @@ def clone_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
@@ -370,7 +385,7 @@ def delete_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
