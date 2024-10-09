@@ -172,7 +172,7 @@ def execute_calibration_job(calibration_run: CalibrationRun, current_stage, args
         future = pool.submit(process.wait)
 
         # Register job for future reference
-        job_registry[calibration_run.id] = process
+        job_registry[(calibration_run.id, None)] = process
 
         future.add_done_callback(callback_function)
     except Exception as e:
@@ -198,7 +198,7 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
         future = pool.submit(process.wait)
 
         # Register job for future reference
-        job_registry[validation_run.id] = process
+        job_registry[(validation_run.calibration_run.id, validation_run.id)] = process
 
         future.add_done_callback(callback_function)
     except Exception as e:

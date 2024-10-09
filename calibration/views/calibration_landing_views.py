@@ -5,14 +5,14 @@ from datetime import datetime, timezone
 
 from django.conf import settings
 from django.db import transaction, router
-from django.db.models import F, Q
+from django.db.models import F, Q, Count
 from django.db.models.deletion import Collector
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
@@ -145,16 +145,14 @@ def get_calibration_jobs(request):
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
         query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
 
-    runs = CalibrationRun.objects.filter(query).values(
+    # Annotate to count the number of validation runs for each calibration run, excluding VALID_CONTROL
+    runs = CalibrationRun.objects.filter(query).annotate(
+        validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
+    ).values(
         'id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-        'status__name', 'owner__username', 'objective_function__name', 'optimization__name', formulation_name=F('user_formulation_name')
+        'status__name', 'owner__username', 'objective_function__name', 'optimization__name', 'validation_runs_count',
+        formulation_name=F('user_formulation_name')
     )
-
-    # Conditionally include validation_runs if the flag is set
-    if include_validations:
-        # For now, just faking out data
-        for r in runs:
-            r['validation_runs'] = 2
 
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
@@ -163,6 +161,10 @@ def get_calibration_jobs(request):
         r['objective_function'] = r.pop('objective_function__name')
         r['optimization_algorithm'] = r.pop('optimization__name')
         r['owner'] = r.pop('owner__username')
+
+        # Include validation_runs only if requested
+        if include_validations:
+            r['validation_runs'] = r.pop('validation_runs_count', 0)
 
     response = {'jobs': list(runs)}
 

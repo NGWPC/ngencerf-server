@@ -17,6 +17,5 @@ class IterationParameter(BaseModel):
             f"IterationParameter: {self.id}, "
             f"calibration_parameter: ({self.calibration_parameter}), "
             f"tuned_value: {str(self.tuned_value)}, "
-            f"best: {self.best}"
         )
 
