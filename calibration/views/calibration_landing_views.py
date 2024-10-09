@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-from datetime import datetime, timezone
 
 from django.conf import settings
 from django.db import transaction, router
@@ -13,12 +12,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, ValidationRun, IterationParameter
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateValidationRunSerializer, \
-    GetValidationJobsResponseSerializer
+    GetValidationJobsResponseSerializer, CreateValidationRequestSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
@@ -61,7 +60,7 @@ def create_calibration_run(request):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CreateValidationRequestSerializer,
     responses={
         201: CreateValidationRunSerializer,
         400: OpenApiResponse(
@@ -73,7 +72,7 @@ def create_calibration_run(request):
             description="Internal server error"
         )
     },
-    description="Create a new validation"
+    description="Create a new validation for a specific worker_name and iteration"
 )
 @api_view(['POST'])
 @handle_exceptions
@@ -81,28 +80,29 @@ def create_validation_run(request):
     data = request.data
     logger.debug(f'create_validation_run() request from {request.user}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    worker_name = validator.get('worker_name')
+    iteration = validator.get('iteration')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
-    with transaction.atomic():
-        validation = create_validation_run_internal(run)
+    validation = create_validation_run_internal(run, worker_name, iteration, validation_type=ValidationType.VALID_ITERATION)
 
-        response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                    'validation_run_id': validation.id}
+    response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                'validation_run_id': validation.id}
 
-        response_validator, error_response = validate_response(CreateValidationRunSerializer, response)
-        if error_response:
-            return error_response
+    response_validator, error_response = validate_response(CreateValidationRunSerializer, response)
+    if error_response:
+        return error_response
 
-        logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
-        return Response(response_validator.data, status=status.HTTP_201_CREATED)
+    logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
+    return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
@@ -220,16 +220,38 @@ def get_validation_jobs(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    # https://www.figma.com/design/hOfHWLfcRjaSNzKimvLTzD/Evaluation-Workflow---ngenCERF?node-id=5-545&node-type=canvas&t=oTqvFQ5lmuiAhIpv-0
-    # Create dummy data for now
-    validation_jobs = [{'validation_run_id': 62, 'run_date': datetime(2024, 10, 1, 12, 0, 0, tzinfo=timezone.utc),
-                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
-                       {'validation_run_id': 67, 'run_date': datetime(2024, 10, 2, 12, 0, 0, tzinfo=timezone.utc),
-                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
-                       {'validation_run_id': 69, 'run_date': datetime(2024, 10, 3, 12, 0, 0, tzinfo=timezone.utc),
-                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]}]
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+    if error_return:
+        return error_return
 
-    response = {'validation_jobs': validation_jobs}
+    # Query all validation jobs for the calibration run, excluding VALID_CONTROL types
+    validation_jobs = ValidationRun.objects.filter(
+        calibration_run_id=calibration_run_id,
+        status__in=[StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.RUNNING)]
+    ).exclude(
+        validation_type=ValidationType.VALID_CONTROL.value
+    )
+
+    result = []
+    for validation_run in validation_jobs:
+        # Get all IterationParameters related to this validation run's Iteration
+        iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
+
+        # Create a list of parameters for this validation run
+        params_list = [
+            {'name': param['calibration_parameter__name'], 'value': param['tuned_value']}
+            for param in iteration_params.values('calibration_parameter__name', 'tuned_value')
+        ]
+
+        # Construct the object containing validation_run_id, run_date, and parameters list
+        result.append({
+            'validation_run_id': validation_run.id,
+            'run_date': validation_run.run_date,
+            'parameters': params_list,
+            'best': validation_run.validation_type == ValidationType.VALID_BEST.value
+        })
+
+    response = {'validation_jobs': result}
 
     response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
     if error_response:

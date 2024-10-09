@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun, Status, ValidationRun, Module, ModuleGroup
+from calibration.models import CalibrationRun, Status, ValidationRun, Module, ModuleGroup, Iteration
 from calibration.util.calibration_validators import ErrorResponseSerializer
 from django.conf import settings
 
@@ -134,7 +134,7 @@ def join_with_or(items):
     if not items:
         return ''
     elif len(items) == 1:
-        return items[0].lower()
+        return items[0]
     else:
         return ', '.join(items[:-1]) + ' or ' + items[-1]
 
@@ -206,21 +206,35 @@ def create_calibration_run_internal(user) -> CalibrationRun:
     return run
 
 
-def create_validation_run_internal(calibration_run: CalibrationRun, validation_type: ValidationType = None) -> ValidationRun:
+def create_validation_run_internal(calibration_run: CalibrationRun, worker_name: str | None, iteration: int | None, validation_type: ValidationType = None) -> ValidationRun:
     """
     Create a new ValidationRun object for the given CalibrationRun.
 
     :param calibration_run: The calibration run that this validation run is associated with.
+    :param worker_name: Required if validation_type is Iteration
+    :param iteration: Required if validation_type is Iteration
     :param validation_type: optional value to store in Validation Run object
     :return: The newly created ValidationRun instance.
     """
 
     validation_type = validation_type or ValidationType.VALID_ITERATION
 
+    if validation_type == ValidationType.VALID_ITERATION:
+        if not all([worker_name, iteration]):
+            raise CerfException(f"Values must be supplied for both worker name and iteration")
+
+        try:
+            iteration_object = Iteration.objects.filter(calibration_run=calibration_run, worker_name=worker_name, iteration_num=iteration).get()
+        except Iteration.DoesNotExist:
+            raise CerfException(f"Cannot find Iteration for Calibration Job {calibration_run.id} with worker_name '{worker_name}' and iteration number {iteration}")
+    else:
+        iteration_object = None
+
     validation_run = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED),
                                                   calibration_run=calibration_run,
-                                                  validation_type=validation_type)
-    print(f"Creating Validation Run {validation_run.id} for Calibration {calibration_run.id} with validation_type {validation_type}")
+                                                  validation_type=validation_type,
+                                                  iteration=iteration_object)
+    logger.info(f"Creating Validation Run {validation_run.id} for Calibration {calibration_run.id} with validation_type {validation_type}")
 
     return validation_run
 

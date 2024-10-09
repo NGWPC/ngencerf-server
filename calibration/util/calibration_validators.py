@@ -47,8 +47,7 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
-class RunValidationRequestSerializer(ValidationRunSerializer):
-    validation_run_id = serializers.IntegerField(required=True)
+class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration = serializers.IntegerField(required=True, min_value=0)
     worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
 
@@ -299,6 +298,7 @@ class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
+    best = serializers.BooleanField(required=True)
 
 
 class GetValidationJobsResponseSerializer(BaseSerializer):
@@ -744,13 +744,11 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
     iterations = serializers.IntegerField(required=True)
 
 
-class CalibrationJobSlurmCallbackRequestSerializer(BaseSerializer):
-    process_id = serializers.CharField(required=True)
+class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class ValidationJobSlurmCallbackRequestSerializer(BaseSerializer):
-    process_id = serializers.CharField(required=True)
+class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 

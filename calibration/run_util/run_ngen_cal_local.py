@@ -8,11 +8,10 @@ from django.conf import settings
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
-from calibration.run_util.run_common import set_job_status, job_registry
+from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, create_and_submit_validation_control, \
+    process_validation_output_and_maybe_create_best
 from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, VALIDATION_ITERATION_PY
-from calibration.views.calibration_run_views import submit_validation_job
-from calibration.views.common import create_validation_run_internal
-from calibration.views.read_output import read_validation_output, read_calibration_output
+from calibration.views.read_output import read_calibration_output
 from cerfServer.settings import NGEN_CAL_VENV
 
 logger = logging.getLogger(__name__)
@@ -20,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 def run_calibration_job_local(calibration_run: CalibrationRun, input_file, output_file):
     """
-    Executes a local calibration job for either CALIBRATION or VALIDATION stages by calling the shell script
-    with appropriate input and output file arguments, and registering a callback for job stage transitions.
+    Executes a local calibration job by calling the shell script
+    with appropriate input and output file arguments, and registering a callback for job end.
     :param calibration_run: The CalibrationRun object representing the job run.
-    :param input_file: Path to the input file for the stage.
-    :param output_file: Path to the output file for the stage.
+    :param input_file: Path to the input file.
+    :param output_file: Path to the output file.
     """
     simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
     cal_or_valid_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'ngen_cal_simulation.py') if simulate else CALIBRATION_PY
@@ -35,23 +34,21 @@ def run_calibration_job_local(calibration_run: CalibrationRun, input_file, outpu
     args_to_calibrate_or_validate = [input_file]
     args = [shell_script, NGEN_CAL_VENV, output_file, cal_or_valid_script] + args_to_calibrate_or_validate
 
-    # Bind the callback function for the job stage transition
+    # Bind the callback function for job
     job_callback = functools.partial(run_calibration_job_callback_local, calibration_run)
 
     execute_calibration_job(calibration_run, args, callback_function=job_callback)
 
 
-def run_validation_job_local(validation_run: ValidationRun, input_file, output_file, worker_name: str, iteration: int):
+def run_validation_job_local(validation_run: ValidationRun, input_file, output_file):
     """
     Executes a local validation by calling the shell script
-    with appropriate input and output file arguments, and registering a callback for job stage transitions.
+    with appropriate input and output file arguments, and registering a callback for job end.
     run_best is a special case which runs validation.py with the 'best' input file created by calibration
     If run_base is false, we call validation_iteration.py to run a validation using a specific iteration
     :param validation_run: The ValidationRun object representing the job run.
-    :param input_file: Path to the input file for the stage.
-    :param output_file: Path to the output file for the stage.
-    :param worker_name
-    :param iteration
+    :param input_file: Path to the input file.
+    :param output_file: Path to the output file.
     """
     simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
 
@@ -62,23 +59,23 @@ def run_validation_job_local(validation_run: ValidationRun, input_file, output_f
     shell_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'run_ngen_cal.sh')
 
     # Prepare the argument list to pass to the shell script
-    args_to_validate = [input_file, worker_name, str(iteration)] if validation_run.validation_type == ValidationType.VALID_ITERATION else [input_file]
+    args_to_validate = [input_file, validation_run.worker_name,
+                        str(validation_run.iteration_num)] if validation_run.validation_type == ValidationType.VALID_ITERATION else [input_file]
     args = [shell_script, NGEN_CAL_VENV, output_file, validation_script] + args_to_validate
 
-    # Bind the callback function for the job stage transition
-    job_callback = functools.partial(run_validation_job_callback_local, validation_run, worker_name, iteration)
+    # Bind the callback function for the job
+    job_callback = functools.partial(run_validation_job_callback_local, validation_run)
 
     execute_validation_job(validation_run, args, callback_function=job_callback)
 
 
 def run_calibration_job_callback_local(calibration_run: CalibrationRun, future: Future):
     """
-    Callback function that gets executed when a job stage completes. It handles job stage transitions, including
-    moving to the next stage or finishing the job.
+    Callback function that gets executed when a job completes.
     :param calibration_run: The CalibrationRun object representing the job run.
     :param future: The Future object representing the asynchronous job process.
     """
-    logger.info(f'Calibration Job {calibration_run.id}/{calibration_run.owner.username} completed')
+    logger.info(f'Job end callback received for Calibration Job {calibration_run.id}/{calibration_run.owner.username}')
 
     try:
         if future.exception() is not None:
@@ -99,27 +96,26 @@ def run_calibration_job_callback_local(calibration_run: CalibrationRun, future: 
             read_calibration_output(calibration_run)
             set_job_status(calibration_run, StatusEnum.DONE)
             # Always submit a control run
-            validation_run = create_validation_run_internal(calibration_run, validation_type=ValidationType.VALID_CONTROL)
-            submit_validation_job(validation_run, None, None)
+            create_and_submit_validation_control(calibration_run)
     except Exception as e:
-        logger.error(f"Error in callback for Calibration Job {calibration_run.id}: {str(e)}")
+        logger.exception(f"Error in callback for Calibration Job {calibration_run.id}: {str(e)}")
         set_job_status(calibration_run, StatusEnum.FAILED)
 
 
-def run_validation_job_callback_local(validation_run: ValidationRun, worker_name: str, iteration: int, future: Future):
+def run_validation_job_callback_local(validation_run: ValidationRun, future: Future):
     """
     Callback function that gets executed when validation job completes.
     :param validation_run: The CalibrationRun object representing the job run.
-    :param worker_name: worker that has the parameters we want
-    :param iteration: iteration that has the parameters we want
     :param future: The Future object representing the asynchronous job process.
     """
     # process_id = Path(validation_run.calibration_run.job_data_dir).name
-    logger.info(f'Job end callback received for Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}')
+    logger.info(
+        f'Job end callback received for Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}')
 
     try:
         if future.exception() is not None:
-            logger.error(f"Exception occurred in Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}: {future.exception()}")
+            logger.error(
+                f"Exception occurred in Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}: {future.exception()}")
             set_job_status(validation_run, StatusEnum.FAILED)
             return
 
@@ -133,17 +129,9 @@ def run_validation_job_callback_local(validation_run: ValidationRun, worker_name
             logger.error(f'Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} ending due to abnormal return code')
             set_job_status(validation_run, StatusEnum.FAILED)
         else:
-            # Process the validation output
-            read_validation_output(validation_run, worker_name, iteration)
-            set_job_status(validation_run, StatusEnum.DONE)
-
-            # If we just ran Validation Control, see if we want to run Validation Best
-            if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
-                if validation_run.calibration_run.automatic_validation:
-                    new_validation_run = create_validation_run_internal(validation_run.calibration_run, validation_type=ValidationType.VALID_BEST)
-                    submit_validation_job(new_validation_run, None, None)
+            process_validation_output_and_maybe_create_best(validation_run)
     except Exception as e:
-        logger.error(f"Error in callback for Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}: {str(e)}")
+        logger.exception(f"Error in callback for Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}: {str(e)}")
         set_job_status(validation_run, StatusEnum.FAILED)
 
 
@@ -168,7 +156,7 @@ def execute_calibration_job(calibration_run: CalibrationRun, args, callback_func
         future = pool.submit(process.wait)
 
         # Register job for future reference
-        job_registry[(calibration_run.id, None)] = process
+        job_registry[get_job_registry_key(calibration_run)] = process
 
         future.add_done_callback(callback_function)
     except Exception as e:
@@ -188,19 +176,20 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    logger.info(f"Spawning process: Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}  with {args}")
+    logger.info(f"Spawning process: Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
 
         # Register job for future reference
-        job_registry[(validation_run.calibration_run.id, validation_run.id)] = process
+        job_registry[get_job_registry_key(validation_run)] = process
 
         future.add_done_callback(callback_function)
     except Exception as e:
         logger.error(f"Failed to execute command: {str(e)}")
         raise
-    logger.info(f'Process Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} is running in the background')
+    logger.info(
+        f'Process Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type} is running in the background')
 
 
 def cancel_local_job(run: CalibrationRun | ValidationRun):
@@ -213,10 +202,7 @@ def cancel_local_job(run: CalibrationRun | ValidationRun):
     run_id = run.id if is_calibration else run.calibration_run.id
     logger.info(f"Cancelling {'Calibration' if is_calibration else 'Validation'} Run {run_id}")
 
-    calibration_run_id = run.id if isinstance(run, CalibrationRun) else run.calibration_run.id
-    validation_run_id = run.id if isinstance(run, ValidationRun) else None
-    key = (calibration_run_id, validation_run_id)
-
+    key = get_job_registry_key(run)
     process = job_registry.get(key)
 
     if process:
