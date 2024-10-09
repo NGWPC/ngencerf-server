@@ -8,7 +8,6 @@ class IterationParameter(BaseModel):
     calibration_parameter = models.ForeignKey('CalibrationParameter', null=False, on_delete=models.CASCADE)
     data_type = models.CharField(max_length=50, null=False)
     tuned_value = models.FloatField(null=False)
-    best = models.BooleanField(null=False, default=False)
 
     class Meta:
         db_table = 'iteration_parameter'

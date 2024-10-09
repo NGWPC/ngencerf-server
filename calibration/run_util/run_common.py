@@ -205,19 +205,21 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
         calibration_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
         calibration_run.save(update_fields=['run_date', 'status'])
 
-        message = run_calibration_job(calibration_run, JobStage.CALIBRATION)
+        run_calibration_job(calibration_run, JobStage.CALIBRATION)
 
     return None
 
 
 def submit_validation_job(validation_run: ValidationRun, worker_name: str | None, iteration: int | None):
-    # TODO Do we need to check if the job is ready?  I don't think we need anything
+
+    if validation_run.validation_type == ValidationType.VALID_ITERATION and (worker_name is None or iteration is None):
+        raise CerfException(f"Values must be supplied for worker name and iteration")
 
     with transaction.atomic():
         validation_run.run_date = datetime.now(timezone.utc)
         validation_run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
         validation_run.save(update_fields=['run_date', 'status'])
 
-        message = run_validation_job(validation_run, worker_name, iteration)
+        run_validation_job(validation_run, worker_name, iteration)
 
     return None

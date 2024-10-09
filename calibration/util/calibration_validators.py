@@ -47,6 +47,12 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+class RunValidationRequestSerializer(ValidationRunSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
+    iteration = serializers.IntegerField(required=True, min_value=0)
+    worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+
+
 ##################################
 # Common serializers that need to be defined before usage
 ##################################

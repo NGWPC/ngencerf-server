@@ -18,7 +18,7 @@ from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_sl
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, ValidationRunSerializer, \
-    SubmitValidationJobResponseSerializer
+    SubmitValidationJobResponseSerializer, RunValidationRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
@@ -56,7 +56,7 @@ def get_status(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
     if error_return:
         return error_return
 
@@ -120,7 +120,7 @@ def run_calibration(request):
 
 
 @extend_schema(
-    request=ValidationRunSerializer,
+    request=RunValidationRequestSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -140,7 +140,7 @@ def run_validation(request):
     data = request.data
     logger.debug(f'run_validation() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(ValidationRunSerializer, data)
+    validator, error_return = validate_request(RunValidationRequestSerializer, data)
     if error_return:
         return error_return
 

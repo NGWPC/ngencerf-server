@@ -217,14 +217,12 @@ def create_validation_run_internal(calibration_run: CalibrationRun, validation_t
 
     validation_type = validation_type or ValidationType.VALID_ITERATION
 
-    print(f"Creating validation_run for Calibration {calibration_run.id} with validation_type {validation_type}")
-    validation_data = {
-        'status': StatusEnum.from_enum(StatusEnum.SAVED),
-        'calibration_run': calibration_run,
-        'validation_type': validation_type.value
-    }
+    validation_run = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED),
+                                                  calibration_run=calibration_run,
+                                                  validation_type=validation_type)
+    print(f"Creating Validation Run {validation_run.id} for Calibration {calibration_run.id} with validation_type {validation_type}")
 
-    return ValidationRun.objects.create(**validation_data)
+    return validation_run
 
 
 token_slurm_scope = 'slurm_callback'

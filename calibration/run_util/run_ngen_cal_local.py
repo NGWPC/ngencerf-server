@@ -4,16 +4,16 @@ import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun, ValidationRun
-from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, VALIDATION_ITERATION_PY
 from django.conf import settings
 
+from calibration.enums import StatusEnum, ValidationType
+from calibration.models import CalibrationRun, ValidationRun
+from calibration.run_util.run_common import JobStage, set_job_status, job_registry
+from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, VALIDATION_ITERATION_PY
 from calibration.views.calibration_run_views import submit_validation_job
-from calibration.views.common import create_validation_run_internal, CerfException
+from calibration.views.common import create_validation_run_internal
 from calibration.views.read_output import read_validation_output, read_calibration_output
 from cerfServer.settings import NGEN_CAL_VENV
-from calibration.run_util.run_common import JobStage, set_job_status, job_registry
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def run_validation_job_local(validation_run: ValidationRun, input_file, output_f
     shell_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'run_ngen_cal.sh')
 
     # Prepare the argument list to pass to the shell script
-    args_to_validate = [input_file, worker_name, iteration] if validation_run.validation_type == ValidationType.VALID_ITERATION else [input_file]
+    args_to_validate = [input_file, worker_name, str(iteration)] if validation_run.validation_type == ValidationType.VALID_ITERATION else [input_file]
     args = [shell_script, NGEN_CAL_VENV, output_file, validation_script] + args_to_validate
 
     # Bind the callback function for the job stage transition
@@ -192,7 +192,7 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    logger.info(f"Spawning process: Validation Job {validation_run.id}/{validation_run.calibration_run.owner.usernamea}  with {args}")
+    logger.info(f"Spawning process: Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}  with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)

@@ -304,6 +304,7 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iterati
 def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, params_row, params_to_create, best_iteration_for_worker):
     """
     Process a single row from the parameters file and create IterationParameter objects.
+    Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
 
     :param calibration_run: The CalibrationRun instance.
     :param iteration: The Iteration object for the current iteration.
@@ -333,8 +334,16 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
             all(param_name in best_params_dict and float(value) == best_params_dict[param_name]
                 for param_name, value in params_row.items())
     )
-    if is_best_match:
-        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best match: {params_row}')
+
+    # If the iteration is the best (based on matching parameters or best iteration number)
+    if is_best_match or iteration.iteration_num == best_iteration_for_worker:
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}')
+        iteration.best_params = True
+    else:
+        iteration.best_params = False
+
+    # Save the iteration after setting the best_params flag
+    iteration.save(update_fields=['best_params'])
 
     # Prefetch CalibrationParameter objects for quick lookup
     params_lookup = {p.name.lower(): p for p in CalibrationParameter.objects.all()}
@@ -345,16 +354,11 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
         if not parameter:
             raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
 
-        # Determine if this param should be marked as best
-        # Either the iteration number matches (for DDS); or the parameter values match (for GWO or PSO)
-        best = is_best_match or iteration.iteration_num == best_iteration_for_worker
-
         tuned_value = float(value) if value else None
         param_obj = IterationParameter(
             iteration=iteration,
             calibration_parameter=parameter,
-            tuned_value=tuned_value,
-            best=best
+            tuned_value=tuned_value
         )
         logger.debug(f'Calibration Job {calibration_run.id}, user {calibration_run.owner.username}: Creating Iteration parameter for {param_obj}')
         params_to_create.append(param_obj)

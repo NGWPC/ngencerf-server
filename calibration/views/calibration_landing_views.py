@@ -77,7 +77,6 @@ def create_calibration_run(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-# @permission_classes([AllowAny])
 def create_validation_run(request):
     data = request.data
     logger.debug(f'create_validation_run() request from {request.user}')
@@ -88,8 +87,7 @@ def create_validation_run(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    # TODO What status?
-    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
@@ -276,7 +274,7 @@ def load_calibration_run(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
     if error_return:
         return error_return
 
@@ -318,7 +316,7 @@ def clone_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
     if error_return:
         return error_return
 
@@ -370,7 +368,7 @@ def delete_job(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, list(StatusEnum))
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
     if error_return:
         return error_return
 
