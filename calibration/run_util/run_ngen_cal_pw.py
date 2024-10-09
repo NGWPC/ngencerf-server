@@ -7,7 +7,7 @@ from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
-from calibration.run_util.run_common import JobStage, set_job_status
+from calibration.run_util.run_common import set_job_status
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
 from calibration.views.calibration_run_views import submit_validation_job
 from calibration.views.common import generate_custom_token, token_slurm_scope, create_validation_run_internal
@@ -17,20 +17,17 @@ from calibration.views.read_output import read_validation_output, read_calibrati
 logger = logging.getLogger(__name__)
 
 
-def run_calibration_job_parallel_works(calibration_run: CalibrationRun, stage: JobStage, input_file, output_file):
+def run_calibration_job_parallel_works(calibration_run: CalibrationRun, input_file, output_file):
     """
     Executes a calibration job via Slurm for either CALIBRATION or VALIDATION stages by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job stage transitions.
     :param calibration_run: The CalibrationRun object representing the job run.
-    :param stage: The current job stage, as an enum
     :param input_file: Path to the input file for the stage.
     :param output_file: Path to the output file for the stage.
     """
     url = urljoin(settings.SLURM_URL, settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT)
     payload = {
         'calibration_run_id': (None, calibration_run.id),
-        'job_type': (None, 'calibration' if stage == JobStage.CALIBRATION else 'validation'),
-        'job_stage': (None, stage.name),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
         'auth_token': (None, generate_custom_token(calibration_run.owner, token_slurm_scope))
@@ -71,6 +68,7 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
         'validation_run_id': (None, validation_run.id),
         'input_file': (None, input_file),
         'output_file': (None, output_file),
+        'validation_type': (None, validation_run.validation_type),
         'worker_name': (None, worker_name),
         'iteration': (None, iteration),
         'auth_token': (None, generate_custom_token(validation_run.calibration_run.owner, token_slurm_scope))
@@ -96,16 +94,15 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, input_file,
     logger.info(f"Validation job submitted successfully! Slurm id: {validation_run.slurm_job_id}")
 
 
-def run_calibration_job_callback_slurm(current_stage: JobStage | None, calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum):
+def run_calibration_job_callback_slurm(calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum):
     """
     Callback function that gets executed when a job stage completes. It handles job stage transitions, including
     moving to the next stage or finishing the job.
-    :param current_stage: The current job stage, as an Enum (or None, if the job was cancelled)
     :param calibration_run: The CalibrationRun object representing the job run.
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
     logger.info(
-        f'Job end callback received for job {calibration_run.id}/{calibration_run.owner.username} in stage {current_stage} with status {slurm_status}')
+        f'Job end callback received for job {calibration_run.id}/{calibration_run.owner.username}  with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'Calibration job {calibration_run.id}/{calibration_run.owner.username} was cancelled')
@@ -177,5 +174,5 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun):
                            'Cancel job response data from Slurm is not in the expected format')
 
     logger.info(f"{'Calibration' if isinstance(run, CalibrationRun) else 'Validation'} job {payload['slurm_job_id']} cancelled successfully")
-    run_calibration_job_callback_slurm(None, run, SlurmStatusEnum.CANCELED)
+    run_calibration_job_callback_slurm(run, SlurmStatusEnum.CANCELED)
     return True

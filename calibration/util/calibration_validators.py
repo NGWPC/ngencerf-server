@@ -746,7 +746,6 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
 
 class CalibrationJobSlurmCallbackRequestSerializer(BaseSerializer):
     process_id = serializers.CharField(required=True)
-    stage = serializers.CharField(required=True)
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 

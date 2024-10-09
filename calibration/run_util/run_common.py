@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Store future and process objects by job id
 # Need to change this to a compound key.  Either calibration_id or calibration_id#validation_id
-job_registry: Dict[tuple[int, int], subprocess.Popen] = {}
+job_registry: Dict[tuple[int, int | None], subprocess.Popen] = {}
 
 
 def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
@@ -36,12 +36,11 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
         job_registry.pop(key, None)
 
 
-def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
+def run_calibration_job(calibration_run: CalibrationRun):
     """
     Start the execution of a calibration job at a specific stage by retrieving the input/output file paths
     and delegating the job to either a local or Docker execution environment.
     :param calibration_run: The CalibrationRun object representing the job run.
-    :param stage: The current job stage.
     """
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
@@ -54,10 +53,10 @@ def run_calibration_job(calibration_run: CalibrationRun, stage: JobStage):
     match settings.NGEN_ENVIRONMENT:
         case settings.NGEN_ENVIRONMENT.LOCAL:
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
-            run_calibration_job_local(calibration_run, stage, input_file, output_file)
+            run_calibration_job_local(calibration_run, input_file, output_file)
         case settings.NGEN_ENVIRONMENT.PARALLEL_WORKS:
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
-            run_calibration_job_parallel_works(calibration_run, stage, input_file, output_file)
+            run_calibration_job_parallel_works(calibration_run, input_file, output_file)
 
 
 def run_validation_job(validation_run: ValidationRun, worker_name: str | None, iteration: int | None):
