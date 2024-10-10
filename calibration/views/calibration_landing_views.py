@@ -12,12 +12,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun, ValidationRun, IterationParameter
+from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
-    CreateValidationRunSerializer, \
-    GetValidationJobsResponseSerializer, CreateValidationRequestSerializer
+    CreateValidationRunSerializer, CreateValidationRequestSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
@@ -188,76 +187,6 @@ def get_calibration_jobs(request):
 
     logger.debug(
         f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: GetValidationJobsResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-
-    description="Get validation jobs with starting parameter values"
-)
-@api_view(['POST', 'GET'])
-@handle_exceptions
-def get_validation_jobs(request):
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-
-    logger.debug(f'get_validation_jobs() request from {request.user} - {data}')
-
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
-    if error_return:
-        return error_return
-
-    # Query all validation jobs for the calibration run, excluding VALID_CONTROL types
-    validation_jobs = ValidationRun.objects.filter(
-        calibration_run_id=calibration_run_id,
-        status__in=[StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.RUNNING)]
-    ).exclude(
-        validation_type=ValidationType.VALID_CONTROL.value
-    )
-
-    result = []
-    for validation_run in validation_jobs:
-        # Get all IterationParameters related to this validation run's Iteration
-        iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
-
-        # Create a list of parameters for this validation run
-        params_list = [
-            {'name': param['calibration_parameter__name'], 'value': param['tuned_value']}
-            for param in iteration_params.values('calibration_parameter__name', 'tuned_value')
-        ]
-
-        # Construct the object containing validation_run_id, run_date, and parameters list
-        result.append({
-            'validation_run_id': validation_run.id,
-            'run_date': validation_run.run_date,
-            'parameters': params_list,
-            'best': validation_run.validation_type == ValidationType.VALID_BEST.value
-        })
-
-    response = {'validation_jobs': result}
-
-    response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
-    if error_response:
-        return error_response
-
-    logger.debug(f'Returning to {request.user} from get_validation_jobs() - {response_validator.data}')
     return Response(response_validator.data)
 
 

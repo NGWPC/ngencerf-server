@@ -3,18 +3,17 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from django.db.models import Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
-from calibration.models import PlotDefinition, CalibrationRun
+from calibration.enums import StatusEnum, PlotDefinitionsEnum
+from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_run_dir
-from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, png_str_to_base64_url, \
-    ResponseError
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
+    png_str_to_base64_url, ResponseError
 from calibration.views.read_output import process_worker_dirs
 
 logger = logging.getLogger(__name__)
@@ -41,7 +40,6 @@ logger = logging.getLogger(__name__)
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_plot_names(request):
-    # TODO need to clean this up with final directory names, etc
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_plot_names() request from {request.user} - {data}')
@@ -56,12 +54,13 @@ def get_plot_names(request):
     if error_return:
         return error_return
 
-    # If automatic_validation is True, retrieve all records
-    # Otherwise, filter where 'validation' is False
-    plot_names = list(PlotDefinition.objects
-                      .filter(Q(valid_optimizations__contains=json.dumps(run.optimization.name)) &
-                              (Q(validation=False) if not run.automatic_validation else Q()))
-                      .values('name', 'description'))
+    filtered_plot_definitions = get_filtered_plot_definitions(run)
+
+    # Create list of plot names with descriptions
+    plot_names = [
+        {'name': plot['name'], 'description': plot['description']}
+        for plot in filtered_plot_definitions
+    ]
 
     response = {'calibration_run_id': calibration_run_id, 'plot_names': plot_names, 'status': run.status.name}
 
@@ -122,31 +121,28 @@ def get_plot(request):
 
     gage_id = run.gage.gage_id
 
-    try:
-        plot_info = PlotDefinition.objects.get(
-            Q(valid_optimizations__contains=json.dumps(run.optimization.name)) &
-            (Q(validation=False) if not run.automatic_validation else Q()) &
-            Q(name=plot_name)  # Add this filter to match the plot name
-        )
-    except PlotDefinition.DoesNotExist:
-        # Handle the case where no matching plot was found
-        return Response(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
+    # Get cached plot definitions
+    filtered_plot_definitions = get_filtered_plot_definitions(run, plot_name=plot_name)
 
-    match plot_info.location:
+    if not filtered_plot_definitions:
+        return ResponseError(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
+
+    plot_info = filtered_plot_definitions[0]
+
+    match plot_info['location']:
         case 'output_validation':
             location = get_output_validation_run_dir(run)
         case 'output_calibration':
             location = get_output_calibration_run_dir(run)
         case 'plot_iteration':
-            # Logic for 'plot_iteration' case
             location = find_non_empty_plot_iteration(run)
             if location is None:
-                return ResponseError(f'Plots could not be fond for Calibration Run {run.id}')
+                return ResponseError(f'Plots could not be found for Calibration Run {run.id}')
         case _:
             # Default case (if no match is found)
-            return ResponseError(f"Unknown location {plot_info.location} in PlotDefinitions")
+            return ResponseError(f"Unknown location {plot_info['location']} in PlotDefinitions")
 
-    plot_file_name = plot_info.filename_mask.format(gage_id=gage_id)
+    plot_file_name = plot_info['filename_mask'].format(gage_id=gage_id)
     plot_file_path = location / plot_file_name
     if not plot_file_path.exists():
         return ResponseError(f"Plot {plot_file_path} not found at expected location")
@@ -162,12 +158,12 @@ def get_plot(request):
     return Response(response_validator.data)
 
 
-def find_non_empty_plot_iteration(run: CalibrationRun) -> Optional[Path]:
+def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[Path]:
     """
-   Uses process_worker_dirs to find the 'Plot_Iteration' directory in a worker directory
+    Uses process_worker_dirs to find the 'Plot_Iteration' directory in a worker directory
     that is non-empty.
 
-    :param run: The run object to process
+    :param calibration_run: The run object to process
     :return: The worker directory with a non-empty 'Plot_Iteration' directory, or None if not found
     """
     found_plot_iteration_dir: Optional[Path] = None
@@ -182,6 +178,30 @@ def find_non_empty_plot_iteration(run: CalibrationRun) -> Optional[Path]:
             found_plot_iteration_dir = plot_iteration_dir
 
     # Call process_worker_dirs to iterate through the worker directories
-    process_worker_dirs(run, check_worker)
+    process_worker_dirs(calibration_run, check_worker)
 
     return found_plot_iteration_dir
+
+
+
+
+def get_filtered_plot_definitions(run, plot_name=None):
+    # Load cached plot definitions with specific fields to be included in the returned dictionaries
+    cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
+        fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
+    )
+
+    # Filter the cached plot definitions based on the given criteria
+    filtered_plot_definitions = [
+        plot for plot in cached_plot_definitions
+        # Include only plots that match the given plot name, if provided
+        if (plot_name is None or plot['name'] == plot_name)
+        # Check if the run's optimization name is in the list of valid optimizations for the plot
+        and run.optimization.name in json.loads(plot['valid_optimizations'])
+        # If the run does not have automatic validation enabled, include only plots with validation=False
+        # Otherwise, include all plots (validation=True or False)
+        and (plot['validation'] is False if not run.automatic_validation else True)
+    ]
+
+    return filtered_plot_definitions
+
