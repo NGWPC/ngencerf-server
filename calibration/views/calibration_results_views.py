@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 def get_job_results(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_job() request from {request.user} - {data}')
+    logger.debug(f'get_job_results() request from {request.user} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -56,5 +56,5 @@ def get_job_results(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from get_jobs() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from get_job_results() - {response_validator.data}')
     return Response(response_validator.data)

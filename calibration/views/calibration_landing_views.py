@@ -126,7 +126,7 @@ def create_validation_run(request):
 def get_calibration_jobs(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_jobs() request from {request.user} - {data}')
+    logger.debug(f'get_calibration_jobs() request from {request.user} - {data}')
 
     validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
@@ -146,39 +146,41 @@ def get_calibration_jobs(request):
     # Base query without validation_runs_count
     runs_query = CalibrationRun.objects.filter(query)
 
-    # Annotate validation_runs_count if include_validations is True
-    if include_validations:
-        runs_query = runs_query.annotate(
-            validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
-        ).filter(validation_runs_count__gt=0)
-
     # Annotate to rename 'user_formulation_name' to 'formulation_name'
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
-    # Build the list of fields for the values clause
-    selected_fields = [
-        'id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
-        'status__name', 'owner__username', 'objective_function__name', 'optimization__name',
-        'formulation_name'  # Now you can use 'formulation_name' directly
-    ]
-
-    # Add validation_runs_count if requested
+    # Build the list of default fields for the values clause
     if include_validations:
+        selected_fields = [
+            'id', 'gage__gage_id', 'run_date', 'calibration_start_period', 'calibration_end_period',
+            'status__name', 'owner__username', 'objective_function__name', 'optimization__name',
+            'formulation_name'
+        ]
+        # Add validation_runs_count if include_validations is True
+        runs_query = runs_query.annotate(
+            validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
+        ).filter(validation_runs_count__gt=0)
         selected_fields.append('validation_runs_count')
+    else:
+        # Default fields if include_validations is False
+        selected_fields = [
+            'id', 'formulation_name', 'run_date', 'calibration_start_period', 'calibration_end_period'
+        ]
 
     runs = runs_query.values(*selected_fields)
 
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
-        r['gage_id'] = r.pop('gage__gage_id')
-        r['status'] = r.pop('status__name')
-        r['objective_function'] = r.pop('objective_function__name')
-        r['optimization_algorithm'] = r.pop('optimization__name')
-        r['owner'] = r.pop('owner__username')
-
-        # Only include validation_runs if requested and present in the result
         if include_validations:
-            r['validation_runs'] = r.pop('validation_runs_count')
+            r['gage_id'] = r.pop('gage__gage_id')
+            r['status'] = r.pop('status__name')
+            r['objective_function'] = r.pop('objective_function__name')
+            r['optimization_algorithm'] = r.pop('optimization__name')
+            r['owner'] = r.pop('owner__username')
+
+            # Include validation_runs if requested
+            r['validation_runs'] = r.pop('validation_runs_count', 0)
+
     response = {'jobs': list(runs)}
 
     response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['runs'], max_length=10)
@@ -186,7 +188,7 @@ def get_calibration_jobs(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
+        f'Returning to {request.user} from get_calibration_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
     return Response(response_validator.data)
 
 
