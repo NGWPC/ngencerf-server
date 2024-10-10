@@ -278,10 +278,9 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
-    objective_function = serializers.CharField(required=False, allow_null=True)
-    optimization_algorithm = serializers.CharField(required=False, allow_null=True)
+    objective_function = serializers.CharField(required=False, allow_null=False)
+    optimization_algorithm = serializers.CharField(required=False, allow_null=False)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
-    owner = serializers.CharField(required=True, allow_null=True)
     validation_runs = serializers.IntegerField(required=False)
 
 

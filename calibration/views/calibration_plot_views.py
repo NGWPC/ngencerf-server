@@ -183,8 +183,6 @@ def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[P
     return found_plot_iteration_dir
 
 
-
-
 def get_filtered_plot_definitions(run, plot_name=None):
     # Load cached plot definitions with specific fields to be included in the returned dictionaries
     cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
@@ -196,12 +194,11 @@ def get_filtered_plot_definitions(run, plot_name=None):
         plot for plot in cached_plot_definitions
         # Include only plots that match the given plot name, if provided
         if (plot_name is None or plot['name'] == plot_name)
-        # Check if the run's optimization name is in the list of valid optimizations for the plot
-        and run.optimization.name in json.loads(plot['valid_optimizations'])
-        # If the run does not have automatic validation enabled, include only plots with validation=False
-        # Otherwise, include all plots (validation=True or False)
-        and (plot['validation'] is False if not run.automatic_validation else True)
+           # Check if the run's optimization name is in the list of valid optimizations for the plot
+           and run.optimization.name in json.loads(plot['valid_optimizations'])
+           # If the run does not have automatic validation enabled, include only plots with validation=False
+           # Otherwise, include all plots (validation=True or False)
+           and (plot['validation'] is False if not run.automatic_validation else True)
     ]
 
     return filtered_plot_definitions
-
