@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Type
 
 from django.core.cache import cache
 
-from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -88,6 +88,12 @@ class OptimizationEnum(AbstractEnum):
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
 
+class PlotDefinitionsEnum(AbstractEnum):
+    @classmethod
+    def get_model(cls) -> Type[PlotDefinition]:
+        return PlotDefinition
+
+
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
@@ -150,26 +156,3 @@ class ValidationMetricPeriod(StrEnum):
     def get_names(cls) -> List[str]:
         # noinspection PyUnresolvedReferences
         return [e.value for e in cls]
-
-
-class JobStage(StrEnum):
-    """
-    Enum representing the stages of a job.
-    """
-    CALIBRATION = auto()
-    VALIDATION_CONTROL = auto()
-    VALIDATION_BEST = auto()
-
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
-
-    @classmethod
-    def from_string(cls, name: str) -> 'JobStage':
-        """Get an enum object from its string value, case-insensitive."""
-        try:
-            # Look for the enum member using its value, which is case-insensitive here
-            return cls(name.lower())
-        except ValueError:
-            raise ValueError(f"{name} is not a valid {cls.__name__}")

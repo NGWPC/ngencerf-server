@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-from datetime import datetime, timezone
 
 from django.conf import settings
 from django.db import transaction, router
@@ -17,8 +16,7 @@ from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
-    CreateValidationRunSerializer, \
-    GetValidationJobsResponseSerializer
+    CreateValidationRunSerializer, CreateValidationRequestSerializer
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
@@ -61,7 +59,7 @@ def create_calibration_run(request):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CreateValidationRequestSerializer,
     responses={
         201: CreateValidationRunSerializer,
         400: OpenApiResponse(
@@ -73,7 +71,7 @@ def create_calibration_run(request):
             description="Internal server error"
         )
     },
-    description="Create a new validation"
+    description="Create a new validation for a specific worker_name and iteration"
 )
 @api_view(['POST'])
 @handle_exceptions
@@ -81,28 +79,29 @@ def create_validation_run(request):
     data = request.data
     logger.debug(f'create_validation_run() request from {request.user}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    worker_name = validator.get('worker_name')
+    iteration = validator.get('iteration')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
-    with transaction.atomic():
-        validation = create_validation_run_internal(run)
+    validation = create_validation_run_internal(run, worker_name, iteration, validation_type=ValidationType.VALID_ITERATION)
 
-        response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                    'validation_run_id': validation.id}
+    response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
+                'validation_run_id': validation.id}
 
-        response_validator, error_response = validate_response(CreateValidationRunSerializer, response)
-        if error_response:
-            return error_response
+    response_validator, error_response = validate_response(CreateValidationRunSerializer, response)
+    if error_response:
+        return error_response
 
-        logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
-        return Response(response_validator.data, status=status.HTTP_201_CREATED)
+    logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
+    return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
@@ -188,54 +187,6 @@ def get_calibration_jobs(request):
 
     logger.debug(
         f'Returning to {request.user} from get_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: GetValidationJobsResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-
-    description="Get validation jobs with starting parameter values"
-)
-@api_view(['POST', 'GET'])
-@handle_exceptions
-def get_validation_jobs(request):
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-
-    logger.debug(f'get_validation_jobs() request from {request.user} - {data}')
-
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-
-    # https://www.figma.com/design/hOfHWLfcRjaSNzKimvLTzD/Evaluation-Workflow---ngenCERF?node-id=5-545&node-type=canvas&t=oTqvFQ5lmuiAhIpv-0
-    # Create dummy data for now
-    validation_jobs = [{'validation_run_id': 62, 'run_date': datetime(2024, 10, 1, 12, 0, 0, tzinfo=timezone.utc),
-                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
-                       {'validation_run_id': 67, 'run_date': datetime(2024, 10, 2, 12, 0, 0, tzinfo=timezone.utc),
-                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]},
-                       {'validation_run_id': 69, 'run_date': datetime(2024, 10, 3, 12, 0, 0, tzinfo=timezone.utc),
-                        'parameters': [{'name': 'Param1', 'value': .012}, {'name': 'Param2', 'value': 1.1}]}]
-
-    response = {'validation_jobs': validation_jobs}
-
-    response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
-    if error_response:
-        return error_response
-
-    logger.debug(f'Returning to {request.user} from get_validation_jobs() - {response_validator.data}')
     return Response(response_validator.data)
 
 

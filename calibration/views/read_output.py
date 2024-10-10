@@ -31,17 +31,17 @@ BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
-def read_validation_output(validation_run: ValidationRun, worker_name: str, iteration: int):
+def read_validation_output(validation_run: ValidationRun):
     logger.info(f"Processing output for Validation Run {validation_run.id}")
 
     with transaction.atomic():
-        metrics = parse_performance_metrics(get_validation_performance_file(validation_run.calibration_run, worker_name, iteration))
+        metrics = parse_performance_metrics(get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num))
         validation_run.performance_metrics = metrics
         validation_run.save(update_fields=['performance_metrics'])
 
-        process_validation_for_validation_run(validation_run, worker_name, iteration)
+        process_validation_for_validation_run(validation_run)
 
-    logger.info(f"End of processing output for Validation Run {validation_run.id}")
+    logger.info(f"End of processing output for Validation Run {validation_run.id}, type: {validation_run.validation_type}")
 
 
 # Function to read the output of a calibration run
@@ -49,8 +49,6 @@ def read_calibration_output(calibration_run: CalibrationRun):
     """
     Process the output of a CalibrationRun. This function handles reading and
     processing the worker directories and their iteration files.
-
-    A Calibration job has multiple stages, which include Validations.  Not to be confused with a Validation job
 
     :param calibration_run: The CalibrationRun instance whose output is to be processed.
     """
@@ -137,21 +135,22 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
         ValidationMetric.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
 
 
-def process_validation_for_validation_run(validation_run: ValidationRun, worker_name: str, iteration: int) -> None:
+def process_validation_for_validation_run(validation_run: ValidationRun) -> None:
     """
     Read the single file that is created by the Validation run for the specific iteration.
     Processes the metrics and updates the corresponding ValidationMetric entries.
 
     :param validation_run: The ValidationRun instance.
-    :param worker_name: The worker's name associated with the validation run.
-    :param iteration: The specific iteration number.
     :return: None
     """
     metrics_file = None
     expected_run_type = None
+    worker_name = validation_run.worker_name
+    iteration_num = validation_run.iteration_num
+
     if validation_run.validation_type == ValidationType.VALID_ITERATION:
-        metrics_file = get_validation_metrics_valid_iteration_file(validation_run.calibration_run, worker_name, iteration)
-        expected_run_type = f'valid_{worker_name}_iter{iteration}'
+        metrics_file = get_validation_metrics_valid_iteration_file(validation_run.calibration_run, worker_name, iteration_num)
+        expected_run_type = f'valid_{worker_name}_iter{iteration_num}'
     elif validation_run.validation_type == ValidationType.VALID_CONTROL:
         metrics_file = get_validation_metrics_valid_control_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_CONTROL.value

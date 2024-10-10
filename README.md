@@ -180,7 +180,7 @@ Follow the instructions at https://confluence.nextgenwaterprediction.com/display
 
 Use these recommended directory names to avoid having to change your settings.
 * It is recommended that you create a directory called `~/ngwpc/data/ngen-cal-work`
-* It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~.noaa-owp/ngen-cal`
+* It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 
 
 * Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv`

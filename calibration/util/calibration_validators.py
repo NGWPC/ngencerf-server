@@ -47,8 +47,7 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
-class RunValidationRequestSerializer(ValidationRunSerializer):
-    validation_run_id = serializers.IntegerField(required=True)
+class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration = serializers.IntegerField(required=True, min_value=0)
     worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
 
@@ -293,16 +292,6 @@ class GetCalibrationJobsResponseSerializer(BaseSerializer):
 class ValidationJobsParameter(BaseSerializer):
     name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     value = serializers.FloatField(required=True, allow_null=False)
-
-
-class ValidationJobsResponseSerializer(BaseSerializer):
-    validation_run_id = serializers.IntegerField(required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
-    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
-
-
-class GetValidationJobsResponseSerializer(BaseSerializer):
-    validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 class FooterResponseSerializer(BaseSerializer):
@@ -618,24 +607,6 @@ class ModuleDataHydrofabricListSerializer(BaseSerializer):
     modules = ModuleMetadataHydrofabricSerializer(many=True, min_length=1, required=True)
 
 
-# This class extends the original serializers.Serializer, since we want to ignore extra fields
-# class ModuleHydrofabricVersionSerializer(serializers.Serializer):
-#     commit_hash = serializers.CharField(required=True, allow_blank=False)
-
-#
-# # Module objects from Hydrofabric contain group names and version
-# class ModuleHydrofabricSerializer(BaseSerializer):
-#     module_name = serializers.CharField(required=True, allow_blank=False)
-#     # TODO This should be required with no default
-#     description = serializers.CharField(required=False, allow_blank=False, default='')
-#     groups = serializers.ListSerializer(min_length=1, child=serializers.CharField(required=True, allow_blank=False))
-
-
-# # List of module objects from Hydrofabric containing group names and version
-# class ModuleHydrofabricListSerializer(BaseSerializer):
-#     modules = ModuleHydrofabricSerializer(many=True, min_length=1, required=True)
-
-
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     parameters = SaveTuningParametersSerializer(many=True, required=False)
@@ -744,14 +715,11 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
     iterations = serializers.IntegerField(required=True)
 
 
-class CalibrationJobSlurmCallbackRequestSerializer(BaseSerializer):
-    process_id = serializers.CharField(required=True)
-    stage = serializers.CharField(required=True)
+class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class ValidationJobSlurmCallbackRequestSerializer(BaseSerializer):
-    process_id = serializers.CharField(required=True)
+class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
@@ -857,6 +825,44 @@ class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=True)
+
+
+##################################
+# Evaluation
+##################################
+class ParameterDataByIteration(BaseSerializer):
+    parameter_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    parameter_value = serializers.FloatField(required=True, allow_null=False)
+
+
+class MetricDataByIteration(BaseSerializer):
+    metric_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    metric_value = serializers.FloatField(required=True, allow_null=False)
+
+
+class CalibrationDataByIteration(BaseSerializer):
+    iteration_num = serializers.IntegerField(required=True, allow_null=False, min_value=0)
+    iteration_id = serializers.IntegerField(required=True, allow_null=False)
+    worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    best_params = serializers.BooleanField(required=True, allow_null=False)
+    calibration_output_variable_value = serializers.FloatField(required=True, allow_null=False)
+    parameters = ParameterDataByIteration(many=True, required=True)
+    metrics = MetricDataByIteration(many=True, required=True)
+
+
+class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
+    iteration_data = CalibrationDataByIteration(many=True, required=True)
+
+
+class ValidationJobsResponseSerializer(BaseSerializer):
+    validation_run_id = serializers.IntegerField(required=True)
+    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
+    best = serializers.BooleanField(required=True)
+
+
+class GetValidationJobsResponseSerializer(BaseSerializer):
+    validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 ##################################

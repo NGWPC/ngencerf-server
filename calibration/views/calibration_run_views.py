@@ -13,12 +13,12 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.models import Iteration
-from calibration.run_util.run_common import cancel_job_common, JobStage, submit_validation_job, submit_calibration_job
+from calibration.run_util.run_common import cancel_job_common, submit_validation_job, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, ValidationRunSerializer, \
-    SubmitValidationJobResponseSerializer, RunValidationRequestSerializer
+    CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, \
+    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
@@ -56,15 +56,15 @@ def get_status(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status =list(StatusEnum))
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
     messages = None
-    if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
-        messages, _ = ngen_cal_input.ready_to_run(run)
+    if calibration_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        messages, _ = ngen_cal_input.ready_to_run(calibration_run)
 
-    response = {'message': f'Calibration Run {run.id}, status is {run.status.name}', 'calibration_run_id': run.id, 'status': run.status.name}
+    response = {'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}', 'calibration_run_id': calibration_run.id, 'status': calibration_run.status.name}
     if messages:
         response['errors'] = messages
 
@@ -120,7 +120,7 @@ def run_calibration(request):
 
 
 @extend_schema(
-    request=RunValidationRequestSerializer,
+    request=ValidationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -140,20 +140,18 @@ def run_validation(request):
     data = request.data
     logger.debug(f'run_validation() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(RunValidationRequestSerializer, data)
+    validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
         return error_return
 
     validation_run_id = validator.get('validation_run_id')
-    worker_name = validator.get('worker_name')
-    iteration = validator.get('iteration')
 
     run, error_return = get_validation_run(validation_run_id, request.user)
     if error_return:
         return error_return
 
     # TODO Doesn't return anything.  Can any errors occur?
-    response = submit_validation_job(run, worker_name, iteration)
+    response = submit_validation_job(run)
     if response:
         return response
 
@@ -408,15 +406,14 @@ def calibration_job_slurm_callback(request):
         return error_return
 
     calibration_run_id = validator.get('calibration_job_id')
-    current_stage = validator.get('stage')
     job_status = validator.get('job_status')
 
-    run, error_return = get_calibration_run(calibration_run_id, None, run_status=[StatusEnum.RUNNING])
+    calibration_run, error_return = get_calibration_run(calibration_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     slurm_status = SlurmStatusEnum[job_status]
-    run_calibration_job_callback_slurm(JobStage[current_stage], run, slurm_status)
+    run_calibration_job_callback_slurm(calibration_run, slurm_status)
 
     logger.debug(f'Returning to {request.user} from calibration_job_slurm_callback()')
 
@@ -445,21 +442,19 @@ def validation_job_slurm_callback(request):
     data = request.data
     logger.debug(f'validation_job_slurm_callback() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
+    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
     if error_return:
         return error_return
 
     validation_run_id = validator.get('validation_job_id')
     job_status = validator.get('job_status')
-    worker_name = validator.get('worker_name')
-    iteration = validator.get('iteration')
 
-    run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
+    validation_run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     slurm_status = SlurmStatusEnum[job_status]
-    run_validation_job_callback_slurm(run, worker_name, iteration, slurm_status)
+    run_validation_job_callback_slurm(validation_run, slurm_status)
 
     logger.debug(f'Returning to {request.user} from validation_job_slurm_callback()')
 
