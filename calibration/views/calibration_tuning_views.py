@@ -383,9 +383,9 @@ def upload_user_parameters(request):
 def validate_times(run, calibration_times, validation_times):
     if run.time_range_start and run.time_range_end:
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
-        if calibration_times['simulation_start_time'] not in time_range or calibration_times['simulation_end_time'] not in time_range:
+        if calibration_times and (calibration_times['simulation_start_time'] not in time_range or calibration_times['simulation_end_time'] not in time_range):
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if validation_times['simulation_start_time'] not in time_range or validation_times['simulation_end_time'] not in time_range:
+        if validation_times and (validation_times['simulation_start_time'] not in time_range or validation_times['simulation_end_time'] not in time_range):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
 
     return None
