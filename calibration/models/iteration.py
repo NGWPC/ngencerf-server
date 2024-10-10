@@ -14,7 +14,8 @@ class Iteration(BaseModel):
     class Meta:
         db_table = 'iteration'
         constraints = [
-            models.UniqueConstraint(fields=['iteration_num', 'worker_name', 'calibration_run'], name='iteration_iteration_num_worker_calibration_run__unique')
+            models.UniqueConstraint(fields=['iteration_num', 'worker_name', 'calibration_run'],
+                                    name='iteration_iteration_num_worker_calibration_run__unique')
         ]
 
     def __str__(self):
@@ -24,4 +25,3 @@ class Iteration(BaseModel):
             f"worker_name: {str(self.worker_name)}, "
             f"worker_number: {self.worker_number}"
         )
-

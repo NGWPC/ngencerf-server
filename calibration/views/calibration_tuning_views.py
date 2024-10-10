@@ -396,16 +396,17 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
     if error_message:
         return error_message
 
-    run.calibration_start_period = calibration_times['simulation_start_time']
-    run.calibration_end_period = calibration_times['simulation_end_time']
-    run.calibration_eval_start_period = calibration_times['calibration_start_time']
-    run.calibration_eval_end_period = calibration_times['calibration_end_time']
+    if calibration_times is not None:
+        run.calibration_start_period = calibration_times.get('simulation_start_time')
+        run.calibration_end_period = calibration_times.get('simulation_end_time')
+        run.calibration_eval_start_period = calibration_times.get('calibration_start_time')
+        run.calibration_eval_end_period = calibration_times.get('calibration_end_time')
 
-    if run.automatic_validation:
-        run.validation_start_period = validation_times['simulation_start_time']
-        run.validation_end_period = validation_times['simulation_end_time']
-        run.validation_eval_start_period = validation_times['validation_start_time']
-        run.validation_eval_end_period = validation_times['validation_end_time']
+    if run.automatic_validation and validation_times is not None:
+        run.validation_start_period = validation_times.get('simulation_start_time')
+        run.validation_end_period = validation_times.get('simulation_end_time')
+        run.validation_eval_start_period = validation_times.get('validation_start_time')
+        run.validation_eval_end_period = validation_times.get('validation_end_time')
 
 
 def validate_parameters(run: CalibrationRun, parameters):
