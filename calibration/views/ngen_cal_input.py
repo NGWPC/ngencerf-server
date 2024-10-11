@@ -266,20 +266,26 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     if any(field is None for field in [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
         errors.append('calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
-        calibration['calib_start_period'] = run.calibration_start_period.strftime(DATE_FORMAT)
-        calibration['calib_end_period'] = run.calibration_end_period.strftime(DATE_FORMAT)
-        calibration['calib_eval_start_period'] = run.calibration_eval_start_period.strftime(DATE_FORMAT)
-        calibration['calib_eval_end_period'] = run.calibration_eval_end_period.strftime(DATE_FORMAT)
+        calibration.update({
+            'calib_start_period': run.calibration_start_period.strftime(DATE_FORMAT),
+            'calib_end_period': run.calibration_end_period.strftime(DATE_FORMAT),
+            'calib_eval_start_period': run.calibration_eval_start_period.strftime(DATE_FORMAT),
+            'calib_eval_end_period': run.calibration_eval_end_period.strftime(DATE_FORMAT),
+        })
 
     if run.automatic_validation:
         if any(field is None for field in [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
             errors.append('validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
-            calibration['valid_start_period'] = run.validation_start_period.strftime(DATE_FORMAT)
-            calibration['valid_end_period'] = run.validation_end_period.strftime(DATE_FORMAT)
-            calibration['valid_eval_start_period'] = run.validation_eval_start_period.strftime(DATE_FORMAT)
-            calibration['valid_eval_end_period'] = run.validation_eval_end_period.strftime(DATE_FORMAT)
+            calibration.update({
+                'valid_start_period': run.validation_start_period.strftime(DATE_FORMAT),
+                'valid_end_period': run.validation_end_period.strftime(DATE_FORMAT),
+                'valid_eval_start_period': run.validation_eval_start_period.strftime(DATE_FORMAT),
+                'valid_eval_end_period': run.validation_eval_end_period.strftime(DATE_FORMAT),
+            })
 
+        # Set full evaluation periods if both calibration and validation evaluation periods are present
+        if run.calibration_eval_start_period and run.calibration_eval_end_period:
             calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
             calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
