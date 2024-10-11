@@ -72,8 +72,8 @@ $ ls ~/s3/ngwpc-dev
 
 ### Goofys
 ```
-$ wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
-$ chmod +x /usr/local/bin/goofys
+$ sudo wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
+$ sudo chmod +x /usr/local/bin/goofys
 $ goofys ngwpc-dev ~/s3/ngwpc-dev
 $ ls ~/s3/ngwpc-dev
 ```
