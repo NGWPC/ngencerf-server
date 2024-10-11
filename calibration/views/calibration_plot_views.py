@@ -13,7 +13,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_run_dir
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError
+    png_str_to_base64_url, ResponseError, truncate_large_fields
 from calibration.views.read_output import process_worker_dirs
 
 logger = logging.getLogger(__name__)
@@ -131,9 +131,9 @@ def get_plot(request):
 
     match plot_info['location']:
         case 'output_validation':
-            location = get_output_validation_run_dir(run)
+            location = Path(get_output_validation_run_dir(run))
         case 'output_calibration':
-            location = get_output_calibration_run_dir(run)
+            location = Path(get_output_calibration_run_dir(run))
         case 'plot_iteration':
             location = find_non_empty_plot_iteration(run)
             if location is None:
@@ -150,10 +150,10 @@ def get_plot(request):
     plot_url = png_to_base64_url(plot_file_path)
 
     response = {'calibration_run_id': run.id, 'plot_name': plot_name, 'plot_file_name': plot_file_name, 'plot_url': plot_url}
-    response_validator, error_response = validate_response(GetPlotResponseSerializer, response)
+    response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_Url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_plot() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
 
     return Response(response_validator.data)
 
