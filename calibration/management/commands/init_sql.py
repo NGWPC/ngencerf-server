@@ -315,7 +315,7 @@ class Command(BaseCommand):
                 "name": "Hydrograph evolution",
                 "description": "Time series plot comparing streamflow simulations from the control, the best iteration and the last iteration with the observed streamflow",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_hydrograph_iteration.png"
             },
@@ -323,7 +323,7 @@ class Command(BaseCommand):
                 "name": "Objective Function evolution",
                 "description": "The evolution of objective function during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_objfun_iteration.png"
             },
@@ -331,7 +331,7 @@ class Command(BaseCommand):
                 "name": "Metric evolution",
                 "description": "The evolution of objective function and all other metrics during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_metric_iteration.png"
             },
@@ -339,7 +339,7 @@ class Command(BaseCommand):
                 "name": "Parameter evolution",
                 "description": "The evolution of each calibration parameter during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_param_iteration.png"
             },
@@ -347,7 +347,7 @@ class Command(BaseCommand):
                 "name": "Scatterplot streamflow",
                 "description": "Scatter plot of streamflow simulations from the control, the best iteration and the last iteration vs the observed streamflow",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png"
             },
@@ -355,7 +355,7 @@ class Command(BaseCommand):
                 "name": "Metrics vs Objective Function",
                 "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to examine tradeoffs between the objective function and other metrics)",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_metric_objfun.png"
             },
@@ -363,7 +363,7 @@ class Command(BaseCommand):
                 "name": "Stream Flow Precipitation",
                 "description": "Same as Hydrograph Evolution but with the precipitation time series added at the top using an inverted y-axis",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_streamflow_precip_iteration.png"
             },
@@ -371,7 +371,7 @@ class Command(BaseCommand):
                 "name": "Flow Duration Curves",
                 "description": "Comparison of the flow duration curves for the streamflow simulations from the control, the best iteration, the last iteration and the observed streamflow",
                 "location": "plot_iteration",
-                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_fdc_iteration.png"
             },
@@ -379,7 +379,7 @@ class Command(BaseCommand):
                 "name": "Cost History",
                 "description": "Comparison of the best global, local and best cost values at each iteration",
                 "location": "output_calibration",
-                "valid_optimizations": "[\"GWO\", \"PSO\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\"]",
                 "validation": False,
                 "filename_mask": "{gage_id}_cost_hist.png"
             },
@@ -387,7 +387,7 @@ class Command(BaseCommand):
                 "name": "Bar Chart Metrics",
                 "description": "Bar chart comparing metrics from best and control validation runs for each evaluation period of the best global, local and best cost values at each iteration",
                 "location": "output_validation",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}_barplot_metrics_valid_run.png"
             },
@@ -395,7 +395,7 @@ class Command(BaseCommand):
                 "name": "Flow Duration Curves Validation",
                 "description": "Plot of flow duration curve comparing best and control validation runs with observation for each evaluation period",
                 "location": "output_validation",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}_fdc_valid_run.png"
             },
@@ -403,7 +403,7 @@ class Command(BaseCommand):
                 "name": "Hydrograph Validation",
                 "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
                 "location": "output_validation",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}_hydrograph_valid_run.png"
             },
@@ -411,7 +411,7 @@ class Command(BaseCommand):
                 "name": "Streamflow Validation Precipitation",
                 "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axi",
                 "location": "output_validation",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"}",
+                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}streamflow_precip_valid_run.png"
             }

@@ -189,13 +189,14 @@ def get_filtered_plot_definitions(run, plot_name=None):
         fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
     )
 
-    # Filter the cached plot definitions based on the given criteria
-    filtered_plot_definitions = [
-        plot for plot in cached_plot_definitions
+    filtered_plot_definitions = []
+
+    for plot in cached_plot_definitions:
         # Include only plots that match the given plot name, if provided
-        if (plot_name is None or plot['name'] == plot_name)
-        and run.optimization.name in json.loads(plot['valid_optimizations'])  # Check if the run's optimization name is in the list of valid optimizations for the plot
-        and (run.automatic_validation or not plot['validation'])  # include all plots if automatic_validation is True, otherwise only include plots with validation=False
-    ]
+        if (plot_name is None or plot['name'] == plot_name) \
+                and run.optimization.name in json.loads(plot['valid_optimizations']) \
+                and (run.automatic_validation or not plot['validation']):  # Simplified validation check
+
+            filtered_plot_definitions.append(plot)
 
     return filtered_plot_definitions
