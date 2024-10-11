@@ -183,7 +183,7 @@ Use these recommended directory names to avoid having to change your settings.
 * It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 
 
-* Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv`
+* Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
 * Clone ngen-cal from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/ngen-cal`
 * Follow instructions for installing ngen-cal
 * Clone ngen from Gitlab into `~/noaa-owp/ngen`
@@ -210,7 +210,7 @@ curl --location 'localhost:8000/auth/users/' \
 --header 'Content-Type: application/json' \
 --data-raw '{
     "username": "<username>",
-    "password": "<password"
+    "password": "<password>"
 }'
 ```
 
