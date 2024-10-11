@@ -110,28 +110,28 @@ def run_validation_job_callback_local(validation_run: ValidationRun, future: Fut
     """
     # process_id = Path(validation_run.calibration_run.job_data_dir).name
     logger.info(
-        f'Job end callback received for Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}')
+        f'Job end callback received for VValidation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}')
 
     try:
         if future.exception() is not None:
             logger.error(
-                f"Exception occurred in Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}: {future.exception()}")
+                f"Exception occurred in VValidation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}: {future.exception()}")
             set_job_status(validation_run, StatusEnum.FAILED)
             return
 
         exit_code = future.result()
-        logger.info(f"Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} completed with exit code {exit_code}")
+        logger.info(f"Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} completed with exit code {exit_code}")
         if exit_code == -15:
-            logger.info(f'Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
+            logger.info(f'Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
             set_job_status(validation_run, StatusEnum.CANCELLED)
 
         elif exit_code != 0:
-            logger.error(f'Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} ending due to abnormal return code')
+            logger.error(f'Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ending due to abnormal return code')
             set_job_status(validation_run, StatusEnum.FAILED)
         else:
             process_validation_output_and_maybe_create_best(validation_run)
     except Exception as e:
-        logger.exception(f"Error in callback for Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}: {str(e)}")
+        logger.exception(f"Error in callback for Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}: {str(e)}")
         set_job_status(validation_run, StatusEnum.FAILED)
 
 
@@ -176,7 +176,7 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
-    logger.info(f"Spawning process: Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username} with {args}")
+    logger.info(f"Spawning process: Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} with {args}")
     try:
         process = subprocess.Popen(args)
         future = pool.submit(process.wait)
@@ -189,7 +189,7 @@ def execute_validation_job(validation_run: ValidationRun, args, callback_functio
         logger.error(f"Failed to execute command: {str(e)}")
         raise
     logger.info(
-        f'Process Validation Job {validation_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type} is running in the background')
+        f'Process Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type} is running in the background')
 
 
 def cancel_local_job(run: CalibrationRun | ValidationRun):

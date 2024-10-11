@@ -24,7 +24,7 @@ echo "   Virtual environment: $VENV_PATH"
 
 # Get the Python output file path from the second argument
 PYTHON_OUTPUT_FILE=$2
-echo "   Python output file: $PYTHON_OUTPUT_FILE"
+echo "   Python output file:  $PYTHON_OUTPUT_FILE"
 
 # Get the directory for the output file and create it if it doesn't exist
 OUTPUT_DIR=$(dirname "$PYTHON_OUTPUT_FILE")
@@ -35,7 +35,7 @@ fi
 
 # Get the Python script path from the third argument
 SCRIPT_PATH=$3
-echo "   Python script: $SCRIPT_PATH"
+echo "   Python script:      $SCRIPT_PATH"
 
 # Shift the first three arguments so that the remaining ones are Python script arguments
 shift 3

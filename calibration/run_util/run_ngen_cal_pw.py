@@ -109,13 +109,13 @@ def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_statu
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
     logger.info(
-        f'Job end callback received for Validation job {validation_run.id}/{validation_run.calibration_run.owner.username}, validation_type: {validation_run.validation_type}, with status {slurm_status}')
+        f'Job end callback received for Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, validation_type: {validation_run.validation_type}, with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'Validation job {validation_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
+        logger.error(f'Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
         set_job_status(validation_run, StatusEnum.CANCELLED)
     elif slurm_status == SlurmStatusEnum.FAILED:
-        logger.error(f'Validation job {validation_run.id}/{validation_run.calibration_run.owner.username}ending due to abnormal return code')
+        logger.error(f'Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ending due to abnormal return code')
         set_job_status(validation_run, StatusEnum.FAILED)
     else:
         process_validation_output_and_maybe_create_best(validation_run)
@@ -158,6 +158,12 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun):
     return True
 
 
+class SlurmJobException(Exception):
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def handle_slurm_http_error(response, url, job_id):
     """
     Handle HTTP errors for Slurm job submissions or cancellations, and log detailed error messages.
@@ -165,10 +171,34 @@ def handle_slurm_http_error(response, url, job_id):
     :param url: The URL that was called.
     :param job_id: The calibration or validation run ID.
     """
+    # Initialize variables to store status code and response text
+    status_code = None
+    response_text = None
+
     try:
+        # Capture status code and response text before raising an exception
+        status_code = response.status_code
+        response_text = response.text
+
+        # Check if the response is HTML (likely an error page)
+        content_type = response.headers.get('Content-Type', '')
+        if 'text/html' in content_type:
+            logger.warning(f"Received HTML response from {url} for job {job_id} - truncating output")
+            response_text = response_text[:500] + '... (truncated)'
+            raise SlurmJobException(f"Call to {url} for job {job_id} returned HTML. Response text: {response_text}", status_code)
+
+        # Raise an exception if the HTTP request failed
         response.raise_for_status()
+
     except requests.exceptions.HTTPError as e:
-        error_message = response.json().get('error', 'No error message provided')
-        logger.error(f"Call to Slurm {url} failed for job {job_id} with status code {response.status_code}.")
-        logger.error(f"Failed to submit job: {error_message}, {str(e)}")
-        raise
+        message = f"Call to {url} failed with {status_code}. Response text: {response_text if response_text else 'No response received'}"
+        logger.error(message)
+        print(f"HTTP Error {status_code}: {response_text if response_text else 'No response received'}")
+        raise SlurmJobException(message, status_code) from e
+
+    except requests.exceptions.RequestException as e:
+        # Handle connection errors or timeouts
+        message = f"Call to {url} for job {job_id} failed to connect or timed out."
+        logger.error(message)
+        print(f"Request Error: {message}")
+        raise SlurmJobException(message) from e
