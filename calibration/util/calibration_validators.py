@@ -48,8 +48,7 @@ class ValidationRunSerializer(BaseSerializer):
 
 
 class CreateValidationRequestSerializer(CalibrationRunSerializer):
-    iteration = serializers.IntegerField(required=True, min_value=0)
-    worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    iteration_id = serializers.IntegerField(required=True)
 
 
 ##################################

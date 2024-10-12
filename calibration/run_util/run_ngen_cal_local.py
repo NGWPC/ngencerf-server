@@ -10,7 +10,6 @@ from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, create_and_submit_validation_control, \
     process_validation_output_and_maybe_create_best
-from calibration.util.ngen_locations import CALIBRATION_PY, VALIDATION_PY, VALIDATION_ITERATION_PY
 from calibration.views.read_output import read_calibration_output
 from cerfServer.settings import NGEN_CAL_VENV
 
@@ -21,18 +20,16 @@ def run_calibration_job_local(calibration_run: CalibrationRun, input_file, outpu
     """
     Executes a local calibration job by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job end.
+
     :param calibration_run: The CalibrationRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     """
-    simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
-    cal_or_valid_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'ngen_cal_simulation.py') if simulate else CALIBRATION_PY
-
     shell_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'run_ngen_cal.sh')
 
     # Prepare the argument list to pass to the shell script
     args_to_calibrate_or_validate = [input_file]
-    args = [shell_script, NGEN_CAL_VENV, output_file, cal_or_valid_script] + args_to_calibrate_or_validate
+    args = [shell_script, 'calibration'] + args_to_calibrate_or_validate + [output_file, NGEN_CAL_VENV]
 
     # Bind the callback function for job
     job_callback = functools.partial(run_calibration_job_callback_local, calibration_run)
@@ -44,28 +41,29 @@ def run_validation_job_local(validation_run: ValidationRun, input_file, output_f
     """
     Executes a local validation by calling the shell script
     with appropriate input and output file arguments, and registering a callback for job end.
-    run_best is a special case which runs validation.py with the 'best' input file created by calibration
-    If run_base is false, we call validation_iteration.py to run a validation using a specific iteration
+
     :param validation_run: The ValidationRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     """
-    simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
-
-    validation_script = VALIDATION_ITERATION_PY if validation_run.validation_type == ValidationType.VALID_ITERATION else VALIDATION_PY
-
-    validation_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'ngen_cal_simulation.py') if simulate else validation_script
+    # Determine the validation script to use based on validation type
+    validation_script = 'validation_iteration' if validation_run.validation_type == ValidationType.VALID_ITERATION else 'validation'
 
     shell_script = str(Path(settings.BASE_DIR) / 'calibration' / 'run_util' / 'run_ngen_cal.sh')
 
-    # Prepare the argument list to pass to the shell script
-    args_to_validate = [input_file, validation_run.worker_name,
-                        str(validation_run.iteration_num)] if validation_run.validation_type == ValidationType.VALID_ITERATION else [input_file]
-    args = [shell_script, NGEN_CAL_VENV, output_file, validation_script] + args_to_validate
+    # Conditionally prepare the argument list for validation_iteration or other validation types
+    if validation_run.validation_type == ValidationType.VALID_ITERATION:
+        args_to_validate = [input_file, validation_run.worker_name, str(validation_run.iteration_num)]
+    else:
+        args_to_validate = [input_file]
+
+    # Construct the full argument list for the shell script
+    args = [shell_script, validation_script] + args_to_validate + [output_file, NGEN_CAL_VENV]
 
     # Bind the callback function for the job
     job_callback = functools.partial(run_validation_job_callback_local, validation_run)
 
+    # Execute the job
     execute_validation_job(validation_run, args, callback_function=job_callback)
 
 

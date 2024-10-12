@@ -22,23 +22,23 @@ VALID_ITERATION_SCRIPT=$(resolve_path "$NGEN_CAL_VALIDATION_ITERATION_SCRIPT")
 
 # Function to display help message
 show_help() {
-  echo "Usage: $(basename "$0") <command> <output_file> <input_file> [worker_name iteration_number] [venv_path]"
+  echo "Usage: $(basename "$0") <command> <input_file> [worker_name iteration_number] [output_file] [venv_path]"
   echo ""
   echo "COMMAND:"
   echo "  calibration          Run calibration script."
   echo "  validation           Run validation script."
   echo "  validation_iteration Run validation iteration script (requires worker_name and iteration_number)."
   echo ""
-  echo "OUTPUT_FILE: Path to the output file where the script's output will be saved."
-  echo "INPUT_FILE:  Path to the input file required by the script."
+  echo "INPUT_FILE: Path to the input file required by the script."
   echo "WORKER_NAME: (Required for validation_iteration) Name of the worker."
   echo "ITERATION_NUMBER: (Required for validation_iteration) Iteration number."
-  echo "VENV_PATH: Optional path to the Python virtual environment."
+  echo "OUTPUT_FILE (optional): Path to the output file where the script's output will be saved.  Used when running in the LOCAL or DOCKER environment"
+  echo "VENV_PATH (optional): Path to the Python virtual environment.  Used when running in the LOCAL or DOCKER environment."
   echo ""
   echo "Examples:"
-  echo "  $(basename "$0") calibration /path/to/output.log /path/to/input.csv"
-  echo "  $(basename "$0") validation /path/to/output.log /path/to/input.csv"
-  echo "  $(basename "$0") validation_iteration /path/to/output.log /path/to/input.csv worker1 5 /path/to/venv"
+  echo "  $(basename "$0") calibration /path/to/input.csv"
+  echo "  $(basename "$0") validation /path/to/input.csv"
+  echo "  $(basename "$0") validation_iteration /path/to/input.csv worker1 5 /path/to/output.log /path/to/venv"
   echo ""
   exit 1
 }
@@ -56,6 +56,8 @@ fi
 
 # Get the script command and select the corresponding script path
 SCRIPT_COMMAND=$1
+shift 1
+
 case "$SCRIPT_COMMAND" in
   "calibration")
     SCRIPT_PATH=$CALIB_SCRIPT
@@ -75,36 +77,17 @@ case "$SCRIPT_COMMAND" in
     ;;
 esac
 
-# Check if the Python output file path is provided as the second argument
-if [ -z "$2" ]; then
-  echo "Error: No Python output file provided."
-  show_help
-fi
-
-# Get the Python output file path from the second argument
-PYTHON_OUTPUT_FILE=$2
-echo "           Python output file: $PYTHON_OUTPUT_FILE"
-
-# Get the directory for the output file and create it if it doesn't exist
-OUTPUT_DIR=$(dirname "$PYTHON_OUTPUT_FILE")
-if [ ! -d "$OUTPUT_DIR" ]; then
-  mkdir -p "$OUTPUT_DIR"
-fi
-
-# Shift the first two arguments to get the remaining inputs
-shift 2
-
 # Check if the correct number of arguments are provided for the selected command
 if [ $# -lt $REQUIRED_ARGS ]; then
   echo "Error: Insufficient arguments. $SCRIPT_COMMAND requires $REQUIRED_ARGS arguments."
   show_help
 fi
 
-# Get the inputs for the command
+# Get the input file and additional parameters for validation_iteration
 INPUT_FILE=$1
 shift 1
+echo "             Input file: $INPUT_FILE"
 
-# Additional inputs for validation_iteration (worker_name and iteration)
 if [ "$SCRIPT_COMMAND" == "validation_iteration" ]; then
   WORKER_NAME=$1
   ITERATION_NUMBER=$2
@@ -113,11 +96,24 @@ if [ "$SCRIPT_COMMAND" == "validation_iteration" ]; then
   shift 2
 fi
 
-# Get the virtual environment path from the optional last argument
+# Check if the output file and venv path are provided (both must be specified if provided)
+PYTHON_OUTPUT_FILE=""
 VENV_PATH=""
-if [ -n "$1" ]; then
-  VENV_PATH=$1
-  echo "          Virtual environment: $VENV_PATH"
+
+if [ $# -eq 2 ]; then
+  PYTHON_OUTPUT_FILE=$1
+  VENV_PATH=$2
+  echo "           Output file: $PYTHON_OUTPUT_FILE"
+  echo "        Virtual environment: $VENV_PATH"
+
+  # Create output directory if it doesn't exist
+  OUTPUT_DIR=$(dirname "$PYTHON_OUTPUT_FILE")
+  if [ ! -d "$OUTPUT_DIR" ]; then
+    mkdir -p "$OUTPUT_DIR"
+  fi
+elif [ $# -ne 0 ]; then
+  echo "Error: Both output_file and venv_path must be specified together or omitted."
+  show_help
 fi
 
 # Activate the virtual environment if provided
@@ -132,23 +128,35 @@ else
   echo "No virtual environment provided, running with default Python environment."
 fi
 
-# Run the Python script, redirecting its output to the specified file
+# Run the Python script, redirecting its output if an output file is provided
 echo "   Running $(basename "$SCRIPT_PATH") with input file: $INPUT_FILE"
 if [ "$SCRIPT_COMMAND" == "validation_iteration" ]; then
-  python "$SCRIPT_PATH" "$INPUT_FILE" "$WORKER_NAME" "$ITERATION_NUMBER" > "$PYTHON_OUTPUT_FILE" 2>&1
+  if [ -z "$PYTHON_OUTPUT_FILE" ]; then
+    python "$SCRIPT_PATH" "$INPUT_FILE" "$WORKER_NAME" "$ITERATION_NUMBER"
+  else
+    python "$SCRIPT_PATH" "$INPUT_FILE" "$WORKER_NAME" "$ITERATION_NUMBER" > "$PYTHON_OUTPUT_FILE" 2>&1
+  fi
 else
-  python "$SCRIPT_PATH" "$INPUT_FILE" > "$PYTHON_OUTPUT_FILE" 2>&1
+  if [ -z "$PYTHON_OUTPUT_FILE" ]; then
+    python "$SCRIPT_PATH" "$INPUT_FILE"
+  else
+    python "$SCRIPT_PATH" "$INPUT_FILE" > "$PYTHON_OUTPUT_FILE" 2>&1
+  fi
 fi
+
 python_exit_code=$?
 
 if [ $python_exit_code -ne 0 ]; then
   echo "$(basename "$SCRIPT_PATH") exited with code $python_exit_code"
 fi
 
-echo "Output from running $(basename "$SCRIPT_PATH")"
-echo "-------------- start of $PYTHON_OUTPUT_FILE -----------------------------"
-cat "$PYTHON_OUTPUT_FILE"
-echo "---------------- end of $PYTHON_OUTPUT_FILE -----------------------------"
+# Display output if redirected to a file
+if [ -n "$PYTHON_OUTPUT_FILE" ]; then
+  echo "Output from running $(basename "$SCRIPT_PATH")"
+  echo "-------------- start of $PYTHON_OUTPUT_FILE -----------------------------"
+  cat "$PYTHON_OUTPUT_FILE"
+  echo "---------------- end of $PYTHON_OUTPUT_FILE -----------------------------"
+fi
 
 echo "Done running $(basename "$SCRIPT_PATH")"
 

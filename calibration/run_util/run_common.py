@@ -163,7 +163,7 @@ def create_and_submit_validation_control(calibration_run: CalibrationRun):
     Create a validation run of type VALID_CONTROL and submit it.
     :param calibration_run: The CalibrationRun object.
     """
-    validation_run = create_validation_run_internal(calibration_run, None, None, validation_type=ValidationType.VALID_CONTROL)
+    validation_run = create_validation_run_internal(calibration_run, None, validation_type=ValidationType.VALID_CONTROL)
     submit_validation_job(validation_run)
 
 
@@ -179,7 +179,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
     # If we just ran Validation Control, see if we want to run Validation Best
     if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         if validation_run.calibration_run.automatic_validation:
-            new_validation_run = create_validation_run_internal(validation_run.calibration_run, None, None,
+            new_validation_run = create_validation_run_internal(validation_run.calibration_run, None,
                                                                 validation_type=ValidationType.VALID_BEST)
             # Set the iteration containing the best values before we run it
             iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()

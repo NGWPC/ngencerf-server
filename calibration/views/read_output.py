@@ -41,7 +41,7 @@ def read_validation_output(validation_run: ValidationRun):
 
         process_validation_for_validation_run(validation_run)
 
-    logger.info(f"End of processing output for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} , type: {validation_run.validation_type}")
+    logger.info(f"End of processing output for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
 
 
 # Function to read the output of a calibration run
@@ -126,7 +126,7 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
                 validation_run=validation_run
             )
             logger.debug(
-                f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} , type: {validation_run.validation_type}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
+                f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
             metrics_to_create.append(metric_obj)
 
     # Bulk create the metrics in the database

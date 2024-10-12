@@ -28,10 +28,10 @@ files = [
     PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/evapotranspiration/evapotranspiration/cmake_build/libpetbmi.so'),
     SNOW17_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so'),
     SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
-
-    CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
-    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
-    VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
+    #
+    # CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
+    # VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
+    # VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
 ]
 
 
