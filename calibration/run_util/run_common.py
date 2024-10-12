@@ -131,6 +131,7 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
         logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
         create_input(config_file)
     except Exception as e:
+        logger.exception(f'Exception from create_input - {str(e)}')
         return ResponseError(f'Exception from create_input - {str(e)}')
 
     logger.info(f'Return from create_input for Calibration Run {calibration_run.id}')

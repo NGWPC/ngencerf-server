@@ -32,7 +32,7 @@ worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
 def read_validation_output(validation_run: ValidationRun):
-    logger.info(f"Processing output for Validation Run {validation_run.id}")
+    logger.info(f"Processing output for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ")
 
     with transaction.atomic():
         metrics = parse_performance_metrics(get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num))
@@ -41,7 +41,7 @@ def read_validation_output(validation_run: ValidationRun):
 
         process_validation_for_validation_run(validation_run)
 
-    logger.info(f"End of processing output for Validation Run {validation_run.id}, type: {validation_run.validation_type}")
+    logger.info(f"End of processing output for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} , type: {validation_run.validation_type}")
 
 
 # Function to read the output of a calibration run
@@ -115,8 +115,7 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database for run {validation_run.id}")
 
-            # Prepare metric value (handling empty values if necessary)
-            metric_value = float(value) if value else None
+            metric_value = float(value) if value else float('nan')
 
             # Create the ValidationMetric object
             metric_obj = ValidationMetric(
@@ -127,7 +126,7 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
                 validation_run=validation_run
             )
             logger.debug(
-                f'Validation Run {validation_run.id}, type: {validation_run.validation_type}, user: {validation_run.calibration_run.owner.username}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
+                f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} , type: {validation_run.validation_type}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
             metrics_to_create.append(metric_obj)
 
     # Bulk create the metrics in the database
@@ -159,7 +158,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         expected_run_type = ValidationType.VALID_BEST.value
 
     if ValidationMetric.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
-        raise CerfException(f"End of job processing has already been completed for Validation Run {validation_run.id}")
+        raise CerfException(f"End of job processing has already been completed for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ")
 
     process_validation_metrics(
         validation_run=validation_run,

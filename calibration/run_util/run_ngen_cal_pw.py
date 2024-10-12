@@ -109,13 +109,13 @@ def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_statu
     :param slurm_status: Whether the job succeeded or failed, as an Enum
     """
     logger.info(
-        f'Job end callback received for Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, validation_type: {validation_run.validation_type}, with status {slurm_status}')
+        f'Job end callback received for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}, validation_type: {validation_run.validation_type}, with status {slurm_status}')
 
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
+        logger.error(f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} was cancelled')
         set_job_status(validation_run, StatusEnum.CANCELLED)
     elif slurm_status == SlurmStatusEnum.FAILED:
-        logger.error(f'Validation Job {validation_run.id},  Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ending due to abnormal return code')
+        logger.error(f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ending due to abnormal return code')
         set_job_status(validation_run, StatusEnum.FAILED)
     else:
         process_validation_output_and_maybe_create_best(validation_run)
