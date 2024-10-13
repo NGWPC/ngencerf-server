@@ -212,7 +212,7 @@ class NgenEnvironmentEnum(StrEnum):
 
 
 # Used when NGEN_Environment = DOCKER
-DOCKER_CMD = 'docker exec -it  container_name /bin/bash'
+DOCKER_CMD = 'docker run -it  -v ~/ngwpc/data:/ngencerf/data'
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
