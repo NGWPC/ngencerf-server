@@ -86,7 +86,7 @@ fi
 # Get the input file and additional parameters for validation_iteration
 INPUT_FILE=$1
 shift 1
-echo "             Input file: $INPUT_FILE"
+echo "        Input file: $INPUT_FILE"
 
 if [ "$SCRIPT_COMMAND" == "validation_iteration" ]; then
   WORKER_NAME=$1
@@ -103,8 +103,8 @@ VENV_PATH=""
 if [ $# -eq 2 ]; then
   PYTHON_OUTPUT_FILE=$1
   VENV_PATH=$2
-  echo "           Output file: $PYTHON_OUTPUT_FILE"
-  echo "        Virtual environment: $VENV_PATH"
+  echo "       Output file: $PYTHON_OUTPUT_FILE"
+  echo "Virtual environment: $VENV_PATH"
 
   # Create output directory if it doesn't exist
   OUTPUT_DIR=$(dirname "$PYTHON_OUTPUT_FILE")

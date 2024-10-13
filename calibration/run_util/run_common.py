@@ -15,7 +15,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal
 from calibration.views.read_output import read_validation_output
-from cerfServer.settings import EnvironmentEnum
+from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +30,20 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
     # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
     run.slurm_job_id = None
     run.save(update_fields=['status', 'slurm_job_id'])
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         key = get_job_registry_key(run)
         job_registry.pop(key, None)
 
 
 def execute_job(run, input_file, output_file, job_type="calibration"):
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
             run_calibration_job_local(run, input_file, output_file)
         else:
             from calibration.run_util.run_ngen_cal_local import run_validation_job_local
             run_validation_job_local(run, input_file, output_file)
-    elif settings.NGEN_ENVIRONMENT == EnvironmentEnum.PARALLEL_WORKS:
+    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
             run_calibration_job_parallel_works(run, input_file, output_file)
@@ -97,7 +97,7 @@ def run_validation_job(validation_run: ValidationRun):
 def cancel_job_common(run_id):
     from calibration.run_util.run_ngen_cal_local import cancel_local_job
     from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         return cancel_local_job(run_id)
     else:
         return cancel_slurm_job(run_id)
@@ -199,12 +199,12 @@ def submit_job_execution(run, input_file, output_file, job_type, submit_fn):
     :param job_type: The type of job ("calibration" or "validation").
     :param submit_fn: The function that will handle environment-specific submission logic.
     """
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":
             submit_fn(run, input_file, output_file, "local_calibration")
         else:
             submit_fn(run, input_file, output_file, "local_validation")
-    elif settings.NGEN_ENVIRONMENT == EnvironmentEnum.PARALLEL_WORKS:
+    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == "calibration":
             submit_fn(run, input_file, output_file, "slurm_calibration")
         else:

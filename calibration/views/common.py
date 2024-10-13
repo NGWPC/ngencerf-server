@@ -451,3 +451,10 @@ class CerfException(Exception):
         if self.details:
             return f"{self.message}: {self.details}"
         return self.message
+
+
+def get_job_description(run: CalibrationRun | ValidationRun) -> str:
+    if isinstance(run, CalibrationRun):
+        return f"Calibration Run {run.id}, user: {run.owner.username}"
+    else:
+        return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, user: {run.calibration_run.owner.username}"

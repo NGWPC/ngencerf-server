@@ -37,8 +37,7 @@ files = [
 
 def check_files():
     # If we are running locally,then ngen and ngen-cal files must be on our machine
-    simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
-    if NGEN_ENVIRONMENT == NGEN_ENVIRONMENT.LOCAL and not simulate:
+    if NGEN_ENVIRONMENT == NGEN_ENVIRONMENT.LOCAL:
         for file in files:
             if not Path(file).is_file():
                 logger.warning(f'{file} does not exist')
