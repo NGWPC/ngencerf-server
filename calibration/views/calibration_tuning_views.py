@@ -293,7 +293,7 @@ def save_tuning_tab(request):
             description="Internal server error"
         )
     },
-    description="Allow user to upload observational data"
+    description="Allow user to upload a starting parameter file"
 )
 @api_view(['POST'])
 @handle_exceptions
@@ -316,10 +316,15 @@ def upload_user_parameters(request):
     parameter_file = files[0]
     file_contents = parameter_file.read().decode('utf-8')
 
-    # Detect delimiter type (space or comma) by checking the first few rows
-    if ',' in file_contents.splitlines()[1]:
+    # Detect delimiter type by checking the first few rows
+    first_line = file_contents.splitlines()[0]
+
+    if ',' in first_line:
         delimiter = ','
         logger.debug("Detected comma delimiter.")
+    elif '\t' in first_line:
+        delimiter = '\t'
+        logger.debug("Detected tab delimiter.")
     else:
         delimiter = r'\s+'
         logger.debug("Detected space delimiter.")
@@ -328,7 +333,7 @@ def upload_user_parameters(request):
         # Handle file parsing based on detected delimiter
         df = pd.read_csv(io.StringIO(file_contents), sep=delimiter, engine='python', skipinitialspace=True)
     except pd.errors.ParserError:
-        return Response({'error': 'The uploaded file could not be parsed as space-separated or comma-separated.'}, status=400)
+        return Response({'error': 'The uploaded file could not be parsed with the detected delimiter.'}, status=400)
 
     # Strip any leading/trailing whitespace in the column headers
     df.columns = df.columns.str.strip()
@@ -364,7 +369,7 @@ def upload_user_parameters(request):
     parsed_data = df.to_dict(orient='records')
 
     run.user_parameter_filename = parameter_file.name
-    run.save()
+    run.save(update_fields=['user_parameter_filename'])
 
     response = {
         'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}",
