@@ -35,7 +35,7 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
         job_registry.pop(key, None)
 
 
-def execute_job(run, input_file, output_file, job_type="calibration"):
+def execute_job(run: CalibrationRun | ValidationRun, input_file, output_file, job_type="calibration"):
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
@@ -46,10 +46,10 @@ def execute_job(run, input_file, output_file, job_type="calibration"):
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
-            run_calibration_job_parallel_works(run, input_file, output_file)
+            run_calibration_job_parallel_works(run, run.owner, input_file, output_file)
         else:
             from calibration.run_util.run_ngen_cal_pw import run_validation_job_parallel_works
-            run_validation_job_parallel_works(run, input_file, output_file)
+            run_validation_job_parallel_works(run, run.calibration_run.owner, input_file, output_file)
     else:
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
 
