@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: IsReadyResponseSerializer,
+        200: GetCalibrationDataByIterationResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
             description="Internal server error"
         )
     },
-    description="Return the status of a job"
+    description="Return metrics and parameters by iteration"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions

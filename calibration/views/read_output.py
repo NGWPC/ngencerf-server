@@ -15,12 +15,12 @@ from django.db import transaction
 
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun, \
-    PerformanceMetrics
-from calibration.models.validation_metric import ValidationMetric
+    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics
+
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
-    get_validation_performance_file, get_calibration_performance_file
+    get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -77,16 +77,18 @@ def read_calibration_output(calibration_run: CalibrationRun):
     logger.info(f"End of processing output for {job_description}")
 
 
-def process_validation_metrics(validation_run: ValidationRun, metrics_file: str, expected_run_type: str) -> None:
+def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file: str, expected_run_type: str) -> None:
     """
-    Generic function to process validation metrics from a CSV file and create corresponding Metric objects.
+    Generic function to process validation or calibration metrics from a CSV file and create corresponding Metric objects.
 
-    :param validation_run: The ValidationRun instance.
+    :param run: The ValidationRun or CalibrationRun instance.
     :param metrics_file: The file path of the metrics CSV file.
     :param expected_run_type: The expected run type to validate.
     :return: None
     """
-    job_description = get_job_description(validation_run)
+
+    job_description = get_job_description(run)
+    logger.info(f"Processing '{metrics_file} for {job_description}")
 
     # Check if the file exists
     if not Path(metrics_file).is_file():
@@ -99,6 +101,9 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
     metrics_lookup = get_cached_metrics()
 
     metrics_to_create = []  # List to accumulate metrics to be created
+
+    # Determine the type of metric to create
+    MetricModel = ValidationMetrics if isinstance(run, ValidationRun) else NWMRetrospectiveMetrics
 
     # Loop over each row in the metrics file
     for _, row in metrics_df.iterrows():
@@ -118,30 +123,32 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
             # Perform case-insensitive lookup for the metric
             metric = metrics_lookup.get(metric_name.lower())
             if not metric:
-                raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database for run {validation_run.id}")
+                raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database for run {run.id}")
 
             metric_value = float(value) if value else float('nan')
 
-            # Create the ValidationMetric object
-            metric_obj = ValidationMetric(
+            # Create the Metric object (ValidationMetrics or NWMRetrospectiveMetrics)
+            metric_obj = MetricModel(
                 metric=metric,
                 run_type=run_type,
                 period=period,
                 metric_value=metric_value,
-                validation_run=validation_run
+                **({'validation_run': run} if isinstance(run, ValidationRun) else {'calibration_run': run})
             )
             logger.debug(
-                f'{job_description}, type: {validation_run.validation_type}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
+                f'{job_description}, type: {expected_run_type}: Creating {MetricModel.__name__} metric for Period: {period}, {metric_name} with value {metric_value}'
+            )
+
             metrics_to_create.append(metric_obj)
 
     # Bulk create the metrics in the database
     if metrics_to_create:
-        ValidationMetric.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
+        MetricModel.objects.bulk_create(metrics_to_create, batch_size=BULK_CREATE_BATCH_SIZE)
 
 
 def process_validation_for_validation_run(validation_run: ValidationRun) -> None:
     """
-    Read the single file that is created by the Validation run for the specific iteration.
+    Read the file that is created by the Validation run for the specific iteration.
     Processes the metrics and updates the corresponding ValidationMetric entries.
 
     :param validation_run: The ValidationRun instance.
@@ -164,14 +171,27 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         metrics_file = get_validation_metrics_valid_best_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_BEST.value
 
-    if ValidationMetric.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
+    if ValidationMetrics.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
         raise CerfException(f"End of job processing has already been completed for {job_description}")
 
     process_validation_metrics(
-        validation_run=validation_run,
+        run=validation_run,
         metrics_file=metrics_file,
         expected_run_type=expected_run_type
     )
+
+    if validation_run.validation_type == ValidationType.VALID_CONTROL:
+        logger.info("Processing nwm retrospective data")
+
+        # NWM Retrospective data is processed as part of Validation Control, but we save it in the Calibration Run
+        metrics_file = get_validation_metrics_nwm_retrospective_file(validation_run.calibration_run)
+        expected_run_type = 'nwm_retro'
+
+        process_validation_metrics(
+            run=validation_run.calibration_run,
+            metrics_file=metrics_file,
+            expected_run_type=expected_run_type
+        )
 
 
 # Function to process iterations for all workers in a run
@@ -346,7 +366,7 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
 
     # If the iteration is the best (based on matching parameters or best iteration number)
     if is_best_match or iteration.iteration_num == best_iteration_for_worker:
-        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}')
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}, for {job_description}')
         iteration.best_params = True
     else:
         iteration.best_params = False

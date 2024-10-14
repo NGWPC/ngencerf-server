@@ -3,7 +3,7 @@ from django.db import models
 from calibration.models.base_model import BaseModel
 
 
-class ValidationMetric(BaseModel):
+class ValidationMetrics(BaseModel):
     run_type = models.CharField(max_length=20, null=False)
     period = models.CharField(max_length=20, null=False)
     metric = models.ForeignKey('Metric', null=False, on_delete=models.RESTRICT)
@@ -18,7 +18,7 @@ class ValidationMetric(BaseModel):
 
     def __str__(self):
         return (
-            f"ValidationMetric: {self.id}, "
+            f"ValidationMetrics: {self.id}, "
             f"Metric: {self.metric.name:10}, "
             f"Value: {self.metric_value}, "
             f"Validation Run: {self.validation_run_id}"

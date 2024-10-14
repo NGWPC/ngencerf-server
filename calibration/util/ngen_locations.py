@@ -186,6 +186,9 @@ def get_validation_metrics_valid_control_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_control.csv')
 
 
+def get_validation_metrics_nwm_retrospective_file(run: CalibrationRun) -> str:
+    return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_nwm_retro.csv')
+
 # TODO Might not need this.  Used internally by validation_iteration
 # def get_validation_iteration_input_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:
 #     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_config_valid_{worker_name}_iter{iteration}.yaml')
