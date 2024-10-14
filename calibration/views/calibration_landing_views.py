@@ -84,14 +84,13 @@ def create_validation_run(request):
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    worker_name = validator.get('worker_name')
-    iteration = validator.get('iteration')
+    iteration_id = validator.get('iteration_id')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
-    validation = create_validation_run_internal(run, worker_name, iteration, validation_type=ValidationType.VALID_ITERATION)
+    validation = create_validation_run_internal(run, iteration_id, validation_type=ValidationType.VALID_ITERATION)
 
     response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
                 'validation_run_id': validation.id}

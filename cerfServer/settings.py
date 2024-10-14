@@ -181,10 +181,6 @@ S3_MOUNT_POINT = Path.home() / 's3'
 # Ngen/Ngen-cal Locations
 # -----------------------------
 
-# This flag is only used when running locally, not on Parallel Works
-# If false, then you must have Ngen and Ngen-call installed locally
-NGEN_CAL_SIMULATE = True
-
 # Locations for running ngen-cal
 REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
 # Directory that Ngen is cloned into
@@ -209,18 +205,22 @@ NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
 
 
-class EnvironmentEnum(StrEnum):
+class NgenEnvironmentEnum(StrEnum):
     LOCAL = "LOCAL"
     PARALLEL_WORKS = "PARALLEL_WORKS"
+    DOCKER = "DOCKER"
 
 
-NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', "LOCAL")
+# Used when NGEN_Environment = DOCKER
+DOCKER_CMD = 'docker run -it  -v ~/ngwpc/data:/ngencerf/data'
+
+NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
-    NGEN_ENVIRONMENT = EnvironmentEnum[NGEN_ENVIRONMENT_STR]
+    NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
 except KeyError:
     # noinspection PyUnresolvedReferences
     raise SystemExit(
-        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in EnvironmentEnum])}")
+        f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in NgenEnvironmentEnum])}")
 
 # -----------------------------
 # Slurm 

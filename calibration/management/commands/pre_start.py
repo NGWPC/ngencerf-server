@@ -6,7 +6,7 @@ from django.db import transaction
 from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun, ValidationRun
 from django.conf import settings
-from cerfServer.settings import EnvironmentEnum
+from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class Command(BaseCommand):
     help = "Clean up running Calibration and Validation runs"
 
     def handle(self, *args, **options):
-        if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+        if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
             with transaction.atomic():
                 running_status = StatusEnum.from_enum(StatusEnum.RUNNING)
                 error_status = StatusEnum.from_enum(StatusEnum.SERVER_ERROR)

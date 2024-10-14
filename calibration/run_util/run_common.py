@@ -15,7 +15,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal
 from calibration.views.read_output import read_validation_output
-from cerfServer.settings import EnvironmentEnum
+from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -30,20 +30,20 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
     # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
     run.slurm_job_id = None
     run.save(update_fields=['status', 'slurm_job_id'])
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         key = get_job_registry_key(run)
         job_registry.pop(key, None)
 
 
 def execute_job(run, input_file, output_file, job_type="calibration"):
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
             run_calibration_job_local(run, input_file, output_file)
         else:
             from calibration.run_util.run_ngen_cal_local import run_validation_job_local
             run_validation_job_local(run, input_file, output_file)
-    elif settings.NGEN_ENVIRONMENT == EnvironmentEnum.PARALLEL_WORKS:
+    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
             run_calibration_job_parallel_works(run, input_file, output_file)
@@ -97,7 +97,7 @@ def run_validation_job(validation_run: ValidationRun):
 def cancel_job_common(run_id):
     from calibration.run_util.run_ngen_cal_local import cancel_local_job
     from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         return cancel_local_job(run_id)
     else:
         return cancel_slurm_job(run_id)
@@ -131,6 +131,7 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
         logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
         create_input(config_file)
     except Exception as e:
+        logger.exception(f'Exception from create_input - {str(e)}')
         return ResponseError(f'Exception from create_input - {str(e)}')
 
     logger.info(f'Return from create_input for Calibration Run {calibration_run.id}')
@@ -162,7 +163,7 @@ def create_and_submit_validation_control(calibration_run: CalibrationRun):
     Create a validation run of type VALID_CONTROL and submit it.
     :param calibration_run: The CalibrationRun object.
     """
-    validation_run = create_validation_run_internal(calibration_run, None, None, validation_type=ValidationType.VALID_CONTROL)
+    validation_run = create_validation_run_internal(calibration_run, None, validation_type=ValidationType.VALID_CONTROL)
     submit_validation_job(validation_run)
 
 
@@ -178,7 +179,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
     # If we just ran Validation Control, see if we want to run Validation Best
     if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         if validation_run.calibration_run.automatic_validation:
-            new_validation_run = create_validation_run_internal(validation_run.calibration_run, None, None,
+            new_validation_run = create_validation_run_internal(validation_run.calibration_run, None,
                                                                 validation_type=ValidationType.VALID_BEST)
             # Set the iteration containing the best values before we run it
             iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
@@ -198,12 +199,12 @@ def submit_job_execution(run, input_file, output_file, job_type, submit_fn):
     :param job_type: The type of job ("calibration" or "validation").
     :param submit_fn: The function that will handle environment-specific submission logic.
     """
-    if settings.NGEN_ENVIRONMENT == EnvironmentEnum.LOCAL:
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":
             submit_fn(run, input_file, output_file, "local_calibration")
         else:
             submit_fn(run, input_file, output_file, "local_validation")
-    elif settings.NGEN_ENVIRONMENT == EnvironmentEnum.PARALLEL_WORKS:
+    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == "calibration":
             submit_fn(run, input_file, output_file, "slurm_calibration")
         else:

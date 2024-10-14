@@ -206,13 +206,12 @@ def create_calibration_run_internal(user) -> CalibrationRun:
     return run
 
 
-def create_validation_run_internal(calibration_run: CalibrationRun, worker_name: str | None, iteration: int | None, validation_type: ValidationType = None) -> ValidationRun:
+def create_validation_run_internal(calibration_run: CalibrationRun, iteration_id: int | None, validation_type: ValidationType = None) -> ValidationRun:
     """
     Create a new ValidationRun object for the given CalibrationRun.
 
     :param calibration_run: The calibration run that this validation run is associated with.
-    :param worker_name: Required if validation_type is Iteration
-    :param iteration: Required if validation_type is Iteration
+    :param iteration_id: Iteration id of Calibration Run whose parameters we want to start with
     :param validation_type: optional value to store in Validation Run object
     :return: The newly created ValidationRun instance.
     """
@@ -220,13 +219,13 @@ def create_validation_run_internal(calibration_run: CalibrationRun, worker_name:
     validation_type = validation_type or ValidationType.VALID_ITERATION
 
     if validation_type == ValidationType.VALID_ITERATION:
-        if not all([worker_name, iteration]):
-            raise CerfException(f"Values must be supplied for both worker name and iteration")
+        if iteration_id is None:
+            raise CerfException(f"Values must be supplied for both iteration_id")
 
         try:
-            iteration_object = Iteration.objects.filter(calibration_run=calibration_run, worker_name=worker_name, iteration_num=iteration).get()
+            iteration_object = Iteration.objects.filter(calibration_run=calibration_run, id=iteration_id).get()
         except Iteration.DoesNotExist:
-            raise CerfException(f"Cannot find Iteration for Calibration Job {calibration_run.id} with worker_name '{worker_name}' and iteration number {iteration}")
+            raise CerfException(f"Cannot find Iteration {iteration_id} for Calibration Job {calibration_run.id} ")
     else:
         iteration_object = None
 
@@ -452,3 +451,10 @@ class CerfException(Exception):
         if self.details:
             return f"{self.message}: {self.details}"
         return self.message
+
+
+def get_job_description(run: CalibrationRun | ValidationRun) -> str:
+    if isinstance(run, CalibrationRun):
+        return f"Calibration Run {run.id}, user: {run.owner.username}"
+    else:
+        return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, user: {run.calibration_run.owner.username}"

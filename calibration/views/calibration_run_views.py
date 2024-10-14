@@ -146,17 +146,17 @@ def run_validation(request):
 
     validation_run_id = validator.get('validation_run_id')
 
-    run, error_return = get_validation_run(validation_run_id, request.user)
+    validation_run, error_return = get_validation_run(validation_run_id, request.user)
     if error_return:
         return error_return
 
     # TODO Doesn't return anything.  Can any errors occur?
-    response = submit_validation_job(run)
+    response = submit_validation_job(validation_run)
     if response:
         return response
 
-    response = {'message': f'Validation Run {run.id} has been submitted', 'validation_run_id': validation_run_id,
-                'status': run.status.name, 'run_date': run.run_date}
+    response = {'message': f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}  has been submitted', 'validation_run_id': validation_run_id,
+                'status': validation_run.status.name, 'run_date': validation_run.run_date}
 
     response_validator, error_response = validate_response(SubmitValidationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user} from run_validation() - {response_validator.data}')

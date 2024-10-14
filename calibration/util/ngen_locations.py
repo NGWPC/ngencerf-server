@@ -28,17 +28,16 @@ files = [
     PET_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/evapotranspiration/evapotranspiration/cmake_build/libpetbmi.so'),
     SNOW17_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/snow17/cmake_build/libsnow17bmi.so'),
     SAC_LIB := str(Path(settings.NGEN_REPO_ROOT) / 'extern/sac-sma/cmake_build/libsacbmi.so'),
-
-    CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
-    VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
-    VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
+    #
+    # CALIBRATION_PY := str(Path(CALIB_VALID_DIR) / 'calibration.py'),
+    # VALIDATION_PY := str(Path(CALIB_VALID_DIR) / 'validation.py'),
+    # VALIDATION_ITERATION_PY := str(Path(CALIB_VALID_DIR) / 'validation_iteration.py')
 ]
 
 
 def check_files():
     # If we are running locally,then ngen and ngen-cal files must be on our machine
-    simulate = getattr(settings, 'NGEN_CAL_SIMULATE', False)
-    if NGEN_ENVIRONMENT == NGEN_ENVIRONMENT.LOCAL and not simulate:
+    if NGEN_ENVIRONMENT == NGEN_ENVIRONMENT.LOCAL:
         for file in files:
             if not Path(file).is_file():
                 logger.warning(f'{file} does not exist')
