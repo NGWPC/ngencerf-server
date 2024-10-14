@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 pool = ThreadPoolExecutor()
 
 
-def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, script_type: str,
+def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, script_cmd: str,
                   callback_function: Callable[[CalibrationRun | ValidationRun, Future], None]) -> None:
     """
     Executes a local job by calling the shell script
@@ -30,27 +30,33 @@ def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_f
     :param run: The CalibrationRun or ValidationRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
-    :param script_type: The type of script to run (e.g., 'calibration', 'validation', 'validation_iteration').
+    :param script_cmd: The script cmd to run (e.g., 'calibration', 'validation', 'validation_iteration').
     :param callback_function: The callback function to invoke when the process completes.
     """
     # Construct the shell script path
-    shell_script = os.path.join(settings.BASE_DIR, 'calibration', 'run_util', 'run_ngen_cal.sh')
-    if NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
-        docker_cmd = DOCKER_CMD.split()
+    if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
+        spawn_command = [os.path.join(settings.BASE_DIR, 'calibration', 'run_util', 'run-ngen-cal.sh')]
+        extra = [output_file, NGEN_CAL_VENV]
+    elif NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
+        spawn_command = DOCKER_CMD.split()
+        # Don't need  venv for Docker
+        extra = [output_file]
     else:
-        docker_cmd = []
+        spawn_command = []
+        extra = []
 
     # Prepare the argument list to pass to the shell script
     args_to_run = [input_file]
     if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION:
         args_to_run += [run.worker_name, str(run.iteration_num)]
 
-    args = docker_cmd + [shell_script, script_type] + args_to_run + [output_file, NGEN_CAL_VENV]
+    args = spawn_command + [script_cmd] + args_to_run + extra
 
     # Bind the callback function for job
     job_callback = functools.partial(callback_function, run)
 
     # Execute the job
+    logger.info(f'Running command: {args}')
     execute_job(run, args, callback_function=job_callback)
 
 
@@ -139,9 +145,10 @@ def run_validation_job_callback_local(validation_run: ValidationRun, future: Fut
         process_validation_output_and_maybe_create_best(validation_run)
 
 
+
 def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
     """
-    Spawn a process to run the run_ngen_cal.sh script which will call the appropriate Python script (Calibration or Validation).
+    Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script (Calibration or Validation).
 
     This function handles process execution and registers the callback for when the process completes.
 
@@ -151,11 +158,12 @@ def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_f
     """
     job_description = get_job_description(run)
 
-    logger.info(
-        f"Spawning process: {job_description} with {args}")
-    try:
+    logger.info(f"Spawning process: {job_description} with {args}")
+
+    try: 
         # Start the subprocess with the provided arguments
         process = subprocess.Popen(args)
+
         # Submit the process to the thread pool executor
         future = pool.submit(process.wait)
 

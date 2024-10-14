@@ -1,38 +1,53 @@
 #!/bin/bash
 
+# This shell script lives in both the CerfServer repo as well as ngen-cal.
+
+# It is used by CerfServer directly when running in LOCAL mode.
+#     The environment variables should be set in CerfServer (the .env file)
+# It is used by the ngen-cal docker container when the server is running in DOCKER or PARALLEL_WORKS mode.
+#     The environment variables should be set in the ngen-cal Docker container (ngen-cal.env)
+
 # Function to resolve ~ to the home directory
 resolve_path() {
   echo "${1//\~/$HOME}"
 }
 
+current_dir="$(dirname "$(readlink -f "$0")")"
+source "${current_dir}/ngen-cal.env"
+
 # Check if required environment variables are set, otherwise exit with an error
-if [ -z "$NGEN_CAL_CALIBRATION_SCRIPT" ] || [ -z "$NGEN_CAL_VALIDATION_SCRIPT" ] || [ -z "$NGEN_CAL_VALIDATION_ITERATION_SCRIPT" ]; then
+if [ -z "$NGENCERF_VENV_ROOT" ] || [ -z "$NGEN_CAL_ROOT" ]; then
   echo "Error: One or more required environment variables are not set."
   echo "Please set the following environment variables:"
-  echo "  NGEN_CAL_CALIBRATION_SCRIPT"
-  echo "  NGEN_CAL_VALIDATION_SCRIPT"
-  echo "  NGEN_CAL_VALIDATION_ITERATION_SCRIPT"
+  echo "  NGENCERF_VENV_ROOT"
+  echo "  NGEN_CAL_ROOT"
   exit 1
 fi
 
+echo "DEBUG: NGENCERF_VENV_ROOT: $(resolve_path "$NGENCERF_VENV_ROOT")"
+echo "DEBUG: NGEN_CAL_ROOT: $(resolve_path "$NGEN_CAL_ROOT")"
+echo ""
+
 # Get the script paths from the environment variables, resolving ~ to the home directory
-CALIB_SCRIPT=$(resolve_path "$NGEN_CAL_CALIBRATION_SCRIPT")
-VALID_SCRIPT=$(resolve_path "$NGEN_CAL_VALIDATION_SCRIPT")
-VALID_ITERATION_SCRIPT=$(resolve_path "$NGEN_CAL_VALIDATION_ITERATION_SCRIPT")
+CALIB_SCRIPT=$(resolve_path "$NGEN_CAL_ROOT/calibration.py")
+VALID_SCRIPT=$(resolve_path "$NGEN_CAL_ROOT/validation.py")
+VALID_ITERATION_SCRIPT=$(resolve_path "$NGEN_CAL_ROOT/validation_iteration.py")
+CREATE_INPUT_SCRIPT=$(resolve_path "$NGENCERF_VENV_ROOT/createInput/create_input.py")
 
 # Function to display help message
 show_help() {
-  echo "Usage: $(basename "$0") <command> <input_file> [worker_name iteration_number] [output_file] [venv_path]"
+  echo "Usage: $(basename "$0") \<command\> \<input_file\> [worker_name iteration_number] [output_file] [venv_path]"
   echo ""
   echo "COMMAND:"
   echo "  calibration          Run calibration script."
   echo "  validation           Run validation script."
   echo "  validation_iteration Run validation iteration script (requires worker_name and iteration_number)."
+  echo "  create_input         Run create_input script."
   echo ""
   echo "INPUT_FILE: Path to the input file required by the script."
   echo "WORKER_NAME: (Required for validation_iteration) Name of the worker."
   echo "ITERATION_NUMBER: (Required for validation_iteration) Iteration number."
-  echo "OUTPUT_FILE (optional): Path to the output file where the script's output will be saved.  Used when running in  LOCAL or DOCKER environment"
+  echo "OUTPUT_FILE (optional): Path to the output file where the script's output will be saved.  Used when running in LOCAL or DOCKER environment"
   echo "VENV_PATH (optional): Path to the Python virtual environment.  Used when running in the LOCAL environment."
   echo ""
   echo "Examples:"
@@ -50,7 +65,7 @@ fi
 
 # Check if the command for the script is provided as the first argument
 if [ -z "$1" ]; then
-  echo "Error: No script command provided. Use 'calibration', 'validation', or 'validation_iteration'."
+  echo "Error: No script command provided. Use 'calibration', 'validation', 'validation_iteration' or 'create_input'."
   show_help
 fi
 
@@ -71,11 +86,21 @@ case "$SCRIPT_COMMAND" in
     SCRIPT_PATH=$VALID_ITERATION_SCRIPT
     REQUIRED_ARGS=3
     ;;
+  "create_input")
+    SCRIPT_PATH=$CREATE_INPUT_SCRIPT
+    REQUIRED_ARGS=1
+    ;;
   *)
-    echo "Error: Invalid script command. Use 'calibration', 'validation', or 'validation_iteration'."
+    echo "Error: Invalid script command: '$SCRIPT_COMMAND'.   Use 'calibration', 'validation', 'validation_iteration' or 'create_input'."
     show_help
     ;;
 esac
+
+# Check if the selected script exists
+if [ ! -f "$SCRIPT_PATH" ]; then
+  echo "Error: Script not found at $SCRIPT_PATH"
+  exit 1
+fi
 
 # Check if the correct number of arguments are provided for the selected command
 if [ $# -lt $REQUIRED_ARGS ]; then
