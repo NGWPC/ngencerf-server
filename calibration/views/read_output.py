@@ -20,7 +20,7 @@ from calibration.models.validation_metric import ValidationMetric
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
-    get_validation_performance_file, get_calibration_performance_file
+    get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,9 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
     :param expected_run_type: The expected run type to validate.
     :return: None
     """
+
     job_description = get_job_description(validation_run)
+    logger.info(f"Processing '{metrics_file} for {job_description}")
 
     # Check if the file exists
     if not Path(metrics_file).is_file():
@@ -131,7 +133,7 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
                 validation_run=validation_run
             )
             logger.debug(
-                f'{job_description}, type: {validation_run.validation_type}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
+                f'{job_description}, type: {expected_run_type}: Creating validation metric for Period: {period}, {metric_name} with value {metric_value}')
             metrics_to_create.append(metric_obj)
 
     # Bulk create the metrics in the database
@@ -141,7 +143,7 @@ def process_validation_metrics(validation_run: ValidationRun, metrics_file: str,
 
 def process_validation_for_validation_run(validation_run: ValidationRun) -> None:
     """
-    Read the single file that is created by the Validation run for the specific iteration.
+    Read the file that is created by the Validation run for the specific iteration.
     Processes the metrics and updates the corresponding ValidationMetric entries.
 
     :param validation_run: The ValidationRun instance.
@@ -172,6 +174,18 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         metrics_file=metrics_file,
         expected_run_type=expected_run_type
     )
+
+    if validation_run.validation_type == ValidationType.VALID_CONTROL:
+        logger.info("Processing nwm retrospective data")
+
+        metrics_file = get_validation_metrics_nwm_retrospective_file(validation_run.calibration_run)
+        expected_run_type = 'nwm_retro'
+
+        process_validation_metrics(
+            validation_run=validation_run,
+            metrics_file=metrics_file,
+            expected_run_type=expected_run_type
+        )
 
 
 # Function to process iterations for all workers in a run
@@ -346,7 +360,7 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
 
     # If the iteration is the best (based on matching parameters or best iteration number)
     if is_best_match or iteration.iteration_num == best_iteration_for_worker:
-        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}')
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}, for {job_description}')
         iteration.best_params = True
     else:
         iteration.best_params = False
