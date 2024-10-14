@@ -32,12 +32,12 @@ show_help() {
   echo "INPUT_FILE: Path to the input file required by the script."
   echo "WORKER_NAME: (Required for validation_iteration) Name of the worker."
   echo "ITERATION_NUMBER: (Required for validation_iteration) Iteration number."
-  echo "OUTPUT_FILE (optional): Path to the output file where the script's output will be saved.  Used when running in the LOCAL or DOCKER environment"
-  echo "VENV_PATH (optional): Path to the Python virtual environment.  Used when running in the LOCAL or DOCKER environment."
+  echo "OUTPUT_FILE (optional): Path to the output file where the script's output will be saved.  Used when running in  LOCAL or DOCKER environment"
+  echo "VENV_PATH (optional): Path to the Python virtual environment.  Used when running in the LOCAL environment."
   echo ""
   echo "Examples:"
   echo "  $(basename "$0") calibration /path/to/input.csv"
-  echo "  $(basename "$0") validation /path/to/input.csv"
+  echo "  $(basename "$0") validation /path/to/input.csv /path/to/output.log"
   echo "  $(basename "$0") validation_iteration /path/to/input.csv worker1 5 /path/to/output.log /path/to/venv"
   echo ""
   exit 1
@@ -96,24 +96,27 @@ if [ "$SCRIPT_COMMAND" == "validation_iteration" ]; then
   shift 2
 fi
 
-# Check if the output file and venv path are provided (both must be specified if provided)
+# Check if the output file and venv path are provided
 PYTHON_OUTPUT_FILE=""
 VENV_PATH=""
 
-if [ $# -eq 2 ]; then
+if [ $# -ge 1 ]; then
   PYTHON_OUTPUT_FILE=$1
-  VENV_PATH=$2
   echo "       Output file: $PYTHON_OUTPUT_FILE"
-  echo "Virtual environment: $VENV_PATH"
 
   # Create output directory if it doesn't exist
   OUTPUT_DIR=$(dirname "$PYTHON_OUTPUT_FILE")
   if [ ! -d "$OUTPUT_DIR" ]; then
     mkdir -p "$OUTPUT_DIR"
   fi
-elif [ $# -ne 0 ]; then
-  echo "Error: Both output_file and venv_path must be specified together or omitted."
-  show_help
+
+  shift 1
+fi
+
+if [ $# -ge 1 ]; then
+  VENV_PATH=$1
+  echo "Virtual environment: $VENV_PATH"
+  shift 1
 fi
 
 # Activate the virtual environment if provided
