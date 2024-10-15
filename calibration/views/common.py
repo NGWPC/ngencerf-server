@@ -192,7 +192,9 @@ def create_calibration_run_internal(user) -> CalibrationRun:
      """
     run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.from_enum(StatusEnum.SAVED))
 
-    run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{run.owner.username}'
+    # Just get the user part, before the @ sign
+    username = run.owner.username.split('@')[0]
+    run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{username}'
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory now
     if run.job_data_dir.exists():
         # Rename the existing one
