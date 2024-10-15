@@ -11,7 +11,8 @@ from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
 from calibration.views.common import CerfException, validate_response_data, get_cached_module_by_name
-from hydrofabric_test_data.hydrofabric_test_data import geopackage_sample_data, observational_sample_data, hydrofabric_module_metadata_real_data
+from hydrofabric_test_data import hydrofabric_test_data
+from hydrofabric_test_data.hydrofabric_test_data import hydrofabric_module_metadata_real_data
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy geopackage data')
-        geopackage_json = geopackage_sample_data
+        geopackage_json = hydrofabric_test_data.geopackage_sample_data
 
     hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
                                               'Geopackage data from Hydrofabric is not in the expected format')
@@ -103,7 +104,7 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
         observational_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy observational data')
-        observational_json = observational_sample_data
+        observational_json = hydrofabric_test_data.observational_sample_data
 
     observational_data = validate_response_data(S3FileValidator, observational_json,
                                                 'Observational data from Hydrofabric is not in the expected format')
@@ -121,7 +122,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
         forcing_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy forcing data')
-        forcing_json = hydrofabric_module_metadata_real_data
+        forcing_json = hydrofabric_test_data.forcing_sample_data
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Hydrofabric is not in the expected format')
 
