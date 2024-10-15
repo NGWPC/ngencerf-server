@@ -182,14 +182,18 @@ S3_MOUNT_POINT = Path.home() / 's3'
 # -----------------------------
 
 # Locations for running ngen-cal
-REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
+
+# Must match the repo root used in the docker container.
+# It is not necessary for you to have local copies of the ngen and ngen-cal repos if you are using Docker
+# But these directories still need to be set to reflect the directory of the repos in the docker container.
+REPO_ROOT = '/ngen-app'
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 
-# This is the mount point for docker containers
-NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
+# This must match the data location in docker
+NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 
 NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
 NGEN_LOGGING_DIR.mkdir(exist_ok=True)
@@ -211,8 +215,10 @@ class NgenEnvironmentEnum(StrEnum):
     DOCKER = "DOCKER"
 
 
-# Used when NGEN_Environment = DOCKER
-DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:/ngencerf/data ngen-cal'
+DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+
+# Used when running in NGEN_ENVIRONMENT=LOCAL
+RUN_NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:

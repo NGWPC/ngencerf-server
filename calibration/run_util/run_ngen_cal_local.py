@@ -35,11 +35,11 @@ def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_f
     """
     # Construct the shell script path
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
-        spawn_command = [os.path.join(settings.BASE_DIR, 'calibration', 'run_util', 'run-ngen-cal.sh')]
+        spawn_command = [settings.RUN_NGEN_CAL_SCRIPT]
         extra = [output_file, NGEN_CAL_VENV]
     elif NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
         spawn_command = DOCKER_CMD.split()
-        # Don't need  venv for Docker
+        # Don't need venv for Docker
         extra = [output_file]
     else:
         spawn_command = []
@@ -145,7 +145,6 @@ def run_validation_job_callback_local(validation_run: ValidationRun, future: Fut
         process_validation_output_and_maybe_create_best(validation_run)
 
 
-
 def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
     """
     Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script (Calibration or Validation).
@@ -160,7 +159,7 @@ def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_f
 
     logger.info(f"Spawning process: {job_description} with {args}")
 
-    try: 
+    try:
         # Start the subprocess with the provided arguments
         process = subprocess.Popen(args)
 
