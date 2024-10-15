@@ -26,3 +26,7 @@ from .rfc import Rfc
 from .status import Status
 from .validation_metrics import ValidationMetrics
 from .validation_run import ValidationRun
+
+from django.contrib.auth.models import User
+
+User._meta.get_field('email')._unique = True
