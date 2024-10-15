@@ -47,7 +47,7 @@ def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_f
 
     # Prepare the argument list to pass to the shell script
     args_to_run = [input_file]
-    if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION:
+    if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
         args_to_run += [run.worker_name, str(run.iteration_num)]
 
     args = spawn_command + [script_cmd] + args_to_run + extra
@@ -79,7 +79,7 @@ def run_validation_job_local(validation_run: ValidationRun, input_file: str, out
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     """
-    script_type = 'validation_iteration' if validation_run.validation_type == ValidationType.VALID_ITERATION else 'validation'
+    script_type = 'validation_iteration' if validation_run.validation_type == ValidationType.VALID_ITERATION.value else 'validation'
     run_job_local(validation_run, input_file, output_file, script_type, run_validation_job_callback_local)
 
 

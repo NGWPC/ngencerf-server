@@ -231,7 +231,7 @@ def create_validation_run_internal(calibration_run: CalibrationRun, iteration_id
 
     validation_run = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED),
                                                   calibration_run=calibration_run,
-                                                  validation_type=validation_type,
+                                                  validation_type=validation_type.value,
                                                   iteration=iteration_object)
     logger.info(f"Creating Validation Run {validation_run.id} for Calibration {calibration_run.id} with validation_type {validation_type}")
 

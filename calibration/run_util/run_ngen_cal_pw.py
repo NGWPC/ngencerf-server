@@ -35,14 +35,14 @@ def submit_job_to_slurm(url_endpoint, run, owner, input_file, output_file):
     if isinstance(run, ValidationRun):
         payload.update({
             'validation_run_id': (None, run.id),
-            'validation_type': (None, run.validation_type),
+            'validation_type': (None, run.validation_type.value),
             'worker_name': (None, run.worker_name),
             'iteration': (None, run.iteration_num)
         })
     else:
         payload.update({'calibration_run_id': (None, run.id)})
 
-    logger.info(f'Submitting job to Slurm: {payload}')
+    logger.info(f'urm: {payload}')
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 
