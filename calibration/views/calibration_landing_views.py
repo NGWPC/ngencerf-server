@@ -17,6 +17,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateValidationRunSerializer, CreateValidationRequestSerializer
+from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
@@ -288,10 +289,18 @@ def clone_job(request):
     if fatal_error:
         return fatal_error
 
+    new_run.status = run.status
+    messages = None
+    if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        messages, _ = ngen_cal_input.ready_to_run(new_run)
+
     response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
+    # I agree that the message handling got out of hand
+    if messages:
+        response['errors'] = messages
     if warnings:
-        response['errors'] = warnings
+        response['errors'] += warnings
     if info_messages:
         response['messages'] = info_messages
 

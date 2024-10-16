@@ -206,15 +206,30 @@ class SaveTuningParametersSerializer(BaseSerializer):
     initial_value = serializers.FloatField(required=True, allow_null=True)
     module = serializers.CharField(required=True, allow_blank=False)
 
-    def validate(self, data):
-        if data['minimum'] > data['maximum']:
-            raise serializers.ValidationError(
-                f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}")
-        if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
-            raise serializers.ValidationError(
-                f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}")
-        return data
+    def __init__(self, *args, **kwargs):
+        # Pop the allow_min_max_null parameter and store it
+        self.allow_min_max_null = kwargs.pop('allow_min_max_null', False)
+        super().__init__(*args, **kwargs)
 
+    def validate(self, data):
+        # Use the allow_min_max_null attribute to control the behavior
+        if not self.allow_min_max_null:
+            if data['minimum'] is None or data['maximum'] is None:
+                raise serializers.ValidationError(
+                    "Both minimum and maximum must be provided unless allow_min_max_null is True."
+                )
+
+        if data['minimum'] is not None and data['maximum'] is not None:
+            if data['minimum'] > data['maximum']:
+                raise serializers.ValidationError(
+                    f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}"
+                )
+            if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
+                raise serializers.ValidationError(
+                    f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}"
+                )
+
+        return data
 
 class LoadTuningParametersSerializer(BaseSerializer):
     """
@@ -607,7 +622,7 @@ class ModuleDataHydrofabricListSerializer(BaseSerializer):
 
 class SaveTuningRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    parameters = SaveTuningParametersSerializer(many=True, required=False)
+    parameters = SaveTuningParametersSerializer(many=True, required=False, allow_min_max_null=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
@@ -751,7 +766,7 @@ class ExportResponseSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
-    parameters = SaveTuningParametersSerializer(many=True, required=True)
+    parameters = SaveTuningParametersSerializer(many=True, required=True, allow_min_max_null=True)
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, default={})
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
