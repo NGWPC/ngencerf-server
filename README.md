@@ -311,16 +311,21 @@ See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterpredi
 
 # Runtime environments
 
-There are 3 environments that ngen/ngen-cerf can run in, defined by settings.NGEN_ENVIRONMENT
+There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT`
 
 1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 Update REPO_ROOT in local.settings.py to match this directory.  Or, you can create a symbolic link to match the specifying in settings.py.
-```
-sudo ln -s ~/noaa-owp /ngenc-app
-```
+   ```
+   sudo ln -s ~/noaa-owp /ngenc-app
+   ```
 2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally
 Pull the latest ngen-cal docker container with this command.  This container includes both ngen and ngen-cal
-```
-docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
-```
+   ```
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   ```
 3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
+
+The environment should be specified in the .env file.  The default is DOCKER
+```
+NGEN_ENVIRONMENT = DOCKER
+```
