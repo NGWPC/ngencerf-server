@@ -32,9 +32,10 @@ Note that these files are not checked in to Git
 Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in Docker, which is `/ngencerf/data`.
 This is defined in `settings.py` as the mount point.
 
-Enter this command to create the symbolic link
+Enter these commands to create the top-level `/ngenserf` directory and then create the symbolic link
 
 ```
+sudo mkdir /ngencerf
 sudo ln -s ~/ngwpc/data /ngencerf/data
 ```
 
@@ -311,16 +312,27 @@ See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterpredi
 
 # Runtime environments
 
-There are 3 environments that ngen/ngen-cerf can run in, defined by settings.NGEN_ENVIRONMENT
+There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT`
 
 1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 Update REPO_ROOT in local.settings.py to match this directory.  Or, you can create a symbolic link to match the specifying in settings.py.
-```
-sudo ln -s ~/noaa-owp /ngenc-app
-```
+   ```
+   sudo mkdir /ngen-app
+   sudo ln -s ~/noaa-owp /ngen-app
+   ```
 2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally
 Pull the latest ngen-cal docker container with this command.  This container includes both ngen and ngen-cal
-```
-docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
-```
+   ```
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   ```
+   **Note:** If you have updates to ngen-cal that you want to include, use the following:
+   ```
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
+   ```
+ 
 3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
+
+The environment should be specified in the .env file.  The default is DOCKER
+```
+NGEN_ENVIRONMENT = DOCKER
+```

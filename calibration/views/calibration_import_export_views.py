@@ -165,9 +165,6 @@ def import_calibration_run_data(request, calibration_run_data):
             messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
             if messages:
                 return None, None, None, ResponseError(messages)
-        # if module_names:
-        #     if not validate_formulation(run, module_names):
-        #         return ResponseError(f'Invalid formulation -  {module_names}')
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -321,7 +318,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
-        metadata = {'source_calibration_run_id': run.id, 'time_range': time_range}
+        metadata = {'source_calibration_run_id': run.id, 'source_status': run.status.name, 'time_range': time_range}
         calibration_run_data['metadata'] = metadata
 
         # Not supporting this flag right now until Hydrofabric is ready.
