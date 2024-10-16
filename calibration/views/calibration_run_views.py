@@ -444,7 +444,7 @@ def validation_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    validation_run_id = validator.get('validation_job_id')
+    validation_run_id = validator.get('validation_run_id')
     job_status = validator.get('job_status')
 
     validation_run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])

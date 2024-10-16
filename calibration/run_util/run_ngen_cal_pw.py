@@ -43,7 +43,7 @@ def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun, owner
     else:
         payload.update({'calibration_run_id': (None, run.id)})
 
-    logger.info(f'urm: {payload}')
+    logger.info(f'slurm payload: {payload}')
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 

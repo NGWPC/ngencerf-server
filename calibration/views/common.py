@@ -4,8 +4,8 @@ import logging
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import List, cast, Optional, Tuple, Dict
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.db.models import Prefetch
@@ -13,115 +13,80 @@ from rest_framework import status
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
 from rest_framework.permissions import BasePermission
-from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun, Status, ValidationRun, Module, ModuleGroup, Iteration
+from calibration.models import Module, ModuleGroup, Iteration
 from calibration.util.calibration_validators import ErrorResponseSerializer
-from django.conf import settings
+from django.contrib.auth.models import User
+from django.db.models import QuerySet
+from rest_framework.response import Response
+from typing import Type, Optional, Tuple, Dict, List, cast
+from calibration.models import CalibrationRun, ValidationRun, Status
 
 logger = logging.getLogger(__name__)
 
 SLOTH = 'SLoTH'
 
 
-def get_calibration_run(calibration_run_id, user, run_status=None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
+def get_run_instance(model: Type[CalibrationRun] | Type[ValidationRun], run_id: int, user: Optional[User],
+                     run_status: Optional[List[StatusEnum]] = None, owner_field: str = 'owner',
+                     additional_filters: Optional[Dict[str, bool]] = None) -> Tuple[Optional[CalibrationRun] | Optional[ValidationRun], Optional[Response]]:
     """
-    Get an instance of a CalibrationRun by id, optionally filtering by owner
-    and by status. If the CalibrationRun exists but has a disallowed status,
-    return a specific error message.
+    Get an instance of a run (either CalibrationRun or ValidationRun) by id, optionally filtering by owner
+    and by status. If the run exists but has a disallowed status, return a specific error message.
 
-    :param calibration_run_id: The ID of the CalibrationRun to retrieve.
+    :param model: The model to query (either CalibrationRun or ValidationRun).
+    :param run_id: The ID of the run to retrieve.
     :param user: The user requesting the run. If None, no filtering by owner is done.
     :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
-    :return: A tuple containing the CalibrationRun (or None if not found) and an optional Response with an error.
+    :param owner_field: The field used to filter by owner (default is 'owner').
+    :param additional_filters: Any additional filters to apply to the queryset.
+    :return: A tuple containing the run instance (or None if not found) and an optional Response with an error.
     """
-    # Default to READY and SAVED statuses if no run_status is passed
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
-    # Convert the StatusEnum instances to Status model instances - we cast explicitly to avoid PyCharm warnings
     allowed_statuses: List[Status] = [cast(Status, StatusEnum.from_enum(status_enum)) for status_enum in run_status]
 
+    query: QuerySet = model.objects.filter(id=run_id)
+    if additional_filters:
+        query = query.filter(**additional_filters)
+
+    if user:
+        query = query.filter(**{f"{owner_field}": user})
+
     try:
-        # Build the base queryset for CalibrationRun, filtering by id and not deleted
-        run_query = CalibrationRun.objects.select_related('status', 'gage').only('id', 'status', 'gage', 'owner').filter(
-            id=calibration_run_id, is_deleted=False)
-
-        # If user is provided, filter by owner
-        if user:
-            run_query = run_query.filter(owner=user)
-
-        # Attempt to retrieve the CalibrationRun instance
-        run = run_query.get()
-
-    except CalibrationRun.DoesNotExist:
-        # Return error if no CalibrationRun is found for the given ID (and user, if provided)
+        run = query.get()
+    except model.DoesNotExist:
         user_info = f' or is not owned by {user.username}' if user else ''
         return None, Response(
-            {'error': f'Calibration Run {calibration_run_id} does not exist{user_info}'},
+            {'error': f'{model.__name__} {run_id} does not exist{user_info}'},
             status=status.HTTP_400_BAD_REQUEST)
 
     # Check if the status of the run is in the allowed statuses
     if run.status not in allowed_statuses:
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
         return run, Response(
-            {'error': (f'Calibration Run {calibration_run_id} is not '
+            {'error': (f'{model.__name__} {run_id} is not '
                        f'({join_with_or(allowed_status_names)}). '
                        f'Current status: {run.status.name}')},
             status=status.HTTP_400_BAD_REQUEST)
 
-    # If the status matches, return the run with no errors
     return run, None
 
 
-def get_validation_run(validation_run_id, user, run_status=None) -> Tuple[Optional[ValidationRun], Optional[Response]]:
+def get_calibration_run(calibration_run_id: int, user: Optional[User], run_status: Optional[List[StatusEnum]] = None) -> Tuple[Optional[CalibrationRun], Optional[Response]]:
     """
-    Get an instance of a ValidationRun by id, optionally filtering by owner
-    and by status. If the ValidationRun exists but has a disallowed status,
-    return a specific error message.
-
-    :param validation_run_id: The ID of the ValidationRun to retrieve.
-    :param user: The user requesting the run. If None, no filtering by owner is done.
-    :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
-    :return: A tuple containing the ValidationRun (or None if not found) and an optional Response with an error.
+    Wrapper around the generic get_run_instance for CalibrationRun.
     """
-    # Default to READY and SAVED statuses if no run_status is passed
-    run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
+    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', {'is_deleted': False})
 
-    # Convert the StatusEnum instances to Status model instances - we cast explicitly to avoid PyCharm warnings
-    allowed_statuses: List[Status] = [cast(Status, StatusEnum.from_enum(status_enum)) for status_enum in run_status]
 
-    try:
-        # Build the base queryset for CalibrationRun, filtering by id and not deleted
-        run_query = ValidationRun.objects.select_related('calibration_run').filter(
-            id=validation_run_id, calibration_run__is_deleted=False)
-
-        # If user is provided, filter by owner
-        if user:
-            run_query = run_query.filter(calibration_run__owner=user)
-
-        # Attempt to retrieve the ValidationRun instance
-        run = run_query.get()
-
-    except ValidationRun.DoesNotExist:
-        # Return error if no ValidationRun is found for the given ID (and user, if provided)
-        user_info = f' or is not owned by {user.username}' if user else ''
-        return None, Response(
-            {'error': f'Validation Run {validation_run_id} does not exist{user_info}'},
-            status=status.HTTP_400_BAD_REQUEST)
-
-    # Check if the status of the run is in the allowed statuses
-    if run.status not in allowed_statuses:
-        allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
-        return run, Response(
-            {'error': (f'Validation Run {validation_run_id} is not '
-                       f'({join_with_or(allowed_status_names)}). '
-                       f'Current status: {run.status.name}')},
-            status=status.HTTP_400_BAD_REQUEST)
-
-    # If the status matches, return the run with no errors
-    return run, None
+def get_validation_run(validation_run_id: int, user: Optional[User], run_status: Optional[List[StatusEnum]] = None) -> Tuple[Optional[ValidationRun], Optional[Response]]:
+    """
+    Wrapper around the generic get_run_instance for ValidationRun.
+    """
+    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', {'calibration_run__is_deleted': False})
 
 
 def join_with_or(items):
@@ -208,7 +173,8 @@ def create_calibration_run_internal(user) -> CalibrationRun:
     return run
 
 
-def create_validation_run_internal(calibration_run: CalibrationRun, iteration_id: int | None, validation_type: ValidationType = None) -> ValidationRun:
+def create_validation_run_internal(calibration_run: CalibrationRun, iteration_id: int | None,
+                                   validation_type: ValidationType = None) -> ValidationRun:
     """
     Create a new ValidationRun object for the given CalibrationRun.
 
@@ -459,4 +425,4 @@ def get_job_description(run: CalibrationRun | ValidationRun) -> str:
     if isinstance(run, CalibrationRun):
         return f"Calibration Run {run.id}, user: {run.owner.username}"
     else:
-        return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
+        return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
