@@ -161,13 +161,13 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
     worker_name = validation_run.worker_name
     iteration_num = validation_run.iteration_num
 
-    if validation_run.validation_type == ValidationType.VALID_ITERATION:
+    if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
         metrics_file = get_validation_metrics_valid_iteration_file(validation_run.calibration_run, worker_name, iteration_num)
         expected_run_type = f'valid_{worker_name}_iter{iteration_num}'
-    elif validation_run.validation_type == ValidationType.VALID_CONTROL:
+    elif validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         metrics_file = get_validation_metrics_valid_control_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_CONTROL.value
-    elif validation_run.validation_type == ValidationType.VALID_BEST:
+    elif validation_run.validation_type == ValidationType.VALID_BEST.value:
         metrics_file = get_validation_metrics_valid_best_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_BEST.value
 
@@ -180,7 +180,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         expected_run_type=expected_run_type
     )
 
-    if validation_run.validation_type == ValidationType.VALID_CONTROL:
+    if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         logger.info("Processing nwm retrospective data")
 
         # NWM Retrospective data is processed as part of Validation Control, but we save it in the Calibration Run
