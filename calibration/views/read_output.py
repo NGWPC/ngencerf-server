@@ -34,7 +34,7 @@ worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 def read_validation_output(validation_run: ValidationRun):
     job_description = get_job_description(validation_run)
 
-    logger.info(f"Processing output for Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username} ")
+    logger.info(f"Processing output for {job_description} ")
 
     with transaction.atomic():
         metrics = parse_performance_metrics(get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num))
@@ -43,7 +43,7 @@ def read_validation_output(validation_run: ValidationRun):
 
         process_validation_for_validation_run(validation_run)
 
-    logger.info(f"End of processing output for {job_description}, type: {validation_run.validation_type}")
+    logger.info(f"End of processing output for {job_description}")
 
 
 # Function to read the output of a calibration run
@@ -161,13 +161,13 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
     worker_name = validation_run.worker_name
     iteration_num = validation_run.iteration_num
 
-    if validation_run.validation_type == ValidationType.VALID_ITERATION:
+    if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
         metrics_file = get_validation_metrics_valid_iteration_file(validation_run.calibration_run, worker_name, iteration_num)
         expected_run_type = f'valid_{worker_name}_iter{iteration_num}'
-    elif validation_run.validation_type == ValidationType.VALID_CONTROL:
+    elif validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         metrics_file = get_validation_metrics_valid_control_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_CONTROL.value
-    elif validation_run.validation_type == ValidationType.VALID_BEST:
+    elif validation_run.validation_type == ValidationType.VALID_BEST.value:
         metrics_file = get_validation_metrics_valid_best_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_BEST.value
 
@@ -180,7 +180,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         expected_run_type=expected_run_type
     )
 
-    if validation_run.validation_type == ValidationType.VALID_CONTROL:
+    if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         logger.info("Processing nwm retrospective data")
 
         # NWM Retrospective data is processed as part of Validation Control, but we save it in the Calibration Run

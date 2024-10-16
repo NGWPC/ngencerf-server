@@ -403,10 +403,10 @@ def calibration_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.get('calibration_job_id')
+    calibration_run_id = validator.get('calibration_run_id')
     job_status = validator.get('job_status')
 
-    calibration_run, error_return = get_calibration_run(calibration_run_id, None, run_status=[StatusEnum.RUNNING])
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -444,7 +444,7 @@ def validation_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    validation_run_id = validator.get('validation_job_id')
+    validation_run_id = validator.get('validation_run_id')
     job_status = validator.get('job_status')
 
     validation_run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])

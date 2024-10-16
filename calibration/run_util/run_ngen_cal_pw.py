@@ -16,7 +16,7 @@ from calibration.views.read_output import read_calibration_output
 logger = logging.getLogger(__name__)
 
 
-def submit_job_to_slurm(url_endpoint, run, owner, input_file, output_file):
+def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun, owner, input_file, output_file):
     """
     Submits a job to Slurm.
     :param url_endpoint: Slurm URL endpoint for submission.
@@ -33,6 +33,7 @@ def submit_job_to_slurm(url_endpoint, run, owner, input_file, output_file):
     }
 
     if isinstance(run, ValidationRun):
+        print('validation_type', run.validation_type)
         payload.update({
             'validation_run_id': (None, run.id),
             'validation_type': (None, run.validation_type),
@@ -42,7 +43,7 @@ def submit_job_to_slurm(url_endpoint, run, owner, input_file, output_file):
     else:
         payload.update({'calibration_run_id': (None, run.id)})
 
-    logger.info(f'Submitting job to Slurm: {payload}')
+    logger.info(f'slurm payload: {payload}')
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 
