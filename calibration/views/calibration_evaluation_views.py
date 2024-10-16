@@ -1,11 +1,13 @@
 import logging
 
+import numpy as np
+from django.db.models import F
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
-from calibration.models import Iteration, ValidationRun, IterationParameter
+from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
+from calibration.models import Iteration, ValidationRun, IterationParameter, NWMRetrospectiveMetrics
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request
@@ -44,6 +46,13 @@ def get_calibration_data_by_iteration(request):
     if error_return:
         return error_return
 
+    nwm_retrospective_data = list(
+        NWMRetrospectiveMetrics.objects
+        .filter(period=ValidationMetricPeriod.valid, calibration_run=run)
+        .select_related('metric')
+        .annotate(metric_name=F('metric__name'))
+        .values('metric_name', 'metric_value'))
+
     # Fetch all iterations for the calibration run, along with related parameters and metrics
     iterations = (
         Iteration.objects
@@ -59,7 +68,6 @@ def get_calibration_data_by_iteration(request):
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
-            # TODO Rename to objective function value
             'calibration_output_variable_value': iteration.calibration_output_variable_value,
             'parameters': [],
             'metrics': []
@@ -81,13 +89,41 @@ def get_calibration_data_by_iteration(request):
 
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieve', 'iteration_data': iteration_data}
+    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'nwm_retrospective_data': nwm_retrospective_data}
+    # NaN is not valid Json
+    response = replace_nan_with_none(response)
 
     response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user} from get_calibration_data_by_iteration() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+def replace_nan_with_none(data):
+    """
+    Recursively traverses the input data and replaces any NaN values with None.
+    This ensures that the data is JSON-compliant by converting non-compliant
+    NaN values into nulls.
+
+    :param data: The input data, which can be a list, dictionary, or a single value.
+    :return: The sanitized data with NaN values replaced by None.
+    """
+
+    # If the data is a list, recursively process each item in the list
+    if isinstance(data, list):
+        return [replace_nan_with_none(item) for item in data]
+
+    # If the data is a dictionary, recursively process each key-value pair
+    elif isinstance(data, dict):
+        return {key: replace_nan_with_none(value) for key, value in data.items()}
+
+    # If the data is a float and it's NaN, replace it with None
+    elif isinstance(data, float) and np.isnan(data):
+        return None
+
+    # If the data is any other type (int, str, etc.), return it unchanged
+    return data
 
 
 @extend_schema(

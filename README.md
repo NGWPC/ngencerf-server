@@ -323,6 +323,11 @@ Pull the latest ngen-cal docker container with this command.  This container inc
    ```
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
    ```
+   **Note:** If you have updates to ngen-cal that you want to include, use the following:
+   ```
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
+   ```
+ 
 3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
 
 The environment should be specified in the .env file.  The default is DOCKER

@@ -835,7 +835,8 @@ class ParameterDataByIteration(BaseSerializer):
 
 class MetricDataByIteration(BaseSerializer):
     metric_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
-    metric_value = serializers.FloatField(required=True, allow_null=False)
+    # Need to allow Null for NaN
+    metric_value = serializers.FloatField(required=True, allow_null=True)
 
 
 class CalibrationDataByIteration(BaseSerializer):
@@ -850,6 +851,7 @@ class CalibrationDataByIteration(BaseSerializer):
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
     iteration_data = CalibrationDataByIteration(many=True, required=True)
+    nwm_retrospective_data = MetricDataByIteration(many=True, required=True)
 
 
 class ValidationJobsResponseSerializer(BaseSerializer):

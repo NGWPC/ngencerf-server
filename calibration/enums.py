@@ -147,6 +147,7 @@ class ValidationType(StrEnum):
         return [e.value for e in cls]
 
 
+# Used for both ValidationMetrics and NWMRetrospectiveMetrics
 class ValidationMetricPeriod(StrEnum):
     calib = auto()
     valid = auto()
