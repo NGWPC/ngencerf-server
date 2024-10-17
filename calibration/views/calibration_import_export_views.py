@@ -330,10 +330,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         # Note that it makes sense to export the unsubsetted Hydrofabric files
         # We will subset them again with the new job, when it is imported
 
-        # Only one of these geopackage paths should be populated
-        # calibration_run_data['geopackage_path_from_hydrofabric'] = run.geopackage_hydrofabric_file_path
-        # calibration_run_data['geopackage_user_uploaded_file_path'] = get_geopackage_file_for_job(run)
-
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
         calibration_run_data['geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and Path(
@@ -392,7 +388,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         .filter(calibration_run=run)
         .values_list('module__name', flat=True)
     )
-    print('modules', modules)
 
     calibration_run_data['modules'] = modules
     _, _, nwm_warning = validate_formulation(modules)

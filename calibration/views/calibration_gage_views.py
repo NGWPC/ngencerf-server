@@ -17,8 +17,7 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
-    SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
+    SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
@@ -26,8 +25,7 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
-    png_str_to_base64_url, \
-    truncate_large_fields, get_valid_path
+    png_str_to_base64_url, truncate_large_fields, get_valid_path
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
     HydrofabricException
 

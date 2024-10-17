@@ -43,8 +43,11 @@ sudo ln -s ~/ngwpc/data /ngencerf/data
 There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
 
 
-The data for the `ngen-static-files` directory is on S3 at s3://ngwpc-dev/ngen-static-files/.  This directory and all its contents should be copied to
+The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
 `/ngencerf/data/ngen-static-files`
+```
+aws s3 cp --recursive s3://ngen-static-files /ngencerf/data/ngen-static-files
+```
 
 
 
@@ -320,12 +323,18 @@ Update REPO_ROOT in local.settings.py to match this directory.  Or, you can crea
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
    ```
-2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally
+2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
 Pull the latest ngen-cal docker container with this command.  This container includes both ngen and ngen-cal
+
+   1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
+   2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
+   3. (Use your AWS credentials to login)
    ```
+   docker login registry.sh.nextgenwaterprediction.com
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
    ```
-   **Note:** If you have updates to ngen-cal that you want to include, use the following:
+
+   **Note:** If you are developing and have updates to ngen-cal that you want to include, use the following from the ngen-cal repo directory:
    ```
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
    ```
