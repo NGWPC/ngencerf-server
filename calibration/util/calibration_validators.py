@@ -47,6 +47,23 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+class CalibrationOrValidationRunSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
+    validation_run_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        calibration_run_id = data.get('calibration_run_id')
+        validation_run_id = data.get('validation_run_id')
+
+        # Ensure that only one of them is specified
+        if bool(calibration_run_id) == bool(validation_run_id):  # Both are specified or both are None
+            raise serializers.ValidationError(
+                "You must specify either 'calibration_run_id' or 'validation_run_id', but not both."
+            )
+
+        return data
+
+
 class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration_id = serializers.IntegerField(required=True)
 
