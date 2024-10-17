@@ -80,7 +80,8 @@ class HydrofabricException(Exception):
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[0]:
         logger.info('Getting geopackage from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id, agency=run.gage.agency,
+        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
+                                                                                                   source=run.gage.agency,
                                                                                                    domain=run.gage.domain.name))
         geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
@@ -99,7 +100,8 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
     if settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[0]:
         logger.info('Getting observational data from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL,
-                      settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id, agency=run.gage.agency,
+                      settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id,
+                                                                               agency=run.gage.agency,
                                                                                domain=run.gage.domain.name))
         observational_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
@@ -142,7 +144,10 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
 
         module_json = {
             'modules': fetch_from_hydrofabric('POST', url, headers=default_headers,
-                                              payload={'modules': my_module_names, 'gage_id': run.gage.gage_id})}
+                                              payload={'modules': my_module_names,
+                                                       'gage_id': run.gage.gage_id,
+                                                       'domain': run.gage.domain.name,
+                                                       'source': run.gage.agency})}
     else:
         logger.info('Getting dummy module metadata')
         module_json = hydrofabric_module_metadata_real_data
