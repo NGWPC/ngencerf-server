@@ -120,10 +120,9 @@ DJOSER = {
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
     "SERIALIZERS": {
-        "user_create": "calibration.serializers.UserCreateSerializer",  # custom serializer
+        "user_create": "calibration.user_serializers.UserCreateSerializer",  # custom serializer
         "user": "djoser.serializers.UserSerializer",
-        "current_user": "djoser.serializers.UserSerializer",
-        "user_delete": "djoser.serializers.UserSerializer",
+        "current_user": "djoser.serializers.UserSerializer"
     },
 }
 
