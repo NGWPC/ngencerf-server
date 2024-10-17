@@ -46,7 +46,7 @@ There are some static files that are required for Ngen to run.  They should be i
 The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
 `/ngencerf/data/ngen-static-files`
 ```
-aws s3 cp --recursive s3://ngen-static-files /ngencerf/data/ngen-static-files
+aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
 ```
 
 
