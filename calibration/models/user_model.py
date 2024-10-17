@@ -1,9 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 
+
 def user_directory_path(instance, filename):
     # file will be uploaded to MEDIA_ROOT / user_<id>/<filename> 
     return '{0}_{1}/{2}'.format(instance.user.id, instance.user.username.split('@')[0], filename)
+
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, username, password=None, **extra_fields):
@@ -15,10 +17,22 @@ class CustomUserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
+    def create_superuser(self, email, username, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError("Superuser must have is_staff=True.")
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError("Superuser must have is_superuser=True.")
+
+        return self.create_user(email, username, password, **extra_fields)
+
+
 class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
-    middle_name = models.CharField(max_length=255,null=True,blank=True)
-    photo = models.ImageField(null=True,upload_to=user_directory_path,height_field='height',width_field='width')
+    middle_name = models.CharField(max_length=255, null=True, blank=True)
+    photo = models.ImageField(null=True, upload_to=user_directory_path, height_field='height', width_field='width')
 
     objects = CustomUserManager()
 
