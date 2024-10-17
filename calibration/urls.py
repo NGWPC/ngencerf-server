@@ -101,7 +101,3 @@ urlpatterns = [
     ##################################
     path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
 ]
-
-# Serve static and media files
-urlpatterns += staticfiles_urlpatterns()
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

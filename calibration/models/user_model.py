@@ -1,12 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 
-
-def user_directory_path(instance, filename):
-    # file will be uploaded to MEDIA_ROOT / user_<id>/<filename> 
-    return '{0}_{1}/{2}'.format(instance.user.id, instance.user.username.split('@')[0], filename)
-
-
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, username, password=None, **extra_fields):
         if not email:
@@ -31,9 +25,7 @@ class CustomUserManager(BaseUserManager):
 
 class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
-    middle_name = models.CharField(max_length=255, null=True, blank=True)
-    photo = models.ImageField(null=True, upload_to=user_directory_path, height_field='height', width_field='width')
-
+    
     objects = CustomUserManager()
 
     class Meta:
