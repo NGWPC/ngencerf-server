@@ -1,6 +1,5 @@
 import functools
 import logging
-import os
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, List
@@ -192,6 +191,7 @@ def cancel_local_job(run: CalibrationRun | ValidationRun):
 
     if process:
         process.terminate()  # Gracefully terminates the process
+
         logger.info(f"{job_description} has been terminated.")
         return True
     else:

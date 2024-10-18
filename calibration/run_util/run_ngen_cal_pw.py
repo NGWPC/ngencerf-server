@@ -115,8 +115,8 @@ def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_statu
 
 def cancel_slurm_job(run: CalibrationRun | ValidationRun):
     """
-     Terminates a job with the given calibration_run_id by sending a request to slurm.
-     :param run: The CalibrationRun to terminate.
+     Terminates a job with the given calibration_run_id or validation_run_id by sending a request to slurm.
+     :param run: The CalibrationRun or ValidationRun to terminate.
      """
     job_description = get_job_description(run)
     logger.info(f"Cancelling slurm job {run.slurm_job_id} for {job_description}")

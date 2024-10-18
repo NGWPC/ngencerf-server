@@ -71,7 +71,7 @@ def load_tuning_tab(request):
         'calibrationparameter_set', 'output_variables'
     )
 
-    print('load_tuning_tab modules', formulations)
+    print('load_tuning_tab modules', list(formulations))
 
     time_range = get_time_range(run)
 
