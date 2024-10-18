@@ -134,13 +134,16 @@ def get_calibration_jobs(request):
     gage_id = validator.get('gage_id')
     include_validations = validator.get('include_validations')
 
+    # Base query
     query = Q(owner=request.user) & Q(is_deleted=False)
 
-    if gage_id:
-        # If gage_id specified, then return completed jobs for this gage
+    if gage_id or include_validations:
+        # Only return jobs with Done and Failed status if gage_id is specified or include_validations is True
         done_status = StatusEnum.from_enum(StatusEnum.DONE)
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
-        query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
+        query &= Q(status__in=[done_status, failed_status])
+        if gage_id:
+            query &= Q(gage__gage_id=gage_id)
 
     # Base query without validation_runs_count
     runs_query = CalibrationRun.objects.filter(query)
@@ -148,8 +151,11 @@ def get_calibration_jobs(request):
     # Annotate to rename 'user_formulation_name' to 'formulation_name'
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
+    # Define the fields
     default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name']
-    additional_fields = ['objective_function__name', 'optimization__name', ]
+    additional_fields = ['objective_function__name', 'optimization__name']
+
+    # Include additional fields if include_validations is True
     if include_validations:
         selected_fields = default_fields + additional_fields
         # Add validation_runs_count if include_validations is True

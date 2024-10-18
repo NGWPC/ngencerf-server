@@ -59,16 +59,16 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ModuleGroup.objects.all().delete()
 
-        values = [{"name": "Glacier"},
-                  {"name": "Snowmelt"},
-                  {"name": "Evapotranspiration"},
-                  {"name": "Rainfall Runoff"},
-                  {"name": "Soil Moisture"},
-                  {"name": "Routing"}
+        values = [{"name": "Glacier", "order": 1},
+                  {"name": "Snowmelt", "order": 2},
+                  {"name": "Evapotranspiration", "order": 3},
+                  {"name": "Soil Moisture", "order": 4},
+                  {"name": "Rainfall Runoff", "order": 5},
+                  {"name": "Routing", "order": 6}
                   ]
 
         for v in values:
-            ModuleGroup.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+            ModuleGroup.objects.update_or_create(name=v['name'], defaults={"order": v['order'], "is_active": v.get('is_active', True),
                                                                            "created_by": self.user})
 
     def define_modules(self):
