@@ -572,6 +572,7 @@ class ModuleStaticSerializer(BaseSerializer):
 class LoadFormulationResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     modules = ModuleStaticSerializer(many=True)
+    module_groups = serializers.ListSerializer(child=serializers.CharField(required=True), required=True, allow_null=False, allow_empty=False)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     hydrofabric_errors = serializers.JSONField(required=False)
 

@@ -135,8 +135,6 @@ WSGI_APPLICATION = 'cerfServer.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
 
-# Note from Peter - Do we need all these?  The first 4 were there by default, I believe.
-# Areg added the last one, so we can have our own customization.
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
