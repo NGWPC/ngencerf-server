@@ -136,8 +136,12 @@ def get_calibration_jobs(request):
 
     query = Q(owner=request.user) & Q(is_deleted=False)
 
-    if gage_id:
-        # If gage_id specified, then return completed jobs for this gage
+    if include_validations:
+        # If include_validations is True, only return jobs with Done status
+        done_status = StatusEnum.from_enum(StatusEnum.DONE)
+        query &= Q(status=done_status)
+    elif gage_id:
+        # If gage_id specified and include_validations is False, return jobs with Done or Failed status
         done_status = StatusEnum.from_enum(StatusEnum.DONE)
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
         query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
@@ -150,6 +154,7 @@ def get_calibration_jobs(request):
 
     default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name']
     additional_fields = ['objective_function__name', 'optimization__name', ]
+
     if include_validations:
         selected_fields = default_fields + additional_fields
         # Add validation_runs_count if include_validations is True
