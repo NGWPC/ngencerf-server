@@ -18,7 +18,7 @@ from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_sl
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, \
-    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer
+    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
@@ -330,7 +330,7 @@ def get_iteration(request):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationOrValidationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -350,24 +350,32 @@ def cancel_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'cancel_job() request from {request.user} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    validation_run_id = validator.get('validation_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+    # Determine job type and run function
+    run_func = get_calibration_run if calibration_run_id else get_validation_run
+    run_id = calibration_run_id or validation_run_id
+
+    run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
-    if not cancel_job_common(run):
-        return ResponseError(f"Calibration Run {run.id} is not running")
-    else:
-        run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)
-        run.save(update_fields=['status'])
+    if not cancel_job_common(run_id):
+        return ResponseError(f"{'Calibration' if calibration_run_id else 'Validation'} Run {run.id} is not running")
 
-    response = {'message': f'Calibration Run job {run.id} has been canceled', 'calibration_run_id': run.id,
-                'status': run.status.name}  # type: ignore[attr-defined]
+    run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)
+    run.save(update_fields=['status'])
+
+    response = {
+        'message': f"{'Calibration' if calibration_run_id else 'Validation'} Run job {run.id} has been canceled",
+        f"{'calibration_run_id' if calibration_run_id else 'validation_run_id'}": run.id,
+        'status': run.status.name  # type: ignore[attr-defined]
+    }
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
@@ -403,10 +411,10 @@ def calibration_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    calibration_run_id = validator.get('calibration_job_id')
+    calibration_run_id = validator.get('calibration_run_id')
     job_status = validator.get('job_status')
 
-    calibration_run, error_return = get_calibration_run(calibration_run_id, None, run_status=[StatusEnum.RUNNING])
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -444,7 +452,7 @@ def validation_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    validation_run_id = validator.get('validation_job_id')
+    validation_run_id = validator.get('validation_run_id')
     job_status = validator.get('job_status')
 
     validation_run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])

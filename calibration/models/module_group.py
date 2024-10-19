@@ -6,6 +6,7 @@ from calibration.models.base_model import BaseModel
 class ModuleGroup(BaseModel):
     is_active = models.BooleanField(default=False)
     name = models.CharField(max_length=50, unique=True, null=False)
+    order = models.IntegerField(null=False)
 
     class Meta:
         db_table = 'module_group'

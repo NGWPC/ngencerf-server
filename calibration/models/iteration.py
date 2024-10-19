@@ -21,7 +21,7 @@ class Iteration(BaseModel):
     def __str__(self):
         return (
             f"Iteration: {self.id}, "
-            f"iteration_num: {self.iteration_num},"
+            f"iteration_num: {self.iteration_num}, "
             f"worker_name: {str(self.worker_name)}, "
             f"worker_number: {self.worker_number}"
         )

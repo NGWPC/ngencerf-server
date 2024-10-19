@@ -71,7 +71,7 @@ def load_tuning_tab(request):
         'calibrationparameter_set', 'output_variables'
     )
 
-    print('load_tuning_tab modules', formulations)
+    print('load_tuning_tab modules', list(formulations))
 
     time_range = get_time_range(run)
 
@@ -156,7 +156,7 @@ def get_parameters_and_output_variables(modules: QuerySet(CalibrationFormulation
 def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]):
     parameter_list = []
     for m in modules:
-        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m)
+        calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m, user_selected_for_tuning=True)
                                      .values('name', 'minimum', 'maximum', 'initial_value'))
 
         for p in calibrationParameters:

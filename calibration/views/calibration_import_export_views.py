@@ -165,9 +165,6 @@ def import_calibration_run_data(request, calibration_run_data):
             messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
             if messages:
                 return None, None, None, ResponseError(messages)
-        # if module_names:
-        #     if not validate_formulation(run, module_names):
-        #         return ResponseError(f'Invalid formulation -  {module_names}')
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -321,7 +318,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
-        metadata = {'source_calibration_run_id': run.id, 'time_range': time_range}
+        metadata = {'source_calibration_run_id': run.id, 'source_status': run.status.name, 'time_range': time_range}
         calibration_run_data['metadata'] = metadata
 
         # Not supporting this flag right now until Hydrofabric is ready.
@@ -332,10 +329,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         # There fields are exported so we can import them later
         # Note that it makes sense to export the unsubsetted Hydrofabric files
         # We will subset them again with the new job, when it is imported
-
-        # Only one of these geopackage paths should be populated
-        # calibration_run_data['geopackage_path_from_hydrofabric'] = run.geopackage_hydrofabric_file_path
-        # calibration_run_data['geopackage_user_uploaded_file_path'] = get_geopackage_file_for_job(run)
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
@@ -395,7 +388,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         .filter(calibration_run=run)
         .values_list('module__name', flat=True)
     )
-    print('modules', modules)
 
     calibration_run_data['modules'] = modules
     _, _, nwm_warning = validate_formulation(modules)

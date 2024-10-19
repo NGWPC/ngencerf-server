@@ -47,6 +47,23 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+class CalibrationOrValidationRunSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
+    validation_run_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        calibration_run_id = data.get('calibration_run_id')
+        validation_run_id = data.get('validation_run_id')
+
+        # Ensure that only one of them is specified
+        if bool(calibration_run_id) == bool(validation_run_id):  # Both are specified or both are None
+            raise serializers.ValidationError(
+                "You must specify either 'calibration_run_id' or 'validation_run_id', but not both."
+            )
+
+        return data
+
+
 class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration_id = serializers.IntegerField(required=True)
 
@@ -207,14 +224,17 @@ class SaveTuningParametersSerializer(BaseSerializer):
     module = serializers.CharField(required=True, allow_blank=False)
 
     def validate(self, data):
-        if data['minimum'] > data['maximum']:
-            raise serializers.ValidationError(
-                f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}")
-        if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
-            raise serializers.ValidationError(
-                f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}")
-        return data
+        if data['minimum'] is not None and data['maximum'] is not None:
+            if data['minimum'] > data['maximum']:
+                raise serializers.ValidationError(
+                    f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}"
+                )
+            if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
+                raise serializers.ValidationError(
+                    f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}"
+                )
 
+        return data
 
 class LoadTuningParametersSerializer(BaseSerializer):
     """
@@ -552,6 +572,7 @@ class ModuleStaticSerializer(BaseSerializer):
 class LoadFormulationResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     modules = ModuleStaticSerializer(many=True)
+    module_groups = serializers.ListSerializer(child=serializers.CharField(required=True), required=True, allow_null=False, allow_empty=False)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     hydrofabric_errors = serializers.JSONField(required=False)
 
@@ -835,7 +856,8 @@ class ParameterDataByIteration(BaseSerializer):
 
 class MetricDataByIteration(BaseSerializer):
     metric_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
-    metric_value = serializers.FloatField(required=True, allow_null=False)
+    # Need to allow Null for NaN
+    metric_value = serializers.FloatField(required=True, allow_null=True)
 
 
 class CalibrationDataByIteration(BaseSerializer):
@@ -850,6 +872,7 @@ class CalibrationDataByIteration(BaseSerializer):
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
     iteration_data = CalibrationDataByIteration(many=True, required=True)
+    nwm_retrospective_data = MetricDataByIteration(many=True, required=True)
 
 
 class ValidationJobsResponseSerializer(BaseSerializer):

@@ -17,8 +17,7 @@ from rest_framework.response import Response
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
-    SaveGageResponseSerializer, \
-    LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
+    SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
@@ -26,8 +25,7 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
     get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
-    png_str_to_base64_url, \
-    truncate_large_fields, get_valid_path
+    png_str_to_base64_url, truncate_large_fields, get_valid_path
 from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
     HydrofabricException
 
@@ -225,9 +223,8 @@ def save_gage_tab(request):
             return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
-            # Delete any user-upload, if there
+            # See if there's a user-uploaded file and delete it
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-            # Delete if it's already there
             if user_uploaded_geopackage_file and Path(user_uploaded_geopackage_file).exists():
                 Path(user_uploaded_geopackage_file).unlink()
             if not run.geopackage_hydrofabric_file_path:
@@ -245,7 +242,7 @@ def save_gage_tab(request):
 
         # Get forcing and observational data
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
-            # Delete any user-upload, if there
+            # See if there's a user-uploaded file and delete it
             user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
             if user_uploaded_observational_file and Path(user_uploaded_observational_file).exists():
                 Path(user_uploaded_observational_file).unlink()
@@ -307,11 +304,11 @@ def get_geopackage_image_url(run: CalibrationRun):
             return png_str_to_base64_url(geopackage_png.getvalue())
         except DataLayerError as e:
             # Log the error and return None if the layer could not be opened
-            logger.error(f"DataLayerError - {e} - while processing geopackage: {geopackage_path}")
+            logger.exception(f"DataLayerError - {e} - while processing geopackage: {geopackage_path}")
             return None
         except Exception as e:
             # Handle any other exceptions
-            logger.error(f"An unexpected error occurred: {e} - while processing geopackage: {geopackage_path}")
+            logger.exception(f"An unexpected error occurred: {e} - while processing geopackage: {geopackage_path}")
             return None
     else:
         return None
