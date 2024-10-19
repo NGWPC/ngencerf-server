@@ -240,16 +240,23 @@ LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console', 'file_dev', 'file_prod'],
         'level': 'DEBUG'
     },
     'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {funcName} {process:d} {thread:d} {message}',
+        'prod_format': {
+            'format': '{asctime}.{msecs:03.0f} NGEN_CAL {levelname:8s} {message}',
+            'datefmt':'%Y-%m-%dT%H:%M:%S',
+            'style': '{',
+        },
+        'dev_format': {
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {process:d} {thread:d} {message}',
+            'datefmt':'%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
         'simple': {
-            'format': '{levelname} {asctime} {module} {funcName} {message}',
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
+            'datefmt':'%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
     },
@@ -259,58 +266,69 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'formatter': 'simple'
         },
-        'file': {
+        'file_dev': {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': Path(NGEN_LOGGING_DIR) / 'cerfServer.log',
-            'when': 'midnight',  # Rotate the file every day at midnight
+#            'filename': Path(NGEN_LOGGING_DIR) / 'cerfServer.log',
+            'filename': '/ngencerf/data/run-logs/ngencerf_dev.log',
+            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
-            'formatter': 'verbose',
+            'formatter': 'dev_format',
+            'encoding': 'utf-8',
+        },
+        'file_prod': {
+            'level': 'INFO',
+            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
+            'filename': '/ngencerf/data/run-logs/ngencerf_prod.log',
+            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
+            'interval': 1,  # Rotate every 1 day
+            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
+            'formatter': 'prod_format',
             'encoding': 'utf-8',
         }
     },
     'loggers': {
         'django.db.backends': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'INFO',
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'rest_framework_simplejwt': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
 
         },
         'django.request': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'cerfServer': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
