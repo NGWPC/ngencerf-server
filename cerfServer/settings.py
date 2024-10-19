@@ -307,19 +307,19 @@ LOGGING = {
         },
         'django.request': {
             'handlers': ['console', 'file_dev', 'file_prod'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
             'handlers': ['console', 'file_dev', 'file_prod'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
             'handlers': ['console', 'file_dev', 'file_prod'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {
