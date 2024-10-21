@@ -4,15 +4,15 @@ from pathlib import Path
 import pandas as pd
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, F
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
-from calibration.models import Iteration
+from calibration.enums import StatusEnum, ValidationType
+from calibration.models import Iteration, ValidationRun
 from calibration.run_util.run_common import cancel_job_common, submit_validation_job, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
@@ -60,11 +60,34 @@ def get_status(request):
     if error_return:
         return error_return
 
+    # Find all ValidationRun objects associated with this CalibrationRun where validation_type is 'VALID_CONTROL' or 'VALID_BEST'
+    validation_runs = list(ValidationRun.objects.filter(
+        calibration_run=calibration_run,
+        validation_type__in=[ValidationType.VALID_CONTROL, ValidationType.VALID_BEST])
+                           .annotate(validation_run_id=F('id'))
+                           .values('validation_run_id', 'status__name', 'validation_type'))
+
+    # Create validation response object
+    validation_response = [
+        {
+            'validation_run_id': run['validation_run_id'],
+            'status': run['status__name'],
+            'validation_type': run['validation_type']
+        }
+        for run in validation_runs
+    ]
+
+    print('validation_runs', validation_response)
+
     messages = None
     if calibration_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
 
-    response = {'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}', 'calibration_run_id': calibration_run.id, 'status': calibration_run.status.name}
+    response = {'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
+                'calibration_run_id': calibration_run.id,
+                'status': calibration_run.status.name,
+                'validations': validation_response
+                }
     if messages:
         response['errors'] = messages
 
@@ -155,8 +178,10 @@ def run_validation(request):
     if response:
         return response
 
-    response = {'message': f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}  has been submitted', 'validation_run_id': validation_run_id,
-                'status': validation_run.status.name, 'run_date': validation_run.run_date}
+    response = {
+        'message': f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}  has been submitted',
+        'validation_run_id': validation_run_id,
+        'status': validation_run.status.name, 'run_date': validation_run.run_date}
 
     response_validator, error_response = validate_response(SubmitValidationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user} from run_validation() - {response_validator.data}')
