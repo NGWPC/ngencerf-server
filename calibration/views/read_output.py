@@ -92,7 +92,8 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
 
     # Check if the file exists
     if not Path(metrics_file).is_file():
-        raise CerfException(f'{metrics_file} does not exist')
+        logger.error(f'{metrics_file} does not exist')
+        return
 
     # Read the metrics file using pandas
     metrics_df = pd.read_csv(metrics_file)

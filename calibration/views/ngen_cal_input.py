@@ -1,7 +1,10 @@
+import csv
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List
 
 import toml
 from datetimerange import DateTimeRange
@@ -168,7 +171,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
                 forcing_dir = get_forcing_dir_for_job(run)
-                if not forcing_dir or not Path(forcing_dir).exists():
+                if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
             elif build:
                 # for non-uploaded data, subset the data by time range
@@ -262,8 +265,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     if build:
         Path(job_data_dir).mkdir(parents=True, exist_ok=True)
 
-    if any(field is None for field in [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
-        errors.append('calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
+    if any(field is None for field in
+           [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
+        errors.append(
+            'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
         calibration.update({
             'calib_start_period': run.calibration_start_period.strftime(DATE_FORMAT),
@@ -273,8 +278,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         })
 
     if run.automatic_validation:
-        if any(field is None for field in [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
-            errors.append('validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+        if any(field is None for field in
+               [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
+            errors.append(
+                'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
             calibration.update({
                 'valid_start_period': run.validation_start_period.strftime(DATE_FORMAT),
@@ -387,15 +394,8 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
     if not param_error and build:
-        parameter_file = Path(job_data_dir) / 'parameters.txt'
-
-        parameter_content = '{:16s} {:10s} {:10s} {:10s} {}\n'.format('param', 'min ', 'max', 'init', 'model') + '\n'.join(
-            '{:16} {:<10.8g} {:<10.8g} {:<10.8g} {:10}'.format(p['name'], p['minimum'], p['maximum'], p['initial_value'], p['model'])
-            for p in params
-        )
-        Path(parameter_file).write_text(parameter_content)
-
-        datafile['calib_parameter_file'] = str(parameter_file)
+        datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
+        write_parameter_files(params, datafile['calib_parameter_file'])
 
     # print('validation errors from ngen_cal_input:', errors)
 
@@ -412,8 +412,48 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     return errors, config_file
 
 
+def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: str) -> None:
+    """
+    Writes parameter files for each model in `params` as CSV files.
+
+    Args:
+        params: List of dictionaries, each containing information about the parameters for a specific model.
+        parameter_dir: Directory where the parameter files should be written.
+    """
+    # Ensure the directory exists
+    os.makedirs(parameter_dir, exist_ok=True)  # Create directory if it does not exist
+
+    # Group parameters by model
+    params_by_model: Dict[str, List[Dict[str, str | float]]] = {}
+    for param in params:
+        model = param['model']
+        if model not in params_by_model:
+            params_by_model[model] = []
+        params_by_model[model].append(param)
+
+    # Write a separate CSV file for each model
+    for model, model_params in params_by_model.items():
+        parameter_file = os.path.join(parameter_dir, f'calib_params_{model.lower()}.csv')
+
+        # Writing the CSV file
+        # with open(parameter_file, mode='w', newline='', encoding='utf-8') as file:
+        with open(parameter_file, mode='w', newline='') as param_file:
+            # noinspection PyTypeChecker
+            writer = csv.DictWriter(param_file, fieldnames=['param', 'min', 'max', 'init'])
+            writer.writeheader()
+            for p in model_params:
+                writer.writerow({
+                    'param': p['name'],
+                    'min': p['minimum'],
+                    'max': p['maximum'],
+                    'init': p['initial_value']
+                })
+
+        logger.info(f'CSV parameter file for model {model} saved to {parameter_file}')
+
+
 def build_config(config: dict, directory: str):
-    config_file = Path(directory) / 'input.config'
+    config_file = os.path.join(directory, 'input.config')
 
     logger.info(f'saving config to {config_file}')
     toml_string = toml.dumps(config)
@@ -421,7 +461,8 @@ def build_config(config: dict, directory: str):
     # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
     modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
 
-    Path(config_file).write_text(modified_toml_string)
+    with open(config_file, 'w', encoding='utf-8') as file:
+        file.write(modified_toml_string)
 
     return config_file
 
