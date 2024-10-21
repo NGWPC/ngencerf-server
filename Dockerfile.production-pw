@@ -42,7 +42,7 @@ RUN set -eux; \
 
 COPY . /ngencerf/ngencerf-server/
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
-COPY ./cerfServer/__.env-docker /ngencerf/ngencerf-server/cerfServer/.env
+COPY ./cerfServer/__.env-docker-prod /ngencerf/ngencerf-server/cerfServer/.env
 COPY ./cerfServer/__local_settings_prod_pw.py /ngencerf/ngencerf-server/cerfServer/local_settings.py
 
 RUN --mount=type=secret,id=aws_token \

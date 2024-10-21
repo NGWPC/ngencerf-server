@@ -112,11 +112,18 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
+AUTH_USER_MODEL = 'calibration.CustomUser'
+
 DJOSER = {
     "SEND_CONFIRMATION_EMAIL": False,
     "SEND_ACTIVATION_EMAIL": False,
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
+    "SERIALIZERS": {
+        "user_create": "calibration.user_serializers.UserCreateSerializer",  # custom serializer
+        "user": "djoser.serializers.UserSerializer",
+        "current_user": "djoser.serializers.UserSerializer"
+    },
 }
 
 # https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html#settings
@@ -135,8 +142,6 @@ WSGI_APPLICATION = 'cerfServer.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
 
-# Note from Peter - Do we need all these?  The first 4 were there by default, I believe.
-# Areg added the last one, so we can have our own customization.
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -168,9 +173,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # -----------------------------
 # Hydrofabric
 # -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = (False, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={agency}&domain={domain}')
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = (True, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={source}&domain={domain}')
 HYDROFABRIC_MODULE_METADATA_ENDPOINT = (False, 'hydrofabric/2.1/modules/parameters/')
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (False, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
+HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
 HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
 
 HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
@@ -182,14 +187,18 @@ S3_MOUNT_POINT = Path.home() / 's3'
 # -----------------------------
 
 # Locations for running ngen-cal
-REPO_ROOT = os.getenv('REPO_ROOT', str(Path.home() / 'noaa-owp'))
+
+# Must match the repo root used in the docker container.
+# It is not necessary for you to have local copies of the ngen and ngen-cal repos if you are using Docker
+# But these directories still need to be set to reflect the directory of the repos in the docker container.
+REPO_ROOT = '/ngen-app'
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 
-# This is the mount point for docker containers
-NGEN_CAL_MOUNT_POINT = os.getenv('NGEN_CAL_MOUNT_POINT', str(Path.home() / 'ngwpc/data'))
+# This must match the data location in docker
+NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 
 NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
 NGEN_LOGGING_DIR.mkdir(exist_ok=True)
@@ -211,8 +220,10 @@ class NgenEnvironmentEnum(StrEnum):
     DOCKER = "DOCKER"
 
 
-# Used when NGEN_Environment = DOCKER
-DOCKER_CMD = 'docker run -it  -v ~/ngwpc/data:/ngencerf/data'
+DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+
+# Used when running in NGEN_ENVIRONMENT=LOCAL
+RUN_NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
@@ -289,19 +300,19 @@ LOGGING = {
         },
         'django.request': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {

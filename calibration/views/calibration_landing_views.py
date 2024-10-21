@@ -17,6 +17,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateValidationRunSerializer, CreateValidationRequestSerializer
+from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, truncate_large_fields, create_validation_run_internal
@@ -133,13 +134,16 @@ def get_calibration_jobs(request):
     gage_id = validator.get('gage_id')
     include_validations = validator.get('include_validations')
 
+    # Base query
     query = Q(owner=request.user) & Q(is_deleted=False)
 
-    if gage_id:
-        # If gage_id specified, then return completed jobs for this gage
+    if gage_id or include_validations:
+        # Only return jobs with Done and Failed status if gage_id is specified or include_validations is True
         done_status = StatusEnum.from_enum(StatusEnum.DONE)
         failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
-        query &= Q(gage__gage_id=gage_id) & Q(status__in=[done_status, failed_status])
+        query &= Q(status__in=[done_status, failed_status])
+        if gage_id:
+            query &= Q(gage__gage_id=gage_id)
 
     # Base query without validation_runs_count
     runs_query = CalibrationRun.objects.filter(query)
@@ -147,8 +151,11 @@ def get_calibration_jobs(request):
     # Annotate to rename 'user_formulation_name' to 'formulation_name'
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
+    # Define the fields
     default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name']
-    additional_fields = ['objective_function__name', 'optimization__name', ]
+    additional_fields = ['objective_function__name', 'optimization__name']
+
+    # Include additional fields if include_validations is True
     if include_validations:
         selected_fields = default_fields + additional_fields
         # Add validation_runs_count if include_validations is True
@@ -288,10 +295,18 @@ def clone_job(request):
     if fatal_error:
         return fatal_error
 
+    new_run.status = run.status
+    messages = None
+    if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        messages, _ = ngen_cal_input.ready_to_run(new_run)
+
     response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
+    # I agree that the message handling got out of hand
+    if messages:
+        response['errors'] = messages
     if warnings:
-        response['errors'] = warnings
+        response['errors'] += warnings
     if info_messages:
         response['messages'] = info_messages
 

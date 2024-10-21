@@ -1,6 +1,6 @@
 # Create virtual environment and install dependencies
 
-Connect to the root directory where you cloned the repo, assumed to be `$cerfServer`
+Connect to the root directory where you cloned the server repo, assumed to be `$cerfServer`
 
 **_Important:_**
 Make sure you create the virtual environment with Python 3.11.
@@ -27,13 +27,27 @@ cp $cerfServer/cerfServer/__.env cerfServer/.env
 The 2 template files are suitable for development and no changes need to be made.
 Note that these files are not checked in to Git
 
+# Create data directory
+
+Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in Docker, which is `/ngencerf/data`.
+This is defined in `settings.py` as the mount point.
+
+Enter these commands to create the top-level `/ngenserf` directory and then create the symbolic link
+
+```
+sudo mkdir /ngencerf
+sudo ln -s ~/ngwpc/data /ngencerf/data
+```
+
 # Static Files
 There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
-By default, when running locally, the mount point is at `~/ngwpc/data`.
-It Docker, this is mapped to `data/ngen-cal-data`
 
-The data for the `ngen-static-files` directory is on S3 at s3://ngwpc-dev/ngen-static-files/.  This directory and all its contents should be copied to
-`~/ngwpc/data/ngen-static-files`
+
+The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
+`/ngencerf/data/ngen-static-files`
+```
+aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
+```
 
 
 
@@ -298,3 +312,36 @@ The error messages that you get from the import are intended to let you know whi
 The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
 
 See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterprediction.com/pages/viewpage.action?pageId=20056845)
+
+# Runtime environments
+
+There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT`
+
+1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
+Update REPO_ROOT in local.settings.py to match this directory.  Or, you can create a symbolic link to match the specifying in settings.py.
+   ```
+   sudo mkdir /ngen-app
+   sudo ln -s ~/noaa-owp /ngen-app
+   ```
+2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
+Pull the latest ngen-cal docker container with this command.  This container includes both ngen and ngen-cal
+
+   1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
+   2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
+   3. (Use your AWS credentials to login)
+   ```
+   docker login registry.sh.nextgenwaterprediction.com
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   ```
+
+   **Note:** If you are developing and have updates to ngen-cal that you want to include, use the following from the ngen-cal repo directory:
+   ```
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
+   ```
+ 
+3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
+
+The environment should be specified in the .env file.  The default is DOCKER
+```
+NGEN_ENVIRONMENT = DOCKER
+```
