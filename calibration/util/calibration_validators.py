@@ -887,10 +887,15 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
-class PerformanceMetricsResponseSerializer(GenericResponseSerializer, serializers.ModelSerializer):
-    class Meta:
-        model = PerformanceMetrics
-        exclude = ['id', 'updated_at', 'created_at', 'updated_by', 'created_by']
+class PerformanceMetricsResponseSerializer(GenericResponseSerializer):
+    slurm_job_id = serializers.IntegerField(required=True)
+    elapsed_time = serializers.DurationField(required=True)
+    num_cpus = serializers.IntegerField(required=True)
+    cpu_time = serializers.DurationField(required=True)
+    max_rss = serializers.CharField(max_length=50, required=True)
+    max_disk_read = models.CharField(max_length=50, null=False)
+    max_disk_write = models.CharField(max_length=50, null=False)
+    reserved_time = models.DurationField(null=True, blank=True)
 
 
 ##################################
