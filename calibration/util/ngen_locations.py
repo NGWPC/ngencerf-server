@@ -125,6 +125,10 @@ def get_metrics_iteration_csv(run: CalibrationRun) -> str:
     return f'{run.gage.gage_id}_metrics_iteration.csv'
 
 
+def get_output_iteration_csv(run: CalibrationRun, iteration_num: int) -> str:
+    return f'{run.gage.gage_id}_output_iteration_{iteration_num:04d}.csv'
+
+
 def get_metrics_iteration_file(run: CalibrationRun, worker_name) -> str:
     return str(Path(get_worker_path(run, worker_name)) / get_metrics_iteration_csv(run))
 

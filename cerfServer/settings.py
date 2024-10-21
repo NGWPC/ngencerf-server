@@ -135,8 +135,6 @@ WSGI_APPLICATION = 'cerfServer.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
 
-# Note from Peter - Do we need all these?  The first 4 were there by default, I believe.
-# Areg added the last one, so we can have our own customization.
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
     {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
@@ -168,9 +166,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # -----------------------------
 # Hydrofabric
 # -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = (False, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={agency}&domain={domain}')
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = (False, 'hydrofabric/2.1/modules/parameters/')
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (False, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
+HYDROFABRIC_GEOPACKAGE_ENDPOINT = (True, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={source}&domain={domain}')
+HYDROFABRIC_MODULE_METADATA_ENDPOINT = (True, 'hydrofabric/2.1/modules/parameters/')
+HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
 HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
 
 HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
@@ -295,19 +293,19 @@ LOGGING = {
         },
         'django.request': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
             'handlers': ['console', 'file'],
-            'level': 'DEBUG',
+            'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {

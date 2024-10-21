@@ -15,12 +15,12 @@ from django.db import transaction
 
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun, \
-    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics
+    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
 
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
-    get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file
+    get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -221,9 +221,11 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     iteration for metrics and parameters creation.
 
     :param calibration_run: The CalibrationRun instance.
-    :param worker_name: The name of the worker.  This is the middle part of the worker name.  Need to prefix with ngen_ and suffix with _worker
+    :param worker_name: The name of the worker. This is the middle part of the worker name.
+                        Need to prefix with ngen_ and suffix with _worker.
     :param iterations: A list of Iteration objects for the worker.
     """
+    logger.info(f"Processing iterations for {worker_name} for Calibration Run {calibration_run.id}")
 
     # Get the cached metrics once for this batch of processing
     metrics_lookup = get_cached_metrics()
@@ -231,7 +233,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Get the worker's path
     worker_path = get_worker_path(calibration_run, worker_name)
     if not Path(worker_path).is_dir():
-        raise CerfException(f"{worker_path} does not exist or is not a directory")
+        raise CerfException(f"{worker_path} does not exist or is not a directory for CalibrationRun {calibration_run.id}")
 
     # Get the necessary files for metrics, parameters, and best objective function log
     metrics_iteration_file = get_metrics_iteration_file(calibration_run, worker_name)
@@ -241,20 +243,21 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Check if the files exist
     if not Path(metrics_iteration_file).is_file():
-        raise CerfException(f'{metrics_iteration_file} does not exist')
+        raise CerfException(f'{metrics_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
     if not Path(params_iteration_file).is_file():
-        raise CerfException(f'{params_iteration_file} does not exist')
+        raise CerfException(f'{params_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
 
     # Check for the best iteration based on optimization type (DDS, GWO, PSO)
     best_iteration_for_worker = -1
     if calibration_run.optimization.name == 'DDS':
         if not Path(objective_log_best_file).is_file():
-            raise CerfException(f'{objective_log_best_file} does not exist')
+            raise CerfException(f'{objective_log_best_file} does not exist for CalibrationRun {calibration_run.id}')
         # Read the best iteration from the log
         last_line = read_last_line(objective_log_best_file)
         best_iteration_for_worker = int(last_line.split(',')[2])
     else:
-        # for GWO and PSO, we can't get the best iteration number.  We need to read the actual best parameters and then try to match them up when we read the parameter file later
+        # for GWO and PSO, we can't get the best iteration number.
+        # We need to read the actual best parameters and then try to match them up when we read the parameter file later
         pass
 
     # Prefetch Iteration objects for efficiency
@@ -266,7 +269,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Ensure the metrics and parameters CSV files have the same number of rows
     if len(metrics_df) != len(params_df):
-        raise CerfException(f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file}')
+        raise CerfException(f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}')
 
     metrics_to_create = []  # List to accumulate metrics to be created
     params_to_create = []  # List to accumulate parameters to be created
@@ -279,7 +282,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
         iteration_num = metrics_row[1]['iteration']
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
-            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
+            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} for CalibrationRun {calibration_run.id}")
 
         # Process metrics and parameters for this iteration
         process_metrics_row_for_calibration(calibration_run, iteration, metrics_row[1], metrics_to_create, metrics_lookup)
@@ -293,6 +296,25 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     if params_to_create:
         for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
             IterationParameter.objects.bulk_create(params_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+
+    # Check if this worker has a non-empty Output_Iteration directory
+    output_iter = os.path.join(worker_path, 'Output_Iteration')
+    if os.path.isdir(output_iter) and any(os.listdir(output_iter)):
+        # Iterate over files and check if a file matches the current iteration number
+        for filename in os.listdir(output_iter):
+            # Check if the file matches the iteration number format
+            for iteration_num in iteration_dict:
+                expected_filename = get_output_iteration_csv(calibration_run, iteration_num)
+                if filename == expected_filename:
+                    # Save the filename to the IterationResult for this iteration
+                    iteration = iteration_dict.get(iteration_num)
+                    if iteration:
+                        iteration_result = IterationResult.objects.create(
+                            iteration=iteration,
+                            filename=filename
+                        )
+                        logger.info(f"Saved output_iteration filename to {iteration_result} for CalibrationRun {calibration_run.id}")
+                    break
 
 
 # Function to process a single metrics row

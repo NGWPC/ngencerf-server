@@ -223,9 +223,8 @@ def save_gage_tab(request):
             return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
-            # Delete any user-upload, if there
+            # See if there's a user-uploaded file and delete it
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-            # Delete if it's already there
             if user_uploaded_geopackage_file and Path(user_uploaded_geopackage_file).exists():
                 Path(user_uploaded_geopackage_file).unlink()
             if not run.geopackage_hydrofabric_file_path:
@@ -243,7 +242,7 @@ def save_gage_tab(request):
 
         # Get forcing and observational data
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
-            # Delete any user-upload, if there
+            # See if there's a user-uploaded file and delete it
             user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
             if user_uploaded_observational_file and Path(user_uploaded_observational_file).exists():
                 Path(user_uploaded_observational_file).unlink()
@@ -305,11 +304,11 @@ def get_geopackage_image_url(run: CalibrationRun):
             return png_str_to_base64_url(geopackage_png.getvalue())
         except DataLayerError as e:
             # Log the error and return None if the layer could not be opened
-            logger.error(f"DataLayerError - {e} - while processing geopackage: {geopackage_path}")
+            logger.exception(f"DataLayerError - {e} - while processing geopackage: {geopackage_path}")
             return None
         except Exception as e:
             # Handle any other exceptions
-            logger.error(f"An unexpected error occurred: {e} - while processing geopackage: {geopackage_path}")
+            logger.exception(f"An unexpected error occurred: {e} - while processing geopackage: {geopackage_path}")
             return None
     else:
         return None
