@@ -17,22 +17,20 @@ class Command(createsuperuser.Command):
 
     def handle(self, *args, **options):
         password = options.get("password")
-        username = options.get("username")
         email = options.get("email")
 
-        if password and not username:
-            raise CommandError("--username is required if specifying --password")
+        if password and not email:
+            raise CommandError("--email is required if specifying --password")
         
         User = get_user_model()
-        if User.objects.filter(username=username).exists():
-            self.stdout.write(self.style.WARNING(f"Superuser account [{username}] already exists."))
+        if User.objects.filter(email=email).exists():
+            self.stdout.write(self.style.WARNING(f"Superuser account [{email}] already exists."))
         else:
             if not password:
                 raise CommandError("--password is required")
 
             User.objects.create_superuser(
-                username=username,
                 email=email,
                 password=password,
             )
-            self.stdout.write(self.style.SUCCESS(f"Superuser account [{username}] created successfully."))
+            self.stdout.write(self.style.SUCCESS(f"Superuser account [{email}] created successfully."))

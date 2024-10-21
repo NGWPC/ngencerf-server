@@ -112,11 +112,18 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
+AUTH_USER_MODEL = 'calibration.CustomUser'
+
 DJOSER = {
     "SEND_CONFIRMATION_EMAIL": False,
     "SEND_ACTIVATION_EMAIL": False,
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
+    "SERIALIZERS": {
+        "user_create": "calibration.user_serializers.UserCreateSerializer",  # custom serializer
+        "user": "djoser.serializers.UserSerializer",
+        "current_user": "djoser.serializers.UserSerializer"
+    },
 }
 
 # https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html#settings
