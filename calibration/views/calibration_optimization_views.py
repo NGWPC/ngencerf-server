@@ -174,8 +174,9 @@ def save_optimization_tab(request):
     run.peak_flow_threshold = peak_flow_threshold
 
     with transaction.atomic():
-        # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
-        CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
+        if stop_criteria is not None:
+            # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
+            CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
         write_optimization_inputs(run, optimization, optimization_inputs)
 
