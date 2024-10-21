@@ -46,12 +46,12 @@ class Command(BaseCommand):
 
         try:
             # need to get a user that is guaranteed to be there, such as admin
-            user = get_user_model().objects.get(username='admin')
+            user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
             self.stdout.write(self.style.ERROR('Admin user does not exist.'))
             sys.exit(1)
 
-        print(f"In init_gages: username: {user.username}, email: {user.email}")
+        print(f"In init_gages: email: {user.email}")
 
         add_usgs_gages(data_dir / 'USGS_gages_CONUS.csv', conus_domain)
         add_usgs_gages(data_dir / 'USGS_gages_AK.csv', alaska_domain)

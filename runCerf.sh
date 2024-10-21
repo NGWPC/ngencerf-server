@@ -47,7 +47,6 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
     echo "Loading ngenCERF static data"
 
     python3 manage.py createsuperuser_docker --noinput \
-        --username admin \
         --password admin \
         --email admin@nextgenwaterprediction.com
     echo

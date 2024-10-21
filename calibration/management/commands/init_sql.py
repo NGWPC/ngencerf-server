@@ -36,12 +36,12 @@ class Command(BaseCommand):
         self.stdout.write('Initializing static tables')
         try:
             # need to get a user that is guaranteed to be there, such as admin
-            self.user = get_user_model().objects.get(username='admin')
+            self.user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
             self.stdout.write(self.style.ERROR('Admin user does not exist.'))
             sys.exit(1)
 
-        self.stdout.write(f"In init_sql: username: {self.user.username}, email: {self.user.email}")
+        self.stdout.write(f"In init_sql: email: {self.user.email}")
 
         self.define_module_groups()
         self.define_modules()
