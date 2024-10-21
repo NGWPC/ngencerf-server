@@ -193,7 +193,12 @@ NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 # This must match the data location in docker
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 
-NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
+if Path("/ngencerf/data").exists() :
+    NGEN_LOGGING_DIR = Path('/ngencerf/data/run-logs')
+else :
+    NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
+
+print(f"Logs can be found in {NGEN_LOGGING_DIR}")
 NGEN_LOGGING_DIR.mkdir(exist_ok=True)
 
 NGEN_STATIC_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-static-files'
@@ -273,8 +278,7 @@ LOGGING = {
         'file_dev': {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-#            'filename': Path(NGEN_LOGGING_DIR) / 'cerfServer.log',
-            'filename': '/ngencerf/data/run-logs/ngencerf_dev.log',
+            'filename': Path(NGEN_LOGGING_DIR) / 'ngencerf_dev.log',
             'when': 'MIDNIGHT',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
@@ -284,7 +288,7 @@ LOGGING = {
         'file_prod': {
             'level': 'INFO',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': '/ngencerf/data/run-logs/ngencerf_prod.log',
+            'filename': Path(NGEN_LOGGING_DIR) / 'ngencerf_prod.log',
             'when': 'MIDNIGHT',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
