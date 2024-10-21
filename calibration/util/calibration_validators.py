@@ -7,6 +7,7 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum
+from calibration.models.performance_metrics import PerformanceMetrics
 
 
 class BaseSerializer(serializers.Serializer):
@@ -878,6 +879,12 @@ class ValidationJobsResponseSerializer(BaseSerializer):
 
 class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
+
+
+class PerformanceMetricsResponseSerializer(GenericResponseSerializer, serializers.ModelSerializer):
+    class Meta:
+        model = PerformanceMetrics
+        exclude = ['id', 'updated_at', 'created_at', 'updated_by', 'created_by']
 
 
 ##################################

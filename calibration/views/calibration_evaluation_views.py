@@ -2,14 +2,15 @@ import logging
 
 import numpy as np
 from django.db.models import F
+from django.forms.models import model_to_dict
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
-from calibration.models import Iteration, ValidationRun, IterationParameter, NWMRetrospectiveMetrics
+from calibration.models import CalibrationRun, Iteration, IterationParameter, NWMRetrospectiveMetrics, PerformanceMetrics, ValidationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, \
-    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer
+    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request
 
 logger = logging.getLogger(__name__)
@@ -193,4 +194,53 @@ def get_validation_jobs(request):
         return error_response
 
     logger.debug(f'Returning to {request.user} from get_validation_jobs() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: PerformanceMetricsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get performance metrics for a calibration run"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_performance_metrics(request):
+    data = request.data
+    logger.debug(f'get_performance_metrics() request from {request.user} - {data}')
+
+    # validate request
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    # get performance metrics
+    calibration_run_id = validator.get('calibration_run_id')
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    performance_metrics = calibration_run.performance_metrics
+
+    # construct response
+    response = model_to_dict(performance_metrics)
+    response['message'] = f'Calibration Run {calibration_run_id}, performance metrics retrieved'
+    response['calibration_run_id'] = calibration_run.id
+    response['status'] = calibration_run.status.name
+
+    # validate response
+    response_validator, error_response = validate_response(PerformanceMetricsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user} from get_performance_metrics() - {response_validator.data}')
     return Response(response_validator.data)
