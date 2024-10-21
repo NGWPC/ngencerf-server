@@ -11,7 +11,7 @@ from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
 from calibration.models import CalibrationRun, Iteration, IterationParameter, NWMRetrospectiveMetrics, PerformanceMetrics, ValidationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
-from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +230,10 @@ def get_performance_metrics(request):
         return error_return
 
     performance_metrics = calibration_run.performance_metrics
+    if not performance_metrics:
+        error_message = f'Calibration Run {calibration_run_id} has no performance metrics'
+        logger.error(error_message)
+        return ResponseError(error_message)
 
     # construct response
     response = model_to_dict(performance_metrics)
