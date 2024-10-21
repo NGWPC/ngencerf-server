@@ -120,13 +120,13 @@ config_template = {
         "cfe_lib": CFE_LIB,
         "sloth_lib": SLOTH_LIB,
         "topmd_lib": TOPMD_LIB,
-        "noah_lib": NOAH_LIB,
+        "noah-owp-modular_lib": NOAH_LIB,
         "sft_lib": SFT_LIB,
         "smp_lib": SMP_LIB,
         "lasam_lib": LASAM_LIB,
         "pet_lib": PET_LIB,
-        "snow17_lib": SNOW17_LIB,
-        "sac_lib": SAC_LIB
+        "snow-17_lib": SNOW17_LIB,
+        "sac-sma_lib": SAC_LIB
     }
 }
 

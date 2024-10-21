@@ -161,10 +161,9 @@ def import_calibration_run_data(request, calibration_run_data):
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        if module_names:
-            messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
-            if messages:
-                return None, None, None, ResponseError(messages)
+        messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
+        if messages:
+            return None, None, None, ResponseError(messages)
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -173,15 +172,18 @@ def import_calibration_run_data(request, calibration_run_data):
         if not run.use_sloth and sloth_parameters:
             return None, None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
 
+        if run.use_sloth and not sloth_parameters:
+            return None, None, None, ResponseError(f"If you indicate 'use_sloth', you must enter {SLOTH} parameters")
+
         # Create any new formulations
         for m_name in module_names:
             module_instance = get_cached_module_by_name(m_name)
             CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
-        if sloth_parameters:
-            error_message = add_sloth_parameters(run, sloth_parameters)
-            if error_message:
-                return None, None, None, ResponseError(error_message)
+        print('calling add_sloth_parameters')
+        error_message = add_sloth_parameters(run, sloth_parameters, module_names)
+        if error_message:
+            return None, None, None, ResponseError(error_message)
 
         #############################
         # Tuning
@@ -248,7 +250,8 @@ def import_calibration_run_data(request, calibration_run_data):
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
-        if stop_criteria:
+
+        if stop_criteria is not None:
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
