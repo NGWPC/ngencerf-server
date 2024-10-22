@@ -35,7 +35,7 @@ login_endpoint="http://localhost:8000/auth/jwt/create"
 response=$(curl --silent --location --write-out "%{http_code}" --output /tmp/curl_response \
     --request POST "$login_endpoint" \
     --header 'Content-Type: application/json' \
-    --data-raw "{ \"username\": \"$NGEN_USERNAME\", \"password\": \"$NGEN_PASSWORD\" }")
+    --data-raw "{ \"email\": \"$NGEN_USERNAME\", \"password\": \"$NGEN_PASSWORD\" }")
 
 # Extract the HTTP status code and response
 http_status=$(tail -n1 <<< "$response")
@@ -52,7 +52,7 @@ access_token=$(echo "$response" | jq -r '.access' 2>/dev/null)
 
 # Check if the access token was successfully retrieved
 if ! echo "$response" | jq -e '.access' >/dev/null 2>&1 || [ -z "$access_token" ] || [ "$access_token" == "null" ]; then
-    echo "Login failed. Please check your username and password."
+    echo "Login failed. Please check your email and password."
     echo "Response: $response"
     rm -f /tmp/curl_response  # Clean up the temp file
     exit 1
