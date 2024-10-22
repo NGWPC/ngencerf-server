@@ -380,8 +380,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
             datafile['sloth_parameter_file'] = str(sloth_parameter_file)
 
-    # Get formulations related to the run
-      params = list(CalibrationParameter.objects
+    params = list(CalibrationParameter.objects
                   .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
                   .select_related('calibration_formulation__module')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__module__name')))
