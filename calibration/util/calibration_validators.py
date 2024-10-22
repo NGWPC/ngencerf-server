@@ -7,7 +7,6 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum
-from calibration.models.performance_metrics import PerformanceMetrics
 
 
 class BaseSerializer(serializers.Serializer):
@@ -893,9 +892,9 @@ class PerformanceMetricsResponseSerializer(GenericResponseSerializer):
     num_cpus = serializers.IntegerField(required=True)
     cpu_time = serializers.DurationField(required=True)
     max_rss = serializers.CharField(max_length=50, required=True)
-    max_disk_read = models.CharField(max_length=50, null=False)
-    max_disk_write = models.CharField(max_length=50, null=False)
-    reserved_time = models.DurationField(null=True, blank=True)
+    max_disk_read = serializers.CharField(max_length=50, required=True)
+    max_disk_write = serializers.CharField(max_length=50, required=True)
+    reserved_time = serializers.DurationField(required=False, allow_null=True)
 
 
 ##################################

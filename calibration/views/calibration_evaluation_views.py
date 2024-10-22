@@ -2,7 +2,6 @@ import logging
 
 import numpy as np
 from django.db.models import F
-from django.forms.models import model_to_dict
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -235,8 +234,19 @@ def get_performance_metrics(request):
         logger.error(error_message)
         return ResponseError(error_message)
 
+    performance_metrics_fields = [
+        "slurm_job_id",
+        "elapsed_time",
+        "num_cpus",
+        "cpu_time",
+        "max_rss",
+        "max_disk_read",
+        "max_disk_write",
+        "reserved_time"
+    ]
+
     # construct response
-    response = model_to_dict(performance_metrics)
+    response = {field: getattr(performance_metrics, field, None) for field in performance_metrics_fields}
     response['message'] = f'Calibration Run {calibration_run_id}, performance metrics retrieved'
     response['calibration_run_id'] = calibration_run.id
     response['status'] = calibration_run.status.name
