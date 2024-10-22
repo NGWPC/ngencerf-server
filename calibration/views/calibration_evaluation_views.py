@@ -222,9 +222,9 @@ def get_performance_metrics(request):
     if error_return:
         return error_return
 
-    # get performance metrics
+    # get performance metrics for calibration run with status DONE
     calibration_run_id = validator.get('calibration_run_id')
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
@@ -235,7 +235,6 @@ def get_performance_metrics(request):
         return ResponseError(error_message)
 
     performance_metrics_fields = [
-        "slurm_job_id",
         "elapsed_time",
         "num_cpus",
         "cpu_time",
@@ -256,5 +255,4 @@ def get_performance_metrics(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from get_performance_metrics() - {response_validator.data}')
     return Response(response_validator.data)

@@ -892,7 +892,6 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
 
 
 class PerformanceMetricsResponseSerializer(GenericResponseSerializer):
-    slurm_job_id = serializers.IntegerField(required=True)
     elapsed_time = serializers.DurationField(required=True)
     num_cpus = serializers.IntegerField(required=True)
     cpu_time = serializers.DurationField(required=True)
