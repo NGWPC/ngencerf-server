@@ -381,23 +381,24 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
             datafile['sloth_parameter_file'] = str(sloth_parameter_file)
 
     # Get formulations related to the run
-    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
-    params = list(CalibrationParameter.objects
-                  .filter(calibration_formulation__in=formulations, user_selected_for_tuning=True)
-                  .select_related('calibration_formulation')
+      params = list(CalibrationParameter.objects
+                  .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
+                  .select_related('calibration_formulation__module')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__module__name')))
-    param_error = False
-    for p in params:
-        # Make sure everything is specified
-        if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
-            param_error = True
-            errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
-    if not param_error and build:
-        datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
-        write_parameter_files(params, datafile['calib_parameter_file'])
+    if not params:
+        errors.append("At least one parameter must be specified")
+    else:
+        param_error = False
+        for p in params:
+            # Make sure everything is specified
+            if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
+                param_error = True
+                errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
 
-    # print('validation errors from ngen_cal_input:', errors)
+        if not param_error and build:
+            datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
+            write_parameter_files(params, datafile['calib_parameter_file'])
 
     run.status = StatusEnum.from_enum(StatusEnum.SAVED if errors else StatusEnum.READY)
 
