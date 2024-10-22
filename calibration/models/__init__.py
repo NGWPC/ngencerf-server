@@ -1,3 +1,5 @@
+from .user_model import CustomUser
+
 from .calibration_formulation import CalibrationFormulation
 from .calibration_optimization_input import CalibrationOptimizationInput
 from .calibration_parameter import CalibrationParameter
