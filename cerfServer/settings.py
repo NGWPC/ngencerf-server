@@ -192,11 +192,7 @@ NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 
 # This must match the data location in docker
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
-
-if Path("/ngencerf/data").exists() :
-    NGEN_LOGGING_DIR = Path('/ngencerf/data/run-logs')
-else :
-    NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
+NGEN_LOGGING_DIR = Path(BASE_DIR) / 'run-logs'
 
 print(f"Logs can be found in {NGEN_LOGGING_DIR}")
 NGEN_LOGGING_DIR.mkdir(exist_ok=True)
@@ -298,35 +294,35 @@ LOGGING = {
     },
     'loggers': {
         'django.db.backends': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'rest_framework_simplejwt': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
 
         },
         'django.request': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
@@ -336,7 +332,7 @@ LOGGING = {
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'cerfServer': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
