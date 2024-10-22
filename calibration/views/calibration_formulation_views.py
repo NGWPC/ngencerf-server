@@ -315,18 +315,19 @@ def validate_formulation(module_names: set[str]):
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters, module_names):
     sloth_param_objects = []
-    for s in sloth_parameters:
-        module = get_cached_module_by_name(s['maps_to_module'])
-        if not module or module.name not in (module_names or []):
-            print('found module', module)
-            return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
+    if sloth_parameters is not None:
+        for s in sloth_parameters:
+            module = get_cached_module_by_name(s['maps_to_module'])
+            if not module or module.name not in (module_names or []):
+                print('found module', module)
+                return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
 
-        sloth_param_objects.append(
-            CalibrationSlothParam(
-                calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
-                param_type=s['param_type'], param_units=s['param_units'], param_location=s['param_location'],
-                param_value=s['param_value'], maps_to_module=module, maps_to_variable_name=s['maps_to_variable_name']
+            sloth_param_objects.append(
+                CalibrationSlothParam(
+                    calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                    param_type=s['param_type'], param_units=s['param_units'], param_location=s['param_location'],
+                    param_value=s['param_value'], maps_to_module=module, maps_to_variable_name=s['maps_to_variable_name']
+                )
             )
-        )
 
-    CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
+        CalibrationSlothParam.objects.bulk_create(sloth_param_objects)

@@ -92,7 +92,8 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
 
     # Check if the file exists
     if not Path(metrics_file).is_file():
-        raise CerfException(f'{metrics_file} does not exist')
+        logger.error(f'{metrics_file} does not exist')
+        return
 
     # Read the metrics file using pandas
     metrics_df = pd.read_csv(metrics_file)
@@ -180,10 +181,10 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         expected_run_type=expected_run_type
     )
 
-    if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
+    if validation_run.validation_type == ValidationType.VALID_BEST.value:
         logger.info("Processing nwm retrospective data")
 
-        # NWM Retrospective data is processed as part of Validation Control, but we save it in the Calibration Run
+        # NWM Retrospective data is processed as part of Validation Best, but we save it in the Calibration Run
         metrics_file = get_validation_metrics_nwm_retrospective_file(validation_run.calibration_run)
         expected_run_type = 'nwm_retro'
 

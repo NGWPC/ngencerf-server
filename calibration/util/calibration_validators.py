@@ -709,9 +709,14 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
 ##################################
 # Run Tab
 ##################################
+class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    validation_type = serializers.CharField(required=True)
+
 
 class IsReadyResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    validations = GetStatusValidationsResponseSerializer(many=True)
 
 
 class ImportResponseSerializer(GenericResponseSerializer):

@@ -305,7 +305,7 @@ hydrofabric_module_metadata_real_data = {"modules": [
                 "calibratable": True,
             },
             {
-                "name": "CWPVT",
+                "name": "CWP",
                 "initial_value": 0.67,
                 "description": "empirical canopy wind parameter",
                 "min": None,

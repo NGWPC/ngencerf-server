@@ -84,7 +84,7 @@
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "CWPVT",
+            "name": "CWP",
             "minimum": 120.1234,
             "maximum": 123.2345678912345,
             "initial_value": 123.1233,
