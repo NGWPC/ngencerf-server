@@ -66,154 +66,233 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "CFE-S",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/CFE-S/2024_Oct_22_19_37_04"
+                "uri": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
             },
             "calibrate_parameters": [
                 {
                     "name": "soil_params.b",
-                    "initial_value": "7.55060482025146",
-                    "description": "beta exponent on Clapp-Hornberger (1978) soil water relations",
-                    "min": None,
-                    "max": None,
+                    "initial_value": "5.3179178237915",
+                    "description": "param b",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " "
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "soil_params.satdk",
-                    "initial_value": "5.80674532102421e-06",
-                    "description": "saturated hydraulic conductivity",
-                    "min": None,
-                    "max": None,
+                    "initial_value": "3.1252143344318e-06",
+                    "description": "param satdk",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " meters/second [m s-1]"
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "soil_params.satpsi",
-                    "initial_value": "0.141000002622604",
-                    "description": "saturated capillary head",
-                    "min": None,
-                    "max": None,
+                    "initial_value": "",
+                    "description": "param satpsi",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " meters [m]"
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "soil_params.slop",
-                    "initial_value": "0.155113384127617",
-                    "description": "this factor (0-1) modifies the gradient of the hydraulic head at the soil bottom.  0=no-flow.",
-                    "min": None,
-                    "max": None,
+                    "initial_value": "",
+                    "description": "param slop",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " meters/meters [m/m]state"
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "soil_params.smcmax",
-                    "initial_value": "0.401015371084213",
-                    "description": "saturated soil moisture content",
-                    "min": None,
-                    "max": None,
+                    "initial_value": "",
+                    "description": "param smcmax",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " meters/meters [m/m]"
-                },
-                {
-                    "name": "max_gw_storage",
-                    "initial_value": "0.248876617431641",
-                    "description": "maximum storage in the conceptual reservoir",
-                    "min": None,
-                    "max": None,
-                    "data_type": "double",
-                    "units": " meters [m]"
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "Cgw",
                     "initial_value": "0.00499999988824129",
-                    "description": "the primary outlet coefficient",
-                    "min": None,
-                    "max": None,
+                    "description": "Cgw",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " meters/hour [m h-1]"
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "expon",
-                    "initial_value": "3.62192964553833",
-                    "description": "exponent parameter (1.0 for linear reservoir)",
-                    "min": None,
-                    "max": None,
+                    "initial_value": "3.94163870811462",
+                    "description": "expon",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " "
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
                     "name": "K_lf",
                     "initial_value": "0.1",
-                    "description": "Nash Config param - primary reservoir",
-                    "min": None,
-                    "max": None,
+                    "description": "K_lf",
+                    "min": "0",
+                    "max": "100",
                     "data_type": "double",
-                    "units": " "
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 }
             ],
             "output_variables": [
                 {
-                    "variable": "ACTUAL_ET",
-                    "description": None
+                    "variable": "outputVariable1",
+                    "description": "decsription for var 1"
                 },
                 {
-                    "variable": "DEEP_GW_TO_CHANNEL_FLUX",
-                    "description": None
+                    "variable": "outputVariable2",
+                    "description": "decsription for var 2"
+                }
+            ]
+        },
+        {
+            "module_name": "CFE-X",
+            "parameter_file": {
+                "uri": "s3://ngwpc-dev/DanielCumpton/Gage_6719505/CFE-X"
+            },
+            "calibrate_parameters": [
+                {
+                    "name": "soil_params.b",
+                    "initial_value": "5.3179178237915",
+                    "description": "param b",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "DIRECT_RUNOFF",
-                    "description": None
+                    "name": "soil_params.satdk",
+                    "initial_value": "3.1252143344318e-06",
+                    "description": "param satdk",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "GIUH_RUNOFF",
-                    "description": None
+                    "name": "soil_params.satpsi",
+                    "initial_value": "",
+                    "description": "param satpsi",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "GW_STORAGE",
-                    "description": None
+                    "name": "soil_params.slop",
+                    "initial_value": "",
+                    "description": "param slop",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "INFILTRATION_EXCESS",
-                    "description": None
+                    "name": "soil_params.smcmax",
+                    "initial_value": "",
+                    "description": "param smcmax",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "NASH_LATERAL_RUNOFF",
-                    "description": None
+                    "name": "Cgw",
+                    "initial_value": "0.00499999988824129",
+                    "description": "Cgw",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "POTENTIAL_ET",
-                    "description": None
+                    "name": "expon",
+                    "initial_value": "3.94163870811462",
+                    "description": "expon",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "Q_OUT",
-                    "description": None
+                    "name": "K_lf",
+                    "initial_value": "0.1",
+                    "description": "K_lf",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "RAIN_RATE",
-                    "description": None
+                    "name": "a_Xinanjiang_inflection_point_parameter",
+                    "initial_value": "-0.147509053349495",
+                    "description": "K_lf",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "SOIL_STORAGE",
-                    "description": None
+                    "name": "b_Xinanjiang_shape_parameter_set",
+                    "initial_value": "",
+                    "description": "K_lf",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
                 },
                 {
-                    "variable": "SOIL_STORAGE_CHANGE",
-                    "description": None
+                    "name": "x_Xinanjiang_shape_parameter",
+                    "initial_value": "0.444413632154465",
+                    "description": "K_lf",
+                    "min": "0",
+                    "max": "100",
+                    "data_type": "double",
+                    "units": "meters/second [m s-1]",
+                    "calibratable": "true"
+                }
+            ],
+            "output_variables": [
+                {
+                    "variable": "outputVariable1",
+                    "description": "decsription for var 1"
                 },
                 {
-                    "variable": "SOIL_TO_GW_FLUX",
-                    "description": None
-                },
-                {
-                    "variable": "SURF_RUNOFF_SCHEME",
-                    "description": None
+                    "variable": "outputVariable2",
+                    "description": "decsription for var 2"
                 }
             ]
         },
         {
             "module_name": "Noah-OWP-Modular",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/Noah-OWP-Modular/2024_Oct_22_13_15_07"
+                "uri": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
             },
             "calibrate_parameters": [
                 {
@@ -223,7 +302,8 @@ hydrofabric_module_metadata_real_data = {
                     "min": None,
                     "max": None,
                     "data_type": "double",
-                    "units": None
+                    "units": None,
+                    "calibratable": True,
                 },
                 {
                     "name": "CWP",
@@ -232,7 +312,8 @@ hydrofabric_module_metadata_real_data = {
                     "min": None,
                     "max": None,
                     "data_type": "double",
-                    "units": None
+                    "units": None,
+                    "calibratable": True,
                 },
                 {
                     "name": "VCMX25",
@@ -241,7 +322,8 @@ hydrofabric_module_metadata_real_data = {
                     "min": None,
                     "max": None,
                     "data_type": "double",
-                    "units": "umol co2/m**2/s"
+                    "units": "umol co2/m**2/s",
+                    "calibratable": True,
                 },
                 {
                     "name": "MP",
@@ -250,7 +332,8 @@ hydrofabric_module_metadata_real_data = {
                     "min": None,
                     "max": None,
                     "data_type": "double",
-                    "units": None
+                    "units": None,
+                    "calibratable": True,
                 },
                 {
                     "name": "RSURF_SNOW",
@@ -259,7 +342,8 @@ hydrofabric_module_metadata_real_data = {
                     "min": None,
                     "max": None,
                     "data_type": "double",
-                    "units": "s/m"
+                    "units": "s/m",
+                    "calibratable": True,
                 },
                 {
                     "name": "RSURF_EXP",
@@ -268,7 +352,8 @@ hydrofabric_module_metadata_real_data = {
                     "min": None,
                     "max": None,
                     "data_type": "double",
-                    "units": None
+                    "units": None,
+                    "calibratable": True,
                 }
             ],
             "output_variables": [
@@ -305,33 +390,15 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "T-Route",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/T-Route/2024_Oct_22_13_15_08"
+                "uri": "s3://ngwpc-hydrofabric/01123000/NOAH-OWP-Modular"
             },
-            "calibrate_parameters": [],
+            "calibrate_parameters": [
+
+            ],
             "output_variables": [
                 {
-                    "variable": "channel_exit_water_x-section__volume_flow_rate",
-                    "description": None
-                },
-                {
-                    "variable": "channel_water__mean_depth",
-                    "description": None
-                },
-                {
-                    "variable": "channel_water_flow__speed",
-                    "description": None
-                },
-                {
-                    "variable": "lake_surface__elevation",
-                    "description": None
-                },
-                {
-                    "variable": "lake_water~incoming__volume_flow_rate",
-                    "description": None
-                },
-                {
-                    "variable": "lake_water~outgoing__volume_flow_rate",
-                    "description": None
+                    "variable": "ETRAN",
+                    "description": "transpiration rate (mm/s)"
                 }
             ]
         }
