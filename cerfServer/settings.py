@@ -120,9 +120,10 @@ DJOSER = {
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
     "SERIALIZERS": {
-        "user_create": "calibration.user_serializers.UserCreateSerializer",  # custom serializer
-        "user": "djoser.serializers.UserSerializer",
-        "current_user": "djoser.serializers.UserSerializer"
+        "user_create": "calibration.user_serializers.CustomUserSerializer",
+        "user": "calibration.user_serializers.CustomUserSerializer",
+        "current_user": "calibration.user_serializers.CustomUserSerializer",
+
     },
 }
 
@@ -134,6 +135,7 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': True,
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
+    'TOKEN_OBTAIN_SERIALIZER': 'calibration.user_serializers.CustomTokenObtainPairSerializer',  # Update to your module path
 }
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
