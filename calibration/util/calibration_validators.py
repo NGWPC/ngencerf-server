@@ -38,8 +38,10 @@ def no_space_validator(value):
     if ' ' in value:
         raise serializers.ValidationError("This field must not contain spaces.")
 
+
 class EmptySerializer(BaseSerializer):
     pass
+
 
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
@@ -339,15 +341,13 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     run_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    # forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    # observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    # geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_image_url = serializers.CharField(required=False)
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    formulation_warning = serializers.JSONField(required=False)
     parameters_selected = serializers.BooleanField(required=True)
     nwm_warning = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
@@ -385,8 +385,6 @@ class DomainSerializer(BaseSerializer):
 
 class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
-
-
 
 
 class GetValidationJobsRequestSerializer(BaseSerializer):
@@ -569,6 +567,7 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     nwm_warning = serializers.BooleanField(required=True)
+    formulation_warning = serializers.JSONField(required=False)
 
 
 class ModuleStaticSerializer(BaseSerializer):

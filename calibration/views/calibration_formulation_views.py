@@ -145,10 +145,8 @@ def save_formulation_tab(request):
     if error_message:
         return ResponseError(error_message)
 
-    messages, formulation_validation_json, nwm_warning = validate_formulation(new_module_names)
-    if messages:
-        return ResponseError(messages, validation_errors=formulation_validation_json, response_type='formulation_error')
-
+    formulation_warning, nwm_warning = validate_formulation(new_module_names)
+   
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
 
@@ -192,6 +190,8 @@ def save_formulation_tab(request):
 
     ngen_cal_input.ready_to_run(run)
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name, 'nwm_warning': nwm_warning}
+    if formulation_warning is not None:
+        response['formulation_warning'] = formulation_warning
 
     response_validator, error_response = validate_response(SaveFormulationResponseSerializer, response)
     if error_response:
@@ -254,7 +254,7 @@ formulation_validations = {
 
 def validate_formulation(module_names: set[str]):
     if not module_names:
-        return [], None, False
+        return None, False
 
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
@@ -310,7 +310,11 @@ def validate_formulation(module_names: set[str]):
             break  # No need to continue checking if one required group is missing
 
     # Return the messages, validation details, and the NWM warning status
-    return messages, formulation_validation_json, nwm_warning
+    if messages:
+        formulation_validation_json['messages'] = messages
+        return formulation_validation_json, nwm_warning
+    else:
+        return None, nwm_warning
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters, module_names):

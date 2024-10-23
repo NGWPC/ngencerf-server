@@ -250,7 +250,6 @@ def import_calibration_run_data(request, calibration_run_data):
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
-
         if stop_criteria is not None:
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
@@ -393,9 +392,11 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     )
 
     calibration_run_data['modules'] = modules
-    _, _, nwm_warning = validate_formulation(modules)
+    formulation_warning, nwm_warning = validate_formulation(modules)
     if not export:
         calibration_run_data['nwm_warning'] = nwm_warning
+    if formulation_warning is not None and not export:
+        calibration_run_data['formulation_warning'] = formulation_warning
 
     calibration_run_data['use_sloth'] = run.use_sloth
     if run.use_sloth:

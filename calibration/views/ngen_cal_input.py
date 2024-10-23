@@ -3,7 +3,6 @@ import logging
 import os
 import re
 from datetime import datetime
-from pathlib import Path
 from typing import Dict, List
 
 import toml
@@ -160,7 +159,6 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         raise CerfException('Must pass a run instance to validate')
 
     general['calibration_run_id'] = run.id
-    # general['user'] = run.owner.username
     general['auth_token'] = generate_custom_token(run.owner, token_ngen)
 
     if not is_missing(run.gage, 'gage_id', errors):
@@ -174,7 +172,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
             elif build:
-                # for non-uploaded data, subset the data by time range
+                # For non-uploaded data, subset the data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(
                     source_dir,
@@ -193,12 +191,11 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                     errors.append('Observational data must be uploaded')
                 else:
                     # We need to rename the user-uploaded file.
-                    observational_file_for_job_path = Path(get_observational_file_for_job(run))
+                    observational_file_for_job_path = get_observational_file_for_job(run)
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_observational_file != observational_file_for_job_path:
-                        logger.info(
-                            f"Renaming observational file from {str(user_uploaded_observational_file)} to {get_observational_file_for_job(run)}")
-                        user_uploaded_observational_file.rename(Path(get_observational_file_for_job(run)))
+                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file_for_job_path}")
+                        os.rename(user_uploaded_observational_file, observational_file_for_job_path)
             elif build:
                 # For non-uploaded data, subset the data by time range
                 source_file = run.observational_hydrofabric_file_path
@@ -219,29 +216,29 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                     errors.append('Geopackage data must be uploaded')
                 else:
                     # We need to rename the user-uploaded file.
-                    geopackage_file_for_job_path = Path(get_geopackage_file_for_job(run))
+                    geopackage_file_for_job_path = get_geopackage_file_for_job(run)
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_geopackage_file != geopackage_file_for_job_path:
-                        logger.info(f"Renaming geopackage file from {str(user_uploaded_geopackage_file)} to {get_geopackage_file_for_job(run)}")
-                        user_uploaded_geopackage_file.rename(Path(get_geopackage_file_for_job(run)))
+                        logger.info(f"Renaming geopackage file from {user_uploaded_geopackage_file} to {geopackage_file_for_job_path}")
+                        os.rename(user_uploaded_geopackage_file, geopackage_file_for_job_path)
 
-                        # For user uploads, use the job-specific location
+                    # For user uploads, use the job-specific location
                     datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
             else:
                 # For data from Hydrofabric, we use the location that Hydrofabric gave us
                 if run.geopackage_hydrofabric_file_path:
-                    datafile['hydrofab_dir'] = str(Path(run.geopackage_hydrofabric_file_path).parent)
+                    datafile['hydrofab_dir'] = os.path.dirname(run.geopackage_hydrofabric_file_path)
 
-        nwm_retro = Path(NWM_RETROSPECTIVE_DIR) / f'{run.gage.gage_id}.csv'
-        if nwm_retro.exists():
-            datafile['nwmretro_file'] = str(nwm_retro)
+        nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
+        if os.path.exists(nwm_retro):
+            datafile['nwmretro_file'] = nwm_retro
 
         error_message = validate_times(run)
         if error_message:
             errors.append(error_message)
 
         # Need to set parquet file based on domain
-        datafile['attributes_file'] = str(Path(PARQUET_DIR) / f'{run.gage.domain.name.lower()}_model_attributes.parquet')
+        datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
@@ -263,7 +260,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     general['main_dir'] = job_data_dir
 
     if build:
-        Path(job_data_dir).mkdir(parents=True, exist_ok=True)
+        os.makedirs(job_data_dir, exist_ok=True)
 
     if any(field is None for field in
            [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
@@ -368,7 +365,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
 
         # If no errors and build is True, write the sloth parameters to a file
         if not sloth_error and build:
-            sloth_parameter_file = Path(job_data_dir) / 'sloth_parameters.txt'
+            sloth_parameter_file = os.path.join(job_data_dir, 'sloth_parameters.txt')
 
             sloth_parameter_content = header_format.format('name', 'count', 'units', 'location', 'value ', 'maps_to_module',
                                                            'maps_to_variable_name') + '\n'.join(
@@ -376,9 +373,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
                                    s['maps_to_variable_name'])
                 for s in sloth_params
             )
-            Path(sloth_parameter_file).write_text(sloth_parameter_content)
+            with open(sloth_parameter_file, 'w') as f:
+                f.write(sloth_parameter_content)
 
-            datafile['sloth_parameter_file'] = str(sloth_parameter_file)
+            datafile['sloth_parameter_file'] = sloth_parameter_file
 
     params = list(CalibrationParameter.objects
                   .filter(calibration_formulation__calibration_run=run, user_selected_for_tuning=True)
