@@ -16,6 +16,6 @@ register_endpoint="http://localhost:8000/auth/users/"
 # Send the register request
 curl --silent --location --request POST "$register_endpoint" \
     --header 'Content-Type: application/json' \
-    --data-raw "{ \"username\": \"$NGEN_USERNAME\", \"password\": \"$NGEN_PASSWORD\" }" | jq .
+    --data-raw "{ \"email\": \"$NGEN_USERNAME\", \"password\": \"$NGEN_PASSWORD\" }" | jq .
 
 

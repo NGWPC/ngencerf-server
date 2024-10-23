@@ -161,9 +161,9 @@ def import_calibration_run_data(request, calibration_run_data):
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
-        if messages:
-            return None, None, None, ResponseError(messages)
+        formulation_warning, nwm_warning = validate_formulation(module_names)
+        if formulation_warning is not None:
+            warnings.append(formulation_warning)
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
