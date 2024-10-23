@@ -199,7 +199,10 @@ NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 
-# This must match the data location in docker
+# This must match the data location in the ngen/ngen-cal docker
+# Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
+# sudo mkdir /ngencerf
+# sudo ln -s ~/your/data/dir /ngencerf/data
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 
 NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'

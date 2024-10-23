@@ -29,10 +29,11 @@ Note that these files are not checked in to Git
 
 # Create data directory
 
-Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in Docker, which is `/ngencerf/data`.
+Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in the ngen/ngen-cal Docker, 
+which is `/ngencerf/data`.
 This is defined in `settings.py` as the mount point.
 
-Enter these commands to create the top-level `/ngenserf` directory and then create the symbolic link
+Enter these commands to create the top-level `/ngencerf` directory and then create the symbolic link
 
 ```
 sudo mkdir /ngencerf
@@ -41,7 +42,6 @@ sudo ln -s ~/ngwpc/data /ngencerf/data
 
 # Static Files
 There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
-
 
 The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
 `/ngencerf/data/ngen-static-files`
@@ -96,26 +96,18 @@ To unmount it at some later point use
 ```
 fusermount -u ~/s3/ngwpc-dev
 ```
-When refreshing your AWS credentials, you might have to unmount and re-mount
+When refreshing your AWS credentials, you will have to unmount and re-mount
 ```
 fusermount -u ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev or goofys ngwpc-dev ~/s3/ngwpc-dev
 $ ls ~/s3/ngwpc-dev
 ```
 
-There are some additional options for performance that I've played with.  At the very least, we should probably cache the results to avoid multiple round-trips to AWS.
-But this might be moot on other environments.
-```
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev -o parallel_count=20 -o multireq_max=50 -o multipart_size=100 -o use_cache=/tmp/s3fs_cache
-```
-
-Some of these might only be needed temporarily, until Hydrofabric returns file system urls and not S3 urls
-
 **Note:** There are other tools that perform the same functionally as `s3fs`,  and 
 environments, such as Parallel Works 
 might have other ways of implementing this functionality.  There is nothing in the server code
 that is dependant on `s3fs`.  All that matters is that the bucket is mounted as a file space
-and that there is agreement between NgenServer and Hydrofabric on the mount point.
+and that there is agreement between NgenCerf and Hydrofabric path.
 
 
 # Initial Set-up of database
@@ -123,11 +115,13 @@ and that there is agreement between NgenServer and Hydrofabric on the mount poin
 Install Postgres if not already done so.
 
 The `runCerf.sh` script will handle initialization of the database the 
-first time it runs and will then  `manage.py runServer` to start up the server.  
+first time it runs and will then `manage.py runServer` to start up the server.  
 For subsequent runs, it will run `pip install`, `migrate` and `runServer`.
 
 In those cases where you need to re-initialize the data, after dropping all the tables you should
 run  `runCerf.sh` with the `--load-static` argument.
+
+To update the code, do a `git pull` and run `runCerf.sh` again
 
 
 ## Manual Steps (optional if you're using runCerf.sh)
@@ -172,13 +166,6 @@ end $$;
 ```
 where `public` is the name of your schema.
 
-# Updating
-After pulling the latest updates from the repo, you should update any dependencies and apply any database changes.  
-Both of these commands can be run multiple times without any harm.  `runCerf.sh` will automatically take care of these steps
-```
-pip install -r requirements.txt
-python manage.py migrate
-```
 
 # Running the server
 To run the server, use `runCerf.sh`
@@ -207,57 +194,48 @@ Use these recommended directory names to avoid having to change your settings.
 
 # User Authentication
 
-All endpoints require a user to be authenticated.  Unless we have a front-end, this authentication needs to be done manually -- 
-preferably with a tool like Postman.
-
-To create a user, send the username/password to the endpoint `/auth/users/`
-```
-{
-   "username": <username>,
-   "password": <password>
- }
-```
+All endpoints require a user to be authenticated.  You can create a user through the front-end UI or use this curl command:
 
 You can use this `curl` command
 ```
 curl --location 'localhost:8000/auth/users/' \
 --header 'Content-Type: application/json' \
 --data-raw '{
-    "username": "<username>",
+    "email": "<email>",
     "password": "<password>"
 }'
 ```
 
 User creation only needs to be done once.
 
-To simulate a login, send the request payload to the endpoint `auth/awt/create`
+To simulate a login, send the same payload, containing the email and password, to the endpoint `auth/awt/create`
 
 Extract the access token.  For all subsequent requests, you need to include an `Authorization` header of 
 type `Bearer token` that includes the access token.
 
 # Directory structure
 
-By convention with the Docker images, the mount point is at `~/ngwpc/data`.   This is defined in `settings.py` and should not change without proper coordination. 
+By convention with the Docker images, the mount point is at `/ngencerf/data`.   This is defined in `settings.py` and should not change without proper coordination. 
 
-`~/ngwpc/data` contains `ngen-static-files` and `ngen-cal-work`
-
+`/ngencerf/data` contains `ngen-static-files` and `ngen-cal-work`
 
 `ngen-cal-work/run_calib` contains the data for ngen and ngen-cal
 
-Files from Hydrofabric are in `s3/ngwpc-dev`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
+Files from Hydrofabric are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
-If the user chooses to upload the forcing or observation files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
+If the user chooses to upload the forcing, observation or geopackage files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
 The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal.
 
-Prior to running the job, the Observation and Forcing files from Hydrofabric will be subsetted to confirm to the time range of the job.  These files will be placed in the instance specific directory, as described above.
+Prior to running the job, the Observation and Forcing files from Hydrofabric will be subsetted to conform to the time range of the job.
+These files will be placed in the instance specific directory, as described above.
 So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Hydrofabric or User upload
 
 
 ```
-peter.a.kronenberg@U-12SMBYD5450YI:~$ tree ngwpc -L 4 -n -A
-ngwpc
+peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
+/ngencerf
 └── data
     ├── ngen-cal-work
     │   ├── run_calib
@@ -292,21 +270,20 @@ ngwpc
 
 .
 └── s3
-    └── ngwpc-dev   
+    └── ngwpc-dev/hydrfabric  
 ```
 
 # Importing test data
 
 The `cli` directory contains an ngencerf.sh command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
 
-In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your username and password (or put them in ~/.bashrc)
+In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
 ```
-$ export NGEN_USERNAME="your_username"
+$ export NGEN_USERNAME="your_email"
 $ export NGEN_PASSWORD="your_password"
 ```
 
-You can then run the `ngencerft.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.  
-The different data files will create jobs will various amounts of data imported.
+You can then run the `ngencerf.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.  
 The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
 
 The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
@@ -315,10 +292,10 @@ See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterpredi
 
 # Runtime environments
 
-There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT`
+There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT` in .env
 
 1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
-Update REPO_ROOT in local.settings.py to match this directory.  Or, you can create a symbolic link to match the specifying in settings.py.
+Create a symbolic link to match the specifying in settings.py.
    ```
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
