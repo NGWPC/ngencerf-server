@@ -18,7 +18,7 @@ from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_sl
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, \
-    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer
+    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, \
@@ -99,7 +99,7 @@ def get_status(request):
 
 
 @extend_schema(
-    request=None,
+    request=CalibrationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -493,7 +493,7 @@ def validation_job_slurm_callback(request):
 
 
 @extend_schema(
-    request=None,
+    request=EmptySerializer,
     responses={
         200: OpenApiResponse(
             response=OpenApiTypes.OBJECT,  # Indicates the response is an object
@@ -519,6 +519,13 @@ def validation_job_slurm_callback(request):
 @api_view(['GET'])
 @handle_exceptions
 def get_slurm_token(request):
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_slurm_token() request from {request.user} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
     return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
 
 

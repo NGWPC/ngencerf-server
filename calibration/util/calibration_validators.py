@@ -38,6 +38,8 @@ def no_space_validator(value):
     if ' ' in value:
         raise serializers.ValidationError("This field must not contain spaces.")
 
+class EmptySerializer(BaseSerializer):
+    pass
 
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
@@ -236,6 +238,7 @@ class SaveTuningParametersSerializer(BaseSerializer):
 
         return data
 
+
 class LoadTuningParametersSerializer(BaseSerializer):
     """
     This serializer is used when loading, so min, max and initial_value are not required
@@ -297,14 +300,22 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
+    run_date = serializers.DateTimeField(required=True, allow_null=True)
+
+
+class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
+    gage_id = serializers.CharField(required=True, allow_null=True)
     objective_function = serializers.CharField(required=False, allow_null=False)
     optimization_algorithm = serializers.CharField(required=False, allow_null=False)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
     validation_runs = serializers.IntegerField(required=False)
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
     jobs = serializers.ListSerializer(child=CalibrationJobsResponseSerializer(), required=True, allow_empty=True)
+
+
+class GetCalibrationJobsForEvaluationResponseSerializer(BaseSerializer):
+    jobs = serializers.ListSerializer(child=CalibrationJobsForValidationResponseSerializer(), required=True, allow_empty=True)
 
 
 class ValidationJobsParameter(BaseSerializer):
@@ -376,9 +387,6 @@ class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
 
-class GetCalibrationJobsRequestSerializer(BaseSerializer):
-    gage_id = serializers.CharField(required=False, allow_blank=False)
-    include_validations = serializers.BooleanField(required=False, default=False)
 
 
 class GetValidationJobsRequestSerializer(BaseSerializer):
