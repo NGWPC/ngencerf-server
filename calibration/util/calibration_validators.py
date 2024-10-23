@@ -891,6 +891,16 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
+class PerformanceMetricsResponseSerializer(GenericResponseSerializer):
+    elapsed_time = serializers.DurationField(required=True)
+    num_cpus = serializers.IntegerField(required=True)
+    cpu_time = serializers.DurationField(required=True)
+    max_rss = serializers.CharField(max_length=50, required=True)
+    max_disk_read = serializers.CharField(max_length=50, required=True)
+    max_disk_write = serializers.CharField(max_length=50, required=True)
+    reserved_time = serializers.DurationField(required=False, allow_null=True)
+
+
 ##################################
 # Slurm
 ##################################
