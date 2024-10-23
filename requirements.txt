@@ -19,5 +19,8 @@ django-cors-headers~=4.5.0
 requests~=2.32.3
 pandas~=2.2.3
 pyogrio~=0.10.0
+numpy~=2.1.2
 -e git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput
+
+
 

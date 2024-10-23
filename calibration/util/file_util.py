@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -15,11 +14,11 @@ def copy_directory(source_dir, destination_dir):
     :param destination_dir: Path to the destination directory
     """
     # Check if the source directory exists
-    if not Path(source_dir).exists():
-        raise FileNotFoundError(f"Source directory {source_dir} does not exist.")
+    if not os.path.isdir(source_dir):
+        raise FileNotFoundError(f"Source directory {source_dir} does not exist or is not a directory.")
 
     # Check if the destination directory exists, if not, create it
-    if not Path(destination_dir).exists():
+    if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
 
     # Copy the contents of the source directory to the destination directory
@@ -37,15 +36,15 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     :param destination_dir: Path to the destination directory
     """
     # Check if the source file exists
-    if not Path(source_file).exists():
-        raise FileNotFoundError(f"Source file {source_file} does not exist.")
+    if not os.path.isfile(source_file):
+        raise FileNotFoundError(f"Source file {source_file} does not exist or is not a file.")
 
     # Ensure the destination directory exists, if not, create it
-    if not Path(destination_dir).exists():
+    if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
 
     # Construct the full path for the destination file
-    destination_file = Path(destination_dir) / Path(source_file).name
+    destination_file = os.path.join(destination_dir, os.path.basename(source_file))
 
     # Copy the source file to the destination directory
     shutil.copy2(source_file, destination_file)
@@ -54,11 +53,11 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
 
 
 def delete_all_files_in_directory(source_dir):
-    dir_path = Path(source_dir)
-    if dir_path.exists():
-        for file in dir_path.iterdir():
-            if file.is_file():
-                file.unlink()
+    if os.path.isdir(source_dir):
+        for filename in os.listdir(source_dir):
+            file_path = os.path.join(source_dir, filename)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
 
 def get_single_file(source_dir):
@@ -68,17 +67,16 @@ def get_single_file(source_dir):
     for multiple files, so if more than one file exists, it returns the first one.
 
     :param source_dir: Path to the directory where the file is located.
-    :return: Path object representing the first file found, or None if no file exists.
+    :return: The file name (string) of the first file found, or None if no file exists.
     """
-    dir_path = Path(source_dir)
-    if dir_path.exists():
+    if os.path.isdir(source_dir):
         # Get all files in the directory (excluding directories)
-        files = [f for f in dir_path.iterdir() if f.is_file()]
+        files = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
 
         # If there are no files in the directory, return None.
         if len(files) == 0:
             return None
 
-        return files[0]
+        return os.path.join(source_dir, files[0])
     else:
         return None
