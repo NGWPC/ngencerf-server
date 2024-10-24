@@ -84,18 +84,18 @@
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "CWP",
+            "name": "VCMX25",
             "minimum": 120.1234,
             "maximum": 123.2345678912345,
             "initial_value": 123.1233,
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "VCMX25",
-            "minimum": 120.1234,
-            "maximum": 123.2345678912345,
-            "initial_value": 123.1233,
-            "module": "Noah-OWP-Modular"
+            "name": "soil_params.b",
+            "minimum": 5,
+            "maximum": 10,
+            "initial_value": 7,
+            "module": "CFE-S"
         }
     ],
     "objective_function": "KGE",
