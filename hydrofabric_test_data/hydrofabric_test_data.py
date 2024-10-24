@@ -19,7 +19,7 @@ hydrofabric_module_metadata_real_data = {
             },
             "calibrate_parameters": [
                 {
-                    "name": "soil_params.b",
+                    "name": "b",  # should be soil_params.b
                     "initial_value": "7.55060482025146",
                     "description": "beta exponent on Clapp-Hornberger (1978) soil water relations",
                     "min": None,
