@@ -275,11 +275,9 @@ def import_calibration_run_data(request, calibration_run_data):
     description="Export a job"
 )
 @api_view(['GET', 'POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def export_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-
     logger.debug(f'export() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
