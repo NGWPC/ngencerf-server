@@ -275,7 +275,7 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
 
 # Importing test data
 
-The `cli` directory contains an ngencerf.sh command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
+The `cli` directory contains an `ngencerf.sh` command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
 
 In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
 ```
@@ -300,8 +300,11 @@ Create a symbolic link to match the specifying in settings.py.
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
    ```
+   This environment is the hardest to set up because of the steps involved in installing ngen and ngen-cal, and is not recommended.
+
+
 2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
-Pull the latest ngen-cal docker container with this command.  This container includes both ngen and ngen-cal
+Follow these steps to pull the latest ngen-cal docker container.  This container includes both ngen and ngen-cal
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
    2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
