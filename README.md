@@ -40,16 +40,6 @@ sudo mkdir /ngencerf
 sudo ln -s ~/ngwpc/data /ngencerf/data
 ```
 
-# Static Files
-There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
-
-The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
-`/ngencerf/data/ngen-static-files`
-```
-aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
-```
-
-
 
 # Access to AWS
 Some endpoints require access to AWS and therefore you must update your credentials.
@@ -88,6 +78,7 @@ $ ls ~/s3/ngwpc-dev
 ```
 $ sudo wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
 $ sudo chmod +x /usr/local/bin/goofys
+$ mkdir -p ~/s3/ngwpc-dev
 $ goofys ngwpc-dev ~/s3/ngwpc-dev
 $ ls ~/s3/ngwpc-dev
 ```
@@ -98,7 +89,7 @@ fusermount -u ~/s3/ngwpc-dev
 ```
 When refreshing your AWS credentials, you will have to unmount and re-mount
 ```
-fusermount -u ~/s3/ngwpc-dev
+$ fusermount -u ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev or goofys ngwpc-dev ~/s3/ngwpc-dev
 $ ls ~/s3/ngwpc-dev
 ```
@@ -110,16 +101,44 @@ that is dependant on `s3fs`.  All that matters is that the bucket is mounted as 
 and that there is agreement between NgenCerf and Hydrofabric path.
 
 
+# Static Files
+There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
+
+The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
+`/ngencerf/data/ngen-static-files`
+```
+aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
+```
+
+
 # Initial Set-up of database
 
-Install Postgres if not already done so.
+Install Postgres if not already installed.
+```
+sudo apt update
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb\_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
+sudo apt install postgresql postgresql-client -y
+systemctl status postgresql
+```
 
-The `runCerf.sh` script will handle initialization of the database the 
-first time it runs and will then `manage.py runServer` to start up the server.  
-For subsequent runs, it will run `pip install`, `migrate` and `runServer`.
+Change the password for the Admin user
+```
+sudo -u postgres psql
+ALTER USER postgres PASSWORD 'password';
+\q
+```
 
-In those cases where you need to re-initialize the data, after dropping all the tables you should
-run  `runCerf.sh` with the `--load-static` argument.
+Confirm that you can log in with the new password
+```
+# psql -h localhost -U postgres
+```
+
+When you run `runCerf.sh` for the first time, or after dropping all tables from the database, include the `--load-static` option.  
+For example,
+```
+./runCerf.sh --load-static
+```
 
 To update the code, do a `git pull` and run `runCerf.sh` again
 
@@ -176,6 +195,7 @@ This is not necessary when running on Parallel Works
 
 
 # Installing ngen and ngen-cal
+**Note:** This process is not recommended.  Run ngen and ngen-cal in a docker container as described in Runtime Environments
 
 Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
 
