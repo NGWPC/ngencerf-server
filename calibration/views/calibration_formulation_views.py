@@ -42,7 +42,7 @@ MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 def load_formulation_tab(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+    logger.debug(f'load_formulation_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -84,7 +84,7 @@ def load_formulation_tab(request):
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -123,7 +123,7 @@ def get_sloth_parameters(run):
 def save_formulation_tab(request):
     data = request.data
 
-    logger.debug(f'save_formulation_tab() request from {request.user} - {data}')
+    logger.debug(f'save_formulation_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
@@ -197,7 +197,7 @@ def save_formulation_tab(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from save_formulation_tab() - {response_validator.data}')
     return Response(response_validator.data)
 
 

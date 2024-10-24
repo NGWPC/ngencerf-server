@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def get_status(request):
     data = request.data
-    logger.debug(f'get_status() request from {request.user} - {data}')
+    logger.debug(f'get_status() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -94,7 +94,7 @@ def get_status(request):
     response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_status() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_status() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -117,7 +117,7 @@ def get_status(request):
 @handle_exceptions
 def run_calibration(request):
     data = request.data
-    logger.debug(f'run_calibration() request from {request.user} - {data}')
+    logger.debug(f'run_calibration() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -137,7 +137,7 @@ def run_calibration(request):
                 'status': run.status.name, 'run_date': run.run_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user} from run_calibration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from run_calibration() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -161,7 +161,7 @@ def run_calibration(request):
 @handle_exceptions
 def run_validation(request):
     data = request.data
-    logger.debug(f'run_validation() request from {request.user} - {data}')
+    logger.debug(f'run_validation() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
@@ -184,7 +184,7 @@ def run_validation(request):
         'status': validation_run.status.name, 'run_date': validation_run.run_date}
 
     response_validator, error_response = validate_response(SubmitValidationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user} from run_validation() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from run_validation() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -214,7 +214,7 @@ def process_calibration_output(request):
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'process_calibration_output() request from {request.user} - {data}')
+    logger.debug(f'process_calibration_output() request from {request.user.email} - {data}')
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
@@ -235,7 +235,7 @@ def process_calibration_output(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from process_calibration_output() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from process_calibration_output() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -260,7 +260,7 @@ def process_calibration_output(request):
 @handle_exceptions
 def report_iteration(request):
     data = request.data
-    logger.debug(f'report_iteration() request from {request.user} - {data}')
+    logger.debug(f'report_iteration() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(ReportIterationSerializer, data)
     if error_return:
@@ -304,7 +304,7 @@ def report_iteration(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user} from report_iteration() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from report_iteration() - {response_validator.data}')
 
         return Response(response_validator.data)
 
@@ -328,7 +328,7 @@ def report_iteration(request):
 @handle_exceptions
 def get_iteration(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_iteration() request from {request.user} - {data}')
+    logger.debug(f'get_iteration() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -349,7 +349,7 @@ def get_iteration(request):
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_iteration() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -373,7 +373,7 @@ def get_iteration(request):
 @handle_exceptions
 def cancel_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'cancel_job() request from {request.user} - {data}')
+    logger.debug(f'cancel_job() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
     if error_return:
@@ -405,7 +405,7 @@ def cancel_job(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from cancel_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -430,7 +430,7 @@ def cancel_job(request):
 @auth_scope_required(token_slurm_scope)
 def calibration_job_slurm_callback(request):
     data = request.data
-    logger.debug(f'calibration_job_slurm_callback() request from {request.user} - {data}')
+    logger.debug(f'calibration_job_slurm_callback() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -446,7 +446,7 @@ def calibration_job_slurm_callback(request):
     slurm_status = SlurmStatusEnum[job_status]
     run_calibration_job_callback_slurm(calibration_run, slurm_status)
 
-    logger.debug(f'Returning to {request.user} from calibration_job_slurm_callback()')
+    logger.debug(f'Returning to {request.user.email} from calibration_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -471,7 +471,7 @@ def calibration_job_slurm_callback(request):
 @auth_scope_required(token_slurm_scope)
 def validation_job_slurm_callback(request):
     data = request.data
-    logger.debug(f'validation_job_slurm_callback() request from {request.user} - {data}')
+    logger.debug(f'validation_job_slurm_callback() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -487,7 +487,7 @@ def validation_job_slurm_callback(request):
     slurm_status = SlurmStatusEnum[job_status]
     run_validation_job_callback_slurm(validation_run, slurm_status)
 
-    logger.debug(f'Returning to {request.user} from validation_job_slurm_callback()')
+    logger.debug(f'Returning to {request.user.email} from validation_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -520,7 +520,7 @@ def validation_job_slurm_callback(request):
 @handle_exceptions
 def get_slurm_token(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_slurm_token() request from {request.user} - {data}')
+    logger.debug(f'get_slurm_token() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:

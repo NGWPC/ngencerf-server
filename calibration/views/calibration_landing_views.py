@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 # @permission_classes([AllowAny])
 def create_calibration_run(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'create_calibration_run() request from {request.user}')
+    logger.debug(f'create_calibration_run() request from {request.user.email}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -61,7 +61,7 @@ def create_calibration_run(request):
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {request.user} from create_calibration_run() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from create_calibration_run() - {response_validator.data}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -84,7 +84,7 @@ def create_calibration_run(request):
 @handle_exceptions
 def create_validation_run(request):
     data = request.data
-    logger.debug(f'create_validation_run() request from {request.user}')
+    logger.debug(f'create_validation_run() request from {request.user.email}')
 
     validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
@@ -106,7 +106,7 @@ def create_validation_run(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from create_validation_run() - {response_validator.data}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -133,7 +133,7 @@ def get_calibration_jobs_for_evaluation(request):
     Return DONE or FAILED jobs.  Include extra fields for validation.  Option to get only those jobs for a specific gage_id
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_validation() request from {request.user} - {data}')
+    logger.debug(f'get_calibration_jobs_for_validation() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -150,7 +150,7 @@ def get_calibration_jobs_for_evaluation(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from get_calibration_jobs_for_validation() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_jobs_for_validation() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -177,7 +177,7 @@ def get_calibration_jobs_for_forecast(request):
     Return only DONE jobs for forecasting
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_forecast() request from {request.user} - {data}')
+    logger.debug(f'get_calibration_jobs_for_forecast() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -197,7 +197,7 @@ def get_calibration_jobs_for_forecast(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from get_calibration_jobs_for_forecast() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_jobs_for_forecast() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -224,7 +224,7 @@ def get_calibration_jobs(request):
     Return all jobs
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs() request from {request.user} - {data}')
+    logger.debug(f'get_calibration_jobs() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -239,7 +239,7 @@ def get_calibration_jobs(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from get_calibration_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -312,7 +312,7 @@ def get_jobs(user, run_status=None, include_validations=False):
 @handle_exceptions
 def get_footer(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_footer() request from {request.user} - {data}')
+    logger.debug(f'get_footer() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -324,7 +324,7 @@ def get_footer(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from get_footer() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_footer() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -347,7 +347,7 @@ def get_footer(request):
 @handle_exceptions
 def load_calibration_run(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_calibration_run() request from {request.user} - {data}')
+    logger.debug(f'load_calibration_run() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -364,7 +364,7 @@ def load_calibration_run(request):
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_calibration_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_calibration_run() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -388,7 +388,7 @@ def load_calibration_run(request):
 @handle_exceptions
 def clone_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'clone_job() request from {request.user} - {data}')
+    logger.debug(f'clone_job() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -423,7 +423,7 @@ def clone_job(request):
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from clone_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from clone_job() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -447,7 +447,7 @@ def clone_job(request):
 @handle_exceptions
 def delete_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_run() request from {request.user} - {data}')
+    logger.debug(f'delete_run() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -481,7 +481,7 @@ def delete_job(request):
     response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from delete_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from delete_run() - {response_validator.data}')
 
     return Response(response_validator.data)
 

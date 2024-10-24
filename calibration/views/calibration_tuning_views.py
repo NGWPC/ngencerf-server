@@ -54,7 +54,7 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 def load_tuning_tab(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_tuning_tab() request from {request.user} - {data}')
+    logger.debug(f'load_tuning_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -106,7 +106,7 @@ def load_tuning_tab(request):
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_tuning_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_tuning_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -233,7 +233,7 @@ def get_times(run):
 @handle_exceptions
 def save_tuning_tab(request):
     data = request.data
-    logger.debug(f'save_tuning_tab() request from {request.user} - {data}')
+    logger.debug(f'save_tuning_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveTuningRequestSerializer, data)
     if error_return:
@@ -276,7 +276,7 @@ def save_tuning_tab(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from save_tuning_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from save_tuning_tab() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -299,7 +299,7 @@ def save_tuning_tab(request):
 @handle_exceptions
 def upload_user_parameters(request):
     data = request.data
-    logger.debug(f'upload_user_parameter_file() request from {request.user} - {data}')
+    logger.debug(f'upload_user_parameter_file() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
     if error_return:
@@ -381,7 +381,7 @@ def upload_user_parameters(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from upload_user_parameter_file() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_user_parameter_file() - {response_validator.data}')
     return Response(response_validator.data)
 
 

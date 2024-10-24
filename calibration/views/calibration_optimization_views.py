@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 def load_optimization_tab(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_optimization_tab() request from {request.user} - {data}')
+    logger.debug(f'load_optimization_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -68,7 +68,7 @@ def load_optimization_tab(request):
     response_validator, error_response = validate_response(LoadOptimizationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_optimization_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_optimization_tab() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -133,7 +133,7 @@ def get_metrics():
 def save_optimization_tab(request):
     data = request.data
 
-    logger.debug(f'save_optimization_tab() request from {request.user} - {data}')
+    logger.debug(f'save_optimization_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveOptimizationRequestSerializer, data)
     if error_return:
@@ -189,7 +189,7 @@ def save_optimization_tab(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user} from save_optimization_tab() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from save_optimization_tab() - {response_validator.data}')
         return Response(response_validator.data)
 
 

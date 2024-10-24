@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 def get_plot_names(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_plot_names() request from {request.user} - {data}')
+    logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -67,7 +67,7 @@ def get_plot_names(request):
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'get_plot_names() request from {request.user} - {response_validator.data}')
+    logger.debug(f'get_plot_names() request from {request.user.email} - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -106,7 +106,7 @@ def png_to_base64_url(png):
 def get_plot(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_plot() request from {request.user} - {data}')
+    logger.debug(f'get_plot() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(GetPlotRequestSerializer, data)
     if error_return:
@@ -153,7 +153,7 @@ def get_plot(request):
     response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_Url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
+    logger.debug(f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
 
     return Response(response_validator.data)
 
