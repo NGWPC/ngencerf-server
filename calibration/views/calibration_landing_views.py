@@ -356,15 +356,17 @@ def load_calibration_run(request):
     calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+
     if error_return:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=False)
 
-    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
+    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data, fields_to_truncate=['geopackage_image_url'])
+
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_calibration_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_calibration_run() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
 
     return Response(response_validator.data)
 
