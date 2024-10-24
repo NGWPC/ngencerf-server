@@ -10,13 +10,10 @@
     "gage_id": "01123000",
     "forcing_source": "Upload",
     "forcing_hydrofabric_dir_path": null,
-    "forcing_user_uploaded_dir_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/3_peter/forcing",
     "observational_source": "Upload",
     "observational_hydrofabric_file_path": null,
-    "observational_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/148_peter/observation/01123000_hourly_discharge.csv",
     "geopackage_source": "Upload",
     "geopackage_hydrofabric_file_path": null,
-    "geopackage_user_uploaded_file_path": "/home/peter.a.kronenberg/ngwpc/data/ngen-cal-work/run_calib/148_peter/geopackage/gauge_01123000.gpkg",
     "modules": [
         "Noah-OWP-Modular",
         "CFE-S",
@@ -84,18 +81,18 @@
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "CWP",
+            "name": "VCMX25",
             "minimum": 120.1234,
             "maximum": 123.2345678912345,
             "initial_value": 123.1233,
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "VCMX25",
-            "minimum": 120.1234,
-            "maximum": 123.2345678912345,
-            "initial_value": 123.1233,
-            "module": "Noah-OWP-Modular"
+            "name": "b",
+            "minimum": 5,
+            "maximum": 10,
+            "initial_value": 7,
+            "module": "CFE-S"
         }
     ],
     "objective_function": "KGE",

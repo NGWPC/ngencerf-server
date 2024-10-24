@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def get_calibration_data_by_iteration(request):
     data = request.data
-    logger.debug(f'get_calibration_data_by_iteration() request from {request.user} - {data}')
+    logger.debug(f'get_calibration_data_by_iteration() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -96,7 +96,7 @@ def get_calibration_data_by_iteration(request):
     response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_calibration_data_by_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -147,7 +147,7 @@ def replace_nan_with_none(data):
 def get_validation_jobs(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_validation_jobs() request from {request.user} - {data}')
+    logger.debug(f'get_validation_jobs() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -192,7 +192,7 @@ def get_validation_jobs(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from get_validation_jobs() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -215,7 +215,7 @@ def get_validation_jobs(request):
 @handle_exceptions
 def get_performance_metrics(request):
     data = request.data
-    logger.debug(f'get_performance_metrics() request from {request.user} - {data}')
+    logger.debug(f'get_performance_metrics() request from {request.user.email} - {data}')
 
     # validate request
     validator, error_return = validate_request(CalibrationRunSerializer, data)

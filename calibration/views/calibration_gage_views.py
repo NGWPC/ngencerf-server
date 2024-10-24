@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 def load_gage_tab(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_gage_tab() request from {request.user} - {data}')
+    logger.debug(f'load_gage_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -103,7 +103,7 @@ def load_gage_tab(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
+        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
 
     return Response(response_validator.data)
 
@@ -131,7 +131,7 @@ def load_gage_tab(request):
 def get_gage(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_gage() request from {request.user} - {data}')
+    logger.debug(f'get_gage() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(GageIdSerializer, data)
     if error_return:
@@ -153,7 +153,7 @@ def get_gage(request):
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_gage() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_gage() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -194,7 +194,7 @@ def save_gage_tab(request):
      For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
     """
     data = request.data
-    logger.debug(f'save_gage_tab() request from {request.user} - {data}')
+    logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveGageRequestSerializer, data)
     if error_return:
@@ -284,7 +284,7 @@ def save_gage_tab(request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
 
     return Response(response_validator.data)
 
@@ -353,7 +353,7 @@ def save_gage(run, gage_id):
 @handle_exceptions
 def upload_observational_data(request):
     data = request.data
-    logger.debug(f'upload_observational_data() request from {request.user} - {data}')
+    logger.debug(f'upload_observational_data() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
@@ -400,7 +400,7 @@ def upload_observational_data(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from upload_observational_data() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_observational_data() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -423,7 +423,7 @@ def upload_observational_data(request):
 @handle_exceptions
 def upload_forcing_data(request):
     data = request.data
-    logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
+    logger.debug(f'upload_forcing_data() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadForcingSerializer, data, context={'request': request})
     if error_return:
@@ -479,7 +479,7 @@ def upload_forcing_data(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_forcing_data() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -502,7 +502,7 @@ def upload_forcing_data(request):
 @handle_exceptions
 def upload_geopackage_data(request):
     data = request.data
-    logger.debug(f'upload_geopackage_data() request from {request.user} - {data}')
+    logger.debug(f'upload_geopackage_data() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadGeopackageSerializer, data, context={'request': request})
     if error_return:
@@ -547,7 +547,7 @@ def upload_geopackage_data(request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
     return Response(response_validator.data)
 
 

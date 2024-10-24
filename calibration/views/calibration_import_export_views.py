@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def import_job(request):
     data = request.data
-    logger.debug(f'import_job() request from {request.user} - {data}')
+    logger.debug(f'import_job() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(ImportSerializer, data)
     if error_return:
@@ -87,7 +87,7 @@ def import_job(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from import_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from import_job() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -161,9 +161,9 @@ def import_calibration_run_data(request, calibration_run_data):
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        messages, formulation_validation_json, nwm_warning = validate_formulation(module_names)
-        if messages:
-            return None, None, None, ResponseError(messages)
+        formulation_warning, nwm_warning = validate_formulation(module_names)
+        if formulation_warning is not None:
+            warnings.append(formulation_warning)
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -280,7 +280,7 @@ def import_calibration_run_data(request, calibration_run_data):
 def export_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'export() request from {request.user} - {data}')
+    logger.debug(f'export() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -301,7 +301,7 @@ def export_job(request):
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from export() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from export() - {response_validator.data}')
 
     return Response(response_validator.data)
 
