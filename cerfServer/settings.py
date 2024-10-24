@@ -297,6 +297,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
+        'djoser': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+        },
         'rest_framework_simplejwt': {
             'handlers': ['console', 'file'],
             'level': 'DEBUG',
