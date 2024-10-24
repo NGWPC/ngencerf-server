@@ -148,6 +148,9 @@ def validate_times(run):
 
 
 def ready_to_run(run: CalibrationRun, build: bool = None):
+    if run.status not in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        return None, None
+
     config = dict(config_template)
     general = config['General']
     calibration = config['Calibration']

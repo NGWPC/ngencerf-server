@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import OptimizationEnum
+from calibration.enums import OptimizationEnum, StatusEnum
 from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
@@ -49,7 +49,7 @@ def load_optimization_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 

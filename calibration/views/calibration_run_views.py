@@ -21,8 +21,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, \
-    token_slurm_scope, auth_scope_required, get_validation_run
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
 from calibration.views.read_output import read_calibration_output, accumulate_iterations
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,6 @@ logger = logging.getLogger(__name__)
     description="Return the status of a job"
 )
 @api_view(['GET', 'POST'])
-# @permission_classes([AllowAny])()
 @handle_exceptions
 def get_status(request):
     data = request.data
