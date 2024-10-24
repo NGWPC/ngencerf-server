@@ -10,7 +10,7 @@ from calibration.models import CalibrationParameter, ModuleOutputVariable, Calib
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
-from calibration.views.common import CerfException, validate_response_data, get_cached_module_by_name
+from calibration.views.common import validate_response_data, get_cached_module_by_name
 from hydrofabric_test_data import hydrofabric_test_data
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,7 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
     my_module_names = set(my_module_names)
     missing_names = my_module_names - hydrofabric_module_names
     if missing_names:
-        raise CerfException(f'Response from Hydrofabric is missing entries for {missing_names}')
+        raise HydrofabricException(f'Response from Hydrofabric is missing entries for {missing_names}')
 
     extra_names = hydrofabric_module_names - my_module_names
 
