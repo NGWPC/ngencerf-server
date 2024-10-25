@@ -1,6 +1,8 @@
 import base64
+import json
 import logging
 import os
+import traceback
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -29,6 +31,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_output_variable, save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
+from calibration.views.hydrofabric import HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +164,8 @@ def import_calibration_run_data(request, calibration_run_data):
 
         formulation_warning, nwm_warning = validate_formulation(module_names)
         if formulation_warning is not None:
-            warnings.append(formulation_warning)
+            # This is an ugly string
+            warnings.append(json.dumps(formulation_warning))
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -190,7 +194,11 @@ def import_calibration_run_data(request, calibration_run_data):
         modules = CalibrationFormulation.objects.filter(calibration_run=run)
 
         if modules and run.gage:
-            get_module_metadata_from_hydrofabric(run, modules)
+            try:
+                get_module_metadata_from_hydrofabric(run, modules)
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                warnings.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
 
         run.automatic_validation = calibration_run_data.get('automatic_validation')
 
