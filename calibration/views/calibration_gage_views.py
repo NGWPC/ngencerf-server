@@ -3,7 +3,6 @@ import os
 import re
 import shutil
 import traceback
-from pathlib import Path
 
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
@@ -55,12 +54,11 @@ logger = logging.getLogger(__name__)
     description="Load gage tab data"
 )
 @api_view(['GET', 'POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def load_gage_tab(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_gage_tab() request from {request.user} - {data}')
+    logger.debug(f'load_gage_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -105,7 +103,7 @@ def load_gage_tab(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
+        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
 
     return Response(response_validator.data)
 
@@ -129,12 +127,11 @@ def load_gage_tab(request):
     description="Get details for a specific gage"
 )
 @api_view(['GET', 'POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def get_gage(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_gage() request from {request.user} - {data}')
+    logger.debug(f'get_gage() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(GageIdSerializer, data)
     if error_return:
@@ -156,7 +153,7 @@ def get_gage(request):
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from get_gage() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_gage() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -197,7 +194,7 @@ def save_gage_tab(request):
      For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
     """
     data = request.data
-    logger.debug(f'save_gage_tab() request from {request.user} - {data}')
+    logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveGageRequestSerializer, data)
     if error_return:
@@ -225,8 +222,8 @@ def save_gage_tab(request):
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
             # See if there's a user-uploaded file and delete it
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-            if user_uploaded_geopackage_file and Path(user_uploaded_geopackage_file).exists():
-                Path(user_uploaded_geopackage_file).unlink()
+            if user_uploaded_geopackage_file and os.path.exists(user_uploaded_geopackage_file):
+                os.remove(user_uploaded_geopackage_file)
             if not run.geopackage_hydrofabric_file_path:
                 try:
                     get_geopackage_from_hydrofabric(run)
@@ -244,8 +241,8 @@ def save_gage_tab(request):
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
             # See if there's a user-uploaded file and delete it
             user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
-            if user_uploaded_observational_file and Path(user_uploaded_observational_file).exists():
-                Path(user_uploaded_observational_file).unlink()
+            if user_uploaded_observational_file and os.path.exists(user_uploaded_observational_file):
+                os.remove(user_uploaded_observational_file)
             if not run.observational_hydrofabric_file_path:
                 try:
                     get_observational_data_from_hydrofabric(run)
@@ -260,7 +257,7 @@ def save_gage_tab(request):
         if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
-            if user_uploaded_forcing_dir and Path(user_uploaded_forcing_dir).exists():
+            if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir):
                 shutil.rmtree(user_uploaded_forcing_dir)
             if not run.forcing_hydrofabric_dir_path:
                 try:
@@ -287,7 +284,7 @@ def save_gage_tab(request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
 
     return Response(response_validator.data)
 
@@ -297,7 +294,7 @@ def get_geopackage_image_url(run: CalibrationRun):
                                      GeopackageSourceEnum.UPLOAD,
                                      lambda: get_geopackage_file_for_job(run))
 
-    if geopackage_path and Path(geopackage_path).exists():
+    if geopackage_path and os.path.exists(geopackage_path):
         try:
             # Attempt to convert the GeoPackage to PNG for selected layers
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
@@ -322,16 +319,16 @@ def save_gage(run, gage_id):
             # Delete any user uploaded files
 
             uploaded_geopackage_file = get_geopackage_file_for_job(run)
-            if Path(uploaded_geopackage_file).exists():
-                Path(uploaded_geopackage_file).unlink()
+            if os.path.exists(uploaded_geopackage_file):
+                os.remove(uploaded_geopackage_file)
 
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
-            if Path(uploaded_forcing_dir).exists():
+            if os.path.exists(uploaded_forcing_dir):
                 shutil.rmtree(uploaded_forcing_dir)
 
             uploaded_observational_file = get_observational_file_for_job(run)
-            if Path(uploaded_observational_file).exists():
-                Path(uploaded_observational_file).unlink()
+            if os.path.exists(uploaded_observational_file):
+                os.remove(uploaded_observational_file)
 
         # Update the run.gage field
         run.gage = gage
@@ -353,11 +350,10 @@ def save_gage(run, gage_id):
     description="Allow user to upload observational data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def upload_observational_data(request):
     data = request.data
-    logger.debug(f'upload_observational_data() request from {request.user} - {data}')
+    logger.debug(f'upload_observational_data() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
@@ -404,7 +400,7 @@ def upload_observational_data(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from upload_observational_data() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_observational_data() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -425,10 +421,9 @@ def upload_observational_data(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-# @permission_classes([AllowAny])
 def upload_forcing_data(request):
     data = request.data
-    logger.debug(f'upload_forcing_data() request from {request.user} - {data}')
+    logger.debug(f'upload_forcing_data() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadForcingSerializer, data, context={'request': request})
     if error_return:
@@ -484,7 +479,7 @@ def upload_forcing_data(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from upload_forcing_data() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_forcing_data() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -504,11 +499,10 @@ def upload_forcing_data(request):
     description="Allow user to upload geopackage data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def upload_geopackage_data(request):
     data = request.data
-    logger.debug(f'upload_geopackage_data() request from {request.user} - {data}')
+    logger.debug(f'upload_geopackage_data() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(UploadGeopackageSerializer, data, context={'request': request})
     if error_return:
@@ -553,7 +547,7 @@ def upload_geopackage_data(request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
     return Response(response_validator.data)
 
 

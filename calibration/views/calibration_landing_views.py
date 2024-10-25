@@ -15,8 +15,9 @@ from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
-    GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
-    CreateValidationRunSerializer, CreateValidationRequestSerializer
+    CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
+    CreateValidationRunSerializer, CreateValidationRequestSerializer, \
+    GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
@@ -26,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=None,
+    request=EmptySerializer,
     responses={
         201: CreateCalibrationRunSerializer,
         400: OpenApiResponse(
@@ -44,7 +45,12 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 # @permission_classes([AllowAny])
 def create_calibration_run(request):
-    logger.debug(f'create_calibration_run() request from {request.user}')
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'create_calibration_run() request from {request.user.email}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
 
     with transaction.atomic():
         run = create_calibration_run_internal(request.user)
@@ -55,7 +61,7 @@ def create_calibration_run(request):
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {request.user} from create_calibration_run() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from create_calibration_run() - {response_validator.data}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -78,7 +84,7 @@ def create_calibration_run(request):
 @handle_exceptions
 def create_validation_run(request):
     data = request.data
-    logger.debug(f'create_validation_run() request from {request.user}')
+    logger.debug(f'create_validation_run() request from {request.user.email}')
 
     validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
@@ -100,12 +106,103 @@ def create_validation_run(request):
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from create_validation_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from create_validation_run() - {response_validator.data}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
-    request=GetCalibrationJobsRequestSerializer,
+    request=EmptySerializer,
+    responses={
+        200: GetCalibrationJobsForEvaluationResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+
+    description="Get all Calibration jobs for Evaluation"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_calibration_jobs_for_evaluation(request):
+    """
+    Return DONE or FAILED jobs.  Include extra fields for validation.  Option to get only those jobs for a specific gage_id
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_calibration_jobs_for_validation() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    jobs = get_jobs(request.user, include_validations=True, run_status=[StatusEnum.DONE, StatusEnum.FAILED])
+
+    response = {'jobs': jobs}
+    print('jobs', jobs)
+
+    response_validator, error_response = validate_response(GetCalibrationJobsForEvaluationResponseSerializer, response, fields_to_truncate=['jobs'],
+                                                           max_length=10)
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f'Returning to {request.user.email} from get_calibration_jobs_for_validation() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetCalibrationJobsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+
+    description="Get all calibration jobs for Forecast"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_calibration_jobs_for_forecast(request):
+    """
+    Return only DONE jobs for forecasting
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_calibration_jobs_for_forecast() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    jobs = get_jobs(request.user, run_status=[StatusEnum.DONE])
+
+    response = {'jobs': jobs}
+    print('jobs', jobs)
+
+    response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['jobs'], max_length=10)
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f'Returning to {request.user.email} from get_calibration_jobs_for_forecast() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
     responses={
         200: GetCalibrationJobsResponseSerializer,
         400: OpenApiResponse(
@@ -123,29 +220,47 @@ def create_validation_run(request):
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def get_calibration_jobs(request):
+    """
+    Return all jobs
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_calibration_jobs() request from {request.user.email} - {data}')
 
-    logger.debug(f'get_calibration_jobs() request from {request.user} - {data}')
-
-    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
+    validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
         return error_return
 
-    gage_id = validator.get('gage_id')
-    include_validations = validator.get('include_validations')
+    jobs = get_jobs(request.user, run_status=list(StatusEnum))
 
-    # Base query
-    query = Q(owner=request.user) & Q(is_deleted=False)
+    response = {'jobs': jobs}
 
-    if gage_id or include_validations:
-        # Only return jobs with Done and Failed status if gage_id is specified or include_validations is True
-        done_status = StatusEnum.from_enum(StatusEnum.DONE)
-        failed_status = StatusEnum.from_enum(StatusEnum.FAILED)
-        query &= Q(status__in=[done_status, failed_status])
-        if gage_id:
-            query &= Q(gage__gage_id=gage_id)
+    response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['jobs'], max_length=10)
+    if error_response:
+        return error_response
 
-    # Base query without validation_runs_count
+    logger.debug(
+        f'Returning to {request.user.email} from get_calibration_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+    return Response(response_validator.data)
+
+
+def get_jobs(user, run_status=None, include_validations=False):
+    """
+    Retrieves calibration jobs for the given user, optionally filtering by status and including validation information.
+
+    :param user: The user for whom the jobs are being fetched.
+    :param run_status: List of statuses to filter jobs (e.g., DONE, FAILED).
+    :param include_validations: Boolean to indicate if validation run information should be included.
+    :return: List of calibration jobs with selected fields.
+    """
+    # Construct the base query to filter jobs for the given user and exclude deleted jobs
+    query = Q(owner=user) & Q(is_deleted=False)
+
+    # Filter jobs by run_status if specified
+    if run_status:
+        model_status_values = [StatusEnum.from_enum(status_enum) for status_enum in run_status]
+        query &= Q(status__in=model_status_values)
+
+    # Base query without extra info
     runs_query = CalibrationRun.objects.filter(query)
 
     # Annotate to rename 'user_formulation_name' to 'formulation_name'
@@ -155,17 +270,16 @@ def get_calibration_jobs(request):
     default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name']
     additional_fields = ['objective_function__name', 'optimization__name']
 
-    # Include additional fields if include_validations is True
+    selected_fields = default_fields
+
+    # If including validations, add additional fields and annotate validation count
     if include_validations:
         selected_fields = default_fields + additional_fields
-        # Add validation_runs_count if include_validations is True
+        # Add validation_runs_count if include_validations is True.  Don't include the Control run
         runs_query = runs_query.annotate(
             validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
         ).filter(validation_runs_count__gt=0)
         selected_fields.append('validation_runs_count')
-    else:
-        # Default fields if include_validations is False
-        selected_fields = default_fields
 
     runs = runs_query.values(*selected_fields)
 
@@ -180,20 +294,11 @@ def get_calibration_jobs(request):
             r['optimization_algorithm'] = r.pop('optimization__name')
             r['validation_runs'] = r.pop('validation_runs_count', 0)
 
-    response = {'jobs': list(runs)}
-    print('runs', runs)
-
-    response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['runs'], max_length=10)
-    if error_response:
-        return error_response
-
-    logger.debug(
-        f'Returning to {request.user} from get_calibration_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["runs"], max_length=10)}')
-    return Response(response_validator.data)
+    return list(runs)
 
 
 @extend_schema(
-    request=None,
+    request=EmptySerializer,
     responses={
         200: FooterResponseSerializer,
         500: OpenApiResponse(
@@ -201,18 +306,25 @@ def get_calibration_jobs(request):
             description="Internal server error"
         )
     },
-    description="Load gage tab data"
+    description="Get footer data"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def get_footer(request):
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_footer() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
     response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
 
     response_validator, error_response = validate_response(FooterResponseSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from get_footer() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_footer() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -235,8 +347,7 @@ def get_footer(request):
 @handle_exceptions
 def load_calibration_run(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-
-    logger.debug(f'load_calibration_run() request from {request.user} - {data}')
+    logger.debug(f'load_calibration_run() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -245,15 +356,17 @@ def load_calibration_run(request):
     calibration_run_id = validator.get('calibration_run_id')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+
     if error_return:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=False)
 
-    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data)
+    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data, fields_to_truncate=['geopackage_image_url'])
+
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_calibration_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_calibration_run() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
 
     return Response(response_validator.data)
 
@@ -277,8 +390,7 @@ def load_calibration_run(request):
 @handle_exceptions
 def clone_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-
-    logger.debug(f'clone_job() request from {request.user} - {data}')
+    logger.debug(f'clone_job() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -313,13 +425,13 @@ def clone_job(request):
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from clone_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from clone_job() - {response_validator.data}')
 
     return Response(response_validator.data)
 
 
 @extend_schema(
-    request=None,
+    request=EmptySerializer,
     responses={
         200: CalibrationRunSerializer,
         400: OpenApiResponse(
@@ -337,8 +449,11 @@ def clone_job(request):
 @handle_exceptions
 def delete_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'delete_run() request from {request.user.email} - {data}')
 
-    logger.debug(f'delete_run() request from {request.user} - {data}')
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -368,7 +483,7 @@ def delete_job(request):
     response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from delete_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from delete_run() - {response_validator.data}')
 
     return Response(response_validator.data)
 

@@ -42,7 +42,7 @@ MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 def load_formulation_tab(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_formulation_tab() request from {request.user} - {data}')
+    logger.debug(f'load_formulation_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -84,7 +84,7 @@ def load_formulation_tab(request):
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user} from load_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -123,7 +123,7 @@ def get_sloth_parameters(run):
 def save_formulation_tab(request):
     data = request.data
 
-    logger.debug(f'save_formulation_tab() request from {request.user} - {data}')
+    logger.debug(f'save_formulation_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
@@ -145,10 +145,8 @@ def save_formulation_tab(request):
     if error_message:
         return ResponseError(error_message)
 
-    messages, formulation_validation_json, nwm_warning = validate_formulation(new_module_names)
-    if messages:
-        return ResponseError(messages, validation_errors=formulation_validation_json, response_type='formulation_error')
-
+    formulation_warning, nwm_warning = validate_formulation(new_module_names)
+   
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
 
@@ -192,12 +190,14 @@ def save_formulation_tab(request):
 
     ngen_cal_input.ready_to_run(run)
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name, 'nwm_warning': nwm_warning}
+    if formulation_warning is not None:
+        response['formulation_warning'] = formulation_warning
 
     response_validator, error_response = validate_response(SaveFormulationResponseSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user} from save_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from save_formulation_tab() - {response_validator.data}')
     return Response(response_validator.data)
 
 
@@ -254,7 +254,7 @@ formulation_validations = {
 
 def validate_formulation(module_names: set[str]):
     if not module_names:
-        return [], None, False
+        return None, False
 
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
@@ -310,23 +310,28 @@ def validate_formulation(module_names: set[str]):
             break  # No need to continue checking if one required group is missing
 
     # Return the messages, validation details, and the NWM warning status
-    return messages, formulation_validation_json, nwm_warning
+    if messages:
+        formulation_validation_json['messages'] = messages
+        return formulation_validation_json, nwm_warning
+    else:
+        return None, nwm_warning
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters, module_names):
     sloth_param_objects = []
-    for s in sloth_parameters:
-        module = get_cached_module_by_name(s['maps_to_module'])
-        if not module or module.name not in (module_names or []):
-            print('found module', module)
-            return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
+    if sloth_parameters is not None:
+        for s in sloth_parameters:
+            module = get_cached_module_by_name(s['maps_to_module'])
+            if not module or module.name not in (module_names or []):
+                print('found module', module)
+                return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
 
-        sloth_param_objects.append(
-            CalibrationSlothParam(
-                calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
-                param_type=s['param_type'], param_units=s['param_units'], param_location=s['param_location'],
-                param_value=s['param_value'], maps_to_module=module, maps_to_variable_name=s['maps_to_variable_name']
+            sloth_param_objects.append(
+                CalibrationSlothParam(
+                    calibration_run=run, param_name=s['param_name'], param_count=s['param_count'],
+                    param_type=s['param_type'], param_units=s['param_units'], param_location=s['param_location'],
+                    param_value=s['param_value'], maps_to_module=module, maps_to_variable_name=s['maps_to_variable_name']
+                )
             )
-        )
 
-    CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
+        CalibrationSlothParam.objects.bulk_create(sloth_param_objects)

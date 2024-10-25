@@ -120,9 +120,10 @@ DJOSER = {
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
     "SERIALIZERS": {
-        "user_create": "calibration.user_serializers.UserCreateSerializer",  # custom serializer
-        "user": "djoser.serializers.UserSerializer",
-        "current_user": "djoser.serializers.UserSerializer"
+        "user_create": "calibration.user_serializers.CustomUserSerializer",
+        "user": "calibration.user_serializers.CustomUserSerializer",
+        "current_user": "calibration.user_serializers.CustomUserSerializer",
+
     },
 }
 
@@ -134,6 +135,7 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': True,
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
+    'TOKEN_OBTAIN_SERIALIZER': 'calibration.user_serializers.CustomTokenObtainPairSerializer',  # Update to your module path
 }
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
@@ -197,7 +199,10 @@ NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 
-# This must match the data location in docker
+# This must match the data location in the ngen/ngen-cal docker
+# Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
+# sudo mkdir /ngencerf
+# sudo ln -s ~/your/data/dir /ngencerf/data
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 
 NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
@@ -288,6 +293,11 @@ LOGGING = {
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+        },
+        'djoser': {
             'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
