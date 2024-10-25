@@ -7,9 +7,9 @@ class PerformanceMetrics(BaseModel):
     elapsed_time = models.DurationField(null=False)
     num_cpus = models.IntegerField(null=False)
     cpu_time = models.DurationField(null=False)
-    max_rss = models.CharField(max_length=50, null=False)
-    max_disk_read = models.CharField(max_length=50, null=False)
-    max_disk_write = models.CharField(max_length=50, null=False)
+    max_rss = models.CharField(max_length=50, null=True)
+    max_disk_read = models.CharField(max_length=50, null=True)
+    max_disk_write = models.CharField(max_length=50, null=True)
     reserved_time = models.DurationField(null=True, blank=True)
 
     class Meta:
