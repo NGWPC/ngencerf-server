@@ -583,6 +583,7 @@ def parse_performance_metrics(file_path):
         for row in reader:
             job_id = row['JobID']
 
+            logger.info(f'job_id: {job_id}')
             if job_id.endswith('.batch'):
                 # Collect data from the .batch line
                 batch_metrics = {
@@ -605,7 +606,7 @@ def parse_performance_metrics(file_path):
 
         # Create or update the PerformanceMetrics record
         metrics = PerformanceMetrics.objects.create(
-            job_id=batch_metrics['job_id'],
+            slurm_job_id=batch_metrics['slurm_job_id'],
             elapsed_time=batch_metrics['elapsed_time'],
             num_cpus=batch_metrics['num_cpus'],
             cpu_time=batch_metrics['cpu_time'],
