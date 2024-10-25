@@ -6,6 +6,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun, ModuleGroup
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
@@ -50,11 +51,11 @@ def load_formulation_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
-    # Directly get all modules and their groups from the cached result
+    # Gget all modules and their groups from the cached result
     cached_modules = get_cached_modules_with_groups()
 
     # Convert the cached Module instances to a list of dictionaries with the desired structure
@@ -166,11 +167,27 @@ def save_formulation_tab(request):
                 to_be_unused = existing_module_names - new_module_names
                 print('to_be_unused', to_be_unused)
 
-                # Delete modules that are no longer used, as well as associated CalibrationParameters and ModuleOutputVariables
-                CalibrationFormulation.objects.filter(calibration_run=run, module__name__in=to_be_unused).delete()
-                CalibrationParameter.objects.filter(calibration_formulation__calibration_run=run,
-                                                    calibration_formulation__module__name__in=to_be_unused).delete()
-                ModuleOutputVariable.objects.filter(calibration_formulation__module__name__in=to_be_unused).delete()
+                # Identify CalibrationFormulations to be deleted
+                formulations_to_delete = CalibrationFormulation.objects.filter(
+                    calibration_run=run,
+                    module__name__in=to_be_unused
+                )
+
+                # Check if the current module_output_variable references a CalibrationFormulation to be deleted
+                if run.module_output_variable and run.module_output_variable.calibration_formulation in formulations_to_delete:
+                    run.module_output_variable = None
+
+                # Delete CalibrationParameters related to the formulations_to_delete
+                CalibrationParameter.objects.filter(
+                    calibration_formulation__in=formulations_to_delete
+                ).delete()
+                # Delete ModuleOutputVariables related to the formulations_to_delete
+                ModuleOutputVariable.objects.filter(
+                    calibration_formulation__in=formulations_to_delete
+                ).delete()
+
+                # Now delete the CalibrationFormulations
+                formulations_to_delete.delete()
 
                 for m_name in new_module_names:
                     module_instance = get_cached_module_by_name(m_name)

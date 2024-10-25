@@ -14,7 +14,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
@@ -62,7 +62,7 @@ def load_tuning_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
@@ -70,8 +70,6 @@ def load_tuning_tab(request):
     formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
         'calibrationparameter_set', 'output_variables'
     )
-
-    print('load_tuning_tab modules', list(formulations))
 
     time_range = get_time_range(run)
 
@@ -81,18 +79,20 @@ def load_tuning_tab(request):
     if formulations and run.gage:
         # Only do this if modules have been saved in the formulation tab, and we have a gage
 
-        # First time through, all modules will be missing parameters, so we'll call Hydrofabric
-        # For subsequent times, most likely none of them will be missing, if the modules haven't changed.
-        modules_missing_parameters = modules_without_parameters(formulations)
-        print('modules missing parameters', modules_missing_parameters)
+        # Don't call Hydrofabric on a completed jobs
+        if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+            # First time through, all modules will be missing parameters, so we'll call Hydrofabric
+            # For subsequent times, most likely none of them will be missing, if the modules haven't changed.
+            modules_missing_parameters = modules_without_parameters(formulations)
+            print('modules missing parameters', modules_missing_parameters)
 
-        # Call Hydrofabric if any modules are missing parameters
-        if modules_missing_parameters.exists():
-            try:
-                get_module_metadata_from_hydrofabric(run, modules_missing_parameters)
-            except HydrofabricException as e:
-                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
-                hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+            # Call Hydrofabric if any modules are missing parameters
+            if modules_missing_parameters.exists():
+                try:
+                    get_module_metadata_from_hydrofabric(run, modules_missing_parameters)
+                except HydrofabricException as e:
+                    logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                    hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
 
         # For each module, get the Parameters and Output Variables
         module_list = get_parameters_and_output_variables(formulations)

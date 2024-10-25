@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum, StatusEnum
 from calibration.models import Gage, CalibrationRun
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
@@ -66,7 +66,7 @@ def load_gage_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
@@ -98,12 +98,12 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages"], max_length=50)
+    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages", "geopackage_image_url"], max_length=50)
     if error_response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages"], max_length=50)}')
+        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages", "geopackage_image_url"], max_length=50)}')
 
     return Response(response_validator.data)
 

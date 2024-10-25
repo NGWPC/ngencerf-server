@@ -1,5 +1,5 @@
 import logging
-from pathlib import Path
+import os
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -21,8 +21,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Is
     ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, \
-    token_slurm_scope, auth_scope_required, get_validation_run
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
 from calibration.views.read_output import read_calibration_output, accumulate_iterations
 
 logger = logging.getLogger(__name__)
@@ -44,7 +43,6 @@ logger = logging.getLogger(__name__)
     description="Return the status of a job"
 )
 @api_view(['GET', 'POST'])
-# @permission_classes([AllowAny])()
 @handle_exceptions
 def get_status(request):
     data = request.data
@@ -443,7 +441,7 @@ def calibration_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    slurm_status = SlurmStatusEnum[job_status]
+    slurm_status = SlurmStatusEnum(job_status)
     run_calibration_job_callback_slurm(calibration_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from calibration_job_slurm_callback()')
@@ -484,7 +482,7 @@ def validation_job_slurm_callback(request):
     if error_return:
         return error_return
 
-    slurm_status = SlurmStatusEnum[job_status]
+    slurm_status = SlurmStatusEnum(job_status)
     run_validation_job_callback_slurm(validation_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from validation_job_slurm_callback()')
@@ -532,14 +530,14 @@ def get_slurm_token(request):
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
     logger.info(f'Subsetting directory {input_directory}')
 
-    if not Path(output_directory).is_dir():
-        Path(output_directory).mkdir(parents=True, exist_ok=True)
+    if not os.path.isdir(output_directory):
+        os.makedirs(output_directory, exist_ok=True)
 
-    for filename in Path(input_directory).iterdir():
-        input_file_path = Path(input_directory) / filename
-        output_file_path = Path(output_directory) / filename
+    for filename in os.listdir(input_directory):
+        input_file_path = os.path.join(input_directory, filename)
+        output_file_path = os.path.join(output_directory, filename)
 
-        if input_file_path.is_file():  # Ensure it's a file
+        if os.path.isfile(input_file_path):  # Ensure it's a file
             subset_by_time_range(input_file_path, output_file_path, date_time_range)
 
     logger.info(f'Done subsetting directory {input_directory}')
