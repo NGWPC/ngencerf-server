@@ -564,8 +564,9 @@ def parse_duration(duration_str):
 
 def parse_performance_metrics(file_path):
     """
-    Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database
-    Expects the file to have exactly two lines of data.
+    Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database.
+    Logs a warning if any expected field is missing. Assumes MaxRSS, MaxDiskRead, and MaxDiskWrite are only on
+    the .batch line, while Reserved is only on the non-batch line.
     """
 
     if not os.path.exists(file_path):
@@ -583,22 +584,33 @@ def parse_performance_metrics(file_path):
         for row in reader:
             job_id = row['JobID']
 
-            logger.info(f'job_id: {job_id}')
             if job_id.endswith('.batch'):
-                # Collect data from the .batch line
+                # Expected fields only for the .batch line
+                expected_batch_fields = ['Elapsed', 'NCPUS', 'CPUTime', 'MaxRSS', 'MaxDiskRead', 'MaxDiskWrite']
+                missing_fields = [field for field in expected_batch_fields if not row.get(field)]
+                if missing_fields:
+                    logger.warning(f'Missing fields for batch JobID {job_id}: {", ".join(missing_fields)}')
+
+                # Collect data from the .batch line with fallback to None for missing fields
                 batch_metrics = {
                     'slurm_job_id': job_id,
-                    'elapsed_time': parse_duration(row['Elapsed']),
-                    'num_cpus': int(row['NCPUS']),
-                    'cpu_time': parse_duration(row['CPUTime']),
-                    'max_rss': row['MaxRSS'] or None,
-                    'max_disk_read': row['MaxDiskRead'] or None,
-                    'max_disk_write': row['MaxDiskWrite'] or None,
+                    'elapsed_time': parse_duration(row.get('Elapsed', '')) if row.get('Elapsed') else None,
+                    'num_cpus': int(row.get('NCPUS', 0)) if row.get('NCPUS') else None,
+                    'cpu_time': parse_duration(row.get('CPUTime', '')) if row.get('CPUTime') else None,
+                    'max_rss': row.get('MaxRSS', None),
+                    'max_disk_read': row.get('MaxDiskRead', None),
+                    'max_disk_write': row.get('MaxDiskWrite', None),
                     'reserved_time': reserved_time  # This will be updated later if available
                 }
             else:
+                # Expected fields only for the non-batch line
+                expected_non_batch_fields = ['Elapsed', 'NCPUS', 'CPUTime', 'Reserved']
+                missing_fields = [field for field in expected_non_batch_fields if not row.get(field)]
+                if missing_fields:
+                    logger.warning(f'Missing fields for non-batch JobID {job_id}: {", ".join(missing_fields)}')
+
                 # Save the reserved time from the non-.batch line
-                reserved_time = parse_duration(row['Reserved']) if row['Reserved'] else None
+                reserved_time = parse_duration(row.get('Reserved', '')) if row.get('Reserved') else None
 
     if batch_metrics:
         # Now update the reserved_time for the batch metrics
