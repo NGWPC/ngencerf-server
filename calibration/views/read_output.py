@@ -41,7 +41,7 @@ def read_validation_output(validation_run: ValidationRun):
         if validation_run.validation_type == ValidationType.VALID_ITERATION:
             metrics_file = get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
         else:
-            metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType[validation_run.validation_type.upper()])
+            metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType(validation_run.validation_type))
 
         metrics = parse_performance_metrics(metrics_file)
         validation_run.performance_metrics = metrics
