@@ -1,6 +1,6 @@
 import json
 import logging
-from pathlib import Path
+import os
 from typing import Optional
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -41,7 +41,6 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def get_plot_names(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-
     logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
@@ -74,9 +73,8 @@ def get_plot_names(request):
 
 def png_to_base64_url(png):
     if png:
-        png_path = Path(png)
-        if png_path.exists():
-            with png_path.open("rb") as png_file:
+        if os.path.exists(png):
+            with open(png, "rb") as png_file:
                 return png_str_to_base64_url(png_file.read())
         else:
             raise CerfException(f"Plot '{png}' does not exist")
@@ -105,7 +103,6 @@ def png_to_base64_url(png):
 @handle_exceptions
 def get_plot(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
-
     logger.debug(f'get_plot() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(GetPlotRequestSerializer, data)
@@ -131,9 +128,9 @@ def get_plot(request):
 
     match plot_info['location']:
         case 'output_validation':
-            location = Path(get_output_validation_run_dir(run))
+            location = get_output_validation_run_dir(run)
         case 'output_calibration':
-            location = Path(get_output_calibration_run_dir(run))
+            location = get_output_calibration_run_dir(run)
         case 'plot_iteration':
             location = find_non_empty_plot_iteration(run)
             if location is None:
@@ -143,8 +140,9 @@ def get_plot(request):
             return ResponseError(f"Unknown location {plot_info['location']} in PlotDefinitions")
 
     plot_file_name = plot_info['filename_mask'].format(gage_id=gage_id)
-    plot_file_path = location / plot_file_name
-    if not plot_file_path.exists():
+    plot_file_path = os.path.join(location, plot_file_name)
+
+    if not os.path.exists(plot_file_path):
         return ResponseError(f"Plot {plot_file_path} not found at expected location")
 
     plot_url = png_to_base64_url(plot_file_path)
@@ -158,7 +156,7 @@ def get_plot(request):
     return Response(response_validator.data)
 
 
-def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[Path]:
+def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[str]:
     """
     Uses process_worker_dirs to find the 'Plot_Iteration' directory in a worker directory
     that is non-empty.
@@ -166,15 +164,15 @@ def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[P
     :param calibration_run: The run object to process
     :return: The worker directory with a non-empty 'Plot_Iteration' directory, or None if not found
     """
-    found_plot_iteration_dir: Optional[Path] = None
+    found_plot_iteration_dir: Optional[str] = None
 
     # Custom function to check worker directories
     def check_worker(worker_dir, run: CalibrationRun):
         nonlocal found_plot_iteration_dir
-        plot_iteration_dir = worker_dir / 'Plot_Iteration'
+        plot_iteration_dir = os.path.join(worker_dir, 'Plot_Iteration')
 
         # Check if 'Plot_Iteration' exists and is non-empty
-        if plot_iteration_dir.is_dir() and any(plot_iteration_dir.iterdir()):
+        if os.path.isdir(plot_iteration_dir) and any(os.scandir(plot_iteration_dir)):
             found_plot_iteration_dir = plot_iteration_dir
 
     # Call process_worker_dirs to iterate through the worker directories

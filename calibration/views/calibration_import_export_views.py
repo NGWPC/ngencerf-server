@@ -1,6 +1,8 @@
 import base64
+import json
 import logging
-from pathlib import Path
+import os
+import traceback
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -26,10 +28,10 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_calibration_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
-    save_output_variable, \
-    save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
+    save_output_variable, save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
+from calibration.views.hydrofabric import HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +52,6 @@ logger = logging.getLogger(__name__)
     description="Import a job"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
 def import_job(request):
     data = request.data
@@ -123,7 +124,7 @@ def import_calibration_run_data(request, calibration_run_data):
 
         if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):
             geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
-            if geopackage_user_uploaded_file_path and Path(geopackage_user_uploaded_file_path).exists():
+            if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
             else:
@@ -132,7 +133,7 @@ def import_calibration_run_data(request, calibration_run_data):
 
         if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
-            if forcing_user_uploaded_dir_path and Path(forcing_user_uploaded_dir_path).exists():
+            if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
             else:
@@ -141,7 +142,7 @@ def import_calibration_run_data(request, calibration_run_data):
 
         if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
-            if observational_user_uploaded_file_path and Path(observational_user_uploaded_file_path).exists():
+            if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy from original location to our job-specific path
                 info_messages.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
             else:
@@ -163,7 +164,8 @@ def import_calibration_run_data(request, calibration_run_data):
 
         formulation_warning, nwm_warning = validate_formulation(module_names)
         if formulation_warning is not None:
-            warnings.append(formulation_warning)
+            # This is an ugly string
+            warnings.append(json.dumps(formulation_warning))
 
         run.user_formulation_name = calibration_run_data.get('formulation_name')
 
@@ -192,7 +194,11 @@ def import_calibration_run_data(request, calibration_run_data):
         modules = CalibrationFormulation.objects.filter(calibration_run=run)
 
         if modules and run.gage:
-            get_module_metadata_from_hydrofabric(run, modules)
+            try:
+                get_module_metadata_from_hydrofabric(run, modules)
+            except HydrofabricException as e:
+                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                warnings.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
 
         run.automatic_validation = calibration_run_data.get('automatic_validation')
 
@@ -332,16 +338,18 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
-        calibration_run_data['geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and Path(
-            user_uploaded_geopackage_file).exists() else None
+        calibration_run_data[
+            'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
+            user_uploaded_geopackage_file) else None
 
         user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
-        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and Path(
-            user_uploaded_observational_file).exists() else None
+        calibration_run_data[
+            'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
+            user_uploaded_observational_file) else None
 
         user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
-        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and Path(
-            user_uploaded_forcing_dir).exists() else None
+        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
+            user_uploaded_forcing_dir) else None
 
         calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
         calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
@@ -359,7 +367,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         # TODO This should be the map file, which might need to be regenerated
         geopackage_path = get_geopackage_file_for_job(run) if run.geopackage_source == GeopackageSourceEnum.from_enum(
             GeopackageSourceEnum.UPLOAD) else run.geopackage_hydrofabric_file_path
-        if geopackage_path and Path(geopackage_path).exists():
+        if geopackage_path and os.path.exists(geopackage_path):
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
             geopackage_image_url = f'data:image/png;base64,{base64_str}'

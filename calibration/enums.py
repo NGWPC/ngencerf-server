@@ -137,9 +137,9 @@ class UnitsEnum(StrEnum):
 
 
 class ValidationType(StrEnum):
-    VALID_BEST = auto()
-    VALID_CONTROL = auto()
-    VALID_ITERATION = auto()
+    VALID_BEST = 'valid_best'
+    VALID_CONTROL = 'valid_control'
+    VALID_ITERATION = 'valid_iteration'
 
     @classmethod
     def get_names(cls) -> List[str]:

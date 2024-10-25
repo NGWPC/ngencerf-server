@@ -194,24 +194,6 @@ server starts in order to clean up any Calibrations or Validations that were run
 This is not necessary when running on Parallel Works
 
 
-# Installing ngen and ngen-cal
-**Note:** This process is not recommended.  Run ngen and ngen-cal in a docker container as described in Runtime Environments
-
-Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
-
-Use these recommended directory names to avoid having to change your settings.
-* It is recommended that you create a directory called `~/ngwpc/data/ngen-cal-work`
-* It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
-
-
-* Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
-* Clone ngen-cal from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/ngen-cal`
-* Follow instructions for installing ngen-cal
-* Clone ngen from Gitlab into `~/noaa-owp/ngen`
-* Follow instructions for installing ngen
-* It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
-* Create the `NGEN_CAL_RUN_DIR` at `~/ngwpc/data/run_calib`
-
 # User Authentication
 
 All endpoints require a user to be authenticated.  You can create a user through the front-end UI or use this curl command:
@@ -232,6 +214,60 @@ To simulate a login, send the same payload, containing the email and password, t
 
 Extract the access token.  For all subsequent requests, you need to include an `Authorization` header of 
 type `Bearer token` that includes the access token.
+
+# Importing test data
+
+The `cli` directory contains an `ngencerf.sh` command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
+
+In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
+```
+$ export NGEN_USERNAME="your_email"
+$ export NGEN_PASSWORD="your_password"
+```
+
+You can then run the `ngencerf.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.  
+The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
+
+The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
+
+See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterprediction.com/pages/viewpage.action?pageId=20056845)
+
+# Runtime environments
+
+There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT` in .env
+
+1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
+Create a symbolic link to match the specifying in settings.py.
+   ```
+   sudo mkdir /ngen-app
+   sudo ln -s ~/noaa-owp /ngen-app
+   ```
+   This environment is the hardest to set up because of the steps involved in installing ngen and ngen-cal, and is not recommended.
+
+
+2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
+Follow these steps to pull the latest ngen-cal docker container.  This container includes both ngen and ngen-cal
+
+   1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
+   2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
+   3. (Use your AWS credentials to login)
+   ```
+   docker login registry.sh.nextgenwaterprediction.com
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   ```
+
+   **Note:** If you are developing and have updates to ngen-cal that you want to include, use the following from the ngen-cal repo directory:
+   ```
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
+   ```
+ 
+3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
+
+The environment should be specified in the .env file.  The default is DOCKER
+```
+NGEN_ENVIRONMENT = DOCKER
+```
+
 
 # Directory structure
 
@@ -293,55 +329,22 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
     └── ngwpc-dev/hydrfabric  
 ```
 
-# Importing test data
 
-The `cli` directory contains an `ngencerf.sh` command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
+# Installing ngen and ngen-cal
+**Note:** This process is not recommended.  Run ngen and ngen-cal in a docker container as described in Runtime Environments
 
-In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
-```
-$ export NGEN_USERNAME="your_email"
-$ export NGEN_PASSWORD="your_password"
-```
+Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
 
-You can then run the `ngencerf.sh` script with one of the sample input files.  Everytime you run `ngencerf.sh`, a new Calibration Run job will be created.  
-The error messages that you get from the import are intended to let you know which data is still required to make the job runnable and at this point, can be ignored.
-
-The metadata section is totally ignored on import and can be used to add your own comments, as long as it is in Json format.
-
-See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterprediction.com/pages/viewpage.action?pageId=20056845)
-
-# Runtime environments
-
-There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT` in .env
-
-1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
-Create a symbolic link to match the specifying in settings.py.
-   ```
-   sudo mkdir /ngen-app
-   sudo ln -s ~/noaa-owp /ngen-app
-   ```
-   This environment is the hardest to set up because of the steps involved in installing ngen and ngen-cal, and is not recommended.
+Use these recommended directory names to avoid having to change your settings.
+* It is recommended that you create a directory called `~/ngwpc/data/ngen-cal-work`
+* It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 
 
-2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
-Follow these steps to pull the latest ngen-cal docker container.  This container includes both ngen and ngen-cal
+* Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
+* Clone ngen-cal from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/ngen-cal`
+* Follow instructions for installing ngen-cal
+* Clone ngen from Gitlab into `~/noaa-owp/ngen`
+* Follow instructions for installing ngen
+* It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
+* Create the `NGEN_CAL_RUN_DIR` at `~/ngwpc/data/run_calib`
 
-   1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
-   2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
-   3. (Use your AWS credentials to login)
-   ```
-   docker login registry.sh.nextgenwaterprediction.com
-   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
-   ```
-
-   **Note:** If you are developing and have updates to ngen-cal that you want to include, use the following from the ngen-cal repo directory:
-   ```
-   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
-   ```
- 
-3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
-
-The environment should be specified in the .env file.  The default is DOCKER
-```
-NGEN_ENVIRONMENT = DOCKER
-```

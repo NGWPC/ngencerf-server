@@ -157,8 +157,6 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
 
     my_module_names = set(my_module_names)
     missing_names = my_module_names - hydrofabric_module_names
-    if missing_names:
-        raise HydrofabricException(f'Response from Hydrofabric is missing entries for {missing_names}')
 
     extra_names = hydrofabric_module_names - my_module_names
 
@@ -210,6 +208,9 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
 
         # run.got_module_data_from_hydrofabric = True
         run.save()
+
+    if missing_names:
+        raise HydrofabricException(f'Response from Hydrofabric is missing entries for {missing_names}')
 
     return
 

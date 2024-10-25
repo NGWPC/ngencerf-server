@@ -6,6 +6,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from calibration.enums import StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun, ModuleGroup
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
@@ -50,11 +51,11 @@ def load_formulation_tab(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user)
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
-    # Directly get all modules and their groups from the cached result
+    # Gget all modules and their groups from the cached result
     cached_modules = get_cached_modules_with_groups()
 
     # Convert the cached Module instances to a list of dictionaries with the desired structure
