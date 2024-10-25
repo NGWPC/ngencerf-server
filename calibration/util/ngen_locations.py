@@ -1,8 +1,10 @@
 import logging
 from pathlib import Path
+from typing import Literal
 
 from django.conf import settings
 
+from calibration.enums import ValidationType
 from calibration.models import CalibrationRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 
@@ -174,6 +176,12 @@ def get_validation_performance_file(run: CalibrationRun, worker_name: str, itera
     return str(Path(get_output_validation_run_dir(run)) / f'ngen-cal_validation_{worker_name}_iter{iteration}_performance.log')
 
 
+def get_validation_special_performance_file(run: CalibrationRun,
+                                            validation_type: Literal[ValidationType.VALID_BEST, ValidationType.VALID_CONTROL]) -> str:
+    validation_type = validation_type.split('_')[1]
+    return str(Path(get_output_validation_run_dir(run)) / f'ngen-cal_validation_{validation_type}_performance.log')
+
+
 def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_valid_best.csv')
 
@@ -192,6 +200,7 @@ def get_validation_metrics_valid_control_file(run: CalibrationRun) -> str:
 
 def get_validation_metrics_nwm_retrospective_file(run: CalibrationRun) -> str:
     return str(Path(get_output_validation_run_dir(run)) / f'{run.gage.gage_id}_metrics_nwm_retro.csv')
+
 
 # TODO Might not need this.  Used internally by validation_iteration
 # def get_validation_iteration_input_file(run: CalibrationRun, worker_name: str, iteration: int) -> str:

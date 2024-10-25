@@ -20,7 +20,8 @@ from calibration.models import Iteration, CalibrationRun, IterationMetric, Itera
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
-    get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv
+    get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
+    get_validation_special_performance_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,13 @@ def read_validation_output(validation_run: ValidationRun):
 
     logger.info(f"Processing output for {job_description} ")
 
-    with transaction.atomic():
-        metrics = parse_performance_metrics(get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num))
+    with (transaction.atomic()):
+        if validation_run.validation_type == ValidationType.VALID_ITERATION:
+            metrics_file = get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
+        else:
+            metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType[validation_run.validation_type.upper()])
+
+        metrics = parse_performance_metrics(metrics_file)
         validation_run.performance_metrics = metrics
         validation_run.save(update_fields=['performance_metrics'])
 
@@ -56,14 +62,14 @@ def read_calibration_output(calibration_run: CalibrationRun):
     """
     job_description = get_job_description(calibration_run)
 
-    logger.info(f"Processing output for {job_description }")
+    logger.info(f"Processing output for {job_description}")
 
     with transaction.atomic():
         metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
         calibration_run.performance_metrics = metrics
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
-            raise CerfException(f"End of job processing has already been completed for {job_description }")
+            raise CerfException(f"End of job processing has already been completed for {job_description}")
 
         # Set the realization file path for the run
         calibration_run.realization_file_path = get_realization_file_path(calibration_run)
@@ -270,7 +276,8 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Ensure the metrics and parameters CSV files have the same number of rows
     if len(metrics_df) != len(params_df):
-        raise CerfException(f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}')
+        raise CerfException(
+            f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}')
 
     metrics_to_create = []  # List to accumulate metrics to be created
     params_to_create = []  # List to accumulate parameters to be created

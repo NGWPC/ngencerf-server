@@ -40,16 +40,6 @@ sudo mkdir /ngencerf
 sudo ln -s ~/ngwpc/data /ngencerf/data
 ```
 
-# Static Files
-There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
-
-The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
-`/ngencerf/data/ngen-static-files`
-```
-aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
-```
-
-
 
 # Access to AWS
 Some endpoints require access to AWS and therefore you must update your credentials.
@@ -88,6 +78,7 @@ $ ls ~/s3/ngwpc-dev
 ```
 $ sudo wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
 $ sudo chmod +x /usr/local/bin/goofys
+$ mkdir -p ~/s3/ngwpc-dev
 $ goofys ngwpc-dev ~/s3/ngwpc-dev
 $ ls ~/s3/ngwpc-dev
 ```
@@ -98,7 +89,7 @@ fusermount -u ~/s3/ngwpc-dev
 ```
 When refreshing your AWS credentials, you will have to unmount and re-mount
 ```
-fusermount -u ~/s3/ngwpc-dev
+$ fusermount -u ~/s3/ngwpc-dev
 $ s3fs ngwpc-dev ~/s3/ngwpc-dev or goofys ngwpc-dev ~/s3/ngwpc-dev
 $ ls ~/s3/ngwpc-dev
 ```
@@ -110,16 +101,44 @@ that is dependant on `s3fs`.  All that matters is that the bucket is mounted as 
 and that there is agreement between NgenCerf and Hydrofabric path.
 
 
+# Static Files
+There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
+
+The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
+`/ngencerf/data/ngen-static-files`
+```
+aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
+```
+
+
 # Initial Set-up of database
 
-Install Postgres if not already done so.
+Install Postgres if not already installed.
+```
+sudo apt update
+sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb\_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/pgdg.asc &>/dev/null
+sudo apt install postgresql postgresql-client -y
+systemctl status postgresql
+```
 
-The `runCerf.sh` script will handle initialization of the database the 
-first time it runs and will then `manage.py runServer` to start up the server.  
-For subsequent runs, it will run `pip install`, `migrate` and `runServer`.
+Change the password for the Admin user
+```
+sudo -u postgres psql
+ALTER USER postgres PASSWORD 'password';
+\q
+```
 
-In those cases where you need to re-initialize the data, after dropping all the tables you should
-run  `runCerf.sh` with the `--load-static` argument.
+Confirm that you can log in with the new password
+```
+# psql -h localhost -U postgres
+```
+
+When you run `runCerf.sh` for the first time, or after dropping all tables from the database, include the `--load-static` option.  
+For example,
+```
+./runCerf.sh --load-static
+```
 
 To update the code, do a `git pull` and run `runCerf.sh` again
 
@@ -176,6 +195,7 @@ This is not necessary when running on Parallel Works
 
 
 # Installing ngen and ngen-cal
+**Note:** This process is not recommended.  Run ngen and ngen-cal in a docker container as described in Runtime Environments
 
 Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
 
@@ -275,7 +295,7 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
 
 # Importing test data
 
-The `cli` directory contains an ngencerf.sh command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
+The `cli` directory contains an `ngencerf.sh` command line script which will allow you to import data and create a calibration run job without having to go though the UI.  
 
 In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
 ```
@@ -300,8 +320,11 @@ Create a symbolic link to match the specifying in settings.py.
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
    ```
+   This environment is the hardest to set up because of the steps involved in installing ngen and ngen-cal, and is not recommended.
+
+
 2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
-Pull the latest ngen-cal docker container with this command.  This container includes both ngen and ngen-cal
+Follow these steps to pull the latest ngen-cal docker container.  This container includes both ngen and ngen-cal
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
    2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
