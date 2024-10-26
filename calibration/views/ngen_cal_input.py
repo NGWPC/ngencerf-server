@@ -114,14 +114,13 @@ config_template = {
         "attributes_file": "",
         # Parameter file, dynamically built based on user input
         "calib_parameter_file": "",
-        # TODO Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
         "ngen_exe_file": NGEN_EXE,
         "cfe_lib": CFE_LIB,
         "sloth_lib": SLOTH_LIB,
-        "topmd_lib": TOPMD_LIB,
+        "topmodel_lib": TOPMD_LIB,
         "noah-owp-modular_lib": NOAH_LIB,
         "sft_lib": SFT_LIB,
         "smp_lib": SMP_LIB,
