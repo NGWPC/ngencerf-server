@@ -322,7 +322,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
 
     # This field is not required from user
-    calibration['save_output_iteration'] = int(run.save_output_iteration or 0)
+    calibration['save_output_iter'] = int(run.save_output_iteration or 0)
 
     calibration['restart'] = 0  # TODO ???
 
