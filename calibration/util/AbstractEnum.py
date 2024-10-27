@@ -120,6 +120,9 @@ class AbstractEnum(Generic[T], Enum):
         :return: The model instance associated with the name
         :raises: ValueError if no matching name exists in the cache
         """
+        # Convert name to lowercase for case-insensitive matching
+        name = name.lower()
+
         # Attempt to retrieve cached items, reloading if necessary
         items = cache.get(f'{cls.__name__}_cache')
         if items is None:
@@ -127,11 +130,15 @@ class AbstractEnum(Generic[T], Enum):
             cls.load_items()
             items = cache.get(f'{cls.__name__}_cache')
 
-        # Retrieve the instance by name or raise an error if not found
-        instance = items.get(name)
+        # Create a lookup dictionary with lowercase names for case-insensitive retrieval
+        items_lower = {item_name.lower(): item for item_name, item in items.items()}
+
+        # Retrieve the instance by lowercase name or raise an error if not found
+        instance = items_lower.get(name)
         if instance is None:
             # Raise an error if the value isn't found in the cache
             raise ValueError(f"No matching database entry for value '{name}' in {cls.__name__}.")
+
         return instance
 
     @classmethod

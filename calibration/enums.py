@@ -1,4 +1,4 @@
-from enum import StrEnum, auto, Enum
+from enum import StrEnum, auto
 from typing import List, Dict, Any, Type
 
 from django.core.cache import cache
