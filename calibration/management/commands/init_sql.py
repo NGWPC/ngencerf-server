@@ -170,7 +170,7 @@ class Command(BaseCommand):
             ForcingSource.objects.all().delete()
 
         values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": False},
-                  {"name": "Upload", "description": "Uploaded by the user from a local file"},
+                  {"name": "User Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
         for v in values:
@@ -191,7 +191,7 @@ class Command(BaseCommand):
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
                   {"name": "Agency", "description": "From the owning agency", "is_active": True},
-                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
+                  {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:
@@ -205,7 +205,7 @@ class Command(BaseCommand):
             GeopackageSource.objects.all().delete()
 
         values = [{"name": "EHS", "description": "Enterprise Hydrofabric Service", "is_active": True},
-                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
+                  {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:

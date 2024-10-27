@@ -1,4 +1,4 @@
-from enum import StrEnum, auto
+from enum import StrEnum, auto, Enum
 from typing import List, Dict, Any, Type
 
 from django.core.cache import cache
@@ -8,6 +8,10 @@ from calibration.util.AbstractEnum import AbstractEnum
 
 
 class StatusEnum(AbstractEnum):
+    """
+    Enum for different statuses with caching support for efficient retrieval.
+    """
+
     SAVED = 'Saved'
     READY = 'Ready'
     RUNNING = 'Running'
@@ -22,7 +26,15 @@ class StatusEnum(AbstractEnum):
 
 
 class ForcingSourceEnum(AbstractEnum):
-    UPLOAD = 'Upload'
+    """
+    Enum for Forcing Sources, with alias support for 'Upload' or 'User Upload' entries.
+    """
+
+    UPLOAD = 'User Upload'
+
+    aliases = {
+        UPLOAD: ['Upload', 'User Upload']
+    }
 
     @classmethod
     def get_model(cls) -> Type[ForcingSource]:
@@ -35,7 +47,15 @@ class ForcingSourceEnum(AbstractEnum):
 
 
 class ObservationalSourceEnum(AbstractEnum):
-    UPLOAD = 'Upload'
+    """
+    Enum for Observational Sources, with alias support for 'Upload' or 'User Upload' entries.
+    """
+
+    UPLOAD = 'User Upload'
+
+    aliases = {
+        UPLOAD: ['Upload', 'User Upload']
+    }
 
     @classmethod
     def get_model(cls) -> Type[ObservationalSource]:
@@ -48,7 +68,15 @@ class ObservationalSourceEnum(AbstractEnum):
 
 
 class GeopackageSourceEnum(AbstractEnum):
-    UPLOAD = 'Upload'
+    """
+    Enum for Geopackage Sources, with alias support for 'Upload' or 'User Upload' entries.
+    """
+
+    UPLOAD = 'User Upload'
+
+    aliases = {
+        UPLOAD: ['Upload', 'User Upload']
+    }
 
     @classmethod
     def get_model(cls) -> Type[GeopackageSource]:
@@ -61,12 +89,19 @@ class GeopackageSourceEnum(AbstractEnum):
 
 
 class DomainEnum(AbstractEnum):
+    """
+    Domain Enum with database synchronization.
+    """
     @classmethod
     def get_model(cls) -> Type[Domain]:
         return Domain
 
 
 class OptimizationEnum(AbstractEnum):
+    """
+    Enum for Optimization types with prefetching for related inputs.
+    """
+
     DDS = 'DDS'
     GWO = 'GWO'
     PSO = 'PSO'
@@ -77,6 +112,7 @@ class OptimizationEnum(AbstractEnum):
 
     @classmethod
     def load_items(cls) -> None:
+        # Fetch optimization items with prefetching for 'inputs' relation
         model = cls.get_model()
         filter_criteria = cls.get_filter() or {}
 
@@ -89,10 +125,15 @@ class OptimizationEnum(AbstractEnum):
 
 
 class PlotDefinitionsEnum(AbstractEnum):
+    """
+    Enum for Plot Definitions.
+    """
     @classmethod
     def get_model(cls) -> Type[PlotDefinition]:
         return PlotDefinition
 
+
+# Below are standard enums without database synchronization or aliasing.
 
 class DataTypeEnum(StrEnum):
     DOUBLE = 'double'
