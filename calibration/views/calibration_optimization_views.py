@@ -13,6 +13,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Lo
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request
+from calibration.views.read_output import get_cached_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -249,34 +250,46 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
 
 def validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold):
     if objective_function_name:
+        # Retrieve the cached metrics
+        metrics_cache = get_cached_metrics()
 
-        try:
-            # Use get() to fetch the metric object with the specified name and is_active status
-            objective_function = Metric.objects.get(name=objective_function_name, is_active=True)
-        except Metric.DoesNotExist:
-            return "Invalid metric specified for objective function - '{}'".format(objective_function_name)
+        # Fetch the metric from cache, ensuring it is active
+        objective_function = metrics_cache.get(objective_function_name.lower())
+
+        if not objective_function or not objective_function.is_active:
+            return f"Invalid metric specified for objective function - '{objective_function_name}'"
 
         run.objective_function = objective_function
 
         if objective_function.categorical:
             if not streamflow_threshold:
-                return "Streamflow threshold must be specified for a categorical function'"
+                return "Streamflow threshold must be specified for a categorical function"
             run.streamflow_threshold = streamflow_threshold
 
         if objective_function.event_based:
-            if not streamflow_threshold:
-                return "Peak flow threshold must be specified for an event_based function'"
+            if not peak_flow_threshold:
+                return "Peak flow threshold must be specified for an event-based function"
             run.peak_flow_threshold = peak_flow_threshold
+
     return None
 
 
 def write_optimization_inputs(run, optimization, optimization_inputs):
     # Delete existing optimization inputs first
     CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
+
     if optimization_inputs:
+        # Retrieve cached optimization inputs
+        cached_inputs = get_cached_optimization_inputs(optimization)
+
         for o in optimization_inputs:
-            optimization_input = OptimizationInput.objects.get(optimization=optimization, name=o['name'], is_active=True)
-            CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o['value'])
+            optimization_input = cached_inputs.get(o['name'])
+            if optimization_input and optimization_input.is_active:
+                CalibrationOptimizationInput.objects.create(
+                    optimization_input=optimization_input,
+                    calibration_run=run,
+                    value=o['value']
+                )
 
 
 def get_cached_optimization_inputs(optimization_name):

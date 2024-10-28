@@ -444,15 +444,20 @@ def validate_parameters(run: CalibrationRun, parameters):
 
 def save_output_variable(run, output_variable_to_calibrate):
     if output_variable_to_calibrate:
+        # Retrieve the cached module by name
+        module = get_cached_module_by_name(output_variable_to_calibrate['module'])
+
+        if not module:
+            return f"Module '{output_variable_to_calibrate['module']}' not found in the database."
 
         try:
-            # Get the CalibrationFormulation object with the specified module and run
+            # Check if the module is part of the calibration run
             module_with_output_variable = CalibrationFormulation.objects.get(
-                module__name=output_variable_to_calibrate['module'],
+                module=module,
                 calibration_run=run
             )
         except CalibrationFormulation.DoesNotExist:
-            return "Module '{}' is not part of calibration run {}".format(output_variable_to_calibrate['module'], run.id)
+            return f"Module '{output_variable_to_calibrate['module']}' is not part of calibration run {run.id}"
 
         try:
             # Get the output variable from the module's output variables
@@ -460,10 +465,9 @@ def save_output_variable(run, output_variable_to_calibrate):
                 name=output_variable_to_calibrate['name']
             )
         except ModuleOutputVariable.DoesNotExist:
-            return "Module output variable '{}' not found in module '{}' for this run".format(
-                output_variable_to_calibrate['name'], output_variable_to_calibrate['module']
-            )
+            return f"Module output variable '{output_variable_to_calibrate['name']}' not found in module '{output_variable_to_calibrate['module']}' for this run"
 
+        # Set the run's module output variable
         run.module_output_variable = module_output_variable
         return None
 
