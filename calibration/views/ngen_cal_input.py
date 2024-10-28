@@ -114,14 +114,13 @@ config_template = {
         "attributes_file": "",
         # Parameter file, dynamically built based on user input
         "calib_parameter_file": "",
-        # TODO Sloth parameter file is not supported by ngen-cal yet
         "sloth_parameter_file": "",
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
         "ngen_exe_file": NGEN_EXE,
         "cfe_lib": CFE_LIB,
         "sloth_lib": SLOTH_LIB,
-        "topmd_lib": TOPMD_LIB,
+        "topmodel_lib": TOPMD_LIB,
         "noah-owp-modular_lib": NOAH_LIB,
         "sft_lib": SFT_LIB,
         "smp_lib": SMP_LIB,
@@ -323,7 +322,7 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
         calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
 
     # This field is not required from user
-    calibration['save_output_iteration'] = int(run.save_output_iteration or 0)
+    calibration['save_output_iter'] = int(run.save_output_iteration or 0)
 
     calibration['restart'] = 0  # TODO ???
 
