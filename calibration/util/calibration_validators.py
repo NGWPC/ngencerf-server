@@ -26,6 +26,7 @@ def enum_validator(enum_class):
     """
     Validates if the value is a valid name or alias of the enum class, case-insensitively.
     """
+
     def validate_enum(value):
         # Convert input value to lowercase for case-insensitive comparison
         value = value.lower()
@@ -762,6 +763,10 @@ class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
 
 class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
+class GetJobDirResponseSerializer(GenericResponseSerializer):
+    data_dir = serializers.CharField(required=True)
 
 
 ##################################
