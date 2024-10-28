@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional, Any, Tuple
 
 import toml
 from datetimerange import DateTimeRange
@@ -135,19 +135,36 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def validate_times(run):
+def validate_times(run: CalibrationRun) -> Optional[str]:
+    """
+    Validates that simulation times are within the expected time range.
+
+    :param run: The CalibrationRun instance with timing data.
+    :return: None if valid, otherwise an error string.
+    """
     if run.time_range_start and run.time_range_end:
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
-        if run.calibration_start_period and (run.calibration_start_period not in time_range or run.calibration_end_period not in time_range):
+        if run.calibration_start_period and (
+            run.calibration_start_period not in time_range or run.calibration_end_period not in time_range
+        ):
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if run.automatic_validation and run.validation_start_period and (
-                run.validation_start_period not in time_range or run.validation_end_period not in time_range):
+        if (
+            run.automatic_validation
+            and run.validation_start_period
+            and (run.validation_start_period not in time_range or run.validation_end_period not in time_range)
+        ):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-
     return None
 
 
-def ready_to_run(run: CalibrationRun, build: bool = None):
+def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
+    """
+     Prepares the configuration and validates the `run` instance for readiness.
+
+     :param run: The CalibrationRun instance.
+     :param build: Optional; whether to create directories and build configuration files.
+     :return: Tuple of errors, config file if any.
+     """
     if run.status not in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         return None, None
 
@@ -301,11 +318,10 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     if not is_missing(run.optimization, 'optimization', errors):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
-        # Retrieve cached optimization inputs
-        cached_inputs = get_cached_optimization_inputs(run.optimization.name)
-
         # Validate if all inputs are provided
-        all_input_names = {opt_input['name'] for opt_input in cached_inputs}
+        cached_inputs_list = get_cached_optimization_inputs(run.optimization.name)
+        all_input_names = {opt['name'] for opt in cached_inputs_list}
+
         inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
             'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name')
         )
@@ -470,12 +486,17 @@ def build_config(config: dict, directory: str):
     return config_file
 
 
-def is_missing(value, field_name, errors, custom_error=None):
-    if value is None:
-        if custom_error:
-            errors.append(custom_error)
-        else:
-            errors.append(f'{field_name} must be specified')
+def is_missing(value: Any, field_name: str, errors: List[str], custom_error: Optional[str] = None) -> bool:
+    """
+    Checks if a required value is missing, adding an error message if so.
 
+    :param value: The value to check.
+    :param field_name: The name of the field being checked.
+    :param errors: List to which errors will be appended.
+    :param custom_error: Optional custom error message.
+    :return: True if the value is missing, False otherwise.
+    """
+    if value is None:
+        errors.append(custom_error or f"{field_name} must be specified")
         return True
     return False

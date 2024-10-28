@@ -1,4 +1,5 @@
 import logging
+from typing import List, Dict, Any
 
 from django.core.cache import cache
 from django.db import transaction
@@ -8,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import OptimizationEnum, StatusEnum
-from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria
+from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
@@ -274,26 +275,39 @@ def validate_objective_function(run, objective_function_name, streamflow_thresho
     return None
 
 
-def write_optimization_inputs(run, optimization, optimization_inputs):
+def write_optimization_inputs(run: CalibrationRun, optimization: Optimization, optimization_inputs: List[Dict[str, Any]]) -> None:
+    """
+    Writes optimization inputs to the database, removing any existing ones for the calibration run.
+
+    :param run: The CalibrationRun instance.
+    :param optimization: The selected Optimization instance.
+    :param optimization_inputs: List of inputs with names and values.
+    """
+
     # Delete existing optimization inputs first
     CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
 
     if optimization_inputs:
-        # Retrieve cached optimization inputs
-        cached_inputs = get_cached_optimization_inputs(optimization)
+        cached_inputs_list = get_cached_optimization_inputs(optimization.name)
+        cached_inputs = {opt['name']: opt for opt in cached_inputs_list}  # Convert to dict
 
         for o in optimization_inputs:
             optimization_input = cached_inputs.get(o['name'])
-            if optimization_input and optimization_input.is_active:
+            if optimization_input and optimization_input['is_active']:
                 CalibrationOptimizationInput.objects.create(
-                    optimization_input=optimization_input,
+                    optimization_input_id=optimization_input['id'],
                     calibration_run=run,
                     value=o['value']
                 )
 
 
-def get_cached_optimization_inputs(optimization_name):
-    # Attempt to retrieve cached inputs for the specified optimization name
+def get_cached_optimization_inputs(optimization_name: str) -> List[Dict[str, str | int | float]]:
+    """
+    Retrieves optimization inputs for a given optimization name from the cache or database.
+
+    :param optimization_name: The name of the optimization.
+    :return: A list of dictionaries containing optimization input details.
+    """
     cache_key = f'optimization_inputs_{optimization_name}'
     optimization_inputs = cache.get(cache_key)
 
@@ -301,11 +315,11 @@ def get_cached_optimization_inputs(optimization_name):
     if optimization_inputs is None:
         optimization_inputs = list(
             OptimizationInput.objects.filter(optimization__name=optimization_name, is_active=True).values(
-                'name', 'description', 'data_type', 'default_value', 'min', 'max', 'id'
+                'name', 'description', 'data_type', 'default_value', 'min', 'max', 'id', 'is_active'
             )
         )
-        # Cache the inputs with a long timeout or indefinitely if they rarely change
+
+        # Cache the inputs
         cache.set(cache_key, optimization_inputs, timeout=None)
 
-    # Return cached or freshly queried inputs
     return optimization_inputs
