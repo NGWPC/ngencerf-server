@@ -159,6 +159,182 @@ hydrofabric_module_metadata_real_data = {
                 }
             ]
         },
+
+        {
+            "module_name": "CFE-X",
+            "parameter_file": {
+                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/CFE-X/2024_Oct_24_21_17_26"
+            },
+            "calibrate_parameters": [
+                {
+                    "name": "a_Xinanjiang_inflection_point_parameter",
+                    "initial_value": "-0.227584883570671",
+                    "description": "when surface_water_partitioning_scheme=Xinanjiang ",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": None
+                },
+                {
+                    "name": "b_Xinanjiang_shape_parameter",
+                    "initial_value": "0.710917413234711",
+                    "description": "when surface_water_partitioning_scheme=Xinanjiang ",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " "
+                },
+                {
+                    "name": "x_Xinanjiang_shape_parameter",
+                    "initial_value": "0.0215666070580482",
+                    "description": "when surface_water_partitioning_scheme=Xinanjiang ",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " "
+                },
+                {
+                    "name": "soil_params.b",
+                    "initial_value": "7.58413219451904",
+                    "description": "beta exponent on Clapp-Hornberger (1978) soil water relations",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " "
+                },
+                {
+                    "name": "soil_params.satdk",
+                    "initial_value": "7.94075094745494e-06",
+                    "description": "saturated hydraulic conductivity",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " meters/second [m s-1]"
+                },
+                {
+                    "name": "soil_params.satpsi",
+                    "initial_value": "0.141000017523766",
+                    "description": "saturated capillary head",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " meters [m]"
+                },
+                {
+                    "name": "soil_params.slop",
+                    "initial_value": "0.150730654597282",
+                    "description": "this factor (0-1) modifies the gradient of the hydraulic head at the soil bottom.  0=no-flow.",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " meters/meters [m/m]state"
+                },
+                {
+                    "name": "soil_params.smcmax",
+                    "initial_value": "0.403563052415848",
+                    "description": "saturated soil moisture content",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " meters/meters [m/m]"
+                },
+                {
+                    "name": "max_gw_storage",
+                    "initial_value": "0.248876617431641",
+                    "description": "maximum storage in the conceptual reservoir",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " meters [m]"
+                },
+                {
+                    "name": "Cgw",
+                    "initial_value": "0.00499999988824129",
+                    "description": "the primary outlet coefficient",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " meters/hour [m h-1]"
+                },
+                {
+                    "name": "expon",
+                    "initial_value": "3.62192964553833",
+                    "description": "exponent parameter (1.0 for linear reservoir)",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " "
+                },
+                {
+                    "name": "K_lf",
+                    "initial_value": "0.1",
+                    "description": "Nash Config param - primary reservoir",
+                    "min": None,
+                    "max": None,
+                    "data_type": "double",
+                    "units": " "
+                }
+            ],
+            "output_variables": [
+                {
+                    "variable": "ACTUAL_ET",
+                    "description": None
+                },
+                {
+                    "variable": "DEEP_GW_TO_CHANNEL_FLUX",
+                    "description": None
+                },
+                {
+                    "variable": "DIRECT_RUNOFF",
+                    "description": None
+                },
+                {
+                    "variable": "GIUH_RUNOFF",
+                    "description": None
+                },
+                {
+                    "variable": "GW_STORAGE",
+                    "description": None
+                },
+                {
+                    "variable": "INFILTRATION_EXCESS",
+                    "description": None
+                },
+                {
+                    "variable": "NASH_LATERAL_RUNOFF",
+                    "description": None
+                },
+                {
+                    "variable": "POTENTIAL_ET",
+                    "description": None
+                },
+                {
+                    "variable": "Q_OUT",
+                    "description": None
+                },
+                {
+                    "variable": "RAIN_RATE",
+                    "description": None
+                },
+                {
+                    "variable": "SOIL_STORAGE",
+                    "description": None
+                },
+                {
+                    "variable": "SOIL_STORAGE_CHANGE",
+                    "description": None
+                },
+                {
+                    "variable": "SOIL_TO_GW_FLUX",
+                    "description": None
+                },
+                {
+                    "variable": "SURF_RUNOFF_SCHEME",
+                    "description": None
+                }
+            ]
+        },
+
         {
             "module_name": "Noah-OWP-Modular",
             "parameter_file": {
@@ -251,6 +427,7 @@ hydrofabric_module_metadata_real_data = {
                 }
             ]
         },
+
         {
             "module_name": "T-Route",
             "parameter_file": {
