@@ -3,11 +3,11 @@ geopackage_sample_data = {
 }
 
 forcing_sample_data = {
-    "url": "s3://ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/"
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000/"
 }
 
 observational_sample_data = {
-    "url": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
+    "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
 }
 
 hydrofabric_module_metadata_real_data = {

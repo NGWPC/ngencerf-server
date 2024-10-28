@@ -72,7 +72,9 @@ class AbstractEnum(Generic[T], Enum):
         aliases = cls.get_aliases()  # Call the optional get_aliases() method
 
         for main_value, alias_list in aliases.items():
-            if main_value in valid_names:
+            main_value_value = main_value.value
+
+            if main_value_value in valid_names:
                 valid_names.update(alias_list)
 
         return list(valid_names)
@@ -113,12 +115,12 @@ class AbstractEnum(Generic[T], Enum):
     @classmethod
     def get_instance(cls, name: str) -> T:
         """
-        Retrieves the model instance corresponding to the given name from the cache, reloading from
-        the database if necessary. Raises a ValueError if the name is not found.
+        Retrieves the model instance corresponding to the given name or alias from the cache,
+        reloading from the database if necessary. Raises a ValueError if the name is not found.
 
-        :param name: The name of the item to retrieve (e.g., 'Running')
+        :param name: The name or alias of the item to retrieve (e.g., 'Running' or 'User Upload')
         :return: The model instance associated with the name
-        :raises: ValueError if no matching name exists in the cache
+        :raises: ValueError if no matching name or alias exists in the cache
         """
         # Convert name to lowercase for case-insensitive matching
         name = name.lower()
@@ -132,6 +134,14 @@ class AbstractEnum(Generic[T], Enum):
 
         # Create a lookup dictionary with lowercase names for case-insensitive retrieval
         items_lower = {item_name.lower(): item for item_name, item in items.items()}
+
+        # Include aliases in the lookup dictionary
+        aliases = cls.get_aliases()
+        for main_value, alias_list in aliases.items():
+            main_item = items_lower.get(main_value.value.lower())  # Find the main item
+            if main_item:
+                for alias in alias_list:
+                    items_lower[alias.lower()] = main_item  # Map each alias to the main item
 
         # Retrieve the instance by lowercase name or raise an error if not found
         instance = items_lower.get(name)

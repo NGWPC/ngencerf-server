@@ -29,12 +29,13 @@ class ForcingSourceEnum(AbstractEnum):
     """
     Enum for Forcing Sources, with alias support for 'Upload' or 'User Upload' entries.
     """
-
     UPLOAD = 'User Upload'
 
-    aliases = {
-        UPLOAD: ['Upload', 'User Upload']
-    }
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.UPLOAD: ['Upload', 'User Upload']
+        }
 
     @classmethod
     def get_model(cls) -> Type[ForcingSource]:
@@ -50,12 +51,13 @@ class ObservationalSourceEnum(AbstractEnum):
     """
     Enum for Observational Sources, with alias support for 'Upload' or 'User Upload' entries.
     """
-
     UPLOAD = 'User Upload'
 
-    aliases = {
-        UPLOAD: ['Upload', 'User Upload']
-    }
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.UPLOAD: ['Upload', 'User Upload']
+        }
 
     @classmethod
     def get_model(cls) -> Type[ObservationalSource]:
@@ -71,12 +73,13 @@ class GeopackageSourceEnum(AbstractEnum):
     """
     Enum for Geopackage Sources, with alias support for 'Upload' or 'User Upload' entries.
     """
-
     UPLOAD = 'User Upload'
 
-    aliases = {
-        UPLOAD: ['Upload', 'User Upload']
-    }
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.UPLOAD: ['Upload', 'User Upload']
+        }
 
     @classmethod
     def get_model(cls) -> Type[GeopackageSource]:
@@ -92,6 +95,7 @@ class DomainEnum(AbstractEnum):
     """
     Domain Enum with database synchronization.
     """
+
     @classmethod
     def get_model(cls) -> Type[Domain]:
         return Domain
@@ -128,6 +132,7 @@ class PlotDefinitionsEnum(AbstractEnum):
     """
     Enum for Plot Definitions.
     """
+
     @classmethod
     def get_model(cls) -> Type[PlotDefinition]:
         return PlotDefinition

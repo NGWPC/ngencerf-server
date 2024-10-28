@@ -39,9 +39,7 @@ def enum_validator(enum_class):
             valid_names = [name.lower() for name in enum_class.get_names()] if hasattr(enum_class, 'get_names') else []
 
         if value not in valid_names:
-            raise serializers.ValidationError(
-                f"This field must be one of {valid_names}"
-            )
+            raise serializers.ValidationError(f"This field must be one of {valid_names}")
 
     return validate_enum
 
