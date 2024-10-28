@@ -110,16 +110,16 @@ def import_calibration_run_data(request, calibration_run_data):
                 return None, None, None, ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
         forcing_source_name = calibration_run_data.get('forcing_source')
-        run.forcing_source = ForcingSource.objects.get(name=forcing_source_name, is_active=True) if forcing_source_name else None
+        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
         run.forcing_hydrofabric_dir_path = calibration_run_data.get('forcing_hydrofabric_dir_path')
 
         observational_source_name = calibration_run_data.get('observational_source')
-        run.observational_source = ObservationalSource.objects.get(name=observational_source_name,
-                                                                   is_active=True) if observational_source_name else None
+        run.observational_source  = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
+
         run.observational_hydrofabric_file_path = calibration_run_data.get('observational_hydrofabric_file_path')
 
         geopackage_source_name = calibration_run_data.get('geopackage_source')
-        run.geopackage_source = GeopackageSource.objects.get(name=geopackage_source_name, is_active=True) if geopackage_source_name else None
+        run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
         run.geopackage_hydrofabric_path = calibration_run_data.get('geopackage_hydrofabric_file_path')
 
         if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):

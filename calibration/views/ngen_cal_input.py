@@ -11,12 +11,13 @@ from django.db.models import F
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
-    CalibrationParameter, OptimizationInput, CalibrationFormulation, CalibrationRun
+    CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
+from calibration.views.calibration_optimization_views import get_cached_optimization_inputs
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH
 
@@ -300,21 +301,23 @@ def ready_to_run(run: CalibrationRun, build: bool = None):
     if not is_missing(run.optimization, 'optimization', errors):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
-        all_input_names = set(
-            OptimizationInput.objects.filter(optimization__name=run.optimization.name)
-            .select_related('optimization')
-            .values_list('name', flat=True)
+        # Retrieve cached optimization inputs
+        cached_inputs = get_cached_optimization_inputs(run.optimization.name)
+
+        # Validate if all inputs are provided
+        all_input_names = {opt_input['name'] for opt_input in cached_inputs}
+        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
+            'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name')
         )
 
-        # See if we have values for all the inputs
-        inputs = CalibrationOptimizationInput.objects.filter(calibration_run=run).values(
-            'value', data_type=F('optimization_input__data_type'), name=F('optimization_input__name'))
-
         for opt_input in inputs:
-            converted_value = int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']
+            converted_value = (
+                int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']
+            )
             calibration[opt_input['name']] = converted_value
             all_input_names.discard(opt_input['name'])
-        # See if there are any names leftover
+
+        # Check if any required inputs are missing
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 

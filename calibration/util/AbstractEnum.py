@@ -13,103 +13,142 @@ class AbstractEnum(Generic[T], Enum):
     """
     This abstract class provides an enum-like interface that is dynamically synced with the database.
 
-    - The class allows you to define specific enum members for values that are explicitly referenced
-      in the code, ensuring they are easy to access and reducing the risk of typos or case mismatches.
-      It is important to ensure that these specific enum members are in the database.
+    - This class allows specific enum members to be defined for values referenced directly in the code,
+      reducing the risk of typos or mismatches. These specific members must be present in the database.
 
-    - In addition to the explicitly defined enum members, the class dynamically loads values
-      from the corresponding database table and stores them in cache.
-      This ensures that all current database values are available, even if they aren't explicitly defined
-      in the enum. The cached values prevent repeated database queries, improving performance.
+    - In addition to explicitly defined members, this class dynamically loads additional values
+      from the database and caches them. This ensures that all relevant database values are accessible
+      without repeated queries.
 
-    - Subclasses of AbstractEnum must override the `get_model()` method to specify the associated model,
-      and can optionally override the `get_filter()` method to apply custom filters (e.g., `is_active=True`).
-
-    This setup allows the enum to function both as a traditional enum for specific values and as a dynamic
-    provider of all relevant database entries.
+    - Subclasses must override the `get_model()` method to specify the associated model and may optionally
+      override `get_filter()` to apply a custom filter, such as `is_active=True`.
     """
 
     @classmethod
     def get_model(cls) -> Type[T]:
         """
-          This method should be overridden in subclasses to return the model class
-          associated with the enum. For example, StatusEnum would return the Status model.
-          """
+        To be implemented by each subclass to return the model associated with the enum.
+
+        For example, a StatusEnum subclass would return the Status model.
+        """
         raise NotImplementedError("Subclasses must define a 'get_model' method")
+
+    @classmethod
+    def get_aliases(cls) -> Dict[str, List[str]]:
+        """
+        Optionally overridden by subclasses to provide aliases for enum members.
+
+        :return: A dictionary of aliases for enum members, defaulting to an empty dictionary.
+        """
+        return {}
 
     @classmethod
     def get_names(cls) -> List[str]:
         """
-        Returns a list of names from the cached enum values.
-        This method retrieves the names of the items stored in the cache.
+        Retrieves the names of the cached enum items. If the cache is empty, items are reloaded from the database.
+
+        :return: A list of names for the enum items
         """
-        # Ensure cache is loaded if not already cached
+        # Attempt to get items from the cache, and reload if cache is empty
         items = cache.get(f'{cls.__name__}_cache')
         if items is None:
             cls.load_items()
             items = cache.get(f'{cls.__name__}_cache')
 
-        # Return a list of names
+        # Return just the names of the items
         return [item.name for item in items.values()]
+
+    @classmethod
+    def get_all_valid_names(cls) -> List[str]:
+        """
+        Retrieves a list of all valid names for the enum, including any aliases defined by the subclass.
+
+        This supports flexibility by allowing multiple names (aliases) for the same enum member.
+
+        :return: A list of valid names, including aliases
+        """
+        # Retrieve the valid names from the enum itself
+        valid_names = set(cls.get_names())
+        aliases = cls.get_aliases()  # Call the optional get_aliases() method
+
+        for main_value, alias_list in aliases.items():
+            main_value_value = main_value.value
+
+            if main_value_value in valid_names:
+                valid_names.update(alias_list)
+
+        return list(valid_names)
 
     @classmethod
     def get_filter(cls) -> Optional[Dict[str, Any]]:
         """
-        This method can be overridden in subclasses to provide custom filters when querying the database.
-        By default, it returns None, meaning no filters are applied.
-        If the subclass has an `is_active` field, for example, it can override this method to return
-        {'is_active': True}.
+        Optional: Subclasses can override this to specify custom filters (e.g., `{'is_active': True}`)
+        to apply when loading items from the database.
+
+        By default, no filters are applied.
+
+        :return: A dictionary of filters or None if no filters are needed
         """
         return None
 
     @classmethod
     def load_items(cls) -> None:
         """
-        This method loads items from the database using the optional filters provided by the `get_filter()` method.
-        If no filter is defined, all items are loaded. The items are then stored in the cache to avoid
-        repeated database queries.
+        Loads items from the database, applying filters specified in `get_filter()`. Results are cached
+        to avoid redundant queries, where each item is stored by name.
+
+        This method is called automatically if the cache is empty.
         """
         # Get the model defined in the subclass (e.g., Status)
         model = cls.get_model()
 
-        # Get the custom filter (if any) from the subclass
+        # Get any filter criteria specified in the subclass
         filter_criteria = cls.get_filter() or {}
 
-        # Query items from the database, applying the filter criteria
+        # Query the model using the filter criteria and build a dictionary of items keyed by name
         items = model.objects.filter(**filter_criteria)
-
-        # Store the results in a dictionary with the item's name as the key
         item_dict = {item.name: item for item in items}
 
+        # Store the item dictionary in cache
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
     @classmethod
     def get_instance(cls, name: str) -> T:
         """
-        This method retrieves the model instance corresponding to the given value
-        (e.g., 'Running') from the cache. If the cache is empty, it reloads the active
-        items from the database. If the value doesn't exist in the cache, a ValueError is raised.
+        Retrieves the model instance corresponding to the given name or alias from the cache,
+        reloading from the database if necessary. Raises a ValueError if the name is not found.
 
-        This function is not recommended, due to the risk of passing in a string (e.g., typos, etc)
-        Instead, any enums that are referenced in the code should be defined in the enum and then use
-        from_enum() to get the model instance.
-
-        :param name: The name of the item to retrieve (e.g., 'Running')
-        :return: The model instance corresponding to the value
-        :raises: ValueError if the value does not exist in the cache
+        :param name: The name or alias of the item to retrieve (e.g., 'Running' or 'User Upload')
+        :return: The model instance associated with the name
+        :raises: ValueError if no matching name or alias exists in the cache
         """
-        # Attempt to retrieve cached items
+        # Convert name to lowercase for case-insensitive matching
+        name = name.lower()
+
+        # Attempt to retrieve cached items, reloading if necessary
         items = cache.get(f'{cls.__name__}_cache')
         if items is None:
             # If cache is empty, reload active items from the database
             cls.load_items()
             items = cache.get(f'{cls.__name__}_cache')
 
-        # Get the instance corresponding to the provided value
-        instance = items.get(name)
+        # Create a lookup dictionary with lowercase names for case-insensitive retrieval
+        items_lower = {item_name.lower(): item for item_name, item in items.items()}
+
+        # Include aliases in the lookup dictionary
+        aliases = cls.get_aliases()
+        for main_value, alias_list in aliases.items():
+            main_item = items_lower.get(main_value.value.lower())  # Find the main item
+            if main_item:
+                for alias in alias_list:
+                    items_lower[alias.lower()] = main_item  # Map each alias to the main item
+
+        # Retrieve the instance by lowercase name or raise an error if not found
+        instance = items_lower.get(name)
         if instance is None:
             # Raise an error if the value isn't found in the cache
             raise ValueError(f"No matching database entry for value '{name}' in {cls.__name__}.")
+
         return instance
 
     @classmethod
@@ -120,17 +159,16 @@ class AbstractEnum(Generic[T], Enum):
         the enum member's value.
 
         :param enum_member: The enum member (e.g., StatusEnum.RUNNING)
-        :return: The model instance corresponding to the enum member
+        :return: The model instance associated with the enum member
         """
-        # Get the instance by the enum member's value
+        # Uses get_instance to retrieve based on the enum member's value
         return cls.get_instance(enum_member.value)
 
     @classmethod
     def active_choices_with_fields(cls, fields: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
-        This method returns a list of items from the database, with the specified
-        fields included in each item. By default, it includes 'name' and 'description'.
-        Intended for use by the front-end.
+        Returns a list of items from the database, including only the specified fields in each item
+        (defaults to 'name' and 'description'). This method is useful for front-end selections.
 
         :param fields: A list of fields to include for each item (e.g., ['name', 'description'])
         :return: A list of dictionaries, where each dictionary contains the requested fields
@@ -140,14 +178,14 @@ class AbstractEnum(Generic[T], Enum):
             # Default to including the 'name' and 'description' fields
             fields = ['name', 'description']
 
-        # Attempt to retrieve cached items
+        # Retrieve cached items, reloading if the cache is empty
         items = cache.get(f'{cls.__name__}_cache')
         if items is None:
             # If cache is empty, reload active items from the database
             cls.load_items()
             items = cache.get(f'{cls.__name__}_cache')
 
-        # Return a list of dictionaries containing the specified fields
+        # Return each item as a dictionary of the specified fields
         return [
             {field: getattr(item, field) for field in fields}
             for item in items.values()

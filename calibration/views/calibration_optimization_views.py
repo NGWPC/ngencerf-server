@@ -13,6 +13,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Lo
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request
+from calibration.views.read_output import get_cached_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -194,51 +195,54 @@ def save_optimization_tab(request):
 
 
 def validate_optimizations(run, optimization_name, optimization_inputs):
-    optimization = None
-    if optimization_name:
-        try:
-            optimization = Optimization.objects.get(name=optimization_name, is_active=True)
-        except Optimization.DoesNotExist:
-            return None, "Invalid optimization - '{}'".format(optimization_name)
+    optimization = OptimizationEnum.get_instance(optimization_name)
 
     run.optimization = optimization
 
     if optimization_inputs:
-        valid_inputs = OptimizationInput.objects.filter(
-            optimization=optimization, name__in=[o['name'] for o in optimization_inputs], is_active=True
-        ).only('name', 'min', 'max', 'data_type')
-        valid_inputs_dict = {opt_input.name: opt_input for opt_input in valid_inputs}
+        # Retrieve cached optimization inputs
+        valid_inputs_dict = {
+            input_data['name']: input_data
+            for input_data in get_cached_optimization_inputs(optimization_name)
+        }
 
         optimization_inputs_to_create = []
         for o in optimization_inputs:
             name = o['name']
             value = o['value']
-            optimization_input = valid_inputs_dict.get(name)
+            optimization_input_data = valid_inputs_dict.get(name)
 
-            # Safely convert min and max to integers if necessary and if they are not None
-            min_value = optimization_input.min
-            max_value = optimization_input.max
+            if not optimization_input_data:
+                return None, f"'{name}' is not a valid parameter input for '{optimization_name}'"
 
-            if optimization_input.data_type != 'double':
+            # Safely retrieve min and max values
+            min_value = optimization_input_data['min']
+            max_value = optimization_input_data['max']
+
+            # Convert types if necessary for validation
+            if optimization_input_data['data_type'] != 'double':
                 # noinspection PyTypeChecker
                 min_value = int(min_value) if min_value is not None else None
                 # noinspection PyTypeChecker
                 max_value = int(max_value) if max_value is not None else None
                 value = int(value)
 
-            if not optimization_input:
-                return None, "'{}' is not a valid parameter input for '{}'".format(name, optimization_name)
-
-            # Validate the value against min and max
+            # Validate against min and max
             if min_value is not None and value < min_value:
-                return None, "'{}' value ({}) is below the minimum allowed ({})".format(name, value, min_value)
+                return None, f"'{name}' value ({value}) is below the minimum allowed ({min_value})"
             if max_value is not None and value > max_value:
-                return None, "'{}' value ({}) is above the maximum allowed ({})".format(name, value, max_value)
+                return None, f"'{name}' value ({value}) is above the maximum allowed ({max_value})"
 
+            # Append to the list for bulk creation with the original `OptimizationInput` id
             optimization_inputs_to_create.append(
-                CalibrationOptimizationInput(optimization_input=optimization_input, calibration_run=run, value=o['value'])
+                CalibrationOptimizationInput(
+                    optimization_input_id=optimization_input_data['id'],
+                    calibration_run=run,
+                    value=value
+                )
             )
 
+        # Bulk create inputs
         CalibrationOptimizationInput.objects.bulk_create(optimization_inputs_to_create)
 
     return optimization, None
@@ -246,31 +250,62 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
 
 def validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold):
     if objective_function_name:
+        # Retrieve the cached metrics
+        metrics_cache = get_cached_metrics()
 
-        try:
-            # Use get() to fetch the metric object with the specified name and is_active status
-            objective_function = Metric.objects.get(name=objective_function_name, is_active=True)
-        except Metric.DoesNotExist:
-            return "Invalid metric specified for objective function - '{}'".format(objective_function_name)
+        # Fetch the metric from cache, ensuring it is active
+        objective_function = metrics_cache.get(objective_function_name.lower())
+
+        if not objective_function or not objective_function.is_active:
+            return f"Invalid metric specified for objective function - '{objective_function_name}'"
 
         run.objective_function = objective_function
 
         if objective_function.categorical:
             if not streamflow_threshold:
-                return "Streamflow threshold must be specified for a categorical function'"
+                return "Streamflow threshold must be specified for a categorical function"
             run.streamflow_threshold = streamflow_threshold
 
         if objective_function.event_based:
-            if not streamflow_threshold:
-                return "Peak flow threshold must be specified for an event_based function'"
+            if not peak_flow_threshold:
+                return "Peak flow threshold must be specified for an event-based function"
             run.peak_flow_threshold = peak_flow_threshold
+
     return None
 
 
 def write_optimization_inputs(run, optimization, optimization_inputs):
     # Delete existing optimization inputs first
     CalibrationOptimizationInput.objects.filter(calibration_run=run).delete()
+
     if optimization_inputs:
+        # Retrieve cached optimization inputs
+        cached_inputs = get_cached_optimization_inputs(optimization)
+
         for o in optimization_inputs:
-            optimization_input = OptimizationInput.objects.get(optimization=optimization, name=o['name'], is_active=True)
-            CalibrationOptimizationInput.objects.create(optimization_input=optimization_input, calibration_run=run, value=o['value'])
+            optimization_input = cached_inputs.get(o['name'])
+            if optimization_input and optimization_input.is_active:
+                CalibrationOptimizationInput.objects.create(
+                    optimization_input=optimization_input,
+                    calibration_run=run,
+                    value=o['value']
+                )
+
+
+def get_cached_optimization_inputs(optimization_name):
+    # Attempt to retrieve cached inputs for the specified optimization name
+    cache_key = f'optimization_inputs_{optimization_name}'
+    optimization_inputs = cache.get(cache_key)
+
+    # If not in cache, query and cache the results
+    if optimization_inputs is None:
+        optimization_inputs = list(
+            OptimizationInput.objects.filter(optimization__name=optimization_name, is_active=True).values(
+                'name', 'description', 'data_type', 'default_value', 'min', 'max', 'id'
+            )
+        )
+        # Cache the inputs with a long timeout or indefinitely if they rarely change
+        cache.set(cache_key, optimization_inputs, timeout=None)
+
+    # Return cached or freshly queried inputs
+    return optimization_inputs

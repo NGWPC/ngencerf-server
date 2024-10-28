@@ -77,16 +77,8 @@ def load_gage_tab(request):
 
     domain_values = DomainEnum.active_choices_with_fields(fields=['name', 'description'])
 
-    # Check if gages data is cached
-    gages = cache.get('cached_gages')
-    if gages is None:
-        # If not cached, query the database and cache the result
-        gages = list(Gage.objects.filter(is_active=True)
-                     .values('gage_id', 'nws_id', 'nwm_v3_calibrated', 'domain__name'))
-        [gage.update({'domain': gage.pop('domain__name')}) for gage in gages]
-
-        # Cache the gages data indefinitely (timeout=None)
-        cache.set('cached_gages', gages, timeout=None)
+    # Fetch all cached gages
+    gages = list(get_cached_gages().values())
 
     ngen_cal_input.ready_to_run(run)
 
@@ -98,7 +90,8 @@ def load_gage_tab(request):
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages", "geopackage_image_url"], max_length=50)
+    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages", "geopackage_image_url"],
+                                                           max_length=50)
     if error_response:
         return error_response
 
@@ -138,10 +131,9 @@ def get_gage(request):
         return error_return
 
     gage_id = validator.get('gage_id')
+    gage = get_gage_by_id(gage_id)
 
-    # Try to get the gage from the cache
-    gage = cache.get(f'cached_gage_{gage_id}')
-    if gage is None:
+    if not gage:
         try:
             # If not cached, query the database and cache the result
             gage = Gage.objects.values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').get(gage_id=gage_id)
@@ -181,7 +173,7 @@ def save_gage_tab(request):
      run.forcing_hydrofabric_dir_path, observational_hydrofabric_file_path and run.geopackage_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
 
      User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
-     For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uplaods a file, then we use the job-specific path.
+     For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uploads a file, then we use the job-specific path.
 
      The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
      They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
@@ -567,3 +559,35 @@ def get_data_files_status(run: CalibrationRun):
     return {'observational': bool(observation_path),
             'forcing': bool(forcing_path),
             'geopackage': bool(geopackage_path)}
+
+
+def get_cached_gages() -> dict:
+    """
+    Retrieves all active gages from the cache or the database if not cached.
+    :return: A dictionary of gages with gage_id as the key and gage details as values.
+    """
+    # Check if the gages are already cached
+    gages_lookup = cache.get('cached_gages')
+    if not gages_lookup:
+        # Fetch from the database and cache the results as a dictionary
+        gages = Gage.objects.filter(is_active=True).values(
+            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'nwm_v3_calibrated', 'domain__name'
+        )
+        gages_lookup = {gage['gage_id']: gage for gage in gages}
+        # Adjust domain names
+        for gage in gages_lookup.values():
+            gage['domain'] = gage.pop('domain__name')
+
+        cache.set('cached_gages', gages_lookup, timeout=None)
+    return gages_lookup
+
+
+def get_gage_by_id(gage_id: str):
+    """
+    Retrieve a single gage by gage_id from the cached gages.
+    :param gage_id: The gage_id to retrieve.
+    :return: The gage data if found, otherwise None.
+    """
+    # Retrieve the gage from the cached set of gages
+    gages = get_cached_gages()
+    return gages.get(gage_id)

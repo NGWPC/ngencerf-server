@@ -24,12 +24,22 @@ class BaseSerializer(serializers.Serializer):
 
 def enum_validator(enum_class):
     """
-    Should be used for enum class that extend AbstractEnum only
+    Validates if the value is a valid name or alias of the enum class, case-insensitively.
     """
-
     def validate_enum(value):
-        if value not in enum_class.get_names():
-            raise serializers.ValidationError(f"This field must be one of {enum_class.get_names()}")
+        # Convert input value to lowercase for case-insensitive comparison
+        value = value.lower()
+
+        # Retrieve valid names, converting each to lowercase for case-insensitive comparison
+        if hasattr(enum_class, 'get_all_valid_names'):
+            # Enum with get_all_valid_names() method (typically from AbstractEnum)
+            valid_names = [name.lower() for name in enum_class.get_all_valid_names()]
+        else:
+            # Standard enum without aliases, using get_names() if available
+            valid_names = [name.lower() for name in enum_class.get_names()] if hasattr(enum_class, 'get_names') else []
+
+        if value not in valid_names:
+            raise serializers.ValidationError(f"This field must be one of {valid_names}")
 
     return validate_enum
 
