@@ -221,7 +221,7 @@ The `cli` directory contains an `ngencerf.sh` command line script which will all
 
 In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
 ```
-$ export NGEN_USERNAME="your_email"
+$ export NGEN_EMAIL="your_email"
 $ export NGEN_PASSWORD="your_password"
 ```
 
