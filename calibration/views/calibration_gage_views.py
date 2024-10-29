@@ -592,4 +592,10 @@ def get_gage_by_id(gage_id: str):
     """
     # Retrieve the gage from the cached set of gages
     gages = get_cached_gages()
-    return gages.get(gage_id)
+    gage = gages.get(gage_id)
+
+    if gage:
+        # Exclude 'nws_id', 'domain', and 'nwm_v3_calibrated' from the result
+        gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'nwm_v3_calibrated']}
+
+    return gage
