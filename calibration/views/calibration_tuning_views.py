@@ -415,29 +415,34 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
 
 
 def validate_parameters(run: CalibrationRun, parameters):
-    if parameters:
-        # Fetch all CalibrationParameters for the given calibration run and related modules in one query
-        existing_parameters = CalibrationParameter.objects.filter(
-            calibration_formulation__calibration_run=run
-        ).select_related('calibration_formulation__module')
+    if not parameters:
+        return None
 
-        # Create a lookup dictionary for existing parameters by module name and parameter name
-        parameter_lookup = {
-            (param.calibration_formulation.module.name, param.name): param
-            for param in existing_parameters
-        }
+    # Fetch all CalibrationParameters for the given calibration run and related modules in one query
+    existing_parameters = CalibrationParameter.objects.filter(
+        calibration_formulation__calibration_run=run
+    ).select_related('calibration_formulation__module')
 
-        # Validate each parameter in the input
-        invalid_parameters = []
-        for p in parameters:
-            key = (p['module'], p['name'])
-            if key not in parameter_lookup:
-                invalid_parameters.append(key)
+    # Create a lookup dictionary for existing parameters by module name and parameter name
+    parameter_lookup = {
+        (param.calibration_formulation.module.name, param.name): param
+        for param in existing_parameters
+    }
 
-        # If any invalid parameters are found, return an error message
-        if invalid_parameters:
-            invalid_param_list = [f"'{name}' for module '{module}'" for module, name in invalid_parameters]
-            return f"Invalid parameters: {', '.join(invalid_param_list)}"
+    # Validate each parameter in the input
+    invalid_parameters = []
+    invalid_modules = []
+    for p in parameters:
+        key = (p['module'], p['name'])
+        if key not in parameter_lookup:
+            # Determine if the module exists in the cache
+            (invalid_parameters if get_cached_module_by_name(p['module']) else invalid_modules).append(key)
+
+    # If any invalid parameters or modules are found, create an error message
+    if invalid_parameters or invalid_modules:
+        invalid_param_list = [f"Invalid parameter '{name}' for module '{module}'" for module, name in invalid_parameters]
+        invalid_module_list = [f"Invalid module '{module}' for parameter '{name}'" for module, name in invalid_modules]
+        return ", ".join(invalid_param_list + invalid_module_list)
 
     return None
 
