@@ -444,6 +444,4 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
         # Other stuff we need for Running/Done jobs
         pass
 
-    print('export', calibration_run_data)
-
     return calibration_run_data
