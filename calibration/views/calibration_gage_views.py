@@ -79,6 +79,8 @@ def load_gage_tab(request):
 
     # Fetch all cached gages
     gages = list(get_cached_gages().values())
+    # Retain only the fields we need
+    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibrated': gage.get('nwm_v3_calibrated'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')} for gage in gages]
 
     ngen_cal_input.ready_to_run(run)
 
@@ -276,7 +278,7 @@ def save_gage_tab(request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from save_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
 
     return Response(response_validator.data)
 
