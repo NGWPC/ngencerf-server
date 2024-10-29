@@ -89,7 +89,7 @@ def get_calibration_data_by_iteration(request):
 
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'nwm_retrospective_data': nwm_retrospective_data}
+    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'nwm_3_0_retrospective_data': nwm_retrospective_data}
     # NaN is not valid Json
     response = replace_nan_with_none(response)
 

@@ -898,7 +898,15 @@ class CalibrationDataByIteration(BaseSerializer):
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
     iteration_data = CalibrationDataByIteration(many=True, required=True)
-    nwm_retrospective_data = MetricDataByIteration(many=True, required=True)
+    nwm_3_0_retrospective_data = MetricDataByIteration(many=True, required=True)
+
+    def to_representation(self, instance):
+        # Call the original representation first
+        representation = super().to_representation(instance)
+
+        # Rename the field to have the desired output key
+        representation['nwm_3.0_retrospective_data'] = representation.pop('nwm_3_0_retrospective_data')
+        return representation
 
 
 class ValidationJobsResponseSerializer(BaseSerializer):
