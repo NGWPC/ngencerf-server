@@ -62,8 +62,19 @@ ngen_register() {
     if [ -z "$email" ]; then
         read -p "Enter a new email for ngenCerf registration: " email
     fi
-    read -sp "Enter a new password for ngenCerf registration: " NGEN_PASSWORD
-    echo  # Move to a new line after password input
+
+    # Prompt for password twice for confirmation
+    while true; do
+        read -sp "Enter a new password for ngenCerf registration: " NGEN_PASSWORD
+        echo
+        read -sp "Confirm your password: " NGEN_PASSWORD_CONFIRM
+        echo
+        if [ "$NGEN_PASSWORD" == "$NGEN_PASSWORD_CONFIRM" ]; then
+            break
+        else
+            echo "Passwords do not match. Please try again."
+        fi
+    done
 
     # Send the registration request, capture the HTTP status and response
     response=$(curl --silent --location --write-out "%{http_code}" --output /tmp/curl_response \
