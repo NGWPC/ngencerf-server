@@ -503,35 +503,6 @@ def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda):
             worker_lambda(worker_dir, calibration_run)
 
 
-# Function to accumulate the total number of iterations across worker directories
-def accumulate_iterations(calibration_run: CalibrationRun):
-    """
-    Loops through worker directories, counts the iterations in each worker's metrics file,
-    and returns the total iterations across all workers.
-
-    :param calibration_run: The CalibrationRun instance to process.
-    :return: Total number of iterations across all worker directories.
-    """
-    total_iterations = 0  # Initialize the accumulator
-
-    # Define the lambda function to process each worker directory and count iterations
-    def count_iterations_for_worker(worker_dir, calibration_run: CalibrationRun):  # noqa : F811
-        nonlocal total_iterations
-        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(calibration_run, worker_dir)
-
-        if not Path(metrics_iteration_file).is_file():
-            logger.error(f'File {metrics_iteration_file} not found in {worker_dir}')
-        else:
-            # Count rows in the CSV file and add to total iterations
-            rows = count_rows_in_csv(metrics_iteration_file)
-            total_iterations += rows
-
-    # Call process_worker_dirs with the defined lambda function
-    process_worker_dirs(calibration_run, count_iterations_for_worker)
-
-    return total_iterations  # Return the accumulated total iterations
-
-
 # Function to count the number of rows in a CSV file
 def count_rows_in_csv(file_path):
     """
@@ -573,7 +544,7 @@ def parse_performance_metrics(file_path):
     """
 
     # Slurm takes awhile to finish writing the performance metrics file, so wait awhile
-    time.sleep(30)   # Shouldn't really need to wait this long
+    time.sleep(30)  # Shouldn't really need to wait this long
     # Check if file exists, retrying a few times
     attempts = 1
     for attempt in range(attempts):
