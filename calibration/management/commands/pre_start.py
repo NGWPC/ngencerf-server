@@ -17,7 +17,7 @@ class Command(BaseCommand):
     help = "Clean up running Calibration and Validation runs"
 
     def handle(self, *args, **options):
-        if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
+        if settings.NGEN_ENVIRONMENT != NgenEnvironmentEnum.PARALLEL_WORKS:
             with transaction.atomic():
                 running_status = StatusEnum.from_enum(StatusEnum.RUNNING)
                 error_status = StatusEnum.from_enum(StatusEnum.SERVER_ERROR)
