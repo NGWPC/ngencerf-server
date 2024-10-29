@@ -18,7 +18,8 @@ from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_sl
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, \
-    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer
+    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, \
+    GetJobDirResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
@@ -404,6 +405,52 @@ def cancel_job(request):
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GetJobDirResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Cancel a running job"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_job_dir(request):
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'cancel_job() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED])
+    if error_return:
+        return error_return
+
+    response = {
+        'message': f"Calibration Run job {run.id} data directory is {run.job_data_dir}",
+        'calibration_run_id': run.id,
+        'data_dir': run.job_data_dir,
+        'status': run.status.name
+    }
+
+    response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {response_validator.data}')
 
     return Response(response_validator.data)
 
