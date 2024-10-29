@@ -753,7 +753,7 @@ class SubmitValidationJobResponseSerializer(BaseSerializer):
 
 
 class GetIterationsResponseSerializer(GenericResponseSerializer):
-    iterations = serializers.IntegerField(required=True)
+    iteration = serializers.IntegerField(required=True, allow_null=True)
 
 
 class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):

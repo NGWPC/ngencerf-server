@@ -17,13 +17,12 @@ from calibration.run_util.run_common import cancel_job_common, submit_validation
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, \
-    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer
+    CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, ValidationRunSerializer, \
+    ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, GetJobDirResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
-from calibration.views.read_output import read_calibration_output, accumulate_iterations
+from calibration.views.read_output import read_calibration_output
 
 logger = logging.getLogger(__name__)
 
@@ -339,11 +338,13 @@ def get_iteration(request):
     if error_return:
         return error_return
 
-    # Use accumulate_iterations to get the total iterations
-    total_iterations = accumulate_iterations(run)
+    high_iteration = Iteration.objects.filter(calibration_run=run, worker_number=1).order_by('-iteration_num').first()
+    high_iteration_number = high_iteration.iteration_num if high_iteration else None
 
-    response = {'message': f'Iterations so far for Calibration Run {run.id}, across all workers, is {total_iterations}', 'calibration_run_id': run.id,
-                'status': run.status.name, 'iterations': total_iterations}
+    response = {'message': f'Calibration Run {run.id} has completed {high_iteration_number} iterations',
+                'calibration_run_id': run.id,
+                'status': run.status.name,
+                'iteration': high_iteration_number}
 
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
