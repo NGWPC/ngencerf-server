@@ -348,7 +348,9 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iterati
         if not metric:
             raise CerfException(f"Could not find metric '{metric_name}'")
 
-        metric_value = float(value) if value else None
+        # Set metric_value to NaN if missing
+        metric_value = float(value) if value else float('nan')
+
         metric_obj = IterationMetric(
             iteration=iteration,
             metric=metric,

@@ -148,7 +148,7 @@ def get_plot(request):
     plot_url = png_to_base64_url(plot_file_path)
 
     response = {'calibration_run_id': run.id, 'plot_name': plot_name, 'plot_file_name': plot_file_name, 'plot_url': plot_url}
-    response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_Url'])
+    response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url'])
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
