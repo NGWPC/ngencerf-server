@@ -307,10 +307,10 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                 'valid_eval_end_period': run.validation_eval_end_period.strftime(DATE_FORMAT),
             })
 
-        # Set full evaluation periods if both calibration and validation evaluation periods are present
-        if run.calibration_eval_start_period and run.calibration_eval_end_period:
-            calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
-            calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
+            # Set full evaluation periods if both calibration and validation evaluation periods are present
+            if run.calibration_eval_start_period and run.calibration_eval_end_period:
+                calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
+                calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
 
     if not is_missing(run.objective_function, 'objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()
