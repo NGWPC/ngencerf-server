@@ -53,6 +53,8 @@ def get_calibration_data_by_iteration(request):
         .annotate(metric_name=F('metric__name'))
         .values('metric_name', 'metric_value'))
 
+    retrospective_data = [{'name': 'NWM 3.0', 'data': nwm_retrospective_data}]
+
     # Fetch all iterations for the calibration run, along with related parameters and metrics
     iterations = (
         Iteration.objects
@@ -89,7 +91,7 @@ def get_calibration_data_by_iteration(request):
 
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'nwm_3_0_retrospective_data': nwm_retrospective_data}
+    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
     # NaN is not valid Json
     response = replace_nan_with_none(response)
 
