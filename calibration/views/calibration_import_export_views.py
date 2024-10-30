@@ -182,6 +182,7 @@ def import_calibration_run_data(request, calibration_run_data):
             module_instance = get_cached_module_by_name(m_name)
             CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
+        print('calling add_sloth_parameters')
         error_message = add_sloth_parameters(run, sloth_parameters, module_names)
         if error_message:
             return None, None, None, ResponseError(error_message)
