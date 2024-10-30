@@ -94,13 +94,13 @@ def run_validation_job(validation_run: ValidationRun):
     execute_job(validation_run, input_file, output_file, job_type="validation")
 
 
-def cancel_job_common(run_id):
+def cancel_job_common(run: CalibrationRun | ValidationRun):
     from calibration.run_util.run_ngen_cal_local import cancel_local_job
     from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        return cancel_local_job(run_id)
+        return cancel_local_job(run)
     else:
-        return cancel_slurm_job(run_id)
+        return cancel_slurm_job(run)
 
 
 def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn):

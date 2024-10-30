@@ -391,7 +391,7 @@ def cancel_job(request):
     if error_return:
         return error_return
 
-    if not cancel_job_common(run_id):
+    if not cancel_job_common(run):
         return ResponseError(f"{'Calibration' if calibration_run_id else 'Validation'} Run {run.id} is not running")
 
     run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)
