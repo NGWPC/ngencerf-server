@@ -2,7 +2,6 @@ import csv
 import logging
 import os
 import re
-import time
 from collections import deque
 from datetime import timedelta
 from itertools import groupby
@@ -17,8 +16,7 @@ from django.db import transaction
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
-
-from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
+from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
