@@ -142,10 +142,8 @@ def get_calibration_jobs_for_evaluation(request):
     jobs = get_jobs(request.user, include_validations=True, run_status=[StatusEnum.DONE, StatusEnum.FAILED])
 
     response = {'jobs': jobs}
-    print('jobs', jobs)
 
-    response_validator, error_response = validate_response(GetCalibrationJobsForEvaluationResponseSerializer, response, fields_to_truncate=['jobs'],
-                                                           max_length=10)
+    response_validator, error_response = validate_response(GetCalibrationJobsForEvaluationResponseSerializer, response, fields_to_truncate=['jobs'])
     if error_response:
         return error_response
 
