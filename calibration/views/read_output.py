@@ -543,20 +543,11 @@ def parse_performance_metrics(file_path):
     the .batch line, while Reserved is only on the non-batch line.
     """
 
-    # Slurm takes awhile to finish writing the performance metrics file, so wait awhile
-    time.sleep(30)  # Shouldn't really need to wait this long
-    # Check if file exists, retrying a few times
-    attempts = 1
-    for attempt in range(attempts):
-        if os.path.exists(file_path):
-            logger.info(f'Reading performance metrics from {file_path}')
-            break
-        else:
-            logger.warning(f'Attempt {attempt + 1}: Performance metrics file {file_path} not found, retrying...')
-            time.sleep(30)
-    else:
-        logger.error(f'Performance metrics file {file_path} not found after {attempts} attempts')
+    if not os.path.exists(file_path):
+        logger.error(f'Performance metrics file {file_path} not found')
         return
+    else:
+        logger.info(f'Reading performance metrics from {file_path}')
 
     reserved_time = None
     batch_metrics = None
