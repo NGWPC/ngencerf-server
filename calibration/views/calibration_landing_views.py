@@ -405,9 +405,11 @@ def clone_job(request):
     if fatal_error:
         return fatal_error
 
-    new_run.status = run.status
-
-    messages, _ = ngen_cal_input.ready_to_run(new_run)
+    # Set the new status to Saved and then we check it
+    new_run.status = StatusEnum.from_enum(StatusEnum.SAVED)
+    messages = None
+    if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        messages, _ = ngen_cal_input.ready_to_run(new_run)
 
     response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}

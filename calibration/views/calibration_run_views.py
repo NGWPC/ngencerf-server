@@ -99,7 +99,7 @@ def get_status(request):
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: GenericResponseSerializer,
+        200: SubmitCalibrationJobResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"

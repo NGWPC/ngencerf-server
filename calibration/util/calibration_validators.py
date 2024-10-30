@@ -905,6 +905,7 @@ class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSeri
     iteration_data = CalibrationDataByIteration(many=True, required=True)
     retrospective_data = RetrospectiveData(many=True, required=True)
 
+
 class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
