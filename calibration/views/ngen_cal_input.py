@@ -165,8 +165,6 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
      :param build: Optional; whether to create directories and build configuration files.
      :return: Tuple of errors, config file if any.
      """
-    if run.status not in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
-        return None, None
 
     config = dict(config_template)
     general = config['General']
