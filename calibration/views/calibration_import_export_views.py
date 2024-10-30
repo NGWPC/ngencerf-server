@@ -11,8 +11,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, ForcingSource, ObservationalSource, Gage, GeopackageSource, \
-    CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
@@ -114,7 +113,7 @@ def import_calibration_run_data(request, calibration_run_data):
         run.forcing_hydrofabric_dir_path = calibration_run_data.get('forcing_hydrofabric_dir_path')
 
         observational_source_name = calibration_run_data.get('observational_source')
-        run.observational_source  = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
+        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         run.observational_hydrofabric_file_path = calibration_run_data.get('observational_hydrofabric_file_path')
 

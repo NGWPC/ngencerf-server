@@ -131,6 +131,7 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
         logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
         create_input(config_file)
     except Exception as e:
+        CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.from_enum(StatusEnum.FAILED))
         logger.exception(f'Exception from create_input - {str(e)}')
         return ResponseError(f'Exception from create_input - {str(e)}')
 
