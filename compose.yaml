@@ -1,0 +1,49 @@
+name: ngencerf-server
+
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../data/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
+  ngencerf-services:
+    build: 
+      context: .
+      secrets:
+        - gitlab_token
+        - aws_token
+    image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest
+    pull_policy: build
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
+      - ../data/ngen-cal-data:/ngencerf/data/
+      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
+    environment:
+      - CERF_SERVER_DATABASE_NAME=postgres
+      - CERF_SERVER_DATABASE_USER=postgres
+      - CERF_SERVER_DATABASE_PASSWORD=postgres
+      - CERF_SERVER_DATABASE_HOST=db
+    depends_on:
+      db:
+        condition: service_healthy
+        restart: true
+
+secrets:
+  gitlab_token:
+    file: ~/.gitlab_token
+  aws_token:
+    file: ./.aws_credentials
+

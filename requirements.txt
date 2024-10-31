@@ -1,0 +1,26 @@
+Django~=5.1.2
+djangorestframework~=3.15.2
+geopandas~=1.0.1
+matplotlib~=3.9.1
+fiona~=1.10.1
+shapely~=2.0.5
+toml~=0.10.2
+DateTimeRange~=2.3.0
+python-dotenv~=1.0.1
+django-currentuser~=0.8.0
+psycopg~=3.2.3
+django_dbconn_retry~=0.1.7
+djoser~=2.2.3
+djangorestframework-simplejwt~=5.3.1
+pyjwt~=2.9.0
+django_dbconn_retry~=0.1.7
+drf_spectacular~=0.27.2
+django-cors-headers~=4.5.0
+requests~=2.32.3
+pandas~=2.2.3
+pyogrio~=0.10.0
+numpy~=2.1.2
+-e git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput
+
+
+

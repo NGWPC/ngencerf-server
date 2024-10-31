@@ -1,0 +1,7 @@
+services:
+  ngencerf-services:
+    build: 
+      dockerfile: ./Dockerfile.production-pw
+    image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:prod
+    pull_policy: always
+
