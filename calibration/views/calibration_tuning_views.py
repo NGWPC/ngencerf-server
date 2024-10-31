@@ -393,7 +393,7 @@ def format_datetime(dt):
     return dt.strftime('%Y-%m-%d %H:%M:%S %Z') if dt else 'N/A'
 
 
-def validate_times(run, calibration_times, validation_times):
+def validate_time_range_against_data(run, calibration_times, validation_times):
     # Validate against forcing and obs data
     if run.time_range_start and run.time_range_end:
         start, end = run.time_range_start, run.time_range_end
@@ -412,7 +412,7 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
     messages = []
 
     # Validation against forcing and obs data intersection
-    error_message = validate_times(run, calibration_times, validation_times)
+    error_message = validate_time_range_against_data(run, calibration_times, validation_times)
     if error_message:
         messages.append(error_message)
 
