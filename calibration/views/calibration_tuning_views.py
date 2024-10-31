@@ -5,7 +5,7 @@ from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List, Tuple
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -113,29 +113,25 @@ def load_tuning_tab(request):
     return Response(response_validator.data)
 
 
-def modules_without_parameters(modules_in_use):
-    # Check if any of these modules are missing parameters
-    modules_missing_parameters = modules_in_use.exclude(
-        calibrationparameter__isnull=False
-    )
-    return modules_missing_parameters
+def modules_without_parameters(modules_in_use: QuerySet[CalibrationFormulation]) -> QuerySet[CalibrationFormulation]:
+    return modules_in_use.exclude(calibrationparameter__isnull=True)
 
 
-def get_output_variable_to_calibrate(run):
+def get_output_variable_to_calibrate(run: CalibrationRun) -> Dict[str, str] | None:
     return {
         'module': run.module_output_variable.calibration_formulation.model.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else None
 
 
-def has_user_selected_tuning_parameters(modules):
+def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation]) -> bool:
     for m in modules.prefetch_related('calibrationparameter_set'):
         if m.calibrationparameter_set.exists():
             return True
     return False
 
 
-def get_parameters_and_output_variables(modules: QuerySet(CalibrationFormulation)):
+def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation]) -> List[Dict[str, str | List[Dict[str, str | float | int]]]]:
     module_list = []
 
     for formulation in modules.prefetch_related('calibrationparameter_set', 'output_variables'):
@@ -155,7 +151,7 @@ def get_parameters_and_output_variables(modules: QuerySet(CalibrationFormulation
     return module_list
 
 
-def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]):
+def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]) -> List[Dict[str, str | float]]:
     parameter_list = []
     for m in modules:
         calibrationParameters = list(CalibrationParameter.objects.filter(calibration_formulation=m, user_selected_for_tuning=True)
@@ -168,7 +164,7 @@ def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]):
     return parameter_list
 
 
-def get_time_range(run: CalibrationRun):
+def get_time_range(run: CalibrationRun) -> Dict[str, datetime | None]:
     """
     Get data range intersection of observational and forcing data if we don't already have it
     :param run:
@@ -198,20 +194,24 @@ def get_time_range(run: CalibrationRun):
         return {}
 
 
-def get_times(run):
+def get_times(run: CalibrationRun) -> Tuple[Dict[str, datetime], Dict[str, datetime]]:
     calibration_times = {}
     validation_times = {}
     # These are all or nothing.  So if this first one exists, we'll assume they all do
     if run.calibration_start_period:
-        calibration_times['simulation_start_time'] = run.calibration_start_period
-        calibration_times['simulation_end_time'] = run.calibration_end_period
-        calibration_times['calibration_start_time'] = run.calibration_eval_start_period
-        calibration_times['calibration_end_time'] = run.calibration_eval_end_period
+        calibration_times = {
+            'simulation_start_time': run.calibration_start_period,
+            'simulation_end_time': run.calibration_end_period,
+            'calibration_start_time': run.calibration_eval_start_period,
+            'calibration_end_time': run.calibration_eval_end_period
+        }
     if run.automatic_validation and run.validation_start_period:
-        validation_times['simulation_start_time'] = run.validation_start_period
-        validation_times['simulation_end_time'] = run.validation_end_period
-        validation_times['validation_start_time'] = run.validation_eval_start_period
-        validation_times['validation_end_time'] = run.validation_eval_end_period
+        validation_times = {
+            'simulation_start_time': run.validation_start_period,
+            'simulation_end_time': run.validation_end_period,
+            'validation_start_time': run.validation_eval_start_period,
+            'validation_end_time': run.validation_eval_end_period
+        }
     return calibration_times, validation_times
 
 
@@ -389,11 +389,12 @@ def upload_user_parameters(request):
 
 
 # Helper function to format datetime in a readable way
-def format_datetime(dt):
+def format_datetime(dt: datetime | None) -> str:
     return dt.strftime('%Y-%m-%d %H:%M:%S %Z') if dt else 'N/A'
 
 
-def validate_time_range_against_data(run, calibration_times, validation_times):
+def validate_time_range_against_data(run: CalibrationRun, calibration_times: Dict[str, datetime],
+                                     validation_times: Dict[str, datetime]) -> str | None:
     # Validate against forcing and obs data
     if run.time_range_start and run.time_range_end:
         start, end = run.time_range_start, run.time_range_end
@@ -408,7 +409,7 @@ def validate_time_range_against_data(run, calibration_times, validation_times):
     return None
 
 
-def validate_and_save_times(run: CalibrationRun, calibration_times, validation_times):
+def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, datetime], validation_times: Dict[str, datetime]) -> List[str]:
     messages = []
 
     # Validation against forcing and obs data intersection
@@ -465,17 +466,14 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
     # print('validation_simulation_range', validation_simulation_range)
     # print('validation_evaluation_range', validation_evaluation_range)
 
-    # Define expanded_validation_start_date and expanded_validation_end_date as Optional[datetime] to make the type explicit.
-    expanded_validation_start_date: Optional[datetime]
-    expanded_validation_end_date: Optional[datetime]
+    # Define expanded_validation_start_date and expanded_validation_end_date for validation simulation range
+    expanded_validation_start_date: datetime | None = None
+    expanded_validation_end_date: datetime | None = None
 
     # Define the expanded evaluation range from the minimum and maximum evaluation start/end times
     if validation_evaluation_range and calibration_evaluation_range:
         expanded_validation_start_date = min(validation_evaluation_range[0], calibration_evaluation_range[0])
         expanded_validation_end_date = max(validation_evaluation_range[1], calibration_evaluation_range[1])
-    else:
-        expanded_validation_start_date = None
-        expanded_validation_end_date = None
 
     # Calibration evaluation range must be within the calibration simulation range
     if calibration_evaluation_range and calibration_simulation_range:
@@ -504,8 +502,8 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
     # Check for overlap between calibration and validation evaluation ranges
     if validation_evaluation_range and calibration_evaluation_range:
         overlap_exists = (
-            validation_evaluation_range[0] <= calibration_evaluation_range[1] and
-            validation_evaluation_range[1] >= calibration_evaluation_range[0]
+                validation_evaluation_range[0] <= calibration_evaluation_range[1] and
+                validation_evaluation_range[1] >= calibration_evaluation_range[0]
         )
 
         if overlap_exists:
@@ -515,25 +513,29 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
                 f"{format_datetime(validation_evaluation_range[0])} to {format_datetime(validation_evaluation_range[1])}."
             )
 
-    if messages:
-        return messages
-
     # Save times if no errors
-    if calibration_times is not None:
-        run.calibration_start_period = calibration_times.get('simulation_start_time')
-        run.calibration_end_period = calibration_times.get('simulation_end_time')
-        run.calibration_eval_start_period = calibration_times.get('calibration_start_time')
-        run.calibration_eval_end_period = calibration_times.get('calibration_end_time')
+    if not messages:
+        if calibration_times:
+            run.calibration_start_period = calibration_times.get('simulation_start_time')
+            run.calibration_end_period = calibration_times.get('simulation_end_time')
+            run.calibration_eval_start_period = calibration_times.get('calibration_start_time')
+            run.calibration_eval_end_period = calibration_times.get('calibration_end_time')
 
-    if run.automatic_validation and validation_times is not None:
-        run.validation_start_period = validation_times.get('simulation_start_time')
-        run.validation_end_period = validation_times.get('simulation_end_time')
-        run.validation_eval_start_period = validation_times.get('validation_start_time')
-        run.validation_eval_end_period = validation_times.get('validation_end_time')
+        if run.automatic_validation and validation_times:
+            run.validation_start_period = validation_times.get('simulation_start_time')
+            run.validation_end_period = validation_times.get('simulation_end_time')
+            run.validation_eval_start_period = validation_times.get('validation_start_time')
+            run.validation_eval_end_period = validation_times.get('validation_end_time')
 
+    return messages
 
 # TODO Do woe need allow_empty?
-def validate_time_range(start_time, end_time, field_name, allow_empty=True):
+def validate_time_range(
+        start_time: datetime | None,
+        end_time: datetime | None,
+        field_name: str,
+        allow_empty: bool = True
+) -> tuple[str | None, tuple[datetime | None, datetime | None] | None]:
     # Check for empty range if allowed
     if allow_empty and (start_time is None or end_time is None):
         return None, (start_time, end_time)
@@ -551,7 +553,7 @@ def validate_time_range(start_time, end_time, field_name, allow_empty=True):
     return None, (start_time, end_time)
 
 
-def validate_parameters(run: CalibrationRun, parameters):
+def validate_parameters(run: CalibrationRun, parameters: List[Dict[str, str | float]]) -> str | None:
     if not parameters:
         return None
 
@@ -584,7 +586,7 @@ def validate_parameters(run: CalibrationRun, parameters):
     return None
 
 
-def save_output_variable(run, output_variable_to_calibrate):
+def save_output_variable(run: CalibrationRun, output_variable_to_calibrate: Dict[str, str]) -> str | None:
     if output_variable_to_calibrate:
         # Retrieve the cached module by name
         module = get_cached_module_by_name(output_variable_to_calibrate['module'])
@@ -614,7 +616,7 @@ def save_output_variable(run, output_variable_to_calibrate):
         return None
 
 
-def save_parameters(run, parameters):
+def save_parameters(run: CalibrationRun, parameters: List[Dict[str, str | float]]) -> None:
     if parameters:
         parameters_to_update = []
 
@@ -645,7 +647,7 @@ def save_parameters(run, parameters):
 
 
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
-def get_csv_daterange(file):
+def get_csv_daterange(file: Path) -> DateTimeRange:
     try:
         if not Path(file).exists():
             raise CerfException(f"File {file} does not exist")
@@ -669,7 +671,7 @@ def get_csv_daterange(file):
         raise CerfException(f'Error reading file {file}: {e}')
 
 
-def get_forcing_date_range(forcing_dir_path):
+def get_forcing_date_range(forcing_dir_path: Path) -> DateTimeRange | None:
     # Get all files in the directory
     timerange = None
     for file in Path(forcing_dir_path).iterdir():
@@ -683,11 +685,11 @@ def get_forcing_date_range(forcing_dir_path):
     return timerange
 
 
-def get_observation_date_range(observational_filepath):
+def get_observation_date_range(observational_filepath: Path) -> DateTimeRange:
     return get_csv_daterange(observational_filepath)
 
 
-def get_date_range_intersection(observational_file_path, forcing_dir_path):
+def get_date_range_intersection(observational_file_path: Path, forcing_dir_path: Path) -> DateTimeRange | None:
     # The get latest start data and the earlier end date
     obs_range = get_observation_date_range(observational_file_path)
     logger.debug(f'obs_range: {obs_range}')
