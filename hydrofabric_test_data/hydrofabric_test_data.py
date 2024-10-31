@@ -19,7 +19,7 @@ hydrofabric_module_metadata_real_data = {
             },
             "calibrate_parameters": [
                 {
-                    "name": "b",  # should be soil_params.b
+                    "name": "soil_params.b",
                     "initial_value": "7.55060482025146",
                     "description": "beta exponent on Clapp-Hornberger (1978) soil water relations",
                     "min": None,
@@ -351,7 +351,7 @@ hydrofabric_module_metadata_real_data = {
                     "units": None
                 },
                 {
-                    "name": "CWP",
+                    "name": "CWPVT",
                     "initial_value": 0.67,
                     "description": "empirical canopy wind parameter",
                     "min": None,
