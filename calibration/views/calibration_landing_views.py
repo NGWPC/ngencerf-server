@@ -430,7 +430,7 @@ def clone_job(request):
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=CalibrationRunSerializer,
     responses={
         200: CalibrationRunSerializer,
         400: OpenApiResponse(
@@ -450,7 +450,7 @@ def delete_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'delete_run() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
