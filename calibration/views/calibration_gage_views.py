@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum, StatusEnum
 from calibration.models import Gage, CalibrationRun
+from calibration.util.caching import get_cached_gages, get_gage_by_id
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
@@ -80,7 +81,8 @@ def load_gage_tab(request):
     # Fetch all cached gages
     gages = list(get_cached_gages().values())
     # Retain only the fields we need
-    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibrated': gage.get('nwm_v3_calibrated'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')} for gage in gages]
+    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibrated': gage.get('nwm_v3_calibrated'), 'nws_id': gage.get('nws_id'),
+              'domain': gage.get('domain')} for gage in gages]
 
     ngen_cal_input.ready_to_run(run)
 
@@ -561,41 +563,3 @@ def get_data_files_status(run: CalibrationRun):
     return {'observational': bool(observation_path),
             'forcing': bool(forcing_path),
             'geopackage': bool(geopackage_path)}
-
-
-def get_cached_gages() -> dict:
-    """
-    Retrieves all active gages from the cache or the database if not cached.
-    :return: A dictionary of gages with gage_id as the key and gage details as values.
-    """
-    # Check if the gages are already cached
-    gages_lookup = cache.get('cached_gages')
-    if not gages_lookup:
-        # Fetch from the database and cache the results as a dictionary
-        gages = Gage.objects.filter(is_active=True).values(
-            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'nwm_v3_calibrated', 'domain__name'
-        )
-        gages_lookup = {gage['gage_id']: gage for gage in gages}
-        # Adjust domain names
-        for gage in gages_lookup.values():
-            gage['domain'] = gage.pop('domain__name')
-
-        cache.set('cached_gages', gages_lookup, timeout=None)
-    return gages_lookup
-
-
-def get_gage_by_id(gage_id: str):
-    """
-    Retrieve a single gage by gage_id from the cached gages.
-    :param gage_id: The gage_id to retrieve.
-    :return: The gage data if found, otherwise None.
-    """
-    # Retrieve the gage from the cached set of gages
-    gages = get_cached_gages()
-    gage = gages.get(gage_id)
-
-    if gage:
-        # Exclude 'nws_id', 'domain', and 'nwm_v3_calibrated' from the result
-        gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'nwm_v3_calibrated']}
-
-    return gage

@@ -21,7 +21,8 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
-    SLOTH, add_sloth_parameters, validate_formulation, get_cached_module_by_name
+    SLOTH, add_sloth_parameters, validate_formulation
+from calibration.util.caching import get_cached_module_by_name
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
@@ -316,13 +317,16 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
 
     time_range = get_time_range(run)
     # Since we're not using a serializer for metadata, we need to serialize the datetime objects manually
+    serialized_time_range = {}
     if time_range:
-        time_range['start_time'] = time_range['start_time'].isoformat()
-        time_range['end_time'] = time_range['end_time'].isoformat()
+        if time_range.get('start_time'):
+            serialized_time_range['start_time'] = time_range['start_time'].isoformat()
+        if time_range.get('end_time'):
+            serialized_time_range['end_time'] = time_range['end_time'].isoformat()
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
-        metadata = {'source_calibration_run_id': run.id, 'source_status': run.status.name, 'time_range': time_range}
+        metadata = {'source_calibration_run_id': run.id, 'source_status': run.status.name, 'time_range': serialized_time_range}
         calibration_run_data['metadata'] = metadata
 
         # Not supporting this flag right now until Hydrofabric is ready.

@@ -125,7 +125,7 @@ systemctl status postgresql
 Change the password for the Admin user
 ```
 sudo -u postgres psql
-ALTER USER postgres PASSWORD 'password';
+ALTER USER postgres PASSWORD 'postgres';
 \q
 ```
 

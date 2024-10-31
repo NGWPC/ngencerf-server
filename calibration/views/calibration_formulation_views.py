@@ -12,8 +12,8 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
-    get_cached_module_by_name, \
     get_cached_modules_with_groups
+from calibration.util.caching import get_cached_module_by_name
 
 logger = logging.getLogger(__name__)
 
