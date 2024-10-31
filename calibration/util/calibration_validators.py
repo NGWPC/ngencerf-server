@@ -140,28 +140,6 @@ class CalibrationTimeControls(BaseSerializer):
             self.fields['simulation_start_time'].required = True
             self.fields['simulation_end_time'].required = True
 
-    # def validate(self, data):
-    #     calibration_range = self.validate_time_range(
-    #         data.get('calibration_start_time'),
-    #         data.get('calibration_end_time'),
-    #         field_name="calibration",
-    #         allow_empty=self.allow_empty
-    #     )
-    #     simulation_range = self.validate_time_range(
-    #         data.get('simulation_start_time'),
-    #         data.get('simulation_end_time'),
-    #         field_name="simulation",
-    #         allow_empty=self.allow_empty
-    #     )
-    #
-    #     if calibration_range and simulation_range:
-    #         if calibration_range.start_datetime not in simulation_range or calibration_range.end_datetime not in simulation_range:
-    #             raise serializers.ValidationError({
-    #                 'calibration_range': f'Calibration range {calibration_range} must be contained within simulation range {simulation_range}'
-    #             })
-    #
-    #     return data
-
 
 class ValidationTimeControls(BaseSerializer):
     validation_start_time = serializers.DateTimeField()
@@ -184,28 +162,6 @@ class ValidationTimeControls(BaseSerializer):
             self.fields['validation_end_time'].required = True
             self.fields['simulation_start_time'].required = True
             self.fields['simulation_end_time'].required = True
-    #
-    # def validate(self, data):
-    #     validation_range = self.validate_time_range(
-    #         data.get('validation_start_time'),
-    #         data.get('validation_end_time'),
-    #         field_name="calibration",
-    #         allow_empty=self.allow_empty
-    #     )
-    #     simulation_range = self.validate_time_range(
-    #         data.get('simulation_start_time'),
-    #         data.get('simulation_end_time'),
-    #         field_name="simulation",
-    #         allow_empty=self.allow_empty
-    #     )
-    #
-    #     if validation_range and simulation_range:
-    #         if validation_range.start_datetime not in simulation_range or validation_range.end_datetime not in simulation_range:
-    #             raise serializers.ValidationError({
-    #                 'validation_range': f'Validation range {validation_range} must be contained within simulation range {simulation_range}'
-    #             })
-    #
-    #     return data
 
 
 # TODO See if we can eliminate 1 of these after Hydrofabric implementation

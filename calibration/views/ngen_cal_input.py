@@ -19,6 +19,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_optimization_views import get_cached_optimization_inputs
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
+from calibration.views.calibration_tuning_views import get_full_evaluation_date_range
 from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH
 
 logger = logging.getLogger(__name__)
@@ -145,13 +146,13 @@ def validate_times(run: CalibrationRun) -> Optional[str]:
     if run.time_range_start and run.time_range_end:
         time_range = DateTimeRange(run.time_range_start, run.time_range_end)
         if run.calibration_start_period and (
-            run.calibration_start_period not in time_range or run.calibration_end_period not in time_range
+                run.calibration_start_period not in time_range or run.calibration_end_period not in time_range
         ):
             return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
         if (
-            run.automatic_validation
-            and run.validation_start_period
-            and (run.validation_start_period not in time_range or run.validation_end_period not in time_range)
+                run.automatic_validation
+                and run.validation_start_period
+                and (run.validation_start_period not in time_range or run.validation_end_period not in time_range)
         ):
             return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
     return None
@@ -309,8 +310,9 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
             # Set full evaluation periods if both calibration and validation evaluation periods are present
             if run.calibration_eval_start_period and run.calibration_eval_end_period:
-                calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
-                calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
+                calibration['full_eval_start_period'], calibration['full_eval_end_period'] = get_full_evaluation_date_range(
+                    run.calibration_eval_start_period, run.calibration_eval_end_period,
+                    run.validation_eval_start_period, run.validation_eval_end_period)
 
     if not is_missing(run.objective_function, 'objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()

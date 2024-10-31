@@ -207,7 +207,6 @@ def import_calibration_run_data(request, calibration_run_data):
 
         error_message = validate_and_save_times(run, calibration_times, validation_times)
         if error_message:
-            # TODO Do we need to join
             return None, None, None, ResponseError(error_message)
 
         output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')

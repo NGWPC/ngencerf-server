@@ -523,6 +523,7 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, da
 
     return messages
 
+
 def get_full_evaluation_date_range_from_ranges(
     calibration_evaluation_range: Tuple[datetime, datetime],
     validation_evaluation_range: Tuple[datetime, datetime]
@@ -533,26 +534,16 @@ def get_full_evaluation_date_range_from_ranges(
 
 
 def get_full_evaluation_date_range(
-    calibration_times: Dict[str, datetime],
-    validation_times: Dict[str, datetime]
-) -> Tuple[Optional[datetime], Optional[datetime]]:
-    calibration_evaluation_range = (
-        calibration_times.get('calibration_start_time'),
-        calibration_times.get('calibration_end_time')
-    )
-    validation_evaluation_range = (
-        validation_times.get('validation_start_time'),
-        validation_times.get('validation_end_time')
-    )
+    calibration_evaluation_start_time: datetime,
+    calibration_evaluation_end_time: datetime,
+    validation_evaluation_start_time: datetime,
+    validation_evaluation_end_time: datetime
+) -> Tuple[datetime, datetime]:
+    # Calculate the full evaluation date range using min and max directly
+    start_date = min(calibration_evaluation_start_time, validation_evaluation_start_time)
+    end_date = max(calibration_evaluation_end_time, validation_evaluation_end_time)
 
-    if None in calibration_evaluation_range or None in validation_evaluation_range:
-        return None, None  # Return None if any range is incomplete
-
-    # Use the function to compute the range if both ranges are complete
-    return get_full_evaluation_date_range_from_ranges(
-        calibration_evaluation_range, validation_evaluation_range
-    )
-
+    return start_date, end_date
 
 
 # TODO Do woe need allow_empty?
