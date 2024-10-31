@@ -4,7 +4,6 @@ import re
 import shutil
 import traceback
 
-from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -138,13 +137,7 @@ def get_gage(request):
     gage = get_gage_by_id(gage_id)
 
     if not gage:
-        try:
-            # If not cached, query the database and cache the result
-            gage = Gage.objects.values('gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude').get(gage_id=gage_id)
-
-            cache.set(f'cached_gage_{gage_id}', gage, timeout=None)
-        except Gage.DoesNotExist:
-            return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+        return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:

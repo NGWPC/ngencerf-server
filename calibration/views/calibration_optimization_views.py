@@ -1,7 +1,6 @@
 import logging
 from typing import List, Dict, Any
 
-from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse
@@ -9,12 +8,12 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import OptimizationEnum, StatusEnum
-from calibration.models import Optimization, Metric, OptimizationInput, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
+from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
+from calibration.util.caching import get_metrics_with_fields, get_metrics_lookup, get_cached_optimization_inputs
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request
-from calibration.views.read_output import get_cached_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +54,7 @@ def load_optimization_tab(request):
     if error_return:
         return error_return
 
-    metrics = get_metrics()
+    metrics = get_metrics_with_fields()
 
     optimization_list = get_static_optimizations()
 
@@ -99,18 +98,6 @@ def get_static_optimizations():
         optimization['inputs'] = inputs
 
     return optimization_list
-
-
-def get_metrics():
-    cache_key = 'active_metrics'
-    metrics = cache.get(cache_key)
-    if metrics is None:
-        # Fetch metrics from the database if not cached
-        metrics = list(Metric.objects.filter(is_active=True).values(
-            'name', 'description', 'is_active', 'categorical', 'event_based'
-        ))
-        cache.set(cache_key, metrics, timeout=None)
-    return metrics
 
 
 # noinspection PyUnusedLocal
@@ -252,7 +239,7 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
 def validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold):
     if objective_function_name:
         # Retrieve the cached metrics
-        metrics_cache = get_cached_metrics()
+        metrics_cache = get_metrics_lookup()
 
         # Fetch the metric from cache, ensuring it is active
         objective_function = metrics_cache.get(objective_function_name.lower())
@@ -299,27 +286,3 @@ def write_optimization_inputs(run: CalibrationRun, optimization: Optimization, o
                     calibration_run=run,
                     value=o['value']
                 )
-
-
-def get_cached_optimization_inputs(optimization_name: str) -> List[Dict[str, str | int | float]]:
-    """
-    Retrieves optimization inputs for a given optimization name from the cache or database.
-
-    :param optimization_name: The name of the optimization.
-    :return: A list of dictionaries containing optimization input details.
-    """
-    cache_key = f'optimization_inputs_{optimization_name}'
-    optimization_inputs = cache.get(cache_key)
-
-    # If not in cache, query and cache the results
-    if optimization_inputs is None:
-        optimization_inputs = list(
-            OptimizationInput.objects.filter(optimization__name=optimization_name, is_active=True).values(
-                'name', 'description', 'data_type', 'default_value', 'min', 'max', 'id', 'is_active'
-            )
-        )
-
-        # Cache the inputs
-        cache.set(cache_key, optimization_inputs, timeout=None)
-
-    return optimization_inputs
