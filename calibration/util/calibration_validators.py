@@ -96,21 +96,21 @@ class SlothParameters(BaseSerializer):
     maps_to_module = serializers.CharField(required=True, allow_blank=False)
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
-
-class TimeRangeValidatorMixin:
-    # noinspection PyMethodMayBeStatic
-    def validate_time_range(self, start_time, end_time, field_name, allow_empty=False):
-        if allow_empty and (start_time is None or end_time is None):
-            return None
-
-        if start_time and end_time:
-            time_range = DateTimeRange(start_time, end_time)
-            if not time_range.is_valid_timerange():
-                raise serializers.ValidationError(f'{time_range} is not a valid time range for {field_name}')
-            return time_range
-
-        # If one of the fields is None but allow_empty is not True, raise an error
-        raise serializers.ValidationError(f'{field_name} requires both start and end times')
+#
+# class TimeRangeValidatorMixin:
+#     # noinspection PyMethodMayBeStatic
+#     def validate_time_range(self, start_time, end_time, field_name, allow_empty=False):
+#         if allow_empty and (start_time is None or end_time is None):
+#             return None
+#
+#         if start_time and end_time:
+#             time_range = DateTimeRange(start_time, end_time)
+#             if not time_range.is_valid_timerange():
+#                 raise serializers.ValidationError(f'{time_range} is not a valid time range for {field_name}')
+#             return time_range
+#
+#         # If one of the fields is None but allow_empty is not True, raise an error
+#         raise serializers.ValidationError(f'{field_name} requires both start and end times')
 
 
 class TimeRangeSerializerAllowEmpty(BaseSerializer):
@@ -118,7 +118,7 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
     end_time = serializers.DateTimeField(required=False)
 
 
-class CalibrationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
+class CalibrationTimeControls(BaseSerializer):
     calibration_start_time = serializers.DateTimeField()
     calibration_end_time = serializers.DateTimeField()
     simulation_start_time = serializers.DateTimeField()
@@ -140,30 +140,30 @@ class CalibrationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
             self.fields['simulation_start_time'].required = True
             self.fields['simulation_end_time'].required = True
 
-    def validate(self, data):
-        calibration_range = self.validate_time_range(
-            data.get('calibration_start_time'),
-            data.get('calibration_end_time'),
-            field_name="calibration",
-            allow_empty=self.allow_empty
-        )
-        simulation_range = self.validate_time_range(
-            data.get('simulation_start_time'),
-            data.get('simulation_end_time'),
-            field_name="simulation",
-            allow_empty=self.allow_empty
-        )
+    # def validate(self, data):
+    #     calibration_range = self.validate_time_range(
+    #         data.get('calibration_start_time'),
+    #         data.get('calibration_end_time'),
+    #         field_name="calibration",
+    #         allow_empty=self.allow_empty
+    #     )
+    #     simulation_range = self.validate_time_range(
+    #         data.get('simulation_start_time'),
+    #         data.get('simulation_end_time'),
+    #         field_name="simulation",
+    #         allow_empty=self.allow_empty
+    #     )
+    #
+    #     if calibration_range and simulation_range:
+    #         if calibration_range.start_datetime not in simulation_range or calibration_range.end_datetime not in simulation_range:
+    #             raise serializers.ValidationError({
+    #                 'calibration_range': f'Calibration range {calibration_range} must be contained within simulation range {simulation_range}'
+    #             })
+    #
+    #     return data
 
-        if calibration_range and simulation_range:
-            if calibration_range.start_datetime not in simulation_range or calibration_range.end_datetime not in simulation_range:
-                raise serializers.ValidationError({
-                    'calibration_range': f'Calibration range {calibration_range} must be contained within simulation range {simulation_range}'
-                })
 
-        return data
-
-
-class ValidationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
+class ValidationTimeControls(BaseSerializer):
     validation_start_time = serializers.DateTimeField()
     validation_end_time = serializers.DateTimeField()
     simulation_start_time = serializers.DateTimeField()
@@ -184,28 +184,28 @@ class ValidationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
             self.fields['validation_end_time'].required = True
             self.fields['simulation_start_time'].required = True
             self.fields['simulation_end_time'].required = True
-
-    def validate(self, data):
-        validation_range = self.validate_time_range(
-            data.get('validation_start_time'),
-            data.get('validation_end_time'),
-            field_name="calibration",
-            allow_empty=self.allow_empty
-        )
-        simulation_range = self.validate_time_range(
-            data.get('simulation_start_time'),
-            data.get('simulation_end_time'),
-            field_name="simulation",
-            allow_empty=self.allow_empty
-        )
-
-        if validation_range and simulation_range:
-            if validation_range.start_datetime not in simulation_range or validation_range.end_datetime not in simulation_range:
-                raise serializers.ValidationError({
-                    'validation_range': f'Validation range {validation_range} must be contained within simulation range {simulation_range}'
-                })
-
-        return data
+    #
+    # def validate(self, data):
+    #     validation_range = self.validate_time_range(
+    #         data.get('validation_start_time'),
+    #         data.get('validation_end_time'),
+    #         field_name="calibration",
+    #         allow_empty=self.allow_empty
+    #     )
+    #     simulation_range = self.validate_time_range(
+    #         data.get('simulation_start_time'),
+    #         data.get('simulation_end_time'),
+    #         field_name="simulation",
+    #         allow_empty=self.allow_empty
+    #     )
+    #
+    #     if validation_range and simulation_range:
+    #         if validation_range.start_datetime not in simulation_range or validation_range.end_datetime not in simulation_range:
+    #             raise serializers.ValidationError({
+    #                 'validation_range': f'Validation range {validation_range} must be contained within simulation range {simulation_range}'
+    #             })
+    #
+    #     return data
 
 
 # TODO See if we can eliminate 1 of these after Hydrofabric implementation
@@ -650,15 +650,15 @@ class SaveTuningRequestSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
-
-    def validate(self, data):
-        if 'calibration_times' in data and 'validation_times' in data:
-            # Make sure there is no overlap between calibration times and validation times
-            calibration_range = DateTimeRange(data['calibration_times']['calibration_start_time'], data['calibration_times']['calibration_end_time'])
-            validation_range = DateTimeRange(data['validation_times']['validation_start_time'], data['validation_times']['validation_end_time'])
-            if calibration_range.is_intersection(validation_range):
-                raise serializers.ValidationError(f"Calibration range {calibration_range} cannot intersect validation range {validation_range}")
-        return data
+    #
+    # def validate(self, data):
+    #     if 'calibration_times' in data and 'validation_times' in data:
+    #         # Make sure there is no overlap between calibration times and validation times
+    #         calibration_range = DateTimeRange(data['calibration_times']['calibration_start_time'], data['calibration_times']['calibration_end_time'])
+    #         validation_range = DateTimeRange(data['validation_times']['validation_start_time'], data['validation_times']['validation_end_time'])
+    #         if calibration_range.is_intersection(validation_range):
+    #             raise serializers.ValidationError(f"Calibration range {calibration_range} cannot intersect validation range {validation_range}")
+    #     return data
 
 
 class LoadTuningResponseSerializer(BaseSerializer):

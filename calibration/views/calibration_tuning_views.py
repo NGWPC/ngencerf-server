@@ -5,6 +5,7 @@ from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -21,7 +22,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_cached_module_by_name
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, get_valid_path
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
+    get_valid_path
 from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
@@ -255,6 +257,7 @@ def save_tuning_tab(request):
 
     error_message = validate_and_save_times(run, calibration_times, validation_times)
     if error_message:
+        # TODO Do we need to join?
         return ResponseError(error_message)
 
     error_message = validate_parameters(run, parameters)
@@ -385,22 +388,137 @@ def upload_user_parameters(request):
     return Response(response_validator.data)
 
 
-def validate_times(run, calibration_times, validation_times):
-    if run.time_range_start and run.time_range_end:
-        time_range = DateTimeRange(run.time_range_start, run.time_range_end)
-        if calibration_times and (calibration_times['simulation_start_time'] not in time_range or calibration_times['simulation_end_time'] not in time_range):
-            return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if validation_times and (validation_times['simulation_start_time'] not in time_range or validation_times['simulation_end_time'] not in time_range):
-            return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
+# Helper function to format datetime in a readable way
+def format_datetime(dt):
+    return dt.strftime('%Y-%m-%d %H:%M:%S %Z') if dt else 'N/A'
 
+
+def validate_times(run, calibration_times, validation_times):
+    # Validate against forcing and obs data
+    if run.time_range_start and run.time_range_end:
+        start, end = run.time_range_start, run.time_range_end
+        if calibration_times and (
+                calibration_times['simulation_start_time'] <= start or calibration_times['simulation_end_time'] >= end):
+            return (f"Calibration simulation times must be within the intersection of forcing data and "
+                    f"observational data - {format_datetime(start)} to {format_datetime(end)}")
+        if validation_times and (
+                validation_times['simulation_start_time'] <= start or validation_times['simulation_end_time'] >= end):
+            return (f"Validation simulation times must be within the intersection of forcing data and "
+                    f"observational data - {format_datetime(start)} to {format_datetime(end)}")
     return None
 
 
 def validate_and_save_times(run: CalibrationRun, calibration_times, validation_times):
+    messages = []
+
+    # Validation against forcing and obs data intersection
     error_message = validate_times(run, calibration_times, validation_times)
     if error_message:
-        return error_message
+        messages.append(error_message)
 
+    if calibration_times:
+        error_message, calibration_simulation_range = validate_time_range(
+            calibration_times.get('simulation_start_time'),
+            calibration_times.get('simulation_end_time'),
+            'calibration simulation'
+        )
+        if error_message:
+            messages.append(error_message)
+
+        error_message, calibration_evaluation_range = validate_time_range(
+            calibration_times.get('calibration_start_time'),
+            calibration_times.get('calibration_end_time'),
+            'calibration evaluation'
+        )
+        if error_message:
+            messages.append(error_message)
+    else:
+        calibration_simulation_range = None
+        calibration_evaluation_range = None
+
+    if validation_times:
+        error_message, validation_simulation_range = validate_time_range(
+            validation_times.get('simulation_start_time'),
+            validation_times.get('simulation_end_time'),
+            'validation simulation'
+        )
+        if error_message:
+            messages.append(error_message)
+
+        error_message, validation_evaluation_range = validate_time_range(
+            validation_times.get('validation_start_time'),
+            validation_times.get('validation_end_time'),
+            'validation evaluation'
+        )
+        if error_message:
+            messages.append(error_message)
+    else:
+        validation_simulation_range = None
+        validation_evaluation_range = None
+
+    # If any of the ranges are invalid, ten return right away
+    if messages:
+        return messages
+
+    # print('calibration_simulation_range', calibration_simulation_range)
+    # print('calibration_evaluation_range', calibration_evaluation_range)
+    # print('validation_simulation_range', validation_simulation_range)
+    # print('validation_evaluation_range', validation_evaluation_range)
+
+    # Define expanded_validation_start_date and expanded_validation_end_date as Optional[datetime] to make the type explicit.
+    expanded_validation_start_date: Optional[datetime]
+    expanded_validation_end_date: Optional[datetime]
+
+    # Define the expanded evaluation range from the minimum and maximum evaluation start/end times
+    if validation_evaluation_range and calibration_evaluation_range:
+        expanded_validation_start_date = min(validation_evaluation_range[0], calibration_evaluation_range[0])
+        expanded_validation_end_date = max(validation_evaluation_range[1], calibration_evaluation_range[1])
+    else:
+        expanded_validation_start_date = None
+        expanded_validation_end_date = None
+
+    # Calibration evaluation range must be within the calibration simulation range
+    if calibration_evaluation_range and calibration_simulation_range:
+        start_within_range = calibration_simulation_range[0] <= calibration_evaluation_range[0] <= calibration_simulation_range[1]
+        end_within_range = calibration_simulation_range[0] <= calibration_evaluation_range[1] <= calibration_simulation_range[1]
+
+        if not (start_within_range and end_within_range):
+            messages.append(
+                f'Calibration evaluation range from {format_datetime(calibration_evaluation_range[0])} to '
+                f'{format_datetime(calibration_evaluation_range[1])} must be within the calibration simulation range from '
+                f'{format_datetime(calibration_simulation_range[0])} to {format_datetime(calibration_simulation_range[1])}.'
+            )
+
+    if validation_simulation_range:
+        # Validation simulation range must be within the expanded evaluation range
+        valid_simulation_start, valid_simulation_end = validation_simulation_range
+
+        if expanded_validation_start_date is not None and expanded_validation_end_date is not None:
+            if not (valid_simulation_start <= expanded_validation_start_date and valid_simulation_end >= expanded_validation_end_date):
+                messages.append(
+                    f'Validation simulation range from {format_datetime(valid_simulation_start)} to '
+                    f'{format_datetime(valid_simulation_end)} must be within the expanded evaluation range from '
+                    f'{format_datetime(expanded_validation_start_date)} to {format_datetime(expanded_validation_end_date)}.'
+                )
+
+    # Check for overlap between calibration and validation evaluation ranges
+    if validation_evaluation_range and calibration_evaluation_range:
+        overlap_exists = (
+            validation_evaluation_range[0] <= calibration_evaluation_range[1] and
+            validation_evaluation_range[1] >= calibration_evaluation_range[0]
+        )
+
+        if overlap_exists:
+            messages.append(
+                f"Calibration evaluation range from {format_datetime(calibration_evaluation_range[0])} to "
+                f"{format_datetime(calibration_evaluation_range[1])} cannot intersect the validation evaluation range from "
+                f"{format_datetime(validation_evaluation_range[0])} to {format_datetime(validation_evaluation_range[1])}."
+            )
+
+    if messages:
+        return messages
+
+    # Save times if no errors
     if calibration_times is not None:
         run.calibration_start_period = calibration_times.get('simulation_start_time')
         run.calibration_end_period = calibration_times.get('simulation_end_time')
@@ -412,6 +530,25 @@ def validate_and_save_times(run: CalibrationRun, calibration_times, validation_t
         run.validation_end_period = validation_times.get('simulation_end_time')
         run.validation_eval_start_period = validation_times.get('validation_start_time')
         run.validation_eval_end_period = validation_times.get('validation_end_time')
+
+
+# TODO Do woe need allow_empty?
+def validate_time_range(start_time, end_time, field_name, allow_empty=True):
+    # Check for empty range if allowed
+    if allow_empty and (start_time is None or end_time is None):
+        return None, (start_time, end_time)
+
+    # Check if both start and end times are provided
+    if start_time is None or end_time is None:
+        return f'{field_name.capitalize()} requires both start and end times', None
+
+    # Check if start time is earlier than or equal to end time
+    if start_time > end_time:
+        return (f'{field_name.capitalize()} must have a start time earlier than or equal to the end time - '
+                f'{format_datetime(start_time)} > {format_datetime(end_time)}'), None
+
+    # If all validations pass, return the valid range
+    return None, (start_time, end_time)
 
 
 def validate_parameters(run: CalibrationRun, parameters):
