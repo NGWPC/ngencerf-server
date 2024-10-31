@@ -23,7 +23,7 @@ upload_geopackage_data() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    check_http_error "$http_status" "$response"
+    check_http_error "$http_status" "$response" true
 
     # Print the full response
     echo "$response" | jq --indent 3
@@ -51,7 +51,7 @@ upload_observational_data() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    check_http_error "$http_status" "$response"
+    check_http_error "$http_status" "$response" true
 
     # Print the full response
     echo "$response" | jq --indent 3
@@ -94,7 +94,7 @@ upload_forcing_data() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    check_http_error "$http_status" "$response"
+    check_http_error "$http_status" "$response" true
 
     # Print the full response
     echo "$response" | jq --indent 3
