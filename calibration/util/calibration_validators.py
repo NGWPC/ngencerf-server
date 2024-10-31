@@ -1,4 +1,3 @@
-from datetimerange import DateTimeRange
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail

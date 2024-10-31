@@ -19,8 +19,8 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_optimization_views import get_cached_optimization_inputs
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-from calibration.views.calibration_tuning_views import get_full_evaluation_date_range
-from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH
+from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
+from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH, format_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,6 @@ config_template = {
         # 1: Yes
         # It should be 0 if start_interation entry is 0.
         "restart": 0,
-        # TODO Output variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
         "output_variable_to_calibration_name": "",
         "calib_start_period": "",
@@ -61,12 +60,12 @@ config_template = {
         "calib_eval_start_period": "",
         "calib_eval_end_period": "",
         # If we're not doing automatic validation, create_input still expects a valid date/time here
-        "valid_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "valid_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "valid_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "valid_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "full_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "full_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_start_period": format_datetime(datetime.now()),
+        "valid_end_period": format_datetime(datetime.now()),
+        "valid_eval_start_period": format_datetime(datetime.now()),
+        "valid_eval_end_period": format_datetime(datetime.now()),
+        "full_eval_start_period": format_datetime(datetime.now()),
+        "full_eval_end_period": format_datetime(datetime.now()),
         # Save streamflow output and plot at the specified iteration
         # These entries are optional and specified with the default values.
         # 1: Filename is distinguished by the iteration number.
@@ -89,9 +88,6 @@ config_template = {
         "nwmretro_file": "",
         "hydrofab_dir": "",
 
-        # TODO cfe_dir and topmd_dir should be obsolete
-        "cfe_dir": "",
-        "topmd_dir": "",
         "noah-owp-modular_bmi_dir": "",
         "cfe-s_bmi_dir": "",
         "cfe-x_bmi_dir": "",
@@ -134,28 +130,6 @@ config_template = {
 }
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-
-def validate_times(run: CalibrationRun) -> Optional[str]:
-    """
-    Validates that simulation times are within the expected time range.
-
-    :param run: The CalibrationRun instance with timing data.
-    :return: None if valid, otherwise an error string.
-    """
-    if run.time_range_start and run.time_range_end:
-        time_range = DateTimeRange(run.time_range_start, run.time_range_end)
-        if run.calibration_start_period and (
-                run.calibration_start_period not in time_range or run.calibration_end_period not in time_range
-        ):
-            return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if (
-                run.automatic_validation
-                and run.validation_start_period
-                and (run.validation_start_period not in time_range or run.validation_end_period not in time_range)
-        ):
-            return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-    return None
 
 
 def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
@@ -254,7 +228,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         if os.path.exists(nwm_retro):
             datafile['nwmretro_file'] = nwm_retro
 
-        error_message = validate_times(run)
+        error_message = validate_time_range_against_data(run)
         if error_message:
             errors.append(error_message)
 
@@ -289,10 +263,10 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
         calibration.update({
-            'calib_start_period': run.calibration_start_period.strftime(DATE_FORMAT),
-            'calib_end_period': run.calibration_end_period.strftime(DATE_FORMAT),
-            'calib_eval_start_period': run.calibration_eval_start_period.strftime(DATE_FORMAT),
-            'calib_eval_end_period': run.calibration_eval_end_period.strftime(DATE_FORMAT),
+            'calib_start_period': format_datetime(run.calibration_start_period),
+            'calib_end_period': format_datetime(run.calibration_end_period),
+            'calib_eval_start_period': format_datetime(run.calibration_eval_start_period),
+            'calib_eval_end_period': format_datetime(run.calibration_eval_end_period),
         })
 
     if run.automatic_validation:
@@ -302,10 +276,10 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                 'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
             calibration.update({
-                'valid_start_period': run.validation_start_period.strftime(DATE_FORMAT),
-                'valid_end_period': run.validation_end_period.strftime(DATE_FORMAT),
-                'valid_eval_start_period': run.validation_eval_start_period.strftime(DATE_FORMAT),
-                'valid_eval_end_period': run.validation_eval_end_period.strftime(DATE_FORMAT),
+                'valid_start_period': format_datetime(run.validation_start_period),
+                'valid_end_period': format_datetime(run.validation_end_period),
+                'valid_eval_start_period': format_datetime(run.validation_eval_start_period),
+                'valid_eval_end_period': format_datetime(run.validation_eval_end_period),
             })
 
             # Set full evaluation periods if both calibration and validation evaluation periods are present
