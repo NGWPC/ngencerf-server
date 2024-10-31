@@ -148,10 +148,24 @@ case "$operation" in
 
         check_http_error "$http_status" "$response"
 
-        # Save the response to a JSON file
-        output_path="${output:-calibration_run_$argument.json}"
-        echo "$response" | jq . --indent 3 > "$output_path"
-        echo "Exported calibration run data to $output_path"
+        # Determine whether output is a directory or file
+        if [ -n "$output" ]; then
+            if [ -d "$output" ]; then
+                output_path="$output/calibration_run_$argument.json"  # Use default filename in specified directory
+            else
+                output_path="$output"  # Use specified file path
+            fi
+        else
+            output_path="calibration_run_$argument.json"  # Default filename if output not specified
+        fi
+
+        # Save the response to the file
+        if echo "$response" | jq . --indent 3 > "$output_path"; then
+            echo "Exported calibration run data to $output_path"
+        else
+            echo "Error saving export response to file."
+            exit 1
+        fi
 
         # Clean up
         rm -f /tmp/curl_response
