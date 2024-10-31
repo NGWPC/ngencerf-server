@@ -1,19 +1,17 @@
 import logging
 
-from django.core.cache import cache
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun, ModuleGroup
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun
+from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
-    get_cached_modules_with_groups
-from calibration.util.caching import get_cached_module_by_name
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +53,7 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    # Gget all modules and their groups from the cached result
+    # Get all modules and their groups from the cached result
     cached_modules = get_cached_modules_with_groups()
 
     # Convert the cached Module instances to a list of dictionaries with the desired structure
@@ -68,15 +66,7 @@ def load_formulation_tab(request):
         for module in cached_modules.values()
     ]
 
-    # Check if the ordered module groups are in the cache
-    module_groups = cache.get(MODULE_GROUPS_CACHE_KEY)
-
-    # If not cached, retrieve from the database and cache the result
-    if module_groups is None:
-        module_groups = list(ModuleGroup.objects.filter(is_active=True).order_by('order').values_list('name', flat=True))
-        cache.set(MODULE_GROUPS_CACHE_KEY, module_groups, None)
-
-    print('groups', module_groups)
+    module_groups = get_cached_module_groups()
 
     ngen_cal_input.ready_to_run(run)
 

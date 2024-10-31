@@ -98,7 +98,8 @@ ngen_login  # Call the login function from ngen_user.sh
 operation="$original_operation"  # Restore the original operation after login
 
 if [ -z "$ACCESS_TOKEN" ]; then
-    echo "Error: ACCESS_TOKEN is not set. Please check the login script."
+    # ACCESS_TOKEN is not set. Please check the login script
+    echo "Error logging in"
     exit 1
 fi
 
