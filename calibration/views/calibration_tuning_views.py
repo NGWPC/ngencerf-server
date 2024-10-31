@@ -457,14 +457,9 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, da
         validation_simulation_range = None
         validation_evaluation_range = None
 
-    # If any of the ranges are invalid, ten return right away
+    # If any of the ranges are invalid, return messages immediately
     if messages:
         return messages
-
-    # print('calibration_simulation_range', calibration_simulation_range)
-    # print('calibration_evaluation_range', calibration_evaluation_range)
-    # print('validation_simulation_range', validation_simulation_range)
-    # print('validation_evaluation_range', validation_evaluation_range)
 
     # Define expanded_validation_start_date and expanded_validation_end_date for validation simulation range
     expanded_validation_start_date: datetime | None = None
@@ -475,29 +470,30 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, da
         expanded_validation_start_date = min(validation_evaluation_range[0], calibration_evaluation_range[0])
         expanded_validation_end_date = max(validation_evaluation_range[1], calibration_evaluation_range[1])
 
-    # Calibration evaluation range must be within the calibration simulation range
+    # Ensure the calibration simulation range contains the calibration evaluation range
     if calibration_evaluation_range and calibration_simulation_range:
-        start_within_range = calibration_simulation_range[0] <= calibration_evaluation_range[0] <= calibration_simulation_range[1]
-        end_within_range = calibration_simulation_range[0] <= calibration_evaluation_range[1] <= calibration_simulation_range[1]
+        start_outside_range = calibration_evaluation_range[0] < calibration_simulation_range[0]
+        end_outside_range = calibration_evaluation_range[1] > calibration_simulation_range[1]
 
-        if not (start_within_range and end_within_range):
+        if start_outside_range or end_outside_range:
             messages.append(
-                f'Calibration evaluation range from {format_datetime(calibration_evaluation_range[0])} to '
-                f'{format_datetime(calibration_evaluation_range[1])} must be within the calibration simulation range from '
-                f'{format_datetime(calibration_simulation_range[0])} to {format_datetime(calibration_simulation_range[1])}.'
+                f'Calibration simulation range from {format_datetime(calibration_simulation_range[0])} to '
+                f'{format_datetime(calibration_simulation_range[1])} must contain the calibration evaluation range from '
+                f'{format_datetime(calibration_evaluation_range[0])} to {format_datetime(calibration_evaluation_range[1])}.'
             )
 
+    # Ensure the validation simulation range contains both the calibration and validation evaluation ranges
     if validation_simulation_range:
-        # Validation simulation range must be within the expanded evaluation range
         valid_simulation_start, valid_simulation_end = validation_simulation_range
 
         if expanded_validation_start_date is not None and expanded_validation_end_date is not None:
-            if not (valid_simulation_start <= expanded_validation_start_date and valid_simulation_end >= expanded_validation_end_date):
+            if valid_simulation_start > expanded_validation_start_date or valid_simulation_end < expanded_validation_end_date:
                 messages.append(
                     f'Validation simulation range from {format_datetime(valid_simulation_start)} to '
-                    f'{format_datetime(valid_simulation_end)} must be within the expanded evaluation range from '
+                    f'{format_datetime(valid_simulation_end)} must contain the calibration and validation evaluation ranges from '
                     f'{format_datetime(expanded_validation_start_date)} to {format_datetime(expanded_validation_end_date)}.'
                 )
+                print(messages)
 
     # Check for overlap between calibration and validation evaluation ranges
     if validation_evaluation_range and calibration_evaluation_range:
