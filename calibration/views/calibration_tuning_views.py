@@ -461,14 +461,13 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, da
     if messages:
         return messages
 
-    # Define expanded_validation_start_date and expanded_validation_end_date for validation simulation range
-    expanded_validation_start_date: datetime | None = None
-    expanded_validation_end_date: datetime | None = None
+    # Define full_evaluation_start_date and full_evaluation_end_date for validation simulation range
+    full_evaluation_start_date: datetime | None = None
+    full_evaluation_end_date: datetime | None = None
 
     # Define the expanded evaluation range from the minimum and maximum evaluation start/end times
     if validation_evaluation_range and calibration_evaluation_range:
-        expanded_validation_start_date = min(validation_evaluation_range[0], calibration_evaluation_range[0])
-        expanded_validation_end_date = max(validation_evaluation_range[1], calibration_evaluation_range[1])
+        full_evaluation_start_date, full_evaluation_end_date = get_full_evaluation_date_range_from_ranges(calibration_evaluation_range, validation_evaluation_range)
 
     # Ensure the calibration simulation range contains the calibration evaluation range
     if calibration_evaluation_range and calibration_simulation_range:
@@ -486,14 +485,13 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, da
     if validation_simulation_range:
         valid_simulation_start, valid_simulation_end = validation_simulation_range
 
-        if expanded_validation_start_date is not None and expanded_validation_end_date is not None:
-            if valid_simulation_start > expanded_validation_start_date or valid_simulation_end < expanded_validation_end_date:
+        if full_evaluation_start_date is not None and full_evaluation_end_date is not None:
+            if valid_simulation_start > full_evaluation_start_date or valid_simulation_end < full_evaluation_end_date:
                 messages.append(
                     f'Validation simulation range from {format_datetime(valid_simulation_start)} to '
                     f'{format_datetime(valid_simulation_end)} must contain the calibration and validation evaluation ranges from '
-                    f'{format_datetime(expanded_validation_start_date)} to {format_datetime(expanded_validation_end_date)}.'
+                    f'{format_datetime(full_evaluation_start_date)} to {format_datetime(full_evaluation_end_date)}.'
                 )
-                print(messages)
 
     # Check for overlap between calibration and validation evaluation ranges
     if validation_evaluation_range and calibration_evaluation_range:
@@ -524,6 +522,38 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: Dict[str, da
             run.validation_eval_end_period = validation_times.get('validation_end_time')
 
     return messages
+
+def get_full_evaluation_date_range_from_ranges(
+    calibration_evaluation_range: Tuple[datetime, datetime],
+    validation_evaluation_range: Tuple[datetime, datetime]
+) -> Tuple[datetime, datetime]:
+    start_date = min(calibration_evaluation_range[0], validation_evaluation_range[0])
+    end_date = max(calibration_evaluation_range[1], validation_evaluation_range[1])
+    return start_date, end_date
+
+
+def get_full_evaluation_date_range(
+    calibration_times: Dict[str, datetime],
+    validation_times: Dict[str, datetime]
+) -> Tuple[Optional[datetime], Optional[datetime]]:
+    calibration_evaluation_range = (
+        calibration_times.get('calibration_start_time'),
+        calibration_times.get('calibration_end_time')
+    )
+    validation_evaluation_range = (
+        validation_times.get('validation_start_time'),
+        validation_times.get('validation_end_time')
+    )
+
+    if None in calibration_evaluation_range or None in validation_evaluation_range:
+        return None, None  # Return None if any range is incomplete
+
+    # Use the function to compute the range if both ranges are complete
+    return get_full_evaluation_date_range_from_ranges(
+        calibration_evaluation_range, validation_evaluation_range
+    )
+
+
 
 # TODO Do woe need allow_empty?
 def validate_time_range(
