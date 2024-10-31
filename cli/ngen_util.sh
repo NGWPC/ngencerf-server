@@ -1,24 +1,21 @@
 #!/bin/bash
 
-# Centralized function to handle HTTP errors
+# Function to check HTTP errors with optional immediate exit
 check_http_error() {
-    local http_status="$1"
-    local response="$2"
+    local http_status=$1
+    local response=$2
+    local exit_on_error=${3:-false}  # Default to not exiting on error
 
     if [ "$http_status" -eq 000 ]; then
         echo "Error: Could not connect to the server."
-        return 1
+        [[ "$exit_on_error" == true ]] && exit 1 || return 1
     elif [ "$http_status" -eq 400 ]; then
         echo "Server returned HTTP 400 Bad Request. Response:"
         echo "$response" | jq --indent 3
-        return 1
-    elif [ "$http_status" -eq 401 ]; then
-        echo "Invalid username or password."
-        echo "Response: $response"
-        return 1
+        [[ "$exit_on_error" == true ]] && exit 1 || return 1
     elif [ "$http_status" -ne 200 ]; then
         echo "Error: Server returned HTTP status code $http_status."
-        echo "Response: $response"
-        return 1
+        echo "$response" | jq --indent 3
+        [[ "$exit_on_error" == true ]] && exit 1 || return 1
     fi
 }

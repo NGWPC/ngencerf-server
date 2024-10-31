@@ -124,13 +124,18 @@ case "$operation" in
         http_status=$(tail -n1 <<< "$response")
         response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-        check_http_error "$http_status" "$response"
+        # Check for HTTP errors and exit if any error is encountered
+        check_http_error "$http_status" "$response" true
 
         # Extract the calibration_run_id from the response
         calibration_run_id=$(echo "$response" | jq -r '.calibration_run_id' 2>/dev/null)
+
+        # Perform uploads if calibration_run_id is valid
         if [ -n "$geopackage_file" ]; then upload_geopackage_data "$geopackage_file" "$calibration_run_id" || exit 1; fi
         if [ -n "$observational_file" ]; then upload_observational_data "$observational_file" "$calibration_run_id" || exit 1; fi
         if [ -n "$forcing_dir" ]; then upload_forcing_data "$forcing_dir" "$calibration_run_id" || exit 1; fi
+
+        # Run the job if requested
         if [ "$run_after_import" = true ]; then run_job "$calibration_run_id" || exit 1; fi
         rm -f /tmp/curl_response
         ;;
