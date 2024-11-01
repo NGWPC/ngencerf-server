@@ -538,6 +538,7 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     nwm_warning = serializers.BooleanField(required=True)
     formulation_warning = serializers.JSONField(required=False)
+    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 class ModuleStaticSerializer(BaseSerializer):
@@ -551,7 +552,6 @@ class LoadFormulationResponseSerializer(BaseSerializer):
     modules = ModuleStaticSerializer(many=True)
     module_groups = serializers.ListSerializer(child=serializers.CharField(required=True), required=True, allow_null=False, allow_empty=False)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 ##################################
@@ -626,7 +626,6 @@ class LoadTuningResponseSerializer(BaseSerializer):
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
     time_range = TimeRangeSerializerAllowEmpty(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 ##################################
