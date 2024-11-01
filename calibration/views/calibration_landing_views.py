@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
+from calibration.enums import StatusEnum, ValidationType, JobGenesis
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
@@ -265,7 +265,7 @@ def get_jobs(user, run_status=None, include_validations=False):
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
     # Define the fields
-    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name']
+    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name', 'job_genesis']
     additional_fields = ['objective_function__name', 'optimization__name']
 
     selected_fields = default_fields
@@ -401,7 +401,7 @@ def clone_job(request):
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, warnings, info_messages, fatal_error = import_calibration_run_data(request, calibration_run_data)
+    new_run, warnings, info_messages, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
     if fatal_error:
         return fatal_error
 

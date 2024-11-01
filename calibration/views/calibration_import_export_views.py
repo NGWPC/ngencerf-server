@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
 from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
@@ -63,7 +63,7 @@ def import_job(request):
 
     run_after_import = validator.get('run_after_import', False)
 
-    run, warnings, info_messages, fatal_error = import_calibration_run_data(request, validator)
+    run, warnings, info_messages, fatal_error = import_calibration_run_data(request, validator, JobGenesis.IMPORT)
     if fatal_error:
         return fatal_error
 
@@ -92,9 +92,9 @@ def import_job(request):
     return Response(response_validator.data)
 
 
-def import_calibration_run_data(request, calibration_run_data):
+def import_calibration_run_data(request, calibration_run_data, genesis: JobGenesis):
     with transaction.atomic():
-        run = create_calibration_run_internal(request.user)
+        run = create_calibration_run_internal(request.user, genesis)
 
         warnings = []
         info_messages = []

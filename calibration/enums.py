@@ -185,9 +185,20 @@ class ValidationType(StrEnum):
 
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
 class ValidationMetricPeriod(StrEnum):
-    calib = auto()
-    valid = auto()
-    full = auto()
+    calib = 'calib'
+    valid = 'valid'
+    full = 'full'
+
+    @classmethod
+    def get_names(cls) -> List[str]:
+        # noinspection PyUnresolvedReferences
+        return [e.value for e in cls]
+
+
+class JobGenesis(StrEnum):
+    CLONE = 'clone'
+    IMPORT = 'import'
+    GUI = 'gui'
 
     @classmethod
     def get_names(cls) -> List[str]:

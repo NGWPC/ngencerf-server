@@ -13,7 +13,7 @@ from rest_framework.exceptions import ValidationError, ParseError
 from rest_framework.permissions import BasePermission
 from rest_framework_simplejwt.tokens import AccessToken
 
-from calibration.enums import StatusEnum, ValidationType
+from calibration.enums import StatusEnum, ValidationType, JobGenesis
 from calibration.models import Iteration
 from calibration.util.calibration_validators import ErrorResponseSerializer
 from django.contrib.auth.models import User
@@ -140,12 +140,13 @@ def png_str_to_base64_url(png_str):
         return None
 
 
-def create_calibration_run_internal(user) -> CalibrationRun:
+def create_calibration_run_internal(user, genesis: JobGenesis = None) -> CalibrationRun:
     """
     Create a new CalibrationRun object for the user making the request.
     Ensures that the job directory is created and assigns the 'SAVED' status by default.
 
     :param user: The owner of the calibration run.
+    :param genesis: Genesis of the job
     :return: The newly created CalibrationRun instance.
      """
     run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.from_enum(StatusEnum.SAVED))
@@ -153,16 +154,19 @@ def create_calibration_run_internal(user) -> CalibrationRun:
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{username}'
-    # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory now
+
+    # Set the job genesis based on the provided genesis or default to JobGenesis.GUI
+    run.job_genesis = genesis.value if genesis else JobGenesis.GUI
+
+    # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory if it already exists (should not happen in production)
     if run.job_data_dir.exists():
-        # Rename the existing one
-        # This should never happen in production, but just in case
+        # Append timestamp to existing directory name to avoid overwriting
         new_name = run.job_data_dir.with_name(f"{run.job_data_dir.name}_{datetime.now().isoformat()}")
         run.job_data_dir.rename(new_name)
 
     # This is always true
     run.automatic_validation = True
-    run.save(update_fields=['job_data_dir', 'automatic_validation'])
+    run.save(update_fields=['job_data_dir', 'automatic_validation', 'job_genesis'])
     return run
 
 
