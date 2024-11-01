@@ -128,79 +128,44 @@ class OptimizationEnum(AbstractEnum):
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
 
-# Below are standard enums without database synchronization or aliasing.
+# Below are simple enums without database synchronization or aliasing.
 
-class DataTypeEnum(StrEnum):
+class DataTypeEnum(AbstractEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
     BOOLEAN = 'boolean'
     STRING = 'string'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class SlurmStatusEnum(StrEnum):
+class SlurmStatusEnum(AbstractEnum):
     DONE = 'DONE'
     FAILED = 'FAILED'
     CANCELED = 'CANCELED'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class LocationEnum(StrEnum):
+class LocationEnum(AbstractEnum):
     NODE = 'node'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class UnitsEnum(StrEnum):
+class UnitsEnum(AbstractEnum):
     M = 'm'
     NONE = 'none'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class ValidationType(StrEnum):
+class ValidationType(AbstractEnum):
     VALID_BEST = 'valid_best'
     VALID_CONTROL = 'valid_control'
     VALID_ITERATION = 'valid_iteration'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
-
 
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
-class ValidationMetricPeriod(StrEnum):
+class ValidationMetricPeriod(AbstractEnum):
     calib = 'calib'
     valid = 'valid'
     full = 'full'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class JobGenesis(StrEnum):
+class JobGenesis(AbstractEnum):
     CLONE = 'clone'
     IMPORT = 'import'
     GUI = 'gui'
-
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
