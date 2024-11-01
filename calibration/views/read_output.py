@@ -457,7 +457,7 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
 
         logger.debug(
             f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
-        iteration.calibration_output_variable_value = obj_fun_val
+        iteration.objective_function_value = obj_fun_val
 
         # Add the modified object to the list
         iterations_to_update.append(iteration)
@@ -466,7 +466,7 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
     if iterations_to_update:
         with transaction.atomic():  # Ensure atomicity of the bulk update
             for i in range(0, len(iterations_to_update), BULK_CREATE_BATCH_SIZE):
-                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['calibration_output_variable_value'])
+                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['objective_function_value'])
 
 
 # Function to read the last line of a file
