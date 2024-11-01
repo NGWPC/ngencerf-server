@@ -1,9 +1,10 @@
+import json
 from typing import Dict, List
 
 from django.core.cache import cache
 from django.db.models import Prefetch
 
-from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup
+from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, PlotDefinition
 
 
 def get_cached_module_by_name(module_name: str) -> Module | None:
@@ -159,3 +160,32 @@ def get_cached_module_groups() -> list:
         cache.set(MODULE_GROUPS_CACHE_KEY, module_groups, None)
 
     return module_groups
+
+
+PLOT_CACHE_KEY = 'cached_plot_definitions'
+
+
+def get_filtered_plot_definitions(run, plot_name=None):
+    cached_plot_definitions = cache.get(PLOT_CACHE_KEY)
+
+    # If not cached, query and cache the plot definitions
+    if cached_plot_definitions is None:
+        # Replace PlotDefinitionModel with the actual model name for plot definitions
+        cached_plot_definitions = list(
+            PlotDefinition.objects.filter(is_active=True).values(
+                'name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask'
+            )
+        )
+        cache.set(PLOT_CACHE_KEY, cached_plot_definitions, timeout=None)
+
+    filtered_plot_definitions = []
+
+    for plot in cached_plot_definitions:
+        # Include only plots that match the given plot name, if provided
+        if (plot_name is None or plot['name'] == plot_name) \
+                and run.optimization.name in json.loads(plot['valid_optimizations']) \
+                and (run.automatic_validation or not plot['validation']):  # Simplified validation check
+
+            filtered_plot_definitions.append(plot)
+
+    return filtered_plot_definitions

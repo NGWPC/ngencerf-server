@@ -128,16 +128,6 @@ class OptimizationEnum(AbstractEnum):
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
 
-class PlotDefinitionsEnum(AbstractEnum):
-    """
-    Enum for Plot Definitions.
-    """
-
-    @classmethod
-    def get_model(cls) -> Type[PlotDefinition]:
-        return PlotDefinition
-
-
 # Below are standard enums without database synchronization or aliasing.
 
 class DataTypeEnum(StrEnum):
