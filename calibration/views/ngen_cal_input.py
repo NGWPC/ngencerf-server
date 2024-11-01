@@ -284,9 +284,12 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
             # Set full evaluation periods if both calibration and validation evaluation periods are present
             if run.calibration_eval_start_period and run.calibration_eval_end_period:
-                calibration['full_eval_start_period'], calibration['full_eval_end_period'] = get_full_evaluation_date_range(
+                full_eval_start, full_eval_end = get_full_evaluation_date_range(
                     run.calibration_eval_start_period, run.calibration_eval_end_period,
                     run.validation_eval_start_period, run.validation_eval_end_period)
+
+                calibration['full_eval_start_period'] = format_datetime(full_eval_start)
+                calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
     if not is_missing(run.objective_function, 'objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()
