@@ -413,7 +413,7 @@ class Command(BaseCommand):
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
-                "filename_mask": "{gage_id}streamflow_precip_valid_run.png"
+                "filename_mask": "{gage_id}_streamflow_precip_valid_run.png"
             }
         ]
 

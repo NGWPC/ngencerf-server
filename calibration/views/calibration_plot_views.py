@@ -11,7 +11,7 @@ from calibration.models import CalibrationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
-from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_run_dir
+from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields
 from calibration.views.read_output import process_worker_dirs
@@ -128,7 +128,7 @@ def get_plot(request):
 
     match plot_info['location']:
         case 'plot_valid':
-            location = get_output_validation_run_dir(run)
+            location = get_output_validation_plot_dir(run)
         case 'output_calibration':
             location = get_output_calibration_run_dir(run)
         case 'plot_iteration':
@@ -137,7 +137,7 @@ def get_plot(request):
                 return ResponseError(f'Plots could not be found for Calibration Run {run.id}')
         case _:
             # Default case (if no match is found)
-            return ResponseError(f"Unknown location {plot_info['location']} in PlotDefinitions")
+            return ResponseError(f"Unknown location '{plot_info['location']}' in PlotDefinitions")
 
     plot_file_name = plot_info['filename_mask'].format(gage_id=gage_id)
     plot_file_path = os.path.join(location, plot_file_name)
