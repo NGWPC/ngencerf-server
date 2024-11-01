@@ -49,7 +49,7 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
     touch "${CERF_LOAD_STATIC_DATA}"
 else
     # Run this every time, since sometimes there are updates and it is very quick
-    manage.py init_sql;
+    python3 manage.py init_sql
 fi
 
 echo
