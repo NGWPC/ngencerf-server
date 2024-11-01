@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from typing import Optional
@@ -7,11 +6,12 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, PlotDefinitionsEnum
+from calibration.enums import StatusEnum
 from calibration.models import CalibrationRun
+from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
-from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_run_dir
+from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields
 from calibration.views.read_output import process_worker_dirs
@@ -127,8 +127,8 @@ def get_plot(request):
     plot_info = filtered_plot_definitions[0]
 
     match plot_info['location']:
-        case 'output_validation':
-            location = get_output_validation_run_dir(run)
+        case 'plot_valid':
+            location = get_output_validation_plot_dir(run)
         case 'output_calibration':
             location = get_output_calibration_run_dir(run)
         case 'plot_iteration':
@@ -137,7 +137,7 @@ def get_plot(request):
                 return ResponseError(f'Plots could not be found for Calibration Run {run.id}')
         case _:
             # Default case (if no match is found)
-            return ResponseError(f"Unknown location {plot_info['location']} in PlotDefinitions")
+            return ResponseError(f"Unknown location '{plot_info['location']}' in PlotDefinitions")
 
     plot_file_name = plot_info['filename_mask'].format(gage_id=gage_id)
     plot_file_path = os.path.join(location, plot_file_name)
@@ -147,6 +147,7 @@ def get_plot(request):
 
     plot_url = png_to_base64_url(plot_file_path)
 
+    logger.info(f'Retrieving plot {plot_file_name} from {plot_file_path}')
     response = {'calibration_run_id': run.id, 'plot_name': plot_name, 'plot_file_name': plot_file_name, 'plot_url': plot_url}
     response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url'])
     if error_response:
@@ -179,22 +180,3 @@ def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[s
     process_worker_dirs(calibration_run, check_worker)
 
     return found_plot_iteration_dir
-
-
-def get_filtered_plot_definitions(run, plot_name=None):
-    # Load cached plot definitions with specific fields to be included in the returned dictionaries
-    cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
-        fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
-    )
-
-    filtered_plot_definitions = []
-
-    for plot in cached_plot_definitions:
-        # Include only plots that match the given plot name, if provided
-        if (plot_name is None or plot['name'] == plot_name) \
-                and run.optimization.name in json.loads(plot['valid_optimizations']) \
-                and (run.automatic_validation or not plot['validation']):  # Simplified validation check
-
-            filtered_plot_definitions.append(plot)
-
-    return filtered_plot_definitions
