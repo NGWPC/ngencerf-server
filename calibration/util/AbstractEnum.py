@@ -34,7 +34,7 @@ class AbstractEnum(Generic[T], Enum):
         raise NotImplementedError("Subclasses must define a 'get_model' method")
 
     @classmethod
-    def get_aliases(cls) -> Dict[str, List[str]]:
+    def get_aliases(cls) -> Dict[Enum, List[str]]:
         """
         Optionally overridden by subclasses to provide aliases for enum members.
 
@@ -43,19 +43,26 @@ class AbstractEnum(Generic[T], Enum):
         return {}
 
     @classmethod
+    def _get_cached_items(cls) -> Dict[str, T]:
+        """
+        Helper method to retrieve cached items, reloading them from the database if the cache is empty.
+
+        :return: A dictionary of items cached by name, either from cache or reloaded from the database.
+        """
+        items = cache.get(f'{cls.__name__}_cache')
+        if items is None:
+            cls.load_items()
+            items = cache.get(f'{cls.__name__}_cache')
+        return items
+
+    @classmethod
     def get_names(cls) -> List[str]:
         """
         Retrieves the names of the cached enum items. If the cache is empty, items are reloaded from the database.
 
         :return: A list of names for the enum items
         """
-        # Attempt to get items from the cache, and reload if cache is empty
-        items = cache.get(f'{cls.__name__}_cache')
-        if items is None:
-            cls.load_items()
-            items = cache.get(f'{cls.__name__}_cache')
-
-        # Return just the names of the items
+        items = cls._get_cached_items()
         return [item.name for item in items.values()]
 
     @classmethod
@@ -124,24 +131,16 @@ class AbstractEnum(Generic[T], Enum):
         """
         # Convert name to lowercase for case-insensitive matching
         name = name.lower()
-
-        # Attempt to retrieve cached items, reloading if necessary
-        items = cache.get(f'{cls.__name__}_cache')
-        if items is None:
-            # If cache is empty, reload active items from the database
-            cls.load_items()
-            items = cache.get(f'{cls.__name__}_cache')
+        items = cls._get_cached_items()
 
         # Create a lookup dictionary with lowercase names for case-insensitive retrieval
         items_lower = {item_name.lower(): item for item_name, item in items.items()}
 
         # Include aliases in the lookup dictionary
-        aliases = cls.get_aliases()
-        for main_value, alias_list in aliases.items():
+        for main_value, alias_list in cls.get_aliases().items():
             main_item = items_lower.get(main_value.value.lower())  # Find the main item
             if main_item:
-                for alias in alias_list:
-                    items_lower[alias.lower()] = main_item  # Map each alias to the main item
+                items_lower.update({alias.lower(): main_item for alias in alias_list})
 
         # Retrieve the instance by lowercase name or raise an error if not found
         instance = items_lower.get(name)
@@ -178,12 +177,7 @@ class AbstractEnum(Generic[T], Enum):
             # Default to including the 'name' and 'description' fields
             fields = ['name', 'description']
 
-        # Retrieve cached items, reloading if the cache is empty
-        items = cache.get(f'{cls.__name__}_cache')
-        if items is None:
-            # If cache is empty, reload active items from the database
-            cls.load_items()
-            items = cache.get(f'{cls.__name__}_cache')
+        items = cls._get_cached_items()
 
         # Return each item as a dictionary of the specified fields
         return [
