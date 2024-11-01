@@ -70,7 +70,7 @@ def get_calibration_data_by_iteration(request):
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
-            'calibration_output_variable_value': iteration.calibration_output_variable_value,
+            'objective_function_value': iteration.objective_function_value,
             'parameters': [],
             'metrics': []
         }
@@ -91,7 +91,7 @@ def get_calibration_data_by_iteration(request):
 
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
+    response = {'message': f'Calibration Run {run.id}, data retrieved', 'objective_function_metric': run.objective_function.name, 'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
     # NaN is not valid Json
     response = replace_nan_with_none(response)
 
