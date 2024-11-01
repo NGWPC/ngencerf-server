@@ -17,7 +17,7 @@ for arg in "$@"; do
   esac
 done
 
-if [ "${CERF_VENV}" != "Docker" ] ; then
+if [ "${CERF_VENV}" != "Docker" ]; then
     if [ -n "${CERF_VENV}" ]; then
        # shellcheck disable=SC1090
        source "$cerfServer/${CERF_VENV}/bin/activate"
@@ -31,18 +31,8 @@ echo
 echo "Running migrate"
 python3 manage.py migrate
 
-# Run this every time, since sometimes there are updates and it is very quick
-echo
-echo "Calling init_sql"
-if ! python3 manage.py init_sql; then
-    echo "Warning: 'init_sql' encountered an error, but continuing..."
-    echo "This warning can be ignored if you are re-initializing the database."
-    echo "In that case, 'init_sql' will be run again"
-fi
-echo
-
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
-if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
+if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
     echo
     echo "Loading ngenCERF static data"
 
@@ -57,6 +47,9 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ] ; then
     python3 manage.py init_gages
 
     touch "${CERF_LOAD_STATIC_DATA}"
+else
+    # Run this every time, since sometimes there are updates and it is very quick
+    manage.py init_sql;
 fi
 
 echo
@@ -67,6 +60,6 @@ echo
 echo "Starting server"
 python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000
 
-if [ -n "${CERF_VENV}" ] ; then
+if [ -n "${CERF_VENV}" ]; then
     deactivate
 fi
