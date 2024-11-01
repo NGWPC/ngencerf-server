@@ -1,6 +1,5 @@
 import io
 import logging
-import traceback
 from datetime import MAXYEAR as MAXYEAR
 from datetime import MINYEAR as MINYEAR
 from datetime import datetime, timezone
@@ -17,14 +16,13 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
+from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.util.caching import get_cached_module_by_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
     get_valid_path, format_datetime
-from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
 
 logger = logging.getLogger(__name__)
 
@@ -68,42 +66,19 @@ def load_tuning_tab(request):
     if error_return:
         return error_return
 
+    time_range = get_time_range(run)
+
     # Get the list of modules for this Run
     formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
         'calibrationparameter_set', 'output_variables'
     )
 
-    time_range = get_time_range(run)
-
-    hydrofabric_errors = []
-
-    module_list = []
-    if formulations and run.gage:
-        # Only do this if modules have been saved in the formulation tab, and we have a gage
-
-        # Don't call Hydrofabric on a completed jobs
-        if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
-            # First time through, all modules will be missing parameters, so we'll call Hydrofabric
-            # For subsequent times, most likely none of them will be missing, if the modules haven't changed.
-            modules_missing_parameters = modules_without_parameters(formulations)
-            print('modules missing parameters', modules_missing_parameters)
-
-            # Call Hydrofabric if any modules are missing parameters
-            if modules_missing_parameters.exists():
-                try:
-                    get_module_metadata_from_hydrofabric(run, modules_missing_parameters)
-                except HydrofabricException as e:
-                    logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({'name': 'parameters', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
-
-        # For each module, get the Parameters and Output Variables
-        module_list = get_parameters_and_output_variables(formulations)
+    # For each module, get the Parameters and Output Variables
+    module_list = get_parameters_and_output_variables(formulations)
 
     ngen_cal_input.ready_to_run(run)
 
     response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list, 'time_range': time_range}
-    if hydrofabric_errors:
-        response['hydrofabric_errors'] = hydrofabric_errors
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
@@ -111,17 +86,6 @@ def load_tuning_tab(request):
     logger.debug(f'Returning to {request.user.email} from load_tuning_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
-
-
-def modules_without_parameters(modules_in_use: QuerySet[CalibrationFormulation]) -> QuerySet[CalibrationFormulation]:
-    return modules_in_use.exclude(calibrationparameter__isnull=True)
-
-
-def get_output_variable_to_calibrate(run: CalibrationRun) -> Dict[str, str] | None:
-    return {
-        'module': run.module_output_variable.calibration_formulation.module.name,
-        'name': run.module_output_variable.name
-    } if run.module_output_variable else None
 
 
 def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation]) -> bool:

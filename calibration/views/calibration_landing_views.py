@@ -411,7 +411,9 @@ def clone_job(request):
     if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         messages, _ = ngen_cal_input.ready_to_run(new_run)
 
-    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
+    # noinspection PyUnresolvedReferences
+    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}',
+                'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
     # I agree that the message handling got out of hand
     if messages:
