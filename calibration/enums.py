@@ -128,6 +128,30 @@ class OptimizationEnum(AbstractEnum):
         cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
 
 
+class PlotDefinitionsEnum(AbstractEnum):
+    """
+    Enum for Plot Definitions.
+    """
+
+    HYDROGRAPH_EVOLUTION = 'Hydrograph evolution'
+    OBJECTIVE_FUNCTION_EVOLUTION = 'Objective Function evolution'
+    METRIC_EVOLUTION = 'Metric evolution'
+    PARAMETER_EVOLUTION = 'Parameter evolution'
+    SCATTERPLOT_STREAMFLOW = 'Scatterplot streamflow'
+    METRICS_VS_OBJECTIVE_FUNCTION = 'Metrics vs Objective Function'
+    STREAM_FLOW_PRECIPITATION = 'Stream Flow Precipitation'
+    FLOW_DURATION_CURVES = 'Flow Duration Curves'
+    COST_HISTORY = 'Cost History'
+    BAR_CHART_METRICS = 'Bar Chart Metrics'
+    FLOW_DURATION_CURVES_VALIDATION = 'Flow Duration Curves Validation'
+    HYDROGRAPH_VALIDATION = 'Hydrograph Validation'
+    STREAMFLOW_VALIDATION_PRECIPITATION = 'Streamflow Validation Precipitation'
+
+    @classmethod
+    def get_model(cls) -> Type[PlotDefinition]:
+        return PlotDefinition
+
+
 # Below are simple enums without database synchronization or aliasing.
 
 class DataTypeEnum(AbstractEnum):

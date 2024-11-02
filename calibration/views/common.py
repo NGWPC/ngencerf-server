@@ -200,7 +200,7 @@ def create_validation_run_internal(
                                                   calibration_run=calibration_run,
                                                   validation_type=validation_type.value,
                                                   iteration=iteration_object)
-    logger.info(f"Creating Validation Run {validation_run.id} for Calibration {calibration_run.id} with validation_type {validation_type}")
+    logger.info(f"Creating Validation Run {validation_run.id} for Calibration Run {calibration_run.id} with validation_type {validation_type}")
 
     return validation_run
 

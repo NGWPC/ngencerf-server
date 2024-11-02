@@ -5,7 +5,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -500,13 +500,15 @@ class GetPLotNamesResponseSerializer(BaseSerializer):
 
 
 class GetPlotRequestSerializer(CalibrationRunSerializer):
-    plot_name = serializers.CharField(required=True, allow_null=False)
+    plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
+    include_data = serializers.BooleanField(required=False, default=False)
 
 
 class GetPlotResponseSerializer(CalibrationRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False)
     plot_file_name = serializers.CharField(required=True, allow_null=False)
     plot_url = serializers.CharField(required=True, allow_null=False)
+    plot_data = serializers.JSONField(required=False)
 
 
 ##################################
