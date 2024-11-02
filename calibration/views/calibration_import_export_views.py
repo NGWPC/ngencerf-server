@@ -152,9 +152,6 @@ def import_calibration_run_data(request, calibration_run_data, genesis: JobGenes
         #############################
         # Formulations
         #############################
-        # TODO Check that this works
-        # get_modules_from_hydrofabric(run)
-        # List of module names
         modules_list = calibration_run_data.get('modules')
         module_names = set(modules_list) if modules_list else set()
 
@@ -186,9 +183,6 @@ def import_calibration_run_data(request, calibration_run_data, genesis: JobGenes
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        #############################
-        # Tuning
-        #############################
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run)
 
@@ -198,6 +192,20 @@ def import_calibration_run_data(request, calibration_run_data, genesis: JobGenes
             except HydrofabricException as e:
                 logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                 warnings.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
+
+        #############################
+        # Tuning
+        #############################
+
+        parameters = calibration_run_data.get('parameters')
+        if parameters and not modules:
+            return None, None, None, ResponseError('Parameters cannot be specified without modules')
+
+        error_message = validate_parameters(run, parameters)
+        if error_message:
+            return None, None, None, ResponseError(error_message)
+
+        save_parameters(run, parameters)
 
         run.automatic_validation = calibration_run_data.get('automatic_validation')
 
@@ -211,19 +219,11 @@ def import_calibration_run_data(request, calibration_run_data, genesis: JobGenes
             return None, None, None, ResponseError(error_message)
 
         output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')
-        parameters = calibration_run_data.get('parameters')
-        if parameters and not modules:
-            return None, None, None, ResponseError('Parameters cannot be specified without modules')
-
-        error_message = validate_parameters(run, parameters)
-        if error_message:
-            return None, None, None, ResponseError(error_message)
 
         error_message = save_output_variable(run, output_variable_to_calibrate)
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        save_parameters(run, parameters)
 
         #############################
         # Optimization
@@ -419,7 +419,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
 
-    output_variable_to_calibrate = {
+    calibration_run_data['output_variable_to_calibrate'] = {
         'module': run.module_output_variable.calibration_formulation.module.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else {}
@@ -427,7 +427,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     #############################
     # Optimization
     #############################
-    calibration_run_data['output_variable_to_calibrate'] = output_variable_to_calibrate
     calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
     calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
     calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold

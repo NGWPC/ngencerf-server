@@ -221,8 +221,10 @@ def save_tuning_tab(request):
 
     error_message = validate_and_save_times(run, calibration_times, validation_times)
     if error_message:
-        # TODO Do we need to join?
         return ResponseError(error_message)
+
+    if (parameters or output_variable_to_calibrate) and not run.gage:
+        return ResponseError('Parameters and output variable cannot be specified without a gage')
 
     error_message = validate_parameters(run, parameters)
     if error_message:

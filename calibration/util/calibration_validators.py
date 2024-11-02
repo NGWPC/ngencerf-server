@@ -193,12 +193,23 @@ class OutputVariableSerializer(BaseSerializer):
 
 class SaveTuningParametersSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=True)
-    maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True, allow_null=True)
+    minimum = serializers.FloatField(required=True, allow_null=False)
+    maximum = serializers.FloatField(required=True, allow_null=False)
+    initial_value = serializers.FloatField(required=True, allow_null=False)
     module = serializers.CharField(required=True, allow_blank=False)
 
+    def __init__(self, *args, allow_empty=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_empty = allow_empty
+
+        # Adjust field requirements based on allow_empty
+        if self.allow_empty:
+            self.fields['minimum'].allow_null = True
+            self.fields['maximum'].allow_null = True
+            self.fields['initial_value'].allow_null = True
+
     def validate(self, data):
+        # Only validate ranges if minimum, maximum, and initial_value are provided
         if data['minimum'] is not None and data['maximum'] is not None:
             if data['minimum'] > data['maximum']:
                 raise serializers.ValidationError(
@@ -614,15 +625,6 @@ class SaveTuningRequestSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
-    #
-    # def validate(self, data):
-    #     if 'calibration_times' in data and 'validation_times' in data:
-    #         # Make sure there is no overlap between calibration times and validation times
-    #         calibration_range = DateTimeRange(data['calibration_times']['calibration_start_time'], data['calibration_times']['calibration_end_time'])
-    #         validation_range = DateTimeRange(data['validation_times']['validation_start_time'], data['validation_times']['validation_end_time'])
-    #         if calibration_range.is_intersection(validation_range):
-    #             raise serializers.ValidationError(f"Calibration range {calibration_range} cannot intersect validation range {validation_range}")
-    #     return data
 
 
 class LoadTuningResponseSerializer(BaseSerializer):
@@ -795,7 +797,7 @@ class ImportSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    parameters = SaveTuningParametersSerializer(many=True, required=False)
+    parameters = SaveTuningParametersSerializer(many=True, required=False, allow_empty=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
