@@ -205,7 +205,7 @@ def import_calibration_run_data(request, calibration_run_data, genesis: JobGenes
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        save_parameters(run, parameters, no_override=True)
+        save_parameters(run, parameters, allow_nulls=True)
 
         run.automatic_validation = calibration_run_data.get('automatic_validation')
 
