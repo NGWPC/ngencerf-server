@@ -634,7 +634,7 @@ def save_output_variable(run: CalibrationRun, output_variable_to_calibrate: Dict
         return None
 
 
-def save_parameters(run: CalibrationRun, parameters: List[Dict[str, str | float]]) -> None:
+def save_parameters(run: CalibrationRun, parameters: List[Dict[str, str | float]], no_override: bool = False) -> None:
     if parameters:
         parameters_to_update = []
 
@@ -652,10 +652,11 @@ def save_parameters(run: CalibrationRun, parameters: List[Dict[str, str | float]
         # Update the parameters based on the input
         for p in parameters:
             calibration_param = parameter_lookup[(p['module'], p['name'])]
-            # min, max and initial_value might be null if imported
-            calibration_param.minimum = p.get('minimum')
-            calibration_param.maximum = p.get('maximum')
-            calibration_param.initial_value = p.get('initial_value')
+            # min, max and initial_value might be null if imported.  Leavve the value from Hydrofabric
+            if not no_override:
+                calibration_param.minimum = p.get('minimum')
+                calibration_param.maximum = p.get('maximum')
+                calibration_param.initial_value = p.get('initial_value')
             calibration_param.user_selected_for_tuning = True
             parameters_to_update.append(calibration_param)
 

@@ -100,7 +100,7 @@ class SlothParameters(BaseSerializer):
     maps_to_module = serializers.CharField(required=True, allow_blank=False)
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
-    
+
 class TimeRangeSerializerAllowEmpty(BaseSerializer):
     start_time = serializers.DateTimeField(required=False)
     end_time = serializers.DateTimeField(required=False)
@@ -791,12 +791,6 @@ class ImportSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
-
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
-    #     # Ensure each child serializer in the parameters field has allow_empty set to True
-    #     if 'parameters' in self.fields and isinstance(self.fields['parameters'], serializers.ListSerializer):
-    #         self.fields['parameters'].child.allow_empty = True
 
 
 ##################################

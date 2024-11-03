@@ -391,7 +391,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             # Make sure everything is specified
             if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
                 param_error = True
-                errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
+                errors.append(f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
 
         if not param_error and build:
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
