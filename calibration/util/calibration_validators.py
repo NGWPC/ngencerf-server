@@ -100,23 +100,7 @@ class SlothParameters(BaseSerializer):
     maps_to_module = serializers.CharField(required=True, allow_blank=False)
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
-#
-# class TimeRangeValidatorMixin:
-#     # noinspection PyMethodMayBeStatic
-#     def validate_time_range(self, start_time, end_time, field_name, allow_empty=False):
-#         if allow_empty and (start_time is None or end_time is None):
-#             return None
-#
-#         if start_time and end_time:
-#             time_range = DateTimeRange(start_time, end_time)
-#             if not time_range.is_valid_timerange():
-#                 raise serializers.ValidationError(f'{time_range} is not a valid time range for {field_name}')
-#             return time_range
-#
-#         # If one of the fields is None but allow_empty is not True, raise an error
-#         raise serializers.ValidationError(f'{field_name} requires both start and end times')
-
-
+    
 class TimeRangeSerializerAllowEmpty(BaseSerializer):
     start_time = serializers.DateTimeField(required=False)
     end_time = serializers.DateTimeField(required=False)
@@ -204,20 +188,23 @@ class SaveTuningParametersSerializer(BaseSerializer):
 
         # Adjust field requirements based on allow_empty
         if self.allow_empty:
-            self.fields['minimum'].allow_null = True
-            self.fields['maximum'].allow_null = True
-            self.fields['initial_value'].allow_null = True
+            for field in ['minimum', 'maximum', 'initial_value']:
+                self.fields[field].required, self.fields[field].allow_null = False, True
 
     def validate(self, data):
         # Only validate ranges if minimum, maximum, and initial_value are provided
-        if data['minimum'] is not None and data['maximum'] is not None:
-            if data['minimum'] > data['maximum']:
+        min_val = data.get('minimum')
+        max_val = data.get('maximum')
+        initial = data.get('initial_value')
+
+        if min_val is not None and max_val is not None:
+            if min_val > max_val:
                 raise serializers.ValidationError(
-                    f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}"
+                    f"Minimum ({min_val}) must be less than maximum ({max_val}) for parameter {data['name']}"
                 )
-            if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
+            if initial is not None and not (min_val <= initial <= max_val):
                 raise serializers.ValidationError(
-                    f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}"
+                    f"Value {initial} must be between minimum ({min_val:.10f}) and maximum ({max_val:.10f}) for parameter {data['name']}"
                 )
 
         return data
@@ -797,13 +784,19 @@ class ImportSerializer(BaseSerializer):
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
-    parameters = SaveTuningParametersSerializer(many=True, required=False, allow_empty=True)
+    parameters = serializers.ListSerializer(child=SaveTuningParametersSerializer(allow_empty=True), required=False)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
+
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     # Ensure each child serializer in the parameters field has allow_empty set to True
+    #     if 'parameters' in self.fields and isinstance(self.fields['parameters'], serializers.ListSerializer):
+    #         self.fields['parameters'].child.allow_empty = True
 
 
 ##################################
