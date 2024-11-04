@@ -1,6 +1,5 @@
 import logging
 import os
-from pathlib import Path
 from typing import Literal
 
 from django.conf import settings
@@ -179,7 +178,7 @@ def get_validation_performance_file(run: CalibrationRun, worker_name: str, itera
 
 
 def get_validation_special_performance_file(run: CalibrationRun, validation_type: Literal[ValidationType.VALID_BEST, ValidationType.VALID_CONTROL]) -> str:
-    validation_type_str = validation_type.split('_')[1].lower()
+    validation_type_str = validation_type.value.split('_')[1].lower()
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
 
 
