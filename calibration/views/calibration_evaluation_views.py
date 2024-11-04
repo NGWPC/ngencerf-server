@@ -182,8 +182,8 @@ def get_validation_jobs(request):
 
     result = []
     for validation_run in validation_jobs:
-        if validation_run.validation_type == ValidationType.VALID_BEST:
-            # Get all IterationParameters released to the best iteration
+        if validation_run.validation_type == ValidationType.VALID_BEST.value:
+            # Get all IterationParameters related to the best iteration
             iteration_params = IterationParameter.objects.filter(iteration__calibration_run=validation_run.calibration_run, iteration__best_params=True)
         else:
             # Get all IterationParameters related to this validation run's Iteration
