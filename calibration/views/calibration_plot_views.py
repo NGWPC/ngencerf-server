@@ -1,17 +1,18 @@
-import json
 import logging
 import os
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, PlotDefinitionsEnum
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, PlotDefinition
+from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
-from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_run_dir
+from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir
+from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields
 from calibration.views.read_output import process_worker_dirs
@@ -39,7 +40,16 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_plot_names(request):
+def get_plot_names(request) -> Response:
+    """
+    Retrieves the list of plot names and descriptions for a calibration run, filtered by applicable optimizations.
+
+    Args:
+        request (HttpRequest): The request containing either POST data or query parameters.
+
+    Returns:
+        Response: A JSON response with the calibration run ID, list of plot names and descriptions, and run status.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
 
@@ -53,13 +63,11 @@ def get_plot_names(request):
     if error_return:
         return error_return
 
+    # Get filtered plot definitions for the calibration run
     filtered_plot_definitions = get_filtered_plot_definitions(run)
 
-    # Create list of plot names with descriptions
-    plot_names = [
-        {'name': plot['name'], 'description': plot['description']}
-        for plot in filtered_plot_definitions
-    ]
+    # Create a list of plot names with descriptions
+    plot_names = [{'name': plot['name'], 'description': plot['description']} for plot in filtered_plot_definitions]
 
     response = {'calibration_run_id': calibration_run_id, 'plot_names': plot_names, 'status': run.status.name}
 
@@ -101,7 +109,16 @@ def png_to_base64_url(png):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_plot(request):
+def get_plot(request) -> Response:
+    """
+    Retrieves a specific plot for a calibration run, returning the plot file location and optional data.
+
+    Args:
+        request (HttpRequest): The request containing plot name and options.
+
+    Returns:
+        Response: A JSON response with plot details, or an error if the plot is not found.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot() request from {request.user.email} - {data}')
 
@@ -111,6 +128,7 @@ def get_plot(request):
 
     calibration_run_id = validator.get('calibration_run_id')
     plot_name = validator.get('plot_name')
+    include_data = validator.get('include_data')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
@@ -118,17 +136,16 @@ def get_plot(request):
 
     gage_id = run.gage.gage_id
 
-    # Get cached plot definitions
-    filtered_plot_definitions = get_filtered_plot_definitions(run, plot_name=plot_name)
+    # Get a single plot definition
+    plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
 
-    if not filtered_plot_definitions:
+    if not plot_definition:
         return ResponseError(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
 
-    plot_info = filtered_plot_definitions[0]
 
-    match plot_info['location']:
-        case 'output_validation':
-            location = get_output_validation_run_dir(run)
+    match plot_definition['location']:
+        case 'plot_valid':
+            location = get_output_validation_plot_dir(run)
         case 'output_calibration':
             location = get_output_calibration_run_dir(run)
         case 'plot_iteration':
@@ -137,9 +154,9 @@ def get_plot(request):
                 return ResponseError(f'Plots could not be found for Calibration Run {run.id}')
         case _:
             # Default case (if no match is found)
-            return ResponseError(f"Unknown location {plot_info['location']} in PlotDefinitions")
+            return ResponseError(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
 
-    plot_file_name = plot_info['filename_mask'].format(gage_id=gage_id)
+    plot_file_name = plot_definition['filename_mask'].format(gage_id=gage_id)
     plot_file_path = os.path.join(location, plot_file_name)
 
     if not os.path.exists(plot_file_path):
@@ -147,14 +164,69 @@ def get_plot(request):
 
     plot_url = png_to_base64_url(plot_file_path)
 
-    response = {'calibration_run_id': run.id, 'plot_name': plot_name, 'plot_file_name': plot_file_name, 'plot_url': plot_url}
+    logger.info(f'Retrieving plot {plot_file_name} from {plot_file_path}')
+
+    plot_data = get_plot_data(run, plot_definition) if include_data else None
+
+    response = {
+        'calibration_run_id': run.id,
+        'plot_name': plot_definition['name'],
+        'plot_file_name': plot_file_name,
+        'plot_url': plot_url
+    }
+    if include_data:
+        if not plot_data:
+            logger.warning(f"Data not available for {plot_definition['name']}")
+
+        response['plot_data'] = plot_data
+
     response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url'])
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
 
     return Response(response_validator.data)
 
+
+def get_plot_data(run: CalibrationRun, plot_definition: Dict[str, Any]):
+    # Convert plot_definition.name to an enum member
+    plot_enum = PlotDefinitionsEnum(plot_definition['name'])
+
+    plot_data = []
+    match plot_enum:
+        case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
+            iterations = get_iterations_for_calibration_job(run)
+            for iteration in iterations:
+                objective_function_element = {'iteration': iteration.iteration_num, 'objective_function_value': iteration.objective_function_value}
+                plot_data.append(objective_function_element)
+
+        case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION:
+            pass
+        case PlotDefinitionsEnum.METRIC_EVOLUTION:
+            pass
+        case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
+            pass
+        case PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
+            pass
+        case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
+            pass
+        case PlotDefinitionsEnum.STREAM_FLOW_PRECIPITATION:
+            pass
+        case PlotDefinitionsEnum.FLOW_DURATION_CURVES:
+            pass
+        case PlotDefinitionsEnum.COST_HISTORY:
+            pass
+        case PlotDefinitionsEnum.BAR_CHART_METRICS:
+            pass
+        case PlotDefinitionsEnum.FLOW_DURATION_CURVES_VALIDATION:
+            pass
+        case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
+            pass
+        case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:
+            pass
+
+    return plot_data
 
 def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[str]:
     """
@@ -179,22 +251,3 @@ def find_non_empty_plot_iteration(calibration_run: CalibrationRun) -> Optional[s
     process_worker_dirs(calibration_run, check_worker)
 
     return found_plot_iteration_dir
-
-
-def get_filtered_plot_definitions(run, plot_name=None):
-    # Load cached plot definitions with specific fields to be included in the returned dictionaries
-    cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
-        fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
-    )
-
-    filtered_plot_definitions = []
-
-    for plot in cached_plot_definitions:
-        # Include only plots that match the given plot name, if provided
-        if (plot_name is None or plot['name'] == plot_name) \
-                and run.optimization.name in json.loads(plot['valid_optimizations']) \
-                and (run.automatic_validation or not plot['validation']):  # Simplified validation check
-
-            filtered_plot_definitions.append(plot)
-
-    return filtered_plot_definitions

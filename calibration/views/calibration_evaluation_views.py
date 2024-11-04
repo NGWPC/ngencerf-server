@@ -1,13 +1,14 @@
 import logging
+from typing import Any
 
 import numpy as np
-from django.db.models import F
+from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
-from calibration.models import Iteration, IterationParameter, NWMRetrospectiveMetrics, ValidationRun
+from calibration.models import Iteration, IterationParameter, NWMRetrospectiveMetrics, ValidationRun, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError
@@ -55,13 +56,7 @@ def get_calibration_data_by_iteration(request):
 
     retrospective_data = [{'name': 'NWM 3.0', 'data': nwm_retrospective_data}]
 
-    # Fetch all iterations for the calibration run, along with related parameters and metrics
-    iterations = (
-        Iteration.objects
-        .filter(calibration_run_id=calibration_run_id)
-        .prefetch_related('iterationparameter_set', 'iterationmetric_set')  # prefetch related data for parameters and metrics
-        .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
-    )
+    iterations = get_iterations_for_calibration_job(run)
 
     iteration_data = []
     for iteration in iterations:
@@ -70,7 +65,7 @@ def get_calibration_data_by_iteration(request):
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
-            'calibration_output_variable_value': iteration.calibration_output_variable_value,
+            'objective_function_value': iteration.objective_function_value,
             'parameters': [],
             'metrics': []
         }
@@ -91,7 +86,7 @@ def get_calibration_data_by_iteration(request):
 
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
+    response = {'message': f'Calibration Run {run.id}, data retrieved', 'objective_function_metric': run.objective_function.name, 'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
     # NaN is not valid Json
     response = replace_nan_with_none(response)
 
@@ -102,7 +97,23 @@ def get_calibration_data_by_iteration(request):
     return Response(response_validator.data)
 
 
-def replace_nan_with_none(data):
+def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> QuerySet[Iteration]:
+    """
+    Fetches all iterations for the calibration run, along with related parameters and metrics.
+
+    :param calibration_run: The CalibrationRun instance for which to fetch iterations.
+    :return: A queryset of Iteration objects related to the given calibration run.
+    """
+    iterations = (
+        Iteration.objects
+        .filter(calibration_run=calibration_run)
+        .prefetch_related('iterationparameter_set', 'iterationmetric_set')  # prefetch related data for parameters and metrics
+        .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
+    )
+    return iterations
+
+
+def replace_nan_with_none(data: Any) -> Any:
     """
     Recursively traverses the input data and replaces any NaN values with None.
     This ensures that the data is JSON-compliant by converting non-compliant
@@ -171,8 +182,12 @@ def get_validation_jobs(request):
 
     result = []
     for validation_run in validation_jobs:
-        # Get all IterationParameters related to this validation run's Iteration
-        iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
+        if validation_run.validation_type == ValidationType.VALID_BEST:
+            # Get all IterationParameters released to the best iteration
+            iteration_params = IterationParameter.objects.filter(iteration__calibration_run=validation_run.calibration_run, iteration__best_params=True)
+        else:
+            # Get all IterationParameters related to this validation run's Iteration
+            iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
 
         # Create a list of parameters for this validation run
         params_list = [

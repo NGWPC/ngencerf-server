@@ -6,7 +6,7 @@ from calibration.models.base_model import BaseModel
 class Iteration(BaseModel):
     iteration_num = models.IntegerField(null=False)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.CASCADE)
-    calibration_output_variable_value = models.FloatField(null=True)
+    objective_function_value = models.FloatField(null=True)
     worker_name = models.TextField(null=False)
     worker_number = models.PositiveIntegerField(null=False)
     best_params = models.BooleanField(null=False, default=False)

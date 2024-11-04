@@ -133,73 +133,63 @@ class PlotDefinitionsEnum(AbstractEnum):
     Enum for Plot Definitions.
     """
 
+    HYDROGRAPH_EVOLUTION = 'Hydrograph evolution'
+    OBJECTIVE_FUNCTION_EVOLUTION = 'Objective Function evolution'
+    METRIC_EVOLUTION = 'Metric evolution'
+    PARAMETER_EVOLUTION = 'Parameter evolution'
+    SCATTERPLOT_STREAMFLOW = 'Scatterplot streamflow'
+    METRICS_VS_OBJECTIVE_FUNCTION = 'Metrics vs Objective Function'
+    STREAM_FLOW_PRECIPITATION = 'Stream Flow Precipitation'
+    FLOW_DURATION_CURVES = 'Flow Duration Curves'
+    COST_HISTORY = 'Cost History'
+    BAR_CHART_METRICS = 'Bar Chart Metrics'
+    FLOW_DURATION_CURVES_VALIDATION = 'Flow Duration Curves Validation'
+    HYDROGRAPH_VALIDATION = 'Hydrograph Validation'
+    STREAMFLOW_VALIDATION_PRECIPITATION = 'Streamflow Validation Precipitation'
+
     @classmethod
     def get_model(cls) -> Type[PlotDefinition]:
         return PlotDefinition
 
 
-# Below are standard enums without database synchronization or aliasing.
+# Below are simple enums without database synchronization or aliasing.
 
-class DataTypeEnum(StrEnum):
+class DataTypeEnum(AbstractEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
     BOOLEAN = 'boolean'
     STRING = 'string'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class SlurmStatusEnum(StrEnum):
+class SlurmStatusEnum(AbstractEnum):
     DONE = 'DONE'
     FAILED = 'FAILED'
     CANCELED = 'CANCELED'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class LocationEnum(StrEnum):
+class LocationEnum(AbstractEnum):
     NODE = 'node'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class UnitsEnum(StrEnum):
+class UnitsEnum(AbstractEnum):
     M = 'm'
     NONE = 'none'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class ValidationType(StrEnum):
+class ValidationType(AbstractEnum):
     VALID_BEST = 'valid_best'
     VALID_CONTROL = 'valid_control'
     VALID_ITERATION = 'valid_iteration'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
-
 
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
-class ValidationMetricPeriod(StrEnum):
-    calib = auto()
-    valid = auto()
-    full = auto()
+class ValidationMetricPeriod(AbstractEnum):
+    calib = 'calib'
+    valid = 'valid'
+    full = 'full'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
+
+class JobGenesis(AbstractEnum):
+    CLONE = 'clone'
+    IMPORT = 'import'
+    GUI = 'gui'

@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Dict
 
 import pandas as pd
-from django.core.cache import cache
 from django.db import transaction
 
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
-from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun, \
+from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
+from calibration.util.caching import get_metrics_lookup
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
@@ -104,7 +104,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
     metrics_df = pd.read_csv(metrics_file)
 
     # Prefetch metrics for quick lookup
-    metrics_lookup = get_cached_metrics()
+    metrics_lookup = get_metrics_lookup()
 
     metrics_to_create = []  # List to accumulate metrics to be created
 
@@ -234,7 +234,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     logger.info(f"Processing iterations for {worker_name} for Calibration Run {calibration_run.id}")
 
     # Get the cached metrics once for this batch of processing
-    metrics_lookup = get_cached_metrics()
+    metrics_lookup = get_metrics_lookup()
 
     # Get the worker's path
     worker_path = get_worker_path(calibration_run, worker_name)
@@ -457,7 +457,7 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
 
         logger.debug(
             f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
-        iteration.calibration_output_variable_value = obj_fun_val
+        iteration.objective_function_value = obj_fun_val
 
         # Add the modified object to the list
         iterations_to_update.append(iteration)
@@ -466,7 +466,7 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
     if iterations_to_update:
         with transaction.atomic():  # Ensure atomicity of the bulk update
             for i in range(0, len(iterations_to_update), BULK_CREATE_BATCH_SIZE):
-                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['calibration_output_variable_value'])
+                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['objective_function_value'])
 
 
 # Function to read the last line of a file
@@ -512,20 +512,6 @@ def count_rows_in_csv(file_path):
     with open(file_path, 'r') as file:
         # Count the lines and subtract 1 for the header
         return sum(1 for _ in file) - 1
-
-
-def get_cached_metrics() -> dict:
-    """
-    Retrieve the Metric objects from cache or from the database if not cached.
-    :return: A dictionary of metric names (lowercased) mapped to Metric objects.
-    """
-    # Check if the cache already exists
-    metrics_lookup = cache.get('metrics_cache')
-    if not metrics_lookup:
-        # Fetch from the database and cache the results
-        metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
-        cache.set('metrics_cache', metrics_lookup, None)  # Cache indefinitely
-    return metrics_lookup
 
 
 def parse_duration(duration_str):

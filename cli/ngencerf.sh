@@ -98,7 +98,8 @@ ngen_login  # Call the login function from ngen_user.sh
 operation="$original_operation"  # Restore the original operation after login
 
 if [ -z "$ACCESS_TOKEN" ]; then
-    echo "Error: ACCESS_TOKEN is not set. Please check the login script."
+    # ACCESS_TOKEN is not set. Please check the login script
+    echo "Error logging in"
     exit 1
 fi
 
@@ -124,13 +125,18 @@ case "$operation" in
         http_status=$(tail -n1 <<< "$response")
         response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-        check_http_error "$http_status" "$response"
+        # Check for HTTP errors and exit if any error is encountered
+        check_http_error "$http_status" "$response" true
 
         # Extract the calibration_run_id from the response
         calibration_run_id=$(echo "$response" | jq -r '.calibration_run_id' 2>/dev/null)
+
+        # Perform uploads if calibration_run_id is valid
         if [ -n "$geopackage_file" ]; then upload_geopackage_data "$geopackage_file" "$calibration_run_id" || exit 1; fi
         if [ -n "$observational_file" ]; then upload_observational_data "$observational_file" "$calibration_run_id" || exit 1; fi
         if [ -n "$forcing_dir" ]; then upload_forcing_data "$forcing_dir" "$calibration_run_id" || exit 1; fi
+
+        # Run the job if requested
         if [ "$run_after_import" = true ]; then run_job "$calibration_run_id" || exit 1; fi
         rm -f /tmp/curl_response
         ;;
@@ -148,10 +154,24 @@ case "$operation" in
 
         check_http_error "$http_status" "$response"
 
-        # Save the response to a JSON file
-        output_path="${output:-calibration_run_$argument.json}"
-        echo "$response" | jq . --indent 3 > "$output_path"
-        echo "Exported calibration run data to $output_path"
+        # Determine whether output is a directory or file
+        if [ -n "$output" ]; then
+            if [ -d "$output" ]; then
+                output_path="$output/calibration_run_$argument.json"  # Use default filename in specified directory
+            else
+                output_path="$output"  # Use specified file path
+            fi
+        else
+            output_path="calibration_run_$argument.json"  # Default filename if output not specified
+        fi
+
+        # Save the response to the file
+        if echo "$response" | jq . --indent 3 > "$output_path"; then
+            echo "Exported calibration run data to $output_path"
+        else
+            echo "Error saving export response to file."
+            exit 1
+        fi
 
         # Clean up
         rm -f /tmp/curl_response

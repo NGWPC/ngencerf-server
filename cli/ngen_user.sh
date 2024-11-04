@@ -49,7 +49,7 @@ ngen_login() {
         return 1
     else
         export ACCESS_TOKEN="$access_token"
-        echo "'$email' login successful. ACCESS_TOKEN set."
+        echo "'$email' login successful."
     fi
 }
 

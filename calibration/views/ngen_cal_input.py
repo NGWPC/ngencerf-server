@@ -12,14 +12,15 @@ from django.db.models import F
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
+from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
-from calibration.views.calibration_optimization_views import get_cached_optimization_inputs
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH
+from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
+from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH, format_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +53,6 @@ config_template = {
         # 1: Yes
         # It should be 0 if start_interation entry is 0.
         "restart": 0,
-        # TODO Output variable to calibrate is not supported yet by ngen-cal
         "output_variable_to_calibration_module": "",
         "output_variable_to_calibration_name": "",
         "calib_start_period": "",
@@ -60,12 +60,12 @@ config_template = {
         "calib_eval_start_period": "",
         "calib_eval_end_period": "",
         # If we're not doing automatic validation, create_input still expects a valid date/time here
-        "valid_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "valid_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "valid_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "valid_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "full_eval_start_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        "full_eval_end_period": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "valid_start_period": format_datetime(datetime.now()),
+        "valid_end_period": format_datetime(datetime.now()),
+        "valid_eval_start_period": format_datetime(datetime.now()),
+        "valid_eval_end_period": format_datetime(datetime.now()),
+        "full_eval_start_period": format_datetime(datetime.now()),
+        "full_eval_end_period": format_datetime(datetime.now()),
         # Save streamflow output and plot at the specified iteration
         # These entries are optional and specified with the default values.
         # 1: Filename is distinguished by the iteration number.
@@ -88,9 +88,6 @@ config_template = {
         "nwmretro_file": "",
         "hydrofab_dir": "",
 
-        # TODO cfe_dir and topmd_dir should be obsolete
-        "cfe_dir": "",
-        "topmd_dir": "",
         "noah-owp-modular_bmi_dir": "",
         "cfe-s_bmi_dir": "",
         "cfe-x_bmi_dir": "",
@@ -135,36 +132,15 @@ config_template = {
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def validate_times(run: CalibrationRun) -> Optional[str]:
-    """
-    Validates that simulation times are within the expected time range.
-
-    :param run: The CalibrationRun instance with timing data.
-    :return: None if valid, otherwise an error string.
-    """
-    if run.time_range_start and run.time_range_end:
-        time_range = DateTimeRange(run.time_range_start, run.time_range_end)
-        if run.calibration_start_period and (
-            run.calibration_start_period not in time_range or run.calibration_end_period not in time_range
-        ):
-            return f"Calibration simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-        if (
-            run.automatic_validation
-            and run.validation_start_period
-            and (run.validation_start_period not in time_range or run.validation_end_period not in time_range)
-        ):
-            return f"Validation simulation times must be contained within the intersection of forcing data and observational data - {time_range}"
-    return None
-
-
 def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
     """
-     Prepares the configuration and validates the `run` instance for readiness.
+    Prepares the configuration and validates the `run` instance for readiness.
 
-     :param run: The CalibrationRun instance.
-     :param build: Optional; whether to create directories and build configuration files.
-     :return: Tuple of errors, config file if any.
-     """
+    :param run: The CalibrationRun instance to be validated and prepared.
+    :param build: Whether to create directories and build configuration files.
+    :return: Tuple containing any errors and the path to the config file (if created).
+    """
+    # Check if the run's status allows it to be prepared for execution
     if run.status not in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         return None, None
 
@@ -175,24 +151,25 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     errors = []
 
-    if not run:
-        raise CerfException('Must pass a run instance to validate')
-
+    # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
     general['auth_token'] = generate_custom_token(run.owner, token_ngen)
 
+    # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
+        # Determine the source of the forcing data (user-uploaded or pre-configured)
         if not is_missing(run.forcing_source, 'forcing source', errors):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
+                # Check if forcing data has been uploaded
                 forcing_dir = get_forcing_dir_for_job(run)
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
             elif build:
-                # For non-uploaded data, subset the data by time range
+                # For non-uploaded data, subset the forcing data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(
                     source_dir,
@@ -203,6 +180,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
+        # Determine the source of observational data (user-uploaded or pre-configured)
         if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
@@ -210,14 +188,14 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
                 else:
-                    # We need to rename the user-uploaded file.
+                    # Rename the observational file if necessary
                     observational_file_for_job_path = get_observational_file_for_job(run)
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_observational_file != observational_file_for_job_path:
                         logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file_for_job_path}")
                         os.rename(user_uploaded_observational_file, observational_file_for_job_path)
             elif build:
-                # For non-uploaded data, subset the data by time range
+                # For non-uploaded data, subset the observational data by time range
                 source_file = run.observational_hydrofabric_file_path
                 subset_by_time_range(
                     source_file,
@@ -253,7 +231,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         if os.path.exists(nwm_retro):
             datafile['nwmretro_file'] = nwm_retro
 
-        error_message = validate_times(run)
+        error_message = validate_time_range_against_data(run)
         if error_message:
             errors.append(error_message)
 
@@ -288,10 +266,10 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
     else:
         calibration.update({
-            'calib_start_period': run.calibration_start_period.strftime(DATE_FORMAT),
-            'calib_end_period': run.calibration_end_period.strftime(DATE_FORMAT),
-            'calib_eval_start_period': run.calibration_eval_start_period.strftime(DATE_FORMAT),
-            'calib_eval_end_period': run.calibration_eval_end_period.strftime(DATE_FORMAT),
+            'calib_start_period': format_datetime(run.calibration_start_period),
+            'calib_end_period': format_datetime(run.calibration_end_period),
+            'calib_eval_start_period': format_datetime(run.calibration_eval_start_period),
+            'calib_eval_end_period': format_datetime(run.calibration_eval_end_period),
         })
 
     if run.automatic_validation:
@@ -301,16 +279,20 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                 'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
         else:
             calibration.update({
-                'valid_start_period': run.validation_start_period.strftime(DATE_FORMAT),
-                'valid_end_period': run.validation_end_period.strftime(DATE_FORMAT),
-                'valid_eval_start_period': run.validation_eval_start_period.strftime(DATE_FORMAT),
-                'valid_eval_end_period': run.validation_eval_end_period.strftime(DATE_FORMAT),
+                'valid_start_period': format_datetime(run.validation_start_period),
+                'valid_end_period': format_datetime(run.validation_end_period),
+                'valid_eval_start_period': format_datetime(run.validation_eval_start_period),
+                'valid_eval_end_period': format_datetime(run.validation_eval_end_period),
             })
 
             # Set full evaluation periods if both calibration and validation evaluation periods are present
             if run.calibration_eval_start_period and run.calibration_eval_end_period:
-                calibration['full_eval_start_period'] = min(run.calibration_eval_start_period, run.validation_eval_start_period).strftime(DATE_FORMAT)
-                calibration['full_eval_end_period'] = max(run.calibration_eval_end_period, run.validation_eval_end_period).strftime(DATE_FORMAT)
+                full_eval_start, full_eval_end = get_full_evaluation_date_range(
+                    run.calibration_eval_start_period, run.calibration_eval_end_period,
+                    run.validation_eval_start_period, run.validation_eval_end_period)
+
+                calibration['full_eval_start_period'] = format_datetime(full_eval_start)
+                calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
     if not is_missing(run.objective_function, 'objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()
@@ -412,7 +394,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             # Make sure everything is specified
             if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
                 param_error = True
-                errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
+                errors.append(f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
 
         if not param_error and build:
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
@@ -440,7 +422,7 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         parameter_dir: Directory where the parameter files should be written.
     """
     # Ensure the directory exists
-    os.makedirs(parameter_dir, exist_ok=True)  # Create directory if it does not exist
+    os.makedirs(parameter_dir, exist_ok=True)
 
     # Group parameters by model
     params_by_model: Dict[str, List[Dict[str, str | float]]] = {}
@@ -455,7 +437,6 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         parameter_file = os.path.join(parameter_dir, f'calib_params_{model.lower()}.csv')
 
         # Writing the CSV file
-        # with open(parameter_file, mode='w', newline='', encoding='utf-8') as file:
         with open(parameter_file, mode='w', newline='') as param_file:
             # noinspection PyTypeChecker
             writer = csv.DictWriter(param_file, fieldnames=['param', 'min', 'max', 'init'])
@@ -471,13 +452,22 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         logger.info(f'CSV parameter file for model {model} saved to {parameter_file}')
 
 
-def build_config(config: dict, directory: str):
+def build_config(config: dict, directory: str) -> str:
+    """
+    Builds the configuration file for the run and saves it to the specified directory.
+
+    :param config: The configuration dictionary to be saved.
+    :param directory: The directory in which to save the configuration file.
+    :return: The path to the saved configuration file.
+    """
     config_file = os.path.join(directory, 'input.config')
 
     logger.info(f'saving config to {config_file}')
+
+    # Convert config dictionary to TOML format
     toml_string = toml.dumps(config)
 
-    # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
+    # Remove quotes around strings as required by ngen_cal
     modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
 
     with open(config_file, 'w', encoding='utf-8') as file:
@@ -492,7 +482,7 @@ def is_missing(value: Any, field_name: str, errors: List[str], custom_error: Opt
 
     :param value: The value to check.
     :param field_name: The name of the field being checked.
-    :param errors: List to which errors will be appended.
+    :param errors: List to which errors will be appended if the value is missing.
     :param custom_error: Optional custom error message.
     :return: True if the value is missing, False otherwise.
     """

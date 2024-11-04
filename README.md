@@ -125,7 +125,7 @@ systemctl status postgresql
 Change the password for the Admin user
 ```
 sudo -u postgres psql
-ALTER USER postgres PASSWORD 'password';
+ALTER USER postgres PASSWORD 'postgres';
 \q
 ```
 
@@ -236,6 +236,11 @@ See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterpredi
 
 There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT` in .env
 
+```
+NGEN_ENVIRONMENT = DOCKER
+```
+
+
 1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 Create a symbolic link to match the specifying in settings.py.
    ```
@@ -263,10 +268,6 @@ Follow these steps to pull the latest ngen-cal docker container.  This container
  
 3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
 
-The environment should be specified in the .env file.  The default is DOCKER
-```
-NGEN_ENVIRONMENT = DOCKER
-```
 
 
 # Directory structure

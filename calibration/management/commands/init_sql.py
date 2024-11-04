@@ -240,14 +240,14 @@ class Command(BaseCommand):
                                                                           defaults={"is_active": v.get('is_active', True),
                                                                                     "description": v['description'],
                                                                                     "stop_criteria_name": "iterations",
-                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER,
+                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER.value,
                                                                                     "created_by": self.user})
 
             for i in v['inputs']:
                 OptimizationInput.objects.update_or_create(name=i['name'], optimization=optimization,
                                                            defaults={"is_active": i.get('is_active', True),
                                                                      "description": i['description'],
-                                                                     "data_type": i['data_type'],
+                                                                     "data_type": i['data_type'].value,
                                                                      "default_value": i['default_value'],
                                                                      "min": i.get('min', None),
                                                                      "max": i.get('max', None),
@@ -386,7 +386,7 @@ class Command(BaseCommand):
             {
                 "name": "Bar Chart Metrics",
                 "description": "Bar chart comparing metrics from best and control validation runs for each evaluation period of the best global, local and best cost values at each iteration",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}_barplot_metrics_valid_run.png"
@@ -394,7 +394,7 @@ class Command(BaseCommand):
             {
                 "name": "Flow Duration Curves Validation",
                 "description": "Plot of flow duration curve comparing best and control validation runs with observation for each evaluation period",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}_fdc_valid_run.png"
@@ -402,7 +402,7 @@ class Command(BaseCommand):
             {
                 "name": "Hydrograph Validation",
                 "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
                 "filename_mask": "{gage_id}_hydrograph_valid_run.png"
@@ -410,10 +410,10 @@ class Command(BaseCommand):
             {
                 "name": "Streamflow Validation Precipitation",
                 "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axi",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
                 "validation": True,
-                "filename_mask": "{gage_id}streamflow_precip_valid_run.png"
+                "filename_mask": "{gage_id}_streamflow_precip_valid_run.png"
             }
         ]
 

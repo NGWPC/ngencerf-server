@@ -181,7 +181,8 @@ HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
 
 HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
 
-S3_MOUNT_POINT = Path.home() / 's3'
+# Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
+S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', Path.home() / 's3')
 
 # -----------------------------
 # Ngen/Ngen-cal Locations

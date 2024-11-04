@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
 from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
 from calibration.util import ngen_locations
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
@@ -21,16 +21,17 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
     get_geopackage_dir_for_job, get_geopackage_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
-    SLOTH, add_sloth_parameters, validate_formulation, get_cached_module_by_name
+    SLOTH, add_sloth_parameters, validate_formulation
+from calibration.util.caching import get_cached_module_by_name
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_run_views import submit_calibration_job
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
-    save_output_variable, save_parameters, get_module_metadata_from_hydrofabric, get_time_range, has_user_selected_tuning_parameters
+    save_output_variable, save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
-from calibration.views.hydrofabric import HydrofabricException
+from calibration.views.hydrofabric import HydrofabricException, get_module_metadata_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ def import_job(request):
 
     run_after_import = validator.get('run_after_import', False)
 
-    run, warnings, info_messages, fatal_error = import_calibration_run_data(request, validator)
+    run, warnings, info_messages, fatal_error = import_calibration_run_data(request, validator, JobGenesis.IMPORT)
     if fatal_error:
         return fatal_error
 
@@ -91,9 +92,9 @@ def import_job(request):
     return Response(response_validator.data)
 
 
-def import_calibration_run_data(request, calibration_run_data):
+def import_calibration_run_data(request, calibration_run_data, genesis: JobGenesis):
     with transaction.atomic():
-        run = create_calibration_run_internal(request.user)
+        run = create_calibration_run_internal(request.user, genesis)
 
         warnings = []
         info_messages = []
@@ -151,9 +152,6 @@ def import_calibration_run_data(request, calibration_run_data):
         #############################
         # Formulations
         #############################
-        # TODO Check that this works
-        # get_modules_from_hydrofabric(run)
-        # List of module names
         modules_list = calibration_run_data.get('modules')
         module_names = set(modules_list) if modules_list else set()
 
@@ -185,9 +183,6 @@ def import_calibration_run_data(request, calibration_run_data):
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        #############################
-        # Tuning
-        #############################
         # Get the list of modules for this Run
         modules = CalibrationFormulation.objects.filter(calibration_run=run)
 
@@ -197,6 +192,20 @@ def import_calibration_run_data(request, calibration_run_data):
             except HydrofabricException as e:
                 logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                 warnings.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
+
+        #############################
+        # Tuning
+        #############################
+
+        parameters = calibration_run_data.get('parameters')
+        if parameters and not modules:
+            return None, None, None, ResponseError('Parameters cannot be specified without modules')
+
+        error_message = validate_parameters(run, parameters)
+        if error_message:
+            return None, None, None, ResponseError(error_message)
+
+        save_parameters(run, parameters, allow_nulls=True)
 
         run.automatic_validation = calibration_run_data.get('automatic_validation')
 
@@ -210,19 +219,11 @@ def import_calibration_run_data(request, calibration_run_data):
             return None, None, None, ResponseError(error_message)
 
         output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')
-        parameters = calibration_run_data.get('parameters')
-        if parameters and not modules:
-            return None, None, None, ResponseError('Parameters cannot be specified without modules')
-
-        error_message = validate_parameters(run, parameters)
-        if error_message:
-            return None, None, None, ResponseError(error_message)
 
         error_message = save_output_variable(run, output_variable_to_calibrate)
         if error_message:
             return None, None, None, ResponseError(error_message)
 
-        save_parameters(run, parameters)
 
         #############################
         # Optimization
@@ -316,13 +317,16 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
 
     time_range = get_time_range(run)
     # Since we're not using a serializer for metadata, we need to serialize the datetime objects manually
+    serialized_time_range = {}
     if time_range:
-        time_range['start_time'] = time_range['start_time'].isoformat()
-        time_range['end_time'] = time_range['end_time'].isoformat()
+        if time_range.get('start_time'):
+            serialized_time_range['start_time'] = time_range['start_time'].isoformat()
+        if time_range.get('end_time'):
+            serialized_time_range['end_time'] = time_range['end_time'].isoformat()
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
-        metadata = {'source_calibration_run_id': run.id, 'source_status': run.status.name, 'time_range': time_range}
+        metadata = {'source_calibration_run_id': run.id, 'source_status': run.status.name, 'time_range': serialized_time_range}
         calibration_run_data['metadata'] = metadata
 
         # Not supporting this flag right now until Hydrofabric is ready.
@@ -415,7 +419,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
 
-    output_variable_to_calibrate = {
+    calibration_run_data['output_variable_to_calibrate'] = {
         'module': run.module_output_variable.calibration_formulation.module.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else {}
@@ -423,7 +427,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = None):
     #############################
     # Optimization
     #############################
-    calibration_run_data['output_variable_to_calibrate'] = output_variable_to_calibrate
     calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
     calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
     calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold

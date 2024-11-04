@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
+from calibration.enums import StatusEnum, ValidationType, JobGenesis
 from calibration.models import CalibrationRun
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
@@ -265,7 +265,7 @@ def get_jobs(user, run_status=None, include_validations=False):
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
     # Define the fields
-    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name']
+    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name', 'job_genesis']
     additional_fields = ['objective_function__name', 'optimization__name']
 
     selected_fields = default_fields
@@ -401,7 +401,7 @@ def clone_job(request):
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, warnings, info_messages, fatal_error = import_calibration_run_data(request, calibration_run_data)
+    new_run, warnings, info_messages, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
     if fatal_error:
         return fatal_error
 
@@ -411,7 +411,9 @@ def clone_job(request):
     if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         messages, _ = ngen_cal_input.ready_to_run(new_run)
 
-    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}', 'calibration_run_id': new_run.id,
+    # noinspection PyUnresolvedReferences
+    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}',
+                'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
     # I agree that the message handling got out of hand
     if messages:
@@ -430,7 +432,7 @@ def clone_job(request):
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=CalibrationRunSerializer,
     responses={
         200: CalibrationRunSerializer,
         400: OpenApiResponse(
@@ -450,7 +452,7 @@ def delete_job(request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'delete_run() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
 
