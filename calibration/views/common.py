@@ -156,7 +156,7 @@ def create_calibration_run_internal(user, genesis: JobGenesis = None) -> Calibra
     run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{username}'
 
     # Set the job genesis based on the provided genesis or default to JobGenesis.GUI
-    run.job_genesis = genesis.value if genesis else JobGenesis.GUI
+    run.job_genesis = genesis.value if genesis else JobGenesis.GUI.value
 
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory if it already exists (should not happen in production)
     if run.job_data_dir.exists():
