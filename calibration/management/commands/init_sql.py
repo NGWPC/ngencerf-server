@@ -240,14 +240,14 @@ class Command(BaseCommand):
                                                                           defaults={"is_active": v.get('is_active', True),
                                                                                     "description": v['description'],
                                                                                     "stop_criteria_name": "iterations",
-                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER,
+                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER.value,
                                                                                     "created_by": self.user})
 
             for i in v['inputs']:
                 OptimizationInput.objects.update_or_create(name=i['name'], optimization=optimization,
                                                            defaults={"is_active": i.get('is_active', True),
                                                                      "description": i['description'],
-                                                                     "data_type": i['data_type'],
+                                                                     "data_type": i['data_type'].value,
                                                                      "default_value": i['default_value'],
                                                                      "min": i.get('min', None),
                                                                      "max": i.get('max', None),
