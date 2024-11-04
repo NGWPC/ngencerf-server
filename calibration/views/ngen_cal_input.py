@@ -134,12 +134,13 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
     """
-     Prepares the configuration and validates the `run` instance for readiness.
+    Prepares the configuration and validates the `run` instance for readiness.
 
-     :param run: The CalibrationRun instance.
-     :param build: Optional; whether to create directories and build configuration files.
-     :return: Tuple of errors, config file if any.
-     """
+    :param run: The CalibrationRun instance to be validated and prepared.
+    :param build: Whether to create directories and build configuration files.
+    :return: Tuple containing any errors and the path to the config file (if created).
+    """
+    # Check if the run's status allows it to be prepared for execution
     if run.status not in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         return None, None
 
@@ -150,24 +151,25 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     errors = []
 
-    if not run:
-        raise CerfException('Must pass a run instance to validate')
-
+    # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
     general['auth_token'] = generate_custom_token(run.owner, token_ngen)
 
+    # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
+        # Determine the source of the forcing data (user-uploaded or pre-configured)
         if not is_missing(run.forcing_source, 'forcing source', errors):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
+                # Check if forcing data has been uploaded
                 forcing_dir = get_forcing_dir_for_job(run)
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
             elif build:
-                # For non-uploaded data, subset the data by time range
+                # For non-uploaded data, subset the forcing data by time range
                 source_dir = run.forcing_hydrofabric_dir_path
                 subset_directory_by_time_range(
                     source_dir,
@@ -178,6 +180,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
+        # Determine the source of observational data (user-uploaded or pre-configured)
         if not is_missing(run.observational_source, 'observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
@@ -185,14 +188,14 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
                 else:
-                    # We need to rename the user-uploaded file.
+                    # Rename the observational file if necessary
                     observational_file_for_job_path = get_observational_file_for_job(run)
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_observational_file != observational_file_for_job_path:
                         logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file_for_job_path}")
                         os.rename(user_uploaded_observational_file, observational_file_for_job_path)
             elif build:
-                # For non-uploaded data, subset the data by time range
+                # For non-uploaded data, subset the observational data by time range
                 source_file = run.observational_hydrofabric_file_path
                 subset_by_time_range(
                     source_file,
@@ -391,7 +394,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             # Make sure everything is specified
             if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
                 param_error = True
-                errors.append(f"value, min and max must be specified for parameter '{p['name']}' (module {p['model']})")
+                errors.append(f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
 
         if not param_error and build:
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
@@ -419,7 +422,7 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         parameter_dir: Directory where the parameter files should be written.
     """
     # Ensure the directory exists
-    os.makedirs(parameter_dir, exist_ok=True)  # Create directory if it does not exist
+    os.makedirs(parameter_dir, exist_ok=True)
 
     # Group parameters by model
     params_by_model: Dict[str, List[Dict[str, str | float]]] = {}
@@ -434,7 +437,6 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         parameter_file = os.path.join(parameter_dir, f'calib_params_{model.lower()}.csv')
 
         # Writing the CSV file
-        # with open(parameter_file, mode='w', newline='', encoding='utf-8') as file:
         with open(parameter_file, mode='w', newline='') as param_file:
             # noinspection PyTypeChecker
             writer = csv.DictWriter(param_file, fieldnames=['param', 'min', 'max', 'init'])
@@ -450,13 +452,22 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         logger.info(f'CSV parameter file for model {model} saved to {parameter_file}')
 
 
-def build_config(config: dict, directory: str):
+def build_config(config: dict, directory: str) -> str:
+    """
+    Builds the configuration file for the run and saves it to the specified directory.
+
+    :param config: The configuration dictionary to be saved.
+    :param directory: The directory in which to save the configuration file.
+    :return: The path to the saved configuration file.
+    """
     config_file = os.path.join(directory, 'input.config')
 
     logger.info(f'saving config to {config_file}')
+
+    # Convert config dictionary to TOML format
     toml_string = toml.dumps(config)
 
-    # The stupid create_input.py program in ngen_cal wants the strings to be unquotes, which is not standard.  Ugh.
+    # Remove quotes around strings as required by ngen_cal
     modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
 
     with open(config_file, 'w', encoding='utf-8') as file:
@@ -471,7 +482,7 @@ def is_missing(value: Any, field_name: str, errors: List[str], custom_error: Opt
 
     :param value: The value to check.
     :param field_name: The name of the field being checked.
-    :param errors: List to which errors will be appended.
+    :param errors: List to which errors will be appended if the value is missing.
     :param custom_error: Optional custom error message.
     :return: True if the value is missing, False otherwise.
     """
