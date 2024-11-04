@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from django.apps import AppConfig
 from django.conf import settings
@@ -49,7 +50,10 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-        print_banner()
+        # Check if the server is being started with 'runserver' or 'runsslserver'
+        if 'runserver' in sys.argv or 'runsslserver' in sys.argv:
+            print_banner()
+
         print(f'Version: {settings.VERSION}')
 
         print(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
