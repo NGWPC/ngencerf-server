@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, PlotDefinitionsEnum
 from calibration.models import CalibrationRun, PlotDefinition
-from calibration.util.caching import get_filtered_plot_definition
+from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir
@@ -40,7 +40,16 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_plot_names(request):
+def get_plot_names(request) -> Response:
+    """
+    Retrieves the list of plot names and descriptions for a calibration run, filtered by applicable optimizations.
+
+    Args:
+        request (HttpRequest): The request containing either POST data or query parameters.
+
+    Returns:
+        Response: A JSON response with the calibration run ID, list of plot names and descriptions, and run status.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
 
@@ -54,13 +63,11 @@ def get_plot_names(request):
     if error_return:
         return error_return
 
-    filtered_plot_definitions = get_filtered_plot_definition(run)
+    # Get filtered plot definitions for the calibration run
+    filtered_plot_definitions = get_filtered_plot_definitions(run)
 
-    # Create list of plot names with descriptions
-    plot_names = [
-        {'name': plot['name'], 'description': plot['description']}
-        for plot in filtered_plot_definitions
-    ]
+    # Create a list of plot names with descriptions
+    plot_names = [{'name': plot['name'], 'description': plot['description']} for plot in filtered_plot_definitions]
 
     response = {'calibration_run_id': calibration_run_id, 'plot_names': plot_names, 'status': run.status.name}
 
@@ -102,7 +109,16 @@ def png_to_base64_url(png):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_plot(request):
+def get_plot(request) -> Response:
+    """
+    Retrieves a specific plot for a calibration run, returning the plot file location and optional data.
+
+    Args:
+        request (HttpRequest): The request containing plot name and options.
+
+    Returns:
+        Response: A JSON response with plot details, or an error if the plot is not found.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot() request from {request.user.email} - {data}')
 
@@ -120,8 +136,8 @@ def get_plot(request):
 
     gage_id = run.gage.gage_id
 
-    # Get cached plot definitions
-    plot_definition = get_filtered_plot_definition(run, plot_name=plot_name)
+    # Get a single plot definition
+    plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
 
     if not plot_definition:
         return ResponseError(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
@@ -152,7 +168,12 @@ def get_plot(request):
 
     plot_data = get_plot_data(run, plot_definition) if include_data else None
 
-    response = {'calibration_run_id': run.id, 'plot_name': plot_definition['name'], 'plot_file_name': plot_file_name, 'plot_url': plot_url}
+    response = {
+        'calibration_run_id': run.id,
+        'plot_name': plot_definition['name'],
+        'plot_file_name': plot_file_name,
+        'plot_url': plot_url
+    }
     if include_data:
         if not plot_data:
             logger.warning(f"Data not available for {plot_definition['name']}")

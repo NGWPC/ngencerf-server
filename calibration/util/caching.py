@@ -162,53 +162,33 @@ def get_cached_module_groups() -> list:
 
     return module_groups
 
-#
-# PLOT_CACHE_KEY = 'cached_plot_definitions'
-#
-#
-# def get_filtered_plot_definitions(run, plot_name=None):
-#     cached_plot_definitions = cache.get(PLOT_CACHE_KEY)
-#
-#     # If not cached, query and cache the plot definitions
-#     if cached_plot_definitions is None:
-#         # Replace PlotDefinitionModel with the actual model name for plot definitions
-#         cached_plot_definitions = list(
-#             PlotDefinition.objects.filter(is_active=True).values(
-#                 'name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask'
-#             )
-#         )
-#         cache.set(PLOT_CACHE_KEY, cached_plot_definitions, timeout=None)
-#
-#     filtered_plot_definitions = []
-#
-#     for plot in cached_plot_definitions:
-#         # Include only plots that match the given plot name, if provided
-#         if (plot_name is None or plot['name'] == plot_name) \
-#                 and run.optimization.name in json.loads(plot['valid_optimizations']) \
-#                 and (run.automatic_validation or not plot['validation']):  # Simplified validation check
-#
-#             filtered_plot_definitions.append(plot)
-#
-#     return filtered_plot_definitions
 
-
-def get_filtered_plot_definition(run: CalibrationRun, plot_name: str | None = None) -> Dict[str, Any] | None:
+def get_filtered_plot_definitions(run: CalibrationRun, plot_name: str | None = None, first_match: bool = False) -> list[dict] | dict | None:
     """
-    Retrieve a single filtered plot definition for the specified run and plot name, with a case-insensitive match.
+    Retrieve filtered plot definitions for the specified run and plot name, with a case-insensitive match.
 
-    :param run: The calibration run instance to check for valid optimizations.
-    :param plot_name: The name of the plot to filter by (case-insensitive), or None to consider all plots.
-    :return: A dictionary representing the plot definition if found, otherwise None.
+    Args:
+        run (CalibrationRun): The calibration run instance to check for valid optimizations.
+        plot_name (str | None): The name of the plot to filter by (case-insensitive), or None to retrieve all valid plots.
+        first_match (bool): If True, returns only the first matching plot definition as a dictionary, or None if no match.
+
+    Returns:
+        list[dict] | dict | None: A list of dictionaries representing plot definitions that match the criteria, a single
+                                   dictionary if single_match is True, or None if no match is found.
     """
     cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
         fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
     )
 
-    for plot in cached_plot_definitions:
-        # Perform a case-insensitive comparison for plot_name
-        if (plot_name is None or plot['name'].lower() == plot_name.lower()) \
-                and run.optimization.name in json.loads(plot['valid_optimizations']) \
-                and (run.automatic_validation or not plot['validation']):
-            return plot
+    # Filter plots based on optimization, validation, and optional plot_name criteria
+    filtered_plots = [
+        plot for plot in cached_plot_definitions
+        if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
+        and run.optimization.name in json.loads(plot['valid_optimizations'])
+        and (run.automatic_validation or not plot['validation'])
+    ]
 
-    return None
+    # Return the first match if single_match is True, otherwise return the list of matches
+    if first_match:
+        return filtered_plots[0] if filtered_plots else None
+    return filtered_plots

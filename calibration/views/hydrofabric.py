@@ -134,7 +134,9 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
 
 
-def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation]):
+def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation], gage_changed: bool = False):
+    # gage_changed = False means that the modules changed.  If true, then the gage changed and we want to retain min/max
+
     my_module_names = list(calibration_formulations.values_list('module__name', flat=True))
 
     if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
@@ -163,23 +165,23 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
 
     # Save the output variables and parameters for each module
     with transaction.atomic():
-        for m in module_metadata.get('modules'):
-            if m['module_name'] in extra_names:
+        for module in module_metadata.get('modules'):
+            if module['module_name'] in extra_names:
                 # Ignore any extra names that Hydrofabric sent us
-                logger.warning(f'Ignore extra module from Hydrofabric - {m["module_name"]}')
+                logger.warning(f'Ignore extra module from Hydrofabric - {module["module_name"]}')
                 continue
 
-            module_instance = get_cached_module_by_name(m['module_name'])
+            module_instance = get_cached_module_by_name(module['module_name'])
 
             # Get the modules object from our list
             calibration_formulation = calibration_formulations.get(module=module_instance)
 
             # Save the config
-            calibration_formulation.bmi_config_path = convert_s3_uri_to_fs(m['parameter_file']['uri'])
+            calibration_formulation.bmi_config_path = convert_s3_uri_to_fs(module['parameter_file']['uri'])
             calibration_formulation.save(update_fields=['bmi_config_path'])
 
             # Save output variables
-            outputs = m['output_variables']
+            outputs = module['output_variables']
             o: dict
             for o in outputs:
                 ModuleOutputVariable.objects.update_or_create(
@@ -189,13 +191,12 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
                     defaults={'description': o['description'] if o['description'] else 'placeholder description'}
                 )
             # Save parameters
-            parameters = m['calibrate_parameters']
-            # print('parameters from Hydro', parameters)
+            parameters = module['calibrate_parameters']
             for p in parameters:
                 # Hydrofabric gives us initial_value, min and max as Strings because sometimes crap appears in them.
 
                 # Using get_or_create because we don't want to override any values the user has already entered
-                CalibrationParameter.objects.get_or_create(
+                calibration_parameter, created = CalibrationParameter.objects.get_or_create(
                     name=p['name'],
                     calibration_formulation=calibration_formulation,
                     defaults={'data_type': p['data_type'],
@@ -206,6 +207,11 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
                               'units': p['units']
                               }
                 )
+                if gage_changed and not created:
+                    logger.info(f"Changing initial value for parameter {p['name']} for module {calibration_formulation.module.name}")
+                    # We want to over-write the initial_value from Hydrofabric
+                    calibration_parameter.initial_value = str_to_float(p['initial_value'])
+                    calibration_parameter.save(update_fields=['initial_value'])
 
         # run.got_module_data_from_hydrofabric = True
         run.save()
