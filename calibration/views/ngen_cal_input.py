@@ -129,9 +129,6 @@ config_template = {
     }
 }
 
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-
 def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
     """
     Prepares the configuration and validates the `run` instance for readiness.

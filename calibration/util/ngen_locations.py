@@ -93,7 +93,7 @@ def get_geopackage_filename(run: CalibrationRun) -> str:
     return f"gauge_{run.gage.gage_id}.gpkg"
 
 
-def get_geopackage_file_for_job(run: CalibrationRun) -> str:
+def get_geopackage_file_for_job(run: CalibrationRun) -> str | None:
     return os.path.join(get_geopackage_dir_for_job(run), get_geopackage_filename(run)) if run.gage else None
 
 
@@ -117,11 +117,11 @@ def get_output_validation_plot_dir(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), 'Plot_Valid')
 
 
-def get_full_worker_filename(worker_name) -> str:
+def get_full_worker_filename(worker_name: str) -> str:
     return f"ngen_{worker_name}_worker"
 
 
-def get_worker_path(run: CalibrationRun, worker_name) -> str:
+def get_worker_path(run: CalibrationRun, worker_name: str) -> str:
     return os.path.join(get_output_calibration_run_dir(run), get_full_worker_filename(worker_name))
 
 
@@ -129,23 +129,47 @@ def get_metrics_iteration_csv(run: CalibrationRun) -> str:
     return f"{run.gage.gage_id}_metrics_iteration.csv"
 
 
+def get_output_last_iteration_csv(run: CalibrationRun) -> str:
+    return f"{run.gage.gage_id}_output_last_iteration.csv"
+
+
+def get_output_last_iteration_file(run: CalibrationRun, worker_dir: str) -> str:
+    return os.path.join(worker_dir, get_output_last_iteration_csv(run))
+
+
+def get_output_best_iteration_csv(run: CalibrationRun) -> str:
+    return f"{run.gage.gage_id}_output_best_iteration.csv"
+
+
+def get_output_best_iteration_file(run: CalibrationRun, worker_dir: str) -> str:
+    return os.path.join(worker_dir, get_output_best_iteration_csv(run))
+
+
 def get_output_iteration_csv(run: CalibrationRun, iteration_num: int) -> str:
     return f"{run.gage.gage_id}_output_iteration_{iteration_num:04d}.csv"
 
 
-def get_metrics_iteration_file(run: CalibrationRun, worker_name) -> str:
+def get_output_iteration_file(run: CalibrationRun, iteration_num: int, worker_dir: str) -> str:
+    return os.path.join(worker_dir, 'Output_Iteration', get_output_iteration_csv(run, iteration_num))
+
+
+def get_metrics_iteration_file(run: CalibrationRun, worker_name: str) -> str:
     return os.path.join(get_worker_path(run, worker_name), get_metrics_iteration_csv(run))
 
 
-def get_metrics_iteration_file_from_worker_dir(run: CalibrationRun, worker_dir) -> str:
+def get_cost_hist_file(run: CalibrationRun) -> str:
+    return os.path.join(get_output_calibration_run_dir(run), f"{run.gage.gage_id}_cost_hist.csv")
+
+
+def get_metrics_iteration_file_from_worker_dir(run: CalibrationRun, worker_dir: str) -> str:
     return os.path.join(worker_dir, get_metrics_iteration_csv(run))
 
 
-def get_params_iteration_file(run: CalibrationRun, worker_name) -> str:
+def get_params_iteration_file(run: CalibrationRun, worker_name: str) -> str:
     return os.path.join(get_worker_path(run, worker_name), f"{run.gage.gage_id}_params_iteration.csv")
 
 
-def get_objective_log_best_file(run: CalibrationRun, worker_name) -> str:
+def get_objective_log_best_file(run: CalibrationRun, worker_name: str) -> str:
     return os.path.join(get_worker_path(run, worker_name), f"{run.gage.gage_id}_objective_log.txt")
 
 

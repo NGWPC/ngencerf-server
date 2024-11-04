@@ -188,7 +188,7 @@ def import_calibration_run_data(request, calibration_run_data, genesis: JobGenes
 
         if modules and run.gage:
             try:
-                get_module_metadata_from_hydrofabric(run, modules)
+                get_module_metadata_from_hydrofabric(run.gage, modules)
             except HydrofabricException as e:
                 logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                 warnings.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")

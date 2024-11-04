@@ -107,7 +107,7 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> Query
     iterations = (
         Iteration.objects
         .filter(calibration_run=calibration_run)
-        .prefetch_related('iterationparameter_set', 'iterationmetric_set')  # prefetch related data for parameters and metrics
+        .prefetch_related('iterationparameter_set__calibration_parameter', 'iterationmetric_set')
         .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
     )
     return iterations

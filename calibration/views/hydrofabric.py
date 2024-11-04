@@ -6,7 +6,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
-from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
+from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun, Gage
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
@@ -134,7 +134,7 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
     logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
 
 
-def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation], gage_changed: bool = False):
+def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: QuerySet[CalibrationFormulation], gage_changed: bool = False):
     # gage_changed = False means that the modules changed.  If true, then the gage changed and we want to retain min/max
 
     my_module_names = list(calibration_formulations.values_list('module__name', flat=True))
@@ -143,12 +143,11 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
         logger.info('Getting module metadata from Hydrofabric')
         url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1])
 
-        module_json = {
-            'modules': fetch_from_hydrofabric('POST', url, headers=default_headers,
-                                              payload={'modules': my_module_names,
-                                                       'gage_id': run.gage.gage_id,
-                                                       'domain': run.gage.domain.name,
-                                                       'source': run.gage.agency})}
+        module_json = fetch_from_hydrofabric('POST', url, headers=default_headers,
+                                             payload={'modules': my_module_names,
+                                                      'gage_id': gage.gage_id,
+                                                      'domain': gage.domain.name,
+                                                      'source': gage.agency})
     else:
         logger.info('Getting dummy module metadata')
         module_json = hydrofabric_test_data.hydrofabric_module_metadata_real_data
@@ -208,13 +207,11 @@ def get_module_metadata_from_hydrofabric(run: CalibrationRun, calibration_formul
                               }
                 )
                 if gage_changed and not created:
-                    logger.info(f"Changing initial value for parameter {p['name']} for module {calibration_formulation.module.name}")
+                    logger.info(
+                        f"Changing initial value for parameter {p['name']} for module {calibration_formulation.module.name}")
                     # We want to over-write the initial_value from Hydrofabric
                     calibration_parameter.initial_value = str_to_float(p['initial_value'])
                     calibration_parameter.save(update_fields=['initial_value'])
-
-        # run.got_module_data_from_hydrofabric = True
-        run.save()
 
     if missing_names:
         raise HydrofabricException(f'Response from Hydrofabric is missing entries for {missing_names}')
