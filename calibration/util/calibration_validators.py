@@ -28,6 +28,7 @@ def enum_validator(enum_class):
 
     def validate_enum(value):
         # Convert input value to lowercase for case-insensitive comparison
+        original_value = value  # Store original value for error message
         value = value.lower()
 
         # Retrieve valid names, converting each to lowercase for case-insensitive comparison
@@ -39,7 +40,7 @@ def enum_validator(enum_class):
             valid_names = [name.lower() for name in enum_class.get_names()] if hasattr(enum_class, 'get_names') else []
 
         if value not in valid_names:
-            raise serializers.ValidationError(f"This field must be one of {valid_names}")
+            raise serializers.ValidationError(f"Invalid value '{original_value}'. This field must be one of {valid_names}.")
 
     return validate_enum
 
