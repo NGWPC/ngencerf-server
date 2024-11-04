@@ -1,10 +1,11 @@
 import json
-from typing import Dict, List
+from typing import Dict, List, Any
 
 from django.core.cache import cache
 from django.db.models import Prefetch
 
-from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, PlotDefinition
+from calibration.enums import PlotDefinitionsEnum
+from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, CalibrationRun
 
 
 def get_cached_module_by_name(module_name: str) -> Module | None:
@@ -161,31 +162,53 @@ def get_cached_module_groups() -> list:
 
     return module_groups
 
+#
+# PLOT_CACHE_KEY = 'cached_plot_definitions'
+#
+#
+# def get_filtered_plot_definitions(run, plot_name=None):
+#     cached_plot_definitions = cache.get(PLOT_CACHE_KEY)
+#
+#     # If not cached, query and cache the plot definitions
+#     if cached_plot_definitions is None:
+#         # Replace PlotDefinitionModel with the actual model name for plot definitions
+#         cached_plot_definitions = list(
+#             PlotDefinition.objects.filter(is_active=True).values(
+#                 'name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask'
+#             )
+#         )
+#         cache.set(PLOT_CACHE_KEY, cached_plot_definitions, timeout=None)
+#
+#     filtered_plot_definitions = []
+#
+#     for plot in cached_plot_definitions:
+#         # Include only plots that match the given plot name, if provided
+#         if (plot_name is None or plot['name'] == plot_name) \
+#                 and run.optimization.name in json.loads(plot['valid_optimizations']) \
+#                 and (run.automatic_validation or not plot['validation']):  # Simplified validation check
+#
+#             filtered_plot_definitions.append(plot)
+#
+#     return filtered_plot_definitions
 
-PLOT_CACHE_KEY = 'cached_plot_definitions'
 
+def get_filtered_plot_definition(run: CalibrationRun, plot_name: str | None = None) -> Dict[str, Any] | None:
+    """
+    Retrieve a single filtered plot definition for the specified run and plot name, with a case-insensitive match.
 
-def get_filtered_plot_definitions(run, plot_name=None):
-    cached_plot_definitions = cache.get(PLOT_CACHE_KEY)
-
-    # If not cached, query and cache the plot definitions
-    if cached_plot_definitions is None:
-        # Replace PlotDefinitionModel with the actual model name for plot definitions
-        cached_plot_definitions = list(
-            PlotDefinition.objects.filter(is_active=True).values(
-                'name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask'
-            )
-        )
-        cache.set(PLOT_CACHE_KEY, cached_plot_definitions, timeout=None)
-
-    filtered_plot_definitions = []
+    :param run: The calibration run instance to check for valid optimizations.
+    :param plot_name: The name of the plot to filter by (case-insensitive), or None to consider all plots.
+    :return: A dictionary representing the plot definition if found, otherwise None.
+    """
+    cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
+        fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
+    )
 
     for plot in cached_plot_definitions:
-        # Include only plots that match the given plot name, if provided
-        if (plot_name is None or plot['name'] == plot_name) \
+        # Perform a case-insensitive comparison for plot_name
+        if (plot_name is None or plot['name'].lower() == plot_name.lower()) \
                 and run.optimization.name in json.loads(plot['valid_optimizations']) \
-                and (run.automatic_validation or not plot['validation']):  # Simplified validation check
+                and (run.automatic_validation or not plot['validation']):
+            return plot
 
-            filtered_plot_definitions.append(plot)
-
-    return filtered_plot_definitions
+    return None

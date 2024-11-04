@@ -7,6 +7,7 @@ from calibration.models.base_model import BaseModel
 class CalibrationRun(BaseModel):
     is_active = models.BooleanField(null=False, default=True)
     gage = models.ForeignKey('Gage', null=True, on_delete=models.RESTRICT)
+    job_genesis = models.CharField(max_length=20, null=False)
     job_data_dir = models.CharField(max_length=255, null=False)
     optimization = models.ForeignKey('Optimization', null=True, on_delete=models.RESTRICT)
     module_output_variable = models.ForeignKey('ModuleOutputVariable', null=True, on_delete=models.RESTRICT)
