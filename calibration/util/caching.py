@@ -1,5 +1,5 @@
 import json
-from typing import Dict, List, Any
+from typing import Dict, List
 
 from django.core.cache import cache
 from django.db.models import Prefetch
