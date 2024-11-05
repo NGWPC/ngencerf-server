@@ -195,7 +195,7 @@ def save_formulation_tab(request) -> Response:
                     # Call Hydrofabric with the new formulations
                     if new_formulations_qs.exists() and run.gage:
                         try:
-                            get_module_metadata_from_hydrofabric(run, new_formulations_qs)
+                            get_module_metadata_from_hydrofabric(run.gage, new_formulations_qs)
                         except HydrofabricException as e:
                             logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                             hydrofabric_errors.append({

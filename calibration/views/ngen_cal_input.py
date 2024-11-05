@@ -20,7 +20,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
-from calibration.views.common import CerfException, token_ngen, generate_custom_token, SLOTH, format_datetime
+from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +128,6 @@ config_template = {
         "sac-sma_lib": SAC_LIB
     }
 }
-
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
@@ -394,7 +392,8 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             # Make sure everything is specified
             if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
                 param_error = True
-                errors.append(f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
+                errors.append(
+                    f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
 
         if not param_error and build:
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')

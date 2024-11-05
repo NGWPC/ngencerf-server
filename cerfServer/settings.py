@@ -263,17 +263,17 @@ LOGGING = {
     'formatters': {
         'prod_format': {
             'format': '{asctime}.{msecs:03.0f} NGEN_CAL {levelname:8s} {message}',
-            'datefmt':'%Y-%m-%dT%H:%M:%S',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
         'dev_format': {
             'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {process:d} {thread:d} {message}',
-            'datefmt':'%Y-%m-%dT%H:%M:%S',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
         'simple': {
             'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
-            'datefmt':'%Y-%m-%dT%H:%M:%S',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
     },

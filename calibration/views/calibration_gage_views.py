@@ -376,7 +376,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
         print('my formulations', my_formulations)
         if my_formulations.exists():
             try:
-                get_module_metadata_from_hydrofabric(run, my_formulations, gage_changed=True)
+                get_module_metadata_from_hydrofabric(gage, my_formulations, gage_changed=True)
             except HydrofabricException as e:
                 logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
                 return {

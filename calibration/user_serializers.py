@@ -10,7 +10,7 @@ class CustomUserCreateSerializer(UserCreateSerializer):
         model = User
         fields = ("id", "email", "first_name", "last_name", "password")
         extra_kwargs = {'password': {'write_only': True}}
-    
+
     def create(self, validated_data):
         # Automatically set username to email
         validated_data['username'] = validated_data['email']
@@ -20,10 +20,12 @@ class CustomUserCreateSerializer(UserCreateSerializer):
 
         return user
 
+
 class CustomUserSerializer(UserSerializer):
     class Meta(UserSerializer.Meta):
         model = User
         fields = ("first_name", "last_name")
+
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
