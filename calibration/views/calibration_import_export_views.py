@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+from typing import Tuple
 
 from django.db import transaction
 from django.http import HttpRequest
