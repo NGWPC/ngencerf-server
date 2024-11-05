@@ -245,7 +245,11 @@ def save_gage_tab(request):
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
                     logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({'name': 'geopackage', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+                    hydrofabric_errors.append({
+                        'name': 'geopackage',
+                        'message': str(e),
+                        'status_code': e.status_code if e.status_code else '5xx'
+                    })
         else:
             run.geopackage_hydrofabric_file_path = None
 
@@ -264,7 +268,11 @@ def save_gage_tab(request):
                     get_observational_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({'name': 'observational', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+                    hydrofabric_errors.append({
+                        'name': 'observational',
+                        'message': str(e),
+                        'status_code': e.status_code if e.status_code else '5xx'
+                    })
         else:
             run.observational_hydrofabric_file_path = None
 
@@ -281,7 +289,11 @@ def save_gage_tab(request):
                     get_forcing_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({'name': 'forcing', 'message': str(e), 'status_code': e.status_code if e.status_code else '5xx'})
+                    hydrofabric_errors.append({
+                        'name': 'forcing',
+                        'message': str(e),
+                        'status_code': e.status_code if e.status_code else '5xx'
+                    })
         else:
             run.forcing_hydrofabric_dir_path = None
 
@@ -351,9 +363,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
     gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
 
     # Only update if the gage has changed
-    print('save_gage', gage_id)
     if run.gage != gage:
-        print('gage has changed')
         if run.gage:
             # Delete any user-uploaded files associated with the previous gage
             uploaded_geopackage_file = get_geopackage_file_for_job(run)
@@ -373,7 +383,6 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
 
         # Update initial parameter values if formulations exist
         my_formulations = CalibrationFormulation.objects.filter(calibration_run=run)
-        print('my formulations', my_formulations)
         if my_formulations.exists():
             try:
                 get_module_metadata_from_hydrofabric(gage, my_formulations, gage_changed=True)

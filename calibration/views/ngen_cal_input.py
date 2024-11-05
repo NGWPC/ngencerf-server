@@ -159,7 +159,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         calibration['station_name'] = run.gage.station_name
 
         # Determine the source of the forcing data (user-uploaded or pre-configured)
-        if not is_missing(run.forcing_source, 'forcing source', errors):
+        if not is_missing(run.forcing_source, 'Forcing source', errors):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
             if is_forcing_upload:
                 # Check if forcing data has been uploaded
@@ -179,7 +179,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         # Determine the source of observational data (user-uploaded or pre-configured)
-        if not is_missing(run.observational_source, 'observational source', errors):
+        if not is_missing(run.observational_source, 'Observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
             if is_observational_upload:
                 user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
@@ -204,7 +204,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
-        if not is_missing(run.geopackage_source, 'geopackage source', errors):
+        if not is_missing(run.geopackage_source, 'Geopackage source', errors):
             is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
             if is_geopackage_upload:
                 user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
@@ -241,7 +241,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
     # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
     module_dict = {formulation.module.name: formulation.bmi_config_path for formulation in formulations}
 
-    if not is_missing(formulations, 'modules', errors) and not is_missing(run.user_formulation_name, 'formulation name', errors):
+    if not is_missing(formulations, 'Modules', errors) and not is_missing(run.user_formulation_name, 'Formulation name', errors):
         general['formulation'] = run.user_formulation_name
         general['models'] = ', '.join(module_dict.keys())
         if run.use_sloth:
@@ -292,10 +292,10 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
-    if not is_missing(run.objective_function, 'objective function', errors):
+    if not is_missing(run.objective_function, 'Objective function', errors):
         calibration['objective_function'] = run.objective_function.name.lower()
 
-    if not is_missing(run.optimization, 'optimization', errors):
+    if not is_missing(run.optimization, 'Optimization', errors):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         # Validate if all inputs are provided
@@ -317,7 +317,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         if all_input_names:
             errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not is_missing(run.save_plot_iteration_frequency, 'plot iteration frequency', errors):
+    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', errors):
         calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
 
     # This field is not required from user
@@ -326,13 +326,13 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    if not is_missing(stop_criteria, 'stop criteria (number of iterations)', errors):
+    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', errors):
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
     calibration['start_iteration'] = 0  # TODO ????'
 
-    if not is_missing(run.module_output_variable, 'output variable to calibrate', errors):
+    if not is_missing(run.module_output_variable, 'Output variable to calibrate', errors):
         calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
         calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.module.name
 

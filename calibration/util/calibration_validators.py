@@ -691,7 +691,7 @@ class IsReadyResponseSerializer(GenericResponseSerializer):
 
 class ImportResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
-    messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    messages = serializers.JSONField(required=False)
 
 
 class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
