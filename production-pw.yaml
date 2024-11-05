@@ -1,6 +1,29 @@
 name: ngencerf-server
 
-include:
-  - path : 
-      - compose.yaml
-      - production-pw.override.yaml
+services:
+  ngencerf-services:
+    build: 
+      dockerfile: ./Dockerfile.production-pw
+      context: .
+      secrets:
+        - gitlab_token
+        - aws_token
+    image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:prod
+    pull_policy: always
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
+      - ../data/ngen-cal-data:/ngencerf/data/
+      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
+    env_file:
+      - path: ./ngencerf_services.env
+        required: true 
+      - path: ./ngencerf_services.override.env
+        required: false
+
+secrets:
+  gitlab_token:
+    file: ~/.gitlab_token
+  aws_token:
+    file: ./.aws_credentials
