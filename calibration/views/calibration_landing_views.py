@@ -1,8 +1,10 @@
 import logging
 import os
 import shutil
+from typing import Any
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction, router
 from django.db.models import F, Q, Count
 from django.db.models.deletion import Collector
@@ -25,6 +27,8 @@ from calibration.views.common import handle_exceptions, validate_response, get_c
 
 logger = logging.getLogger(__name__)
 
+User = get_user_model()
+
 
 @extend_schema(
     request=EmptySerializer,
@@ -43,8 +47,13 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['POST'])
 @handle_exceptions
-# @permission_classes([AllowAny])
-def create_calibration_run(request):
+def create_calibration_run(request) -> Response:
+    """
+    Handles creating a new calibration run for the requesting user.
+
+    :param request: The HTTP request object, containing user and calibration run details.
+    :return: A Response object with the serialized calibration run data.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'create_calibration_run() request from {request.user.email}')
 
@@ -82,7 +91,13 @@ def create_calibration_run(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-def create_validation_run(request):
+def create_validation_run(request) -> Response:
+    """
+    Creates a new validation run for a specified calibration run and iteration.
+
+    :param request: The HTTP request object.
+    :return: JSON response with validation run details or error information.
+    """
     data = request.data
     logger.debug(f'create_validation_run() request from {request.user.email}')
 
@@ -123,14 +138,16 @@ def create_validation_run(request):
             description="Internal server error"
         )
     },
-
     description="Get all Calibration jobs for Evaluation"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def get_calibration_jobs_for_evaluation(request):
+def get_calibration_jobs_for_evaluation(request) -> Response:
     """
-    Return DONE or FAILED jobs.  Include extra fields for validation.  Option to get only those jobs for a specific gage_id
+    Retrieves calibration jobs that are either DONE or FAILED for evaluation purposes.
+
+    :param request: The HTTP request object.
+    :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_calibration_jobs_for_validation() request from {request.user.email} - {data}')
@@ -241,7 +258,7 @@ def get_calibration_jobs(request):
     return Response(response_validator.data)
 
 
-def get_jobs(user, run_status=None, include_validations=False):
+def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validations=False) -> list[dict[str, Any]]:
     """
     Retrieves calibration jobs for the given user, optionally filtering by status and including validation information.
 
@@ -261,10 +278,10 @@ def get_jobs(user, run_status=None, include_validations=False):
     # Base query without extra info
     runs_query = CalibrationRun.objects.filter(query)
 
-    # Annotate to rename 'user_formulation_name' to 'formulation_name'
+    # Annotate fields to rename 'user_formulation_name' to 'formulation_name'
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
-    # Define the fields
+    # Define the fields for selection
     default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name', 'job_genesis']
     additional_fields = ['objective_function__name', 'optimization__name']
 
@@ -343,7 +360,13 @@ def get_footer(request):
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def load_calibration_run(request):
+def load_calibration_run(request) -> Response:
+    """
+    Load all data for a previously saved calibration run.
+
+    :param request: The HTTP request object.
+    :return: A Response object containing the serialized calibration run data.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'load_calibration_run() request from {request.user.email} - {data}')
 
@@ -382,11 +405,17 @@ def load_calibration_run(request):
             description="Internal server error"
         )
     },
-    description="Delete a calibration run job"
+    description="Clone a calibration run job"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def clone_job(request):
+def clone_job(request) -> Response:
+    """
+    Clone an existing calibration run job, creating a new calibration run with identical parameters.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the cloned calibration run data.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'clone_job() request from {request.user.email} - {data}')
 
@@ -448,13 +477,15 @@ def clone_job(request):
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def delete_job(request):
+def delete_job(request) -> Response:
+    """
+    Delete a calibration run job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the deletion confirmation.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'delete_run() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -474,7 +505,6 @@ def delete_job(request):
     if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         hard_delete(run)
     else:
-        logger.debug(run)
         logger.debug(f"Deleting (soft delete) Calibration Run {run.id}")
         run.is_deleted = True
         run.save(update_fields=['is_deleted'])
@@ -489,7 +519,12 @@ def delete_job(request):
     return Response(response_validator.data)
 
 
-def hard_delete(run):
+def hard_delete(run: CalibrationRun) -> None:
+    """
+    Perform a hard delete on a calibration run and its related records. Deletes associated files if they exist.
+
+    :param run: The CalibrationRun instance to be deleted.
+    """
     collector = Collector(using=router.db_for_write(run.__class__))
 
     # Collect related objects that will be deleted due to cascade
