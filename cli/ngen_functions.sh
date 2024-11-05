@@ -27,15 +27,10 @@ upload_geopackage_data() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Check for errors and exit on failure if specified
-    if ! check_http_error "$http_status" "$response" true; then
-        echo "$response" | jq --indent 3
-        rm -f /tmp/curl_response
-        return 1
-    fi
+    # Check for HTTP errors and exit if needed
+    check_http_error "$http_status" "$response" true
 
-    # Display the server's response if successful
-    echo "$response" | jq --indent 3
+    # Clean up the temporary file
     rm -f /tmp/curl_response
 }
 
@@ -62,15 +57,10 @@ upload_observational_data() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Check for errors and exit on failure if specified
-    if ! check_http_error "$http_status" "$response" true; then
-        echo "$response" | jq --indent 3
-        rm -f /tmp/curl_response
-        return 1
-    fi
+    # Check for HTTP errors and exit if needed
+    check_http_error "$http_status" "$response" true
 
-    # Display the server's response if successful
-    echo "$response" | jq --indent 3
+    # Clean up the temporary file
     rm -f /tmp/curl_response
 }
 
@@ -113,15 +103,10 @@ upload_forcing_data() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Check for errors and exit on failure if specified
-    if ! check_http_error "$http_status" "$response" true; then
-        echo "$response" | jq --indent 3
-        rm -f /tmp/curl_response
-        return 1
-    fi
+    # Check for HTTP errors and exit if needed
+    check_http_error "$http_status" "$response" true
 
-    # Display the server's response if successful
-    echo "$response" | jq --indent 3
+    # Clean up the temporary file
     rm -f /tmp/curl_response
 }
 
@@ -148,15 +133,10 @@ run_job() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Check for errors, print the response, and exit on failure if specified
-    if ! check_http_error "$http_status" "$response"; then
-        echo "$response" | jq . --indent 3
-        rm -f /tmp/curl_response
-        return 1
-    fi
+    # Check for HTTP errors and exit if needed
+    check_http_error "$http_status" "$response" true
 
-    # Display the response if successful
-    echo "$response" | jq . --indent 3
+    # Clean up the temporary file
     rm -f /tmp/curl_response
 }
 
@@ -183,15 +163,10 @@ delete_job() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Check for errors, print the response, and exit on failure if specified
-    if ! check_http_error "$http_status" "$response"; then
-        echo "$response" | jq . --indent 3
-        rm -f /tmp/curl_response
-        return 1
-    fi
+    # Check for HTTP errors and exit if needed
+    check_http_error "$http_status" "$response" true
 
-    # Display the response if successful
-    echo "$response" | jq . --indent 3
+    # Clean up the temporary file
     rm -f /tmp/curl_response
 }
 
@@ -218,14 +193,9 @@ cancel_job() {
     http_status=$(tail -n1 <<< "$response")
     response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Check for errors, print the response, and exit on failure if specified
-    if ! check_http_error "$http_status" "$response"; then
-        echo "$response" | jq . --indent 3
-        rm -f /tmp/curl_response
-        return 1
-    fi
+    # Check for HTTP errors and exit if needed
+    check_http_error "$http_status" "$response" true
 
-    # Display the response if successful
-    echo "$response" | jq . --indent 3
+    # Clean up the temporary file
     rm -f /tmp/curl_response
 }

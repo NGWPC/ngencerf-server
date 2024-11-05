@@ -34,24 +34,26 @@ ngen_login() {
         --header 'Content-Type: application/json' \
         --data-raw "{ \"email\": \"$email\", \"password\": \"$NGEN_PASSWORD\" }")
 
-    # Extract the HTTP status code and response
+    # Extract the HTTP status code
     http_status="${response: -3}"
-    response_body=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response_body=$(cat /tmp/curl_response)
 
-    check_http_error "$http_status" "$response_body" || return 1
-
-    # Extract the access token from the response
-    access_token=$(echo "$response_body" | jq -r '.access' 2>/dev/null)
-
-    if [ -z "$access_token" ] || [ "$access_token" == "null" ]; then
-        echo "Login failed. Please check your email and password."
-        echo "Response: $response_body"
-        return 1
-    else
+    # Check if login succeeded and print only a success message
+    if [[ "$http_status" -eq 200 ]]; then
+        access_token=$(echo "$response_body" | jq -r '.access' 2>/dev/null)
         export ACCESS_TOKEN="$access_token"
         echo "'$email' login successful."
+    else
+        # If login fails, display the full response for troubleshooting
+        echo "Login failed with status code $http_status."
+        echo "$response_body" | jq --indent 3
+        exit 1
     fi
+
+    # Clean up the temp file
+    rm -f /tmp/curl_response
 }
+
 
 # Function for register with optional email argument
 ngen_register() {
