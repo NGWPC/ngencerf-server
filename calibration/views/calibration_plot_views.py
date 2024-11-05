@@ -14,7 +14,9 @@ from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
-    get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file
+    get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
+    get_validation_metrics_valid_best_file, get_validation_metrics_nwm_retrospective_file, get_validation_metrics_valid_control_file, \
+    NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime
@@ -83,13 +85,20 @@ def get_plot_names(request) -> Response:
 
 
 def png_to_base64_url(png):
-    if png:
-        if os.path.exists(png):
+    """
+    Converts a PNG file to a base64-encoded URL string.
+
+    :param png: Path to the PNG file.
+    :return: Base64 URL string if successful, or None if the file does not exist.
+    """
+    if png and os.path.exists(png):
+        try:
             with open(png, "rb") as png_file:
                 return png_str_to_base64_url(png_file.read())
-        else:
-            raise CerfException(f"Plot '{png}' does not exist")
-    return None
+        except IOError as e:
+            raise CerfException(f"Failed to read PNG file: {e}")
+    else:
+        raise CerfException(f"Plot '{png}' does not exist")
 
 
 @extend_schema(
@@ -183,20 +192,25 @@ def get_plot(request) -> Response:
 
         response['plot_data'] = plot_data
 
-    response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url'])
+    response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url', 'plot_data'])
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url"])}')
+        f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"])}')
 
     return Response(response_validator.data)
 
 
-def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[dict[str, Any]]:
+def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[Any]:
     """
-    Retrieves data for a given plot based on its definition.
+    Retrieves data for a specific plot based on its definition.
+
+    :param run: The calibration run object.
+    :param plot_definition: Dictionary containing plot specifications.
+    :return: List of data entries or empty list if no data is available.
     """
     plot_enum = PlotDefinitionsEnum(plot_definition['name'])
+    worker_dir = None  # Cache worker directory to avoid multiple lookups
 
     match plot_enum:
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
@@ -206,21 +220,16 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                 for iteration in get_iterations_for_calibration_job(run)
             ]
 
-        case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION:
-            worker_dir = find_worker_with_non_empty_plot_iteration(run)
-            output_iteration_file = get_output_iteration_file(run, 0, worker_dir)
-            output_last_iteration_file = get_output_last_iteration_file(run, worker_dir)
-            output_best_iteration_file = get_output_best_iteration_file(run, worker_dir)
-            hourly_discharge = get_observational_file_for_job(run)
-
-            # Load each file with dynamic headers
-            discharge_df = read_and_prepare_hydrograph_files(hourly_discharge)
-            iteration_df = read_and_prepare_hydrograph_files(output_iteration_file)
-            last_iteration_df = read_and_prepare_hydrograph_files(output_last_iteration_file)
-            best_iteration_df = read_and_prepare_hydrograph_files(output_best_iteration_file)
-
-            # Merge and return data
-            return merge_hydrograph_data(discharge_df, iteration_df, last_iteration_df, best_iteration_df)
+        case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION | PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
+            worker_dir = worker_dir or find_worker_with_non_empty_plot_iteration(run)
+            file_paths = [
+                get_observational_file_for_job(run),  # Observation
+                get_output_iteration_file(run, 0, worker_dir),  # Iteration
+                get_output_last_iteration_file(run, worker_dir),  # Last Iteration
+                get_output_best_iteration_file(run, worker_dir)  # Best Iteration
+            ]
+            column_names = ["Observation", "Control Run", "Last Run", "Best Run"]
+            return load_and_merge_hydrograph_files(file_paths, column_names)
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
             return [
@@ -240,8 +249,6 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                 }
                 for iteration in get_iterations_for_calibration_job(run)
             ]
-        case PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
-            return []
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
             return [
@@ -254,6 +261,7 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
             ]
 
         case PlotDefinitionsEnum.STREAM_FLOW_PRECIPITATION:
+            # Requires calculation, so we won't return data
             return []
 
         case PlotDefinitionsEnum.FLOW_DURATION_CURVES:
@@ -269,15 +277,38 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                 return [row for row in csv.DictReader(file)]
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
-            return []
+            files = [
+                get_validation_metrics_valid_control_file(run),
+                get_validation_metrics_valid_best_file(run),
+                get_validation_metrics_nwm_retrospective_file(run)
+            ]
+            plot_data = []
+            # Read each file and append its rows to plot_data
+            for file_path in files:
+                with open(file_path, mode='r') as file:
+                    reader = csv.DictReader(file)
+                    plot_data.append([row for row in reader])
+
+            return plot_data
 
         case PlotDefinitionsEnum.FLOW_DURATION_CURVES_VALIDATION:
+            # Requires calculation, so we won't return data
             return []
 
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
-            return []
+            # Define files and column names for HYDROGRAPH_VALIDATION
+            file_paths = [
+                get_observational_file_for_job(run),  # Observation
+                os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv'),  # NWM Retro
+                get_output_valid_control_file(run),  # Valid Control
+                get_output_valid_best_file(run)  # Valid Best
+                # get_output_validation_iteration_file(run)
+            ]
+            column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
+            return load_and_merge_hydrograph_files(file_paths, column_names)
 
         case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:
+            # Requires calculation, so we won't return data
             return []
 
     logger.error(f"Data handler not found for '{plot_enum}'")
@@ -311,8 +342,12 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
 # Helper function to read and prepare each CSV file
 def read_and_prepare_hydrograph_files(file_path: str, time_col: str = 'time', value_col: str = 'value') -> pd.DataFrame:
     """
-    Reads a CSV file, renames the first column as 'time' and second as 'value',
-    converts 'time' to datetime, and drops rows with unparseable datetime.
+    Reads a CSV file, renames columns to 'time' and 'value', converts 'time' to datetime, and removes rows with invalid 'time'.
+
+    :param file_path: Path to the CSV file
+    :param time_col: Column name for time (default is 'time')
+    :param value_col: Column name for values (default is 'value')
+    :return: DataFrame with 'time' and renamed 'value' column
     """
     if not os.path.exists(file_path):
         logger.error(f"File not found: {file_path}")
@@ -325,23 +360,33 @@ def read_and_prepare_hydrograph_files(file_path: str, time_col: str = 'time', va
     return df.dropna(subset=[time_col])
 
 
-# Helper function to merge data for hydrograph evolution plots
-def merge_hydrograph_data(discharge_df: pd.DataFrame, iteration_df: pd.DataFrame,
-                          last_iteration_df: pd.DataFrame, best_iteration_df: pd.DataFrame) -> list[dict[str, Any]]:
+# Helper function to load and merge hydrograph files with dynamic column names
+def load_and_merge_hydrograph_files(file_paths: list[str], column_names: list[str]) -> list[dict[str, Any]]:
     """
-    Merges multiple DataFrames on 'time', applies formatting, and returns a list of dictionaries.
+    Loads CSV files, renames columns based on provided names, merges on 'time', and returns data as a list of dicts.
+
+    :param file_paths: List of file paths to load
+    :param column_names: List of new column names for each file's value column
+    :return: Merged data as a list of dictionaries with formatted 'time' values
     """
-    discharge_df = discharge_df.rename(columns={'value': 'obervation'})
-    iteration_df = iteration_df.rename(columns={'value': 'control_run'})
-    last_iteration_df = last_iteration_df.rename(columns={'value': 'best_run'})
-    best_iteration_df = best_iteration_df.rename(columns={'value': 'last_run'})
+    dataframes = []
+    for file_path, col_name in zip(file_paths, column_names):
+        try:
+            df = read_and_prepare_hydrograph_files(file_path)
+            dataframes.append(df.rename(columns={"value": col_name}))
+        except FileNotFoundError as e:
+            logger.error(f"File missing for hydrograph data: {e}")
+            continue  # Skip missing files
 
-    merged_df = (
-        iteration_df.merge(last_iteration_df, on="time", how="inner")
-        .merge(best_iteration_df, on="time", how="inner")
-        .merge(discharge_df, on="time", how="inner")
-    )
+    if not dataframes:
+        logger.error("No data to merge; all files were missing or empty.")
+        return []
 
-    # Apply datetime formatting
+    # Merge DataFrames on 'time' column, applying inner join to retain only matching rows across all files
+    merged_df = dataframes[0]
+    for df in dataframes[1:]:
+        merged_df = merged_df.merge(df, on="time", how="inner")
+
+    # Format 'time' column
     merged_df['time'] = merged_df['time'].apply(format_datetime)
     return merged_df.to_dict(orient="records")

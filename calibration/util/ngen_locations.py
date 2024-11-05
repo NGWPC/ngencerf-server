@@ -145,6 +145,22 @@ def get_output_best_iteration_file(run: CalibrationRun, worker_dir: str) -> str:
     return os.path.join(worker_dir, get_output_best_iteration_csv(run))
 
 
+def get_output_valid_control_csv(run: CalibrationRun) -> str:
+    return f"{run.gage.gage_id}_output_valid_control.csv"
+
+
+def get_output_valid_control_file(run: CalibrationRun) -> str:
+    return os.path.join(get_output_validation_run_dir(run), get_output_valid_control_csv(run))
+
+
+def get_output_valid_best_csv(run: CalibrationRun) -> str:
+    return f"{run.gage.gage_id}_output_valid_best.csv"
+
+
+def get_output_valid_best_file(run: CalibrationRun) -> str:
+    return os.path.join(get_output_validation_run_dir(run), get_output_valid_best_csv(run))
+
+
 def get_output_iteration_csv(run: CalibrationRun, iteration_num: int) -> str:
     return f"{run.gage.gage_id}_output_iteration_{iteration_num:04d}.csv"
 
@@ -201,7 +217,8 @@ def get_validation_performance_file(run: CalibrationRun, worker_name: str, itera
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration}_performance.log")
 
 
-def get_validation_special_performance_file(run: CalibrationRun, validation_type: Literal[ValidationType.VALID_BEST, ValidationType.VALID_CONTROL]) -> str:
+def get_validation_special_performance_file(run: CalibrationRun,
+                                            validation_type: Literal[ValidationType.VALID_BEST, ValidationType.VALID_CONTROL]) -> str:
     validation_type_str = validation_type.value.split('_')[1].lower()
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
 
