@@ -282,7 +282,8 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
     # Define the fields for selection
-    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name', 'job_genesis']
+    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name',
+                      'job_genesis']
     additional_fields = ['objective_function__name', 'optimization__name']
 
     selected_fields = default_fields
@@ -383,11 +384,13 @@ def load_calibration_run(request) -> Response:
 
     calibration_run_data = load_calibration_run_data(run, export=False)
 
-    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data, fields_to_truncate=['geopackage_image_url'])
+    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
+                                                           fields_to_truncate=['geopackage_image_url'])
 
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_calibration_run() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+    logger.debug(
+        f'Returning to {request.user.email} from load_calibration_run() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
 
     return Response(response_validator.data)
 
@@ -430,27 +433,25 @@ def clone_job(request) -> Response:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, warnings, info_messages, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
+    new_run, messages, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
     if fatal_error:
         return fatal_error
 
     # Set the new status to Saved and then we check it
     new_run.status = StatusEnum.from_enum(StatusEnum.SAVED)
-    messages = None
+    ready_to_run_messages = None
     if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
-        messages, _ = ngen_cal_input.ready_to_run(new_run)
+        ready_to_run_messages, _ = ngen_cal_input.ready_to_run(new_run)
 
     # noinspection PyUnresolvedReferences
     response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}',
                 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
     # I agree that the message handling got out of hand
+    if ready_to_run_messages:
+        response['errors'] = ready_to_run_messages
     if messages:
-        response['errors'] = messages
-    if warnings:
-        response['errors'] += warnings
-    if info_messages:
-        response['messages'] = info_messages
+        response['errors'] += messages
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
