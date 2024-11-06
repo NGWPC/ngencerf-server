@@ -88,7 +88,7 @@
             "module": "Noah-OWP-Modular"
         },
         {
-            "name": "soil_params.b",
+            "name": "b",
             "minimum": 5,
             "maximum": 10,
             "initial_value": 7,

@@ -156,13 +156,7 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
     module_metadata = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                              'Module metadata from Hydrofabric is not in the expected format')
 
-    m = module_metadata['modules'][0]
-    p = m['calibrate_parameters']
-    print('before', p)
     fix_module_metadata(module_metadata)
-    m = module_metadata['modules'][0]
-    p = m['calibrate_parameters']
-    print('after', p)
 
     hydrofabric_module_names = set([module['module_name'] for module in module_metadata['modules']])
 
@@ -233,7 +227,10 @@ translation_map = {
     "soil_params.satdk": "satdk",
     "soil_params.satpsi": "satpsi",
     "soil_params.slop": "slop",
-    "soil_params.smcmax": "smcmax"
+    "soil_params.smcmax": "smcmax",
+    "CWPVT": "CWP",
+    "K_lf": "Klf",
+    "K_nash": "Kn"
 }
 
 
