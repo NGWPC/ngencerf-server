@@ -19,7 +19,7 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime
+    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none
 from calibration.views.read_output import process_worker_dirs
 
 logger = logging.getLogger(__name__)
@@ -190,6 +190,8 @@ def get_plot(request) -> Response:
         if not plot_data:
             logger.warning(f"Data not available for {plot_definition['name']}")
 
+        # NaN is not valid Json
+        plot_data = replace_nan_with_none(plot_data)
         response['plot_data'] = plot_data
 
     response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url', 'plot_data'])

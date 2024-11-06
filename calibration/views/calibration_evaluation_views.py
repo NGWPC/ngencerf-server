@@ -1,7 +1,5 @@
 import logging
-from typing import Any
 
-import numpy as np
 from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -11,7 +9,8 @@ from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
 from calibration.models import Iteration, IterationParameter, NWMRetrospectiveMetrics, ValidationRun, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
-from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError, truncate_large_fields
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError, \
+    truncate_large_fields, replace_nan_with_none
 
 logger = logging.getLogger(__name__)
 
@@ -113,32 +112,6 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> Query
         .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
     )
     return iterations
-
-
-def replace_nan_with_none(data: Any) -> Any:
-    """
-    Recursively traverses the input data and replaces any NaN values with None.
-    This ensures that the data is JSON-compliant by converting non-compliant
-    NaN values into nulls.
-
-    :param data: The input data, which can be a list, dictionary, or a single value.
-    :return: The sanitized data with NaN values replaced by None.
-    """
-
-    # If the data is a list, recursively process each item in the list
-    if isinstance(data, list):
-        return [replace_nan_with_none(item) for item in data]
-
-    # If the data is a dictionary, recursively process each key-value pair
-    elif isinstance(data, dict):
-        return {key: replace_nan_with_none(value) for key, value in data.items()}
-
-    # If the data is a float and it's NaN, replace it with None
-    elif isinstance(data, float) and np.isnan(data):
-        return None
-
-    # If the data is any other type (int, str, etc.), return it unchanged
-    return data
 
 
 @extend_schema(

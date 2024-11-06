@@ -4,8 +4,9 @@ import logging
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, Dict, List, cast
+from typing import Type, Tuple, Dict, List, cast, Any
 
+import numpy as np
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
@@ -461,3 +462,29 @@ def get_job_description(run: CalibrationRun | ValidationRun) -> str:
         return f"Calibration Run {run.id}, user: {run.owner.username}"
     else:
         return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
+
+
+def replace_nan_with_none(data: Any) -> Any:
+    """
+    Recursively traverses the input data and replaces any NaN values with None.
+    This ensures that the data is JSON-compliant by converting non-compliant
+    NaN values into nulls.
+
+    :param data: The input data, which can be a list, dictionary, or a single value.
+    :return: The sanitized data with NaN values replaced by None.
+    """
+
+    # If the data is a list, recursively process each item in the list
+    if isinstance(data, list):
+        return [replace_nan_with_none(item) for item in data]
+
+    # If the data is a dictionary, recursively process each key-value pair
+    elif isinstance(data, dict):
+        return {key: replace_nan_with_none(value) for key, value in data.items()}
+
+    # If the data is a float and it's NaN, replace it with None
+    elif isinstance(data, float) and np.isnan(data):
+        return None
+
+    # If the data is any other type (int, str, etc.), return it unchanged
+    return data
