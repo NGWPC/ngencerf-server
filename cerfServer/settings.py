@@ -195,7 +195,7 @@ ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = (False, 'hydrofabric/2.1/modules/para
 ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
 ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
 
-ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
+ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL','http://hydroapi.test.nextgenwaterprediction.com:8000' )
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', Path.home() / 's3')
