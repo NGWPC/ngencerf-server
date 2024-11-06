@@ -94,6 +94,10 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
             geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
         else:
             logger.info('Getting dummy geopackage data')
+
+    hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
+                                              'Geopackage data from Hydrofabric is not in the expected format')
+
             geopackage_json = hydrofabric_test_data.geopackage_sample_data
 
         hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
