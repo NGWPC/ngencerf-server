@@ -1,5 +1,5 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 
 from django.db import transaction
 from django.db.models import F
@@ -37,9 +37,17 @@ logger = logging.getLogger(__name__)
     description="Load optimization tab data"
 )
 @api_view(['GET', 'POST'])
-# @permission_classes([AllowAny])()
 @handle_exceptions
-def load_optimization_tab(request):
+def load_optimization_tab(request) -> Response:
+    """
+    Handles loading optimization data for a calibration run.
+
+    Validates the request, retrieves calibration run information, metrics, and optimizations,
+    and returns a structured response.
+
+    :param request: The incoming HTTP request.
+    :return: JSON response with calibration run optimization data.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'load_optimization_tab() request from {request.user.email} - {data}')
@@ -73,12 +81,20 @@ def load_optimization_tab(request):
     return Response(response_validator.data)
 
 
-def get_user_optimization(run):
+def get_user_optimization(run: CalibrationRun) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Retrieves user-selected optimization and inputs for a calibration run.
+
+    :param run: The CalibrationRun instance.
+    :return: A tuple with the optimization name and list of optimization inputs.
+    """
     if run.optimization:
         optimization = run.optimization.name
         optimization_inputs = list(
-            CalibrationOptimizationInput.objects.filter(calibration_run=run).select_related('optimization_input')
-            .values('value', name=F('optimization_input__name')))
+            CalibrationOptimizationInput.objects.filter(calibration_run=run)
+            .select_related('optimization_input')
+            .values('value', name=F('optimization_input__name'))
+        )
     else:
         optimization = None
         optimization_inputs = []
@@ -86,7 +102,12 @@ def get_user_optimization(run):
     return optimization, optimization_inputs
 
 
-def get_static_optimizations():
+def get_static_optimizations() -> List[Dict[str, Any]]:
+    """
+    Retrieves static optimizations with input details.
+
+    :return: A list of optimizations with related input fields.
+    """
     optimization_list = OptimizationEnum.active_choices_with_fields(
         fields=['name', 'description', 'is_active']
     )
@@ -117,9 +138,16 @@ def get_static_optimizations():
     description="Save optimization tab data"
 )
 @api_view(['POST'])
-# @permission_classes([AllowAny])
 @handle_exceptions
-def save_optimization_tab(request):
+def save_optimization_tab(request) -> Response:
+    """
+    Saves optimization configuration for a calibration run.
+
+    Validates and saves the user-selected optimization, inputs, and thresholds for the calibration run.
+
+    :param request: The incoming HTTP request.
+    :return: JSON response indicating the success of the save operation.
+    """
     data = request.data
 
     logger.debug(f'save_optimization_tab() request from {request.user.email} - {data}')
@@ -182,7 +210,15 @@ def save_optimization_tab(request):
         return Response(response_validator.data)
 
 
-def validate_optimizations(run, optimization_name, optimization_inputs):
+def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: List[Dict[str, Any]]) -> Tuple[Optimization | None, str | None]:
+    """
+    Validates and assigns optimization inputs to a calibration run.
+
+    :param run: The CalibrationRun instance.
+    :param optimization_name: Name of the optimization to apply.
+    :param optimization_inputs: List of inputs for the optimization.
+    :return: Tuple with the optimization instance or None if invalid, and any error message.
+    """
     optimization = OptimizationEnum.get_instance(optimization_name)
 
     run.optimization = optimization
@@ -236,7 +272,16 @@ def validate_optimizations(run, optimization_name, optimization_inputs):
     return optimization, None
 
 
-def validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold):
+def validate_objective_function(run: CalibrationRun, objective_function_name: str, streamflow_threshold: float, peak_flow_threshold: float) -> str | None:
+    """
+    Validates and assigns the objective function to a calibration run.
+
+    :param run: The CalibrationRun instance.
+    :param objective_function_name: Name of the objective function to apply.
+    :param streamflow_threshold: Streamflow threshold value.
+    :param peak_flow_threshold: Peak flow threshold value.
+    :return: Error message if validation fails, otherwise None.
+    """
     if objective_function_name:
         # Retrieve the cached metrics
         metrics_cache = get_metrics_lookup()
