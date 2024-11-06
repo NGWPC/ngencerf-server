@@ -156,6 +156,14 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
     module_metadata = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
                                              'Module metadata from Hydrofabric is not in the expected format')
 
+    m = module_metadata['modules'][0]
+    p = m['calibrate_parameters']
+    print('before', p)
+    fix_module_metadata(module_metadata)
+    m = module_metadata['modules'][0]
+    p = m['calibrate_parameters']
+    print('after', p)
+
     hydrofabric_module_names = set([module['module_name'] for module in module_metadata['modules']])
 
     my_module_names = set(my_module_names)
@@ -218,6 +226,25 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
         raise HydrofabricException(f'Response from Hydrofabric is missing entries for {missing_names}')
 
     return
+
+
+translation_map = {
+    "soil_params.b": "b",
+    "soil_params.satdk": "satdk",
+    "soil_params.satpsi": "satpsi",
+    "soil_params.slop": "slop",
+    "soil_params.smcmax": "smcmax"
+}
+
+
+def fix_module_metadata(metadata):
+    # Apply translations
+    for module in metadata['modules']:
+        for param in module["calibrate_parameters"]:
+            old_name = param["name"]
+            # Check if the old_name needs translation
+            if old_name in translation_map:
+                param["name"] = translation_map[old_name]
 
 
 def str_to_float(value):
