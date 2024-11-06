@@ -150,7 +150,7 @@ def get_calibration_jobs_for_evaluation(request) -> Response:
     :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_validation() request from {request.user.email} - {data}')
+    logger.debug(f'get_calibration_jobs_for_evaluation() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -165,7 +165,7 @@ def get_calibration_jobs_for_evaluation(request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs_for_validation() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_jobs_for_evaluation() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -230,7 +230,7 @@ def get_calibration_jobs_for_forecast(request):
         )
     },
 
-    description="Get all jobs"
+    description="Get all calibration jobs"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
