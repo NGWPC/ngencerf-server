@@ -11,7 +11,7 @@ from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
 from calibration.models import Iteration, IterationParameter, NWMRetrospectiveMetrics, ValidationRun, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
-from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError, truncate_large_fields
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ def get_calibration_data_by_iteration(request):
 
     nwm_retrospective_data = list(
         NWMRetrospectiveMetrics.objects
-        .filter(period=ValidationMetricPeriod.valid, calibration_run=run)
+        .filter(period=ValidationMetricPeriod.valid.value, calibration_run=run)
         .select_related('metric')
         .annotate(metric_name=F('metric__name'))
         .values('metric_name', 'metric_value'))
@@ -90,10 +90,12 @@ def get_calibration_data_by_iteration(request):
     # NaN is not valid Json
     response = replace_nan_with_none(response)
 
-    response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response)
+    response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response, fields_to_truncate=['iteration_data'], max_length=10)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {response_validator.data}')
+
+    logger.debug(f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10)}')
+
     return Response(response_validator.data)
 
 
