@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.db.models import Prefetch
 
 from calibration.enums import PlotDefinitionsEnum
-from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, CalibrationRun
+from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, CalibrationRun, ValidationRun
 
 
 def get_cached_module_by_name(module_name: str) -> Module | None:
@@ -163,32 +163,36 @@ def get_cached_module_groups() -> list:
     return module_groups
 
 
-def get_filtered_plot_definitions(run: CalibrationRun, plot_name: str | None = None, first_match: bool = False) -> list[dict] | dict | None:
+def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name: str | None = None, first_match: bool = False) -> list[dict] | dict | None:
     """
     Retrieve filtered plot definitions for the specified run and plot name, with a case-insensitive match.
 
     Args:
-        run (CalibrationRun): The calibration run instance to check for valid optimizations.
+        run (CalibrationRun | ValidationRun): The calibration or validation run instance to check for valid plots.
         plot_name (str | None): The name of the plot to filter by (case-insensitive), or None to retrieve all valid plots.
         first_match (bool): If True, returns only the first matching plot definition as a dictionary, or None if no match.
 
     Returns:
         list[dict] | dict | None: A list of dictionaries representing plot definitions that match the criteria, a single
-                                   dictionary if single_match is True, or None if no match is found.
+                                   dictionary if first_match is True, or None if no match is found.
     """
     cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
         fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
     )
 
+    # Determine if we are filtering for validation plots only for ValidationRun or automatic validation in CalibrationRun
+    is_validation_run = isinstance(run, ValidationRun)
+    include_validation_plots = is_validation_run or (isinstance(run, CalibrationRun) and run.automatic_validation)
+
     # Filter plots based on optimization, validation, and optional plot_name criteria
     filtered_plots = [
         plot for plot in cached_plot_definitions
         if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
-        and run.optimization.name in json.loads(plot['valid_optimizations'])
-        and (run.automatic_validation or not plot['validation'])
+        and (run.optimization.name in json.loads(plot['valid_optimizations']))
+        and (not plot['validation'] or include_validation_plots)  # Include validation plots as per run type and flag
     ]
 
-    # Return the first match if single_match is True, otherwise return the list of matches
+    # Return the first match if first_match is True, otherwise return the list of matches
     if first_match:
         return filtered_plots[0] if filtered_plots else None
     return filtered_plots
