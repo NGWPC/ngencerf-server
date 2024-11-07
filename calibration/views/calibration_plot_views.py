@@ -275,8 +275,12 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
             if not os.path.exists(cost_history):
                 logger.error(f"File not found: {cost_history}")
                 raise FileNotFoundError(f"File not found: {cost_history}")
-            with open(cost_history, mode='r') as file:
-                return [row for row in csv.DictReader(file)]
+            try:
+                df = pd.read_csv(cost_history, dtype=None)  # Automatic type inference
+                return df.to_dict(orient="records")  # Convert to list of dicts
+            except Exception as e:
+                logger.error(f"Error reading cost history file: {e}")
+                return []
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
             files = [
@@ -285,11 +289,15 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                 get_validation_metrics_nwm_retrospective_file(run)
             ]
             plot_data = []
-            # Read each file and append its rows to plot_data
+
+            # Read each file as a DataFrame, apply type inference, and convert to dict
             for file_path in files:
-                with open(file_path, mode='r') as file:
-                    reader = csv.DictReader(file)
-                    plot_data.append([row for row in reader])
+                try:
+                    df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
+                    plot_data.append(df.to_dict(orient="records"))
+                except FileNotFoundError as e:
+                    logger.error(f"File not found: {file_path}")
+                    continue  # Skip if file is missing
 
             return plot_data
 

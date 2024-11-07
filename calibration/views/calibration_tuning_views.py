@@ -10,6 +10,7 @@ from django.db import transaction
 from django.db.models import QuerySet
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
@@ -48,7 +49,7 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def load_tuning_tab(request):
+def load_tuning_tab(request: Request) -> Response:
     """
     Loads tuning tab data for a calibration run, including time ranges, modules, and formulations.
     Handles both GET and POST requests.
@@ -91,7 +92,6 @@ def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation
     Checks if any calibration parameters were selected by the user for tuning across all modules that are part of the job
     """
     return modules.filter(calibrationparameter__user_selected_for_tuning=True).exists()
-
 
 
 def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
@@ -204,7 +204,7 @@ def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datet
 )
 @api_view(['POST'])
 @handle_exceptions
-def save_tuning_tab(request):
+def save_tuning_tab(request: Request) -> Response:
     """
     Saves tuning settings for a calibration run, including parameters, output variables, and time periods.
     """
@@ -275,7 +275,7 @@ def save_tuning_tab(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-def upload_user_parameters(request):
+def upload_user_parameters(request: Request) -> Response:
     """
     Allows the user to upload a parameter file for tuning, validating its structure
     and content, and then attaching it to the specified calibration run.
@@ -398,8 +398,8 @@ def validate_simulation_within_range(
 
 def validate_time_range_against_data(
         run: CalibrationRun,
-        calibration_times: dict[str, datetime] = None,
-        validation_times: dict[str, datetime] = None
+        calibration_times: dict[str, datetime] | None = None,
+        validation_times: dict[str, datetime] | None = None
 ) -> str | None:
     """
     Ensures that calibration and validation times fall within the observational and forcing data range of the run.
@@ -446,11 +446,11 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
         validation_times (dict[str, datetime]): Dictionary of validation time periods.
 
     Returns:
-        list[str]: A list of error messages, if any time validation checks fail.
+        list[str] | None: A list of error messages if any validation checks fail; otherwise, None.
     """
     messages = []
 
-    # Validation against forcing and obs data intersection
+    # Validation against forcing and observational data intersection
     error_message = validate_time_range_against_data(run, calibration_times, validation_times)
     if error_message:
         messages.append(error_message)
@@ -499,7 +499,7 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
     if messages:
         return messages
 
-    # Define full_evaluation_start_date and full_evaluation_end_date for validation simulation range
+    # Define full evaluation range from minimum and maximum evaluation start/end times
     full_evaluation_start_date: datetime | None = None
     full_evaluation_end_date: datetime | None = None
 
@@ -612,14 +612,11 @@ def get_full_evaluation_date_range(
 def validate_time_range(
         start_time: datetime | None,
         end_time: datetime | None,
-        field_name: str,
-        allow_empty: bool = True
+        field_name: str
 ) -> tuple[str | None, tuple[datetime | None, datetime | None] | None]:
-    # Check for empty range if allowed
-    if allow_empty and (start_time is None or end_time is None):
-        return None, (start_time, end_time)
-
-    # Check if both start and end times are provided
+    """
+    Validates a given time range, requiring both start and end times to be provided.
+    """
     if start_time is None or end_time is None:
         return f'{field_name.capitalize()} requires both start and end times', None
 

@@ -424,7 +424,7 @@ def cancel_job(request):
             description="Internal server error"
         )
     },
-    description="Cancel a running job"
+    description="Return the directory where a jobs data is stored"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
