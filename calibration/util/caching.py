@@ -127,18 +127,18 @@ MODULE_CACHE_WITH_GROUPS_KEY = 'module_cache_with_groups'
 
 def get_cached_modules_with_groups() -> Dict[str, Module]:
     """
-    Retrieve Module objects with prefetched groups from cache or database if not cached.
+    Retrieve active Module objects with prefetched groups from cache or database if not cached.
 
-    :return: A dictionary where keys are module names, and values are Module objects, each with prefetched groups.
+    :return: A dictionary where keys are active module names, and values are Module objects, each with prefetched groups.
     """
     cached_modules: Dict[str, Module] = cache.get(MODULE_CACHE_WITH_GROUPS_KEY)
 
     if cached_modules is None:
         # Prefetch related groups when querying for modules
-        modules = Module.objects.prefetch_related(
+        modules = Module.objects.filter(is_active=True).prefetch_related(
             Prefetch('groups', queryset=ModuleGroup.objects.only('name'))
         )
-        # Cache all modules
+        # Cache active modules
         cached_modules = {module.name: module for module in modules}
         cache.set(MODULE_CACHE_WITH_GROUPS_KEY, cached_modules, None)  # Cache indefinitely or set a timeout if needed
 
