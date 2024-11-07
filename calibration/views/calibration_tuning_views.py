@@ -88,12 +88,10 @@ def load_tuning_tab(request):
 
 def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation]) -> bool:
     """
-    Checks if any tuning parameters were selected by the user across all modules.
+    Checks if any calibration parameters were selected by the user for tuning across all modules that are part of the job
     """
-    for m in modules.prefetch_related('calibrationparameter_set'):
-        if m.calibrationparameter_set.exists():
-            return True
-    return False
+    return modules.filter(calibrationparameter__user_selected_for_tuning=True).exists()
+
 
 
 def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
