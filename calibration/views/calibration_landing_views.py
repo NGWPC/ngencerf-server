@@ -451,7 +451,7 @@ def clone_job(request) -> Response:
     if ready_to_run_messages:
         response['errors'] = ready_to_run_messages
     if messages:
-        response['errors'] += messages
+        response.setdefault('errors', []).extend(messages)
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:

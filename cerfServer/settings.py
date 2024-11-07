@@ -359,5 +359,5 @@ LOGGING = {
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
-except ImportError:
-    print('local_settings.py not found')
+except ImportError as e:
+    print('local_settings.py not found:', e)
