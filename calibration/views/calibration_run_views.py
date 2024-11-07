@@ -13,12 +13,12 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.models import Iteration, ValidationRun
-from calibration.run_util.run_common import cancel_job_common, submit_validation_job, submit_calibration_job
+from calibration.run_util.run_common import cancel_job_common, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, ValidationRunSerializer, \
-    ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, GetJobDirResponseSerializer
+    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, \
+    GetJobDirResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
@@ -136,53 +136,6 @@ def run_calibration(request):
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user.email} from run_calibration() - {response_validator.data}')
-
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=ValidationRunSerializer,
-    responses={
-        200: GenericResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Run a validation"
-)
-@api_view(['POST'])
-@handle_exceptions
-def run_validation(request):
-    data = request.data
-    logger.debug(f'run_validation() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(ValidationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    validation_run_id = validator.get('validation_run_id')
-
-    validation_run, error_return = get_validation_run(validation_run_id, request.user)
-    if error_return:
-        return error_return
-
-    # TODO Doesn't return anything.  Can any errors occur?
-    response = submit_validation_job(validation_run)
-    if response:
-        return response
-
-    response = {
-        'message': f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}  has been submitted',
-        'validation_run_id': validation_run_id,
-        'status': validation_run.status.name, 'run_date': validation_run.run_date}
-
-    response_validator, error_response = validate_response(SubmitValidationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user.email} from run_validation() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -335,7 +288,8 @@ def get_iteration(request):
     calibration_run_id = validator.get('calibration_run_id')
 
     # We allow the Ready status since when a job is submitted, it doesn't go to Running right away.  This allows the UI to poll
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    run, error_return = get_calibration_run(calibration_run_id, request.user,
+                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
     if error_return:
         return error_return
 
