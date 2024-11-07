@@ -5,10 +5,10 @@ import os
 from typing import Tuple
 
 from django.db import transaction
-from django.http import HttpRequest
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['POST'])
 @handle_exceptions
-def import_job(request: HttpRequest) -> Response:
+def import_job(request: Request) -> Response:
     """
     API endpoint to import a calibration job. It validates input data,
     imports calibration run data, and optionally submits a job.
@@ -101,7 +101,7 @@ def import_job(request: HttpRequest) -> Response:
     return Response(response_validator.data)
 
 
-def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[CalibrationRun, dict, ResponseError]:
+def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.
 
@@ -116,7 +116,6 @@ def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict
         errors = []
         info = []
         hydrofabric_errors = []
-        messages = {'errors': errors, 'info': info}
 
         #############################
         # Gage
@@ -323,7 +322,8 @@ def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict
 
         # Set run parameters and save
         run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
-        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get('save_output_iteration') else False
+        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get(
+            'save_output_iteration') else False
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
@@ -332,6 +332,11 @@ def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
         run.save()
+    messages = {}
+    if errors:
+        messages['errors'] = errors
+    if info:
+        messages['info'] = info
 
     return run, messages, None
 
@@ -353,7 +358,7 @@ def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def export_job(request: HttpRequest) -> Response:
+def export_job(request: Request) -> Response:
     """
     API endpoint to export calibration job data.
 
@@ -427,10 +432,13 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
         user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
-        calibration_run_data['geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(user_uploaded_geopackage_file) else None
+        calibration_run_data[
+            'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
+            user_uploaded_geopackage_file) else None
 
         user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
-        calibration_run_data['observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
+        calibration_run_data[
+            'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
             user_uploaded_observational_file) else None
 
         user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)

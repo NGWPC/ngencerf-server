@@ -10,6 +10,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from pyogrio.errors import DataLayerError
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum, StatusEnum
@@ -55,12 +56,12 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def load_gage_tab(request) -> Response:
+def load_gage_tab(request: Request) -> Response:
     """
     Loads gage tab data based on the calibration run.
 
     Args:
-        request (HttpRequest): The request containing either POST data or query parameters.
+        request (Request): The request containing either POST data or query parameters.
 
     Returns:
         Response: A JSON response with gage data, source values, and calibration run status.
@@ -79,11 +80,10 @@ def load_gage_tab(request) -> Response:
     if error_return:
         return error_return
 
-    # Get cached enum values for sources and domains
+    # Retrieve active source and domain options
     forcing_source_values = ForcingSourceEnum.active_choices_with_fields(fields=['name', 'description'])
     observational_source_values = ObservationalSourceEnum.active_choices_with_fields(fields=['name', 'description'])
     geopackage_source_values = GeopackageSourceEnum.active_choices_with_fields(fields=['name', 'description'])
-
     domain_values = DomainEnum.active_choices_with_fields(fields=['name', 'description'])
 
     # Retrieve cached gages with necessary fields
@@ -92,7 +92,8 @@ def load_gage_tab(request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name,
+    response = {'calibration_run_id': run.id,
+                'status': run.status.name,
                 'domain_values': domain_values,
                 'forcing_source_values': forcing_source_values,
                 'observational_source_values': observational_source_values,
@@ -131,12 +132,12 @@ def load_gage_tab(request) -> Response:
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_gage(request) -> Response:
+def get_gage(request: Request) -> Response:
     """
     Retrieves details for a specific gage based on the request data.
 
     Args:
-        request (HttpRequest): The request containing either POST data or query parameters.
+        request (Request): The request containing either POST data or query parameters.
 
     Returns:
         Response: A JSON response with the details of the requested gage.
@@ -179,12 +180,12 @@ def get_gage(request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-def save_gage_tab(request):
+def save_gage_tab(request: Request):
     """
     Saves gage tab data, updating various sources, calibration run status, and handling hydrofabric data.
 
     Args:
-        request (HttpRequest): The request containing POST data to save gage tab information.
+        request (Request): The request containing either POST data or query parameters.
 
     Returns:
         Response: A JSON response confirming the update and reporting any hydrofabric errors.
@@ -412,12 +413,12 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
 )
 @api_view(['POST'])
 @handle_exceptions
-def upload_observational_data(request) -> Response:
+def upload_observational_data(request: Request) -> Response:
     """
     Allows user to upload observational data for a calibration run.
 
     Args:
-        request (HttpRequest): The request containing observational file data.
+        request (Request): The request containing either POST data or query parameters.
 
     Returns:
         Response: A JSON response confirming the upload and reporting any errors if they occur.
@@ -487,12 +488,12 @@ def upload_observational_data(request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-def upload_forcing_data(request) -> Response:
+def upload_forcing_data(request: Request) -> Response:
     """
     Allows user to upload forcing data files for a calibration run.
 
     Args:
-        request (HttpRequest): The request containing forcing file data.
+        request (Request): The request containing either POST data or query parameters.
 
     Returns:
         Response: A JSON response confirming the upload and reporting any errors if they occur.
@@ -576,12 +577,12 @@ def upload_forcing_data(request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-def upload_geopackage_data(request) -> Response:
+def upload_geopackage_data(request: Request) -> Response:
     """
     Allows user to upload a geopackage file for a calibration run.
 
     Args:
-        request (HttpRequest): The request containing geopackage file data.
+        request (Request): The request containing either POST data or query parameters.
 
     Returns:
         Response: A JSON response confirming the upload and including a geopackage image URL if requested.

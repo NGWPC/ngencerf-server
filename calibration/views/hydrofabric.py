@@ -78,22 +78,23 @@ class HydrofabricException(Exception):
 
 
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
-    if settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[0]:
-        logger.info('Getting geopackage from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                                                   source=run.gage.agency,
-                                                                                                   domain=run.gage.domain.name))
-        geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
-    else:
-        logger.info('Getting dummy geopackage data')
-        geopackage_json = hydrofabric_test_data.geopackage_sample_data
+    if run.gage:
+        if settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[0]:
+            logger.info('Getting geopackage from Hydrofabric')
+            url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
+                                                                                                       source=run.gage.agency,
+                                                                                                       domain=run.gage.domain.name))
+            geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
+        else:
+            logger.info('Getting dummy geopackage data')
+            geopackage_json = hydrofabric_test_data.geopackage_sample_data
 
-    hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
-                                              'Geopackage data from Hydrofabric is not in the expected format')
+        hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
+                                                  'Geopackage data from Hydrofabric is not in the expected format')
 
-    s3_uri = hydrofabric_data.get('uri')
-    run.geopackage_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
-    logger.info(f'Setting run.geopackage_hydrofabric_path to {run.geopackage_hydrofabric_file_path}')
+        s3_uri = hydrofabric_data.get('uri')
+        run.geopackage_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
+        logger.info(f'Setting run.geopackage_hydrofabric_path to {run.geopackage_hydrofabric_file_path}')
 
 
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
