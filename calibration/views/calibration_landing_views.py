@@ -11,14 +11,16 @@ from django.db.models.deletion import Collector
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
 from calibration.models import CalibrationRun
+from calibration.run_util.run_common import submit_validation_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
-    CreateValidationRunSerializer, CreateValidationRequestSerializer, \
+    CreateAndRunValidationSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -77,7 +79,7 @@ def create_calibration_run(request) -> Response:
 @extend_schema(
     request=CreateValidationRequestSerializer,
     responses={
-        201: CreateValidationRunSerializer,
+        201: CreateAndRunValidationSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -87,19 +89,19 @@ def create_calibration_run(request) -> Response:
             description="Internal server error"
         )
     },
-    description="Create a new validation for a specific worker_name and iteration"
+    description="Create and run a new validation for a specific worker_name and iteration"
 )
 @api_view(['POST'])
 @handle_exceptions
-def create_validation_run(request) -> Response:
+def create_and_run_validation(request: Request) -> Response:
     """
-    Creates a new validation run for a specified calibration run and iteration.
+    Creates and runs a new validation run for a specified calibration run and iteration.
 
     :param request: The HTTP request object.
     :return: JSON response with validation run details or error information.
     """
     data = request.data
-    logger.debug(f'create_validation_run() request from {request.user.email}')
+    logger.debug(f'create_and_run_validation() request from {request.user.email}')
 
     validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
@@ -108,20 +110,22 @@ def create_validation_run(request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     iteration_id = validator.get('iteration_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
-    validation = create_validation_run_internal(run, iteration_id, validation_type=ValidationType.VALID_ITERATION)
+    validation_run = create_validation_run_internal(calibration_run, iteration_id, validation_type=ValidationType.VALID_ITERATION)
+    submit_validation_job(validation_run)
 
-    response = {'message': f'Validation Run {validation.id} created for Calibration Run {run.id}', 'calibration_run_id': run.id,
-                'validation_run_id': validation.id}
+    response = {'message': f'Validation Run {validation_run.id} created and submit for Calibration Run {calibration_run.id}', 'calibration_run_id': calibration_run.id,
+                'validation_run_id': validation_run.id,
+                'status': validation_run.status.name, 'run_date': validation_run.run_date}
 
-    response_validator, error_response = validate_response(CreateValidationRunSerializer, response)
+    response_validator, error_response = validate_response(CreateAndRunValidationSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from create_validation_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {response_validator.data}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 

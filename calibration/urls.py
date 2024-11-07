@@ -10,7 +10,7 @@ urlpatterns = [
     # Landing page
     ##################################
     path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
-    path('calibration/create_validation_run/', calibration_landing_views.create_validation_run, name="createValidationRun"),
+    path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createValidationRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_calibration_jobs/', calibration_landing_views.get_calibration_jobs, name="getCalibrationJobs"),
     path('calibration/get_calibration_jobs_for_evaluation/', calibration_landing_views.get_calibration_jobs_for_evaluation,
@@ -62,7 +62,6 @@ urlpatterns = [
     ##################################
     path('calibration/get_status/', calibration_run_views.get_status, name="getStatus"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
-    path('calibration/run_validation/', calibration_run_views.run_validation, name="runValidation"),
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),

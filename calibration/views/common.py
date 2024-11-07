@@ -193,7 +193,7 @@ def create_validation_run_internal(
         try:
             iteration_object = Iteration.objects.filter(calibration_run=calibration_run, id=iteration_id).get()
         except Iteration.DoesNotExist:
-            raise CerfException(f"Cannot find Iteration {iteration_id} for Calibration Job {calibration_run.id}")
+            raise CerfException(f"Cannot find Iteration Id {iteration_id} for Calibration Job {calibration_run.id}")
     else:
         iteration_object = None
 

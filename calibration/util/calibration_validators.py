@@ -466,10 +466,12 @@ class CreateCalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CreateValidationRunSerializer(BaseSerializer):
+class CreateAndRunValidationSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     validation_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    run_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
 class GenericMessageResponseSerializer(BaseSerializer):
@@ -697,12 +699,6 @@ class ImportResponseSerializer(GenericResponseSerializer):
 class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
     run_date = serializers.DateTimeField(required=True, allow_null=False)
 
-
-class SubmitValidationJobResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    validation_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
 class GetIterationsResponseSerializer(GenericResponseSerializer):
