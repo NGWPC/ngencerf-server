@@ -5,10 +5,10 @@ import os
 from typing import Tuple
 
 from django.db import transaction
-from django.http import HttpRequest
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['POST'])
 @handle_exceptions
-def import_job(request: HttpRequest) -> Response:
+def import_job(request: Request) -> Response:
     """
     API endpoint to import a calibration job. It validates input data,
     imports calibration run data, and optionally submits a job.
@@ -101,7 +101,7 @@ def import_job(request: HttpRequest) -> Response:
     return Response(response_validator.data)
 
 
-def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[CalibrationRun, dict, ResponseError]:
+def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.
 
@@ -358,7 +358,7 @@ def import_calibration_run_data(request: HttpRequest, calibration_run_data: dict
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def export_job(request: HttpRequest) -> Response:
+def export_job(request: Request) -> Response:
     """
     API endpoint to export calibration job data.
 

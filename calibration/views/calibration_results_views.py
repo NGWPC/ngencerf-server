@@ -2,6 +2,7 @@ import logging
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 @api_view(['POST', 'GET'])
 # @permission_classes([AllowAny])
 @handle_exceptions
-def get_job_results(request):
+def get_job_results(request: Request):
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
     logger.debug(f'get_job_results() request from {request.user.email} - {data}')
