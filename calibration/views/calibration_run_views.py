@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
             description="Internal server error"
         )
     },
-    description="Return the status of a job"
+    description="Return the status of a calibration job and associated validation jobs"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
@@ -58,10 +58,8 @@ def get_status(request):
     if error_return:
         return error_return
 
-    # Find all ValidationRun objects associated with this CalibrationRun where validation_type is 'VALID_CONTROL' or 'VALID_BEST'
-    validation_runs = list(ValidationRun.objects.filter(
-        calibration_run=calibration_run,
-        validation_type__in=[ValidationType.VALID_CONTROL, ValidationType.VALID_BEST])
+    # Find all ValidationRun objects associated with this CalibrationRun
+    validation_runs = list(ValidationRun.objects.filter(calibration_run=calibration_run)
                            .annotate(validation_run_id=F('id'))
                            .values('validation_run_id', 'status__name', 'validation_type'))
 
