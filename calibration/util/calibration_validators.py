@@ -702,7 +702,7 @@ class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
     validation_type = serializers.CharField(required=True)
     run_date = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
-    performance_metrics = PerformanceMetricsSerializer(required=False)
+    performance_metrics = PerformanceMetricsSerializer(required=False, allow_null=True)
 
 
 class GetStatusResponseSerializer(GenericResponseSerializer):
@@ -710,7 +710,7 @@ class GetStatusResponseSerializer(GenericResponseSerializer):
     validations = GetStatusValidationsResponseSerializer(many=True)
     run_date = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
-    performance_metrics = PerformanceMetricsSerializer(required=False)
+    performance_metrics = PerformanceMetricsSerializer(required=False, allow_null=True)
 
 
 class ImportResponseSerializer(GenericResponseSerializer):
