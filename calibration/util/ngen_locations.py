@@ -117,6 +117,10 @@ def get_output_validation_plot_dir(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), 'Plot_Valid')
 
 
+def get_output_validation_iteration_plot_dir(run: CalibrationRun, iteration_num: int, worker_name: str) -> str:
+    return os.path.join(get_output_validation_run_dir(run), f'Plot_Valid_{worker_name}_iter{iteration_num}')
+
+
 def get_full_worker_filename(worker_name: str) -> str:
     return f"ngen_{worker_name}_worker"
 
