@@ -63,6 +63,10 @@ class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class GetStatusRequestSerializer(CalibrationRunSerializer):
+    include_performance_metrics = serializers.BooleanField(required=False, default=False)
+
+
 class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
@@ -682,14 +686,31 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
 ##################################
 # Run Tab
 ##################################
+
+class PerformanceMetricsSerializer(BaseSerializer):
+    elapsed_time = serializers.DurationField(required=True, allow_null=True)
+    num_cpus = serializers.IntegerField(required=True, allow_null=True)
+    cpu_time = serializers.DurationField(required=True, allow_null=True)
+    max_rss = serializers.CharField(max_length=50, required=True, allow_null=True)
+    max_disk_read = serializers.CharField(max_length=50, required=True, allow_null=True)
+    max_disk_write = serializers.CharField(max_length=50, required=True, allow_null=True)
+    reserved_time = serializers.DurationField(required=False, allow_null=True)
+
+
 class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     validation_type = serializers.CharField(required=True)
+    run_date = serializers.DateTimeField(required=False, allow_null=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
 
 
-class IsReadyResponseSerializer(GenericResponseSerializer):
+class GetStatusResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
+    run_date = serializers.DateTimeField(required=False, allow_null=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
 
 
 class ImportResponseSerializer(GenericResponseSerializer):
@@ -699,7 +720,6 @@ class ImportResponseSerializer(GenericResponseSerializer):
 
 class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
     run_date = serializers.DateTimeField(required=True, allow_null=False)
-
 
 
 class GetIterationsResponseSerializer(GenericResponseSerializer):
@@ -866,16 +886,6 @@ class ValidationJobsResponseSerializer(BaseSerializer):
 
 class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
-
-
-class PerformanceMetricsResponseSerializer(GenericResponseSerializer):
-    elapsed_time = serializers.DurationField(required=True)
-    num_cpus = serializers.IntegerField(required=True)
-    cpu_time = serializers.DurationField(required=True)
-    max_rss = serializers.CharField(max_length=50, required=True)
-    max_disk_read = serializers.CharField(max_length=50, required=True)
-    max_disk_write = serializers.CharField(max_length=50, required=True)
-    reserved_time = serializers.DurationField(required=False, allow_null=True)
 
 
 ##################################
