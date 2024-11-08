@@ -74,7 +74,7 @@ urlpatterns = [
     ##################################
     path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration,
          name="getCalibrationDataByIteration"),
-    path('calibration/get_performance_metrics/', calibration_evaluation_views.get_performance_metrics, name="getPerformanceMetrics"),
+
 
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
