@@ -17,7 +17,7 @@ from calibration.run_util.run_common import submit_calibration_job
 from calibration.util import ngen_locations
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
-    ExportResponseSerializer, IsReadyResponseSerializer, ErrorResponseSerializer
+    ExportResponseSerializer,  ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=ImportSerializer,
     responses={
-        200: IsReadyResponseSerializer,
+        200: ImportResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"

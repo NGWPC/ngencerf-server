@@ -8,9 +8,9 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
 from calibration.models import Iteration, IterationParameter, NWMRetrospectiveMetrics, ValidationRun, CalibrationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
-    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
-from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError, \
-    truncate_large_fields, replace_nan_with_none
+    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
+    replace_nan_with_none
 
 logger = logging.getLogger(__name__)
 
@@ -85,15 +85,18 @@ def get_calibration_data_by_iteration(request):
 
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieved', 'objective_function_metric': run.objective_function.name, 'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
+    response = {'message': f'Calibration Run {run.id}, data retrieved', 'objective_function_metric': run.objective_function.name,
+                'iteration_data': iteration_data, 'retrospective_data': retrospective_data}
     # NaN is not valid Json
     response = replace_nan_with_none(response)
 
-    response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response, fields_to_truncate=['iteration_data'], max_length=10)
+    response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response,
+                                                           fields_to_truncate=['iteration_data'], max_length=10)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10)}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10)}')
 
     return Response(response_validator.data)
 
@@ -159,7 +162,8 @@ def get_validation_jobs(request):
     for validation_run in validation_jobs:
         if validation_run.validation_type == ValidationType.VALID_BEST.value:
             # Get all IterationParameters related to the best iteration
-            iteration_params = IterationParameter.objects.filter(iteration__calibration_run=validation_run.calibration_run, iteration__best_params=True)
+            iteration_params = IterationParameter.objects.filter(iteration__calibration_run=validation_run.calibration_run,
+                                                                 iteration__best_params=True)
         else:
             # Get all IterationParameters related to this validation run's Iteration
             iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
@@ -185,66 +189,4 @@ def get_validation_jobs(request):
         return error_response
 
     logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {response_validator.data}')
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: PerformanceMetricsResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Get performance metrics for a calibration run"
-)
-@api_view(['GET', 'POST'])
-@handle_exceptions
-def get_performance_metrics(request):
-    data = request.data
-    logger.debug(f'get_performance_metrics() request from {request.user.email} - {data}')
-
-    # validate request
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    # get performance metrics for calibration run with status DONE
-    calibration_run_id = validator.get('calibration_run_id')
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
-    if error_return:
-        return error_return
-
-    performance_metrics = calibration_run.performance_metrics
-    if not performance_metrics:
-        error_message = f'Calibration Run {calibration_run_id} has no performance metrics'
-        logger.error(error_message)
-        return ResponseError(error_message)
-
-    performance_metrics_fields = [
-        "elapsed_time",
-        "num_cpus",
-        "cpu_time",
-        "max_rss",
-        "max_disk_read",
-        "max_disk_write",
-        "reserved_time"
-    ]
-
-    # construct response
-    response = {field: getattr(performance_metrics, field, None) for field in performance_metrics_fields}
-    response['message'] = f'Calibration Run {calibration_run_id}, performance metrics retrieved'
-    response['calibration_run_id'] = calibration_run.id
-    response['status'] = calibration_run.status.name
-
-    # validate response
-    response_validator, error_response = validate_response(PerformanceMetricsResponseSerializer, response)
-    if error_response:
-        return error_response
-
     return Response(response_validator.data)

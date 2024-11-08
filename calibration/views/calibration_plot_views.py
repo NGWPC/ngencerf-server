@@ -1,4 +1,3 @@
-import csv
 import logging
 import os
 from typing import Any
@@ -292,12 +291,8 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
 
             # Read each file as a DataFrame, apply type inference, and convert to dict
             for file_path in files:
-                try:
-                    df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
-                    plot_data.append(df.to_dict(orient="records"))
-                except FileNotFoundError as e:
-                    logger.error(f"File not found: {file_path}")
-                    continue  # Skip if file is missing
+                df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
+                plot_data.append(df.to_dict(orient="records"))
 
             return plot_data
 
@@ -381,12 +376,8 @@ def load_and_merge_hydrograph_files(file_paths: list[str], column_names: list[st
     """
     dataframes = []
     for file_path, col_name in zip(file_paths, column_names):
-        try:
-            df = read_and_prepare_hydrograph_files(file_path)
-            dataframes.append(df.rename(columns={"value": col_name}))
-        except FileNotFoundError as e:
-            logger.error(f"File missing for hydrograph data: {e}")
-            continue  # Skip missing files
+        df = read_and_prepare_hydrograph_files(file_path)
+        dataframes.append(df.rename(columns={"value": col_name}))
 
     if not dataframes:
         logger.error("No data to merge; all files were missing or empty.")

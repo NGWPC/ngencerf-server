@@ -4,21 +4,22 @@ import os
 import pandas as pd
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import Max, F
+from django.db.models import Max
+from django.forms import model_to_dict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
+from calibration.enums import StatusEnum
 from calibration.models import Iteration, ValidationRun
 from calibration.run_util.run_common import cancel_job_common, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
-from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer
+    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
@@ -28,9 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=GetStatusRequestSerializer,
     responses={
-        200: IsReadyResponseSerializer,
+        200: GetStatusResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -48,46 +49,70 @@ def get_status(request):
     data = request.data
     logger.debug(f'get_status() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(GetStatusRequestSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    include_performance_metrics = validator.get('include_performance_metrics')
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
-    # Find all ValidationRun objects associated with this CalibrationRun
-    validation_runs = list(ValidationRun.objects.filter(calibration_run=calibration_run)
-                           .annotate(validation_run_id=F('id'))
-                           .values('validation_run_id', 'status__name', 'validation_type'))
+    # Function to retrieve performance metrics data or set fields to None if unavailable
+    def get_performance_metrics(performance_metrics):
+        fields = ["elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"]
+        if performance_metrics:
+            return model_to_dict(performance_metrics, fields=fields)
+        return {field: None for field in fields}
 
-    # Create validation response object
+    # Get elapsed time and performance metrics for the calibration run
+    calibration_elapsed_time = calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None
+    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if include_performance_metrics else None
+
+    # Prefetch ValidationRun instances with related PerformanceMetrics data and only needed fields
+    validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
+        "performance_metrics"
+    ).only(
+        "id", "status__name", "validation_type", "run_date",
+        "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
+        "performance_metrics__cpu_time", "performance_metrics__max_rss",
+        "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
+        "performance_metrics__reserved_time"
+    )
+
+    # Build validation response
     validation_response = [
         {
-            'validation_run_id': run['validation_run_id'],
-            'status': run['status__name'],
-            'validation_type': run['validation_type']
+            'validation_run_id': run.id,
+            'status': run.status.name,
+            'validation_type': run.validation_type,
+            'run_date': run.run_date,
+            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None,
+            'performance_metrics': get_performance_metrics(run.performance_metrics) if include_performance_metrics else None
         }
         for run in validation_runs
     ]
-
-    print('validation_runs', validation_response)
 
     messages = None
     if calibration_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
 
-    response = {'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
-                'calibration_run_id': calibration_run.id,
-                'status': calibration_run.status.name,
-                'validations': validation_response
-                }
+    response = {
+        'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
+        'calibration_run_id': calibration_run.id,
+        'status': calibration_run.status.name,
+        'run_date': calibration_run.run_date,
+        'elapsed_time': calibration_elapsed_time,
+        'validations': validation_response
+    }
+    if calibration_metrics is not None:
+        response['performance_metrics'] = calibration_metrics
     if messages:
         response['errors'] = messages
 
-    response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from get_status() - {response_validator.data}')
