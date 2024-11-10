@@ -5,6 +5,7 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import transaction, router
 from django.db.models import F, Q, Count
 from django.db.models.deletion import Collector
@@ -286,24 +287,37 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
     runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
 
     # Define the fields for selection
-    default_fields = ['id', 'gage__gage_id', 'run_date', 'formulation_name', 'calibration_start_period', 'calibration_end_period', 'status__name',
-                      'job_genesis']
+    default_fields = [
+        'id', 'gage__gage_id', 'run_date', 'formulation_name',
+        'calibration_start_period', 'calibration_end_period',
+        'status__name', 'job_genesis'
+    ]
     additional_fields = ['objective_function__name', 'optimization__name']
 
     selected_fields = default_fields
 
-    # If including validations, add additional fields and annotate validation count
+    # If including validations, define validation filter condition and annotations
     if include_validations:
         selected_fields = default_fields + additional_fields
-        # Add validation_runs_count if include_validations is True.  Don't include the Control run
+
+        # Define the filter condition for validation jobs with status DONE and excluding VALID_CONTROL
+        done_status_instance = StatusEnum.from_enum(StatusEnum.DONE)
+        validation_filter_condition = Q(validations__status=done_status_instance) & ~Q(validations__validation_type=ValidationType.VALID_CONTROL.value)
+
+        # If including validations, add list of validation_ids and count them in Python
+        # Filter out any jobs with no validation runs
         runs_query = runs_query.annotate(
-            validation_runs_count=Count('validations', filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value))
-        ).filter(validation_runs_count__gt=0)
-        selected_fields.append('validation_runs_count')
+            validation_run_ids=ArrayAgg(
+                'validations__id',
+                filter=validation_filter_condition,
+                distinct=True
+            )
+        ).filter(validation_run_ids__isnull=False)
+        selected_fields.append('validation_run_ids')
 
     runs = runs_query.values(*selected_fields)
 
-    # Process the results to map the final field names
+    # Process the results to map the final field names and calculate the count of validation runs
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
@@ -312,7 +326,8 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
         if include_validations:
             r['objective_function'] = r.pop('objective_function__name')
             r['optimization_algorithm'] = r.pop('optimization__name')
-            r['validation_runs'] = r.pop('validation_runs_count', 0)
+            r['validation_run_ids'] = r.pop('validation_run_ids', [])
+            r['validation_runs'] = len(r['validation_run_ids'])  # Count the validation runs
 
     return list(runs)
 

@@ -286,6 +286,7 @@ class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSeri
     objective_function = serializers.CharField(required=False, allow_null=False)
     optimization_algorithm = serializers.CharField(required=False, allow_null=False)
     validation_runs = serializers.IntegerField(required=False)
+    validation_run_ids = serializers.ListSerializer(child=serializers.IntegerField())
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
