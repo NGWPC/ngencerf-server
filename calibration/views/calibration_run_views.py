@@ -60,18 +60,19 @@ def get_status(request):
     if error_return:
         return error_return
 
-    # Function to retrieve performance metrics data or set fields to None if unavailable
+    # Helper function to retrieve performance metrics if available
     def get_performance_metrics(performance_metrics):
         fields = ["elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"]
         return model_to_dict(performance_metrics, fields=fields) if performance_metrics else {field: None for field in fields}
 
-    # Get elapsed time for the calibration run
-    calibration_elapsed_time = calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None
+    # Check if the job's status allows retrieving performance metrics
+    def should_include_metrics(status):
+        return include_performance_metrics and status in [StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.FAILED)]
 
-    # Conditionally retrieve calibration run performance metrics
-    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if include_performance_metrics else None
+    # Conditionally retrieve calibration performance metrics
+    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status) else None
 
-    # Prefetch ValidationRun instances with related PerformanceMetrics data
+    # Retrieve validation runs with related PerformanceMetrics data
     validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
         "performance_metrics"
     ).only(
@@ -82,7 +83,7 @@ def get_status(request):
         "performance_metrics__reserved_time"
     )
 
-    # Build validation response with optional performance metrics
+    # Construct validation response with performance metrics as needed
     validation_response = []
     for run in validation_runs:
         validation_data = {
@@ -92,23 +93,22 @@ def get_status(request):
             'run_date': run.run_date,
             'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
-        # Add performance_metrics only if the flag is True
-        if include_performance_metrics:
+        if should_include_metrics(run.status):
             validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
         validation_response.append(validation_data)
 
-    # Prepare the main response without performance metrics if not requested
+    # Prepare the main response without calibration performance metrics if not requested
     response = {
         'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'run_date': calibration_run.run_date,
-        'elapsed_time': calibration_elapsed_time,
+        'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
         'validations': validation_response
     }
 
-    # Add calibration run performance metrics to the response if requested
-    if include_performance_metrics and calibration_metrics:
+    # Conditionally add calibration run performance metrics to response if requested and status is DONE or FAIL
+    if calibration_metrics:
         response['performance_metrics'] = calibration_metrics
 
     # Add error messages if applicable
