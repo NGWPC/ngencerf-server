@@ -881,6 +881,7 @@ class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSeri
 class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
     best = serializers.BooleanField(required=True)
 

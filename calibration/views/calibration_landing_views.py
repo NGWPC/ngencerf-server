@@ -360,6 +360,7 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
         result.append({
             'validation_run_id': validation_run.id,
             'run_date': validation_run.run_date,
+            'status': validation_run.status.name,
             'parameters': params_list,
             'best': validation_run.validation_type == ValidationType.VALID_BEST.value
         })
