@@ -5,9 +5,8 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.postgres.aggregates import ArrayAgg
 from django.db import transaction, router
-from django.db.models import F, Q, Count
+from django.db.models import F, Q
 from django.db.models.deletion import Collector
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
@@ -16,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, ValidationRun, IterationParameter
 from calibration.run_util.run_common import submit_validation_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
@@ -50,7 +49,7 @@ User = get_user_model()
 )
 @api_view(['POST'])
 @handle_exceptions
-def create_calibration_run(request) -> Response:
+def create_calibration_run(request: Request) -> Response:
     """
     Handles creating a new calibration run for the requesting user.
 
@@ -98,7 +97,7 @@ def create_and_run_validation(request: Request) -> Response:
     """
     Creates and runs a new validation run for a specified calibration run and iteration.
 
-    :param request: The HTTP request object.
+    :param request: The HTTP request object containing calibration and iteration details.
     :return: JSON response with validation run details or error information.
     """
     data = request.data
@@ -118,9 +117,13 @@ def create_and_run_validation(request: Request) -> Response:
     validation_run = create_validation_run_internal(calibration_run, iteration_id, validation_type=ValidationType.VALID_ITERATION)
     submit_validation_job(validation_run)
 
-    response = {'message': f'Validation Run {validation_run.id} created and submit for Calibration Run {calibration_run.id}', 'calibration_run_id': calibration_run.id,
-                'validation_run_id': validation_run.id,
-                'status': validation_run.status.name, 'run_date': validation_run.run_date}
+    response = {
+        'message': f'Validation Run {validation_run.id} created and submitted for Calibration Run {calibration_run.id}',
+        'calibration_run_id': calibration_run.id,
+        'validation_run_id': validation_run.id,
+        'status': validation_run.status.name,
+        'run_date': validation_run.run_date
+    }
 
     response_validator, error_response = validate_response(CreateAndRunValidationSerializer, response)
     if error_response:
@@ -147,7 +150,7 @@ def create_and_run_validation(request: Request) -> Response:
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def get_calibration_jobs_for_evaluation(request) -> Response:
+def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     """
     Retrieves calibration jobs that are either DONE or FAILED for evaluation purposes.
 
@@ -169,8 +172,8 @@ def get_calibration_jobs_for_evaluation(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs_for_evaluation() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+    logger.debug(f'Returning to {request.user.email} from get_calibration_jobs_for_evaluation() - '
+                 f'{truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -192,16 +195,15 @@ def get_calibration_jobs_for_evaluation(request) -> Response:
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def get_calibration_jobs_for_forecast(request):
+def get_calibration_jobs_for_forecast(request: Request) -> Response:
     """
-    Return only DONE jobs for forecasting
+    Returns only DONE calibration jobs for forecasting purposes.
+
+    :param request: The HTTP request object.
+    :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_calibration_jobs_for_forecast() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(EmptySerializer, data)
-    if error_return:
-        return error_return
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -280,11 +282,7 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
         model_status_values = [StatusEnum.from_enum(status_enum) for status_enum in run_status]
         query &= Q(status__in=model_status_values)
 
-    # Base query without extra info
-    runs_query = CalibrationRun.objects.filter(query)
-
-    # Annotate fields to rename 'user_formulation_name' to 'formulation_name'
-    runs_query = runs_query.annotate(formulation_name=F('user_formulation_name'))
+    runs_query = CalibrationRun.objects.filter(query).annotate(formulation_name=F('user_formulation_name'))
 
     # Define the fields for selection
     default_fields = [
@@ -298,26 +296,15 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 
     # If including validations, define validation filter condition and annotations
     if include_validations:
-        selected_fields = default_fields + additional_fields
+        selected_fields += additional_fields
+        runs = list(runs_query.values(*selected_fields))
+        for r in runs:
+            r['validation_run_ids'] = get_validation_jobs_internal(r['id'], return_ids_only=True)
+            r['validation_runs'] = len(r['validation_run_ids'])  # Count the validation runs
 
-        # Define the filter condition for validation jobs with status DONE and excluding VALID_CONTROL
-        done_status_instance = StatusEnum.from_enum(StatusEnum.DONE)
-        validation_filter_condition = Q(validations__status=done_status_instance) & ~Q(validations__validation_type=ValidationType.VALID_CONTROL.value)
+    else:
+        runs = list(runs_query.values(*selected_fields))
 
-        # If including validations, add list of validation_ids and count them in Python
-        # Filter out any jobs with no validation runs
-        runs_query = runs_query.annotate(
-            validation_run_ids=ArrayAgg(
-                'validations__id',
-                filter=validation_filter_condition,
-                distinct=True
-            )
-        ).filter(validation_run_ids__isnull=False)
-        selected_fields.append('validation_run_ids')
-
-    runs = runs_query.values(*selected_fields)
-
-    # Process the results to map the final field names and calculate the count of validation runs
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
@@ -326,10 +313,58 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
         if include_validations:
             r['objective_function'] = r.pop('objective_function__name')
             r['optimization_algorithm'] = r.pop('optimization__name')
-            r['validation_run_ids'] = r.pop('validation_run_ids', [])
-            r['validation_runs'] = len(r['validation_run_ids'])  # Count the validation runs
 
-    return list(runs)
+    return runs
+
+
+def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool = True) -> list[dict[str, any]] | list[int]:
+    """
+    Retrieves validation jobs for a specific calibration run based on common conditions.
+
+    :param calibration_run_id: ID of the calibration run to get validation jobs for.
+    :param return_ids_only: If True, returns only validation job IDs. If False, returns a list of dicts with detailed fields.
+    :return: List of validation job IDs or a list of dicts with validation job details.
+    """
+    # Define the filter condition for DONE or RUNNING statuses, excluding VALID_CONTROL
+    validation_filter_condition = (
+            Q(status__in=[StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.RUNNING)]) &
+            ~Q(validation_type=ValidationType.VALID_CONTROL.value)
+    )
+
+    # Base query for validation jobs associated with the specified calibration run
+    validation_jobs_query = ValidationRun.objects.filter(calibration_run_id=calibration_run_id).filter(validation_filter_condition)
+
+    if return_ids_only:
+        # Return a list of validation job IDs only
+        return list(validation_jobs_query.values_list('id', flat=True))
+
+    # Otherwise, return detailed information for each validation job
+    result = []
+    for validation_run in validation_jobs_query:
+        # Retrieve parameters based on whether this is the "best" iteration
+        if validation_run.validation_type == ValidationType.VALID_BEST.value:
+            iteration_params = IterationParameter.objects.filter(
+                iteration__calibration_run=validation_run.calibration_run,
+                iteration__best_params=True
+            )
+        else:
+            iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
+
+        # Format parameters as a list of dicts
+        params_list = [
+            {'name': param['calibration_parameter__name'], 'value': param['tuned_value']}
+            for param in iteration_params.values('calibration_parameter__name', 'tuned_value')
+        ]
+
+        # Append detailed information for each validation job
+        result.append({
+            'validation_run_id': validation_run.id,
+            'run_date': validation_run.run_date,
+            'parameters': params_list,
+            'best': validation_run.validation_type == ValidationType.VALID_BEST.value
+        })
+
+    return result
 
 
 @extend_schema(
@@ -345,7 +380,13 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def get_footer(request):
+def get_footer(request: Request) -> Response:
+    """
+    Retrieve footer data such as version and contact email.
+
+    :param request: The HTTP request object.
+    :return: A Response object with version and contact information.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_footer() request from {request.user.email} - {data}')
 
@@ -380,7 +421,7 @@ def get_footer(request):
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def load_calibration_run(request) -> Response:
+def load_calibration_run(request: Request) -> Response:
     """
     Load all data for a previously saved calibration run.
 
@@ -431,7 +472,7 @@ def load_calibration_run(request) -> Response:
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def clone_job(request) -> Response:
+def clone_job(request: Request) -> Response:
     """
     Clone an existing calibration run job, creating a new calibration run with identical parameters.
 
@@ -497,7 +538,7 @@ def clone_job(request) -> Response:
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def delete_job(request) -> Response:
+def delete_job(request: Request) -> Response:
     """
     Delete a calibration run job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
 
