@@ -12,7 +12,7 @@ from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
 from calibration.models import CalibrationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
-    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationRunSerializer
+    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     get_validation_metrics_valid_best_file, get_validation_metrics_nwm_retrospective_file, get_validation_metrics_valid_control_file, \
