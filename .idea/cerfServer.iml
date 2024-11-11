@@ -19,6 +19,7 @@
       <excludePattern pattern=".$delete_me.venv" />
       <excludePattern pattern=".venv-cerf" />
       <excludePattern pattern="cerfServer.*.log" />
+      <excludePattern pattern="*.log" />
       <excludePattern pattern="cerfServer.log" />
       <excludePattern pattern="migrations" />
       <excludePattern pattern="createInput" />
