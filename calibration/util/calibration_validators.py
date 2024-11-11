@@ -881,6 +881,7 @@ class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSeri
 class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=True)
+    validation_type = serializers.CharField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
     best = serializers.BooleanField(required=True)
@@ -888,6 +889,23 @@ class ValidationJobsResponseSerializer(BaseSerializer):
 
 class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
+
+#
+# class GetLogsValidationEntrySerializer(BaseSerializer):
+#     log = serializers.ListField(child=serializers.CharField(), required=True, allow_empty=True)
+
+
+class GetLogsValidations(BaseSerializer):
+    validation_job_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    validation_type = serializers.CharField(required=True)
+    log = serializers.ListField(child=serializers.CharField(), required=True, allow_empty=True)
+
+
+class GetLogsResponseSerializer(GenericResponseSerializer):
+    validation_run_id = serializers.IntegerField(required=False)
+    validations = GetLogsValidations(many=True, required=True)
+    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=False, allow_empty=True)
 
 
 ##################################

@@ -164,7 +164,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, include_validations=True, run_status=[StatusEnum.DONE, StatusEnum.FAILED])
+    jobs = get_jobs(request.user, include_validations=True, run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
 
     response = {'jobs': jobs}
 
@@ -361,6 +361,7 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
             'validation_run_id': validation_run.id,
             'run_date': validation_run.run_date,
             'status': validation_run.status.name,
+            'validation_type': validation_run.validation_type,
             'parameters': params_list,
             'best': validation_run.validation_type == ValidationType.VALID_BEST.value
         })
