@@ -226,7 +226,7 @@ translation_map = {
     "soil_params.b": "b",
     "soil_params.satdk": "satdk",
     "soil_params.satpsi": "satpsi",
-    "soil_params.slop": "slop",
+    "soil_params.slop": "slope",
     "soil_params.smcmax": "smcmax",
     "CWPVT": "CWP",
     "K_lf": "Klf",
