@@ -21,9 +21,24 @@ if [ "${CERF_VENV}" != "Docker" ]; then
     if [ -n "${CERF_VENV}" ]; then
        # shellcheck disable=SC1090
        source "$cerfServer/${CERF_VENV}/bin/activate"
+
+       # Install all requirements
+       echo "Installing requirements.txt"
        pip install -r requirements.txt
+       echo
+
+      echo "Installing createInput"
+       # Doing a  pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
+       if pip show "createInput" > /dev/null 2>&1; then
+           # Package is installed, reinstall without dependencies
+           pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput"
+       else
+           # Package is not installed, install with dependencies
+           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput"
+       fi
     else
        echo "CERF_VENV is not set. Please set the virtual environment variable."
+       exit 1
     fi
 fi
 
