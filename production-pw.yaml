@@ -15,7 +15,7 @@ services:
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
       - ../data/ngen-cal-data:/ngencerf/data/
-      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
+      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/run-logs/
     env_file:
       - path: ./ngencerf_services.env
         required: true 
