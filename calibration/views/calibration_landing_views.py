@@ -288,7 +288,7 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
     default_fields = [
         'id', 'gage__gage_id', 'run_date', 'formulation_name',
         'calibration_start_period', 'calibration_end_period',
-        'status__name', 'job_genesis'
+        'status__name', 'job_genesis', 'created_at'
     ]
     additional_fields = ['objective_function__name', 'optimization__name']
 

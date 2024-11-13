@@ -273,6 +273,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=True, allow_null=True)
     job_genesis = serializers.CharField(required=True, validators=[enum_validator(JobGenesis)])
+    created_at = serializers.DateTimeField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
@@ -281,8 +282,6 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
-    gage_id = serializers.CharField(required=True, allow_null=True)
-    job_genesis = serializers.CharField(required=True, validators=[enum_validator(JobGenesis)])
     objective_function = serializers.CharField(required=False, allow_null=False)
     optimization_algorithm = serializers.CharField(required=False, allow_null=False)
     validation_runs = serializers.IntegerField(required=False)
