@@ -889,10 +889,6 @@ class ValidationJobsResponseSerializer(BaseSerializer):
 class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
-#
-# class GetLogsValidationEntrySerializer(BaseSerializer):
-#     log = serializers.ListField(child=serializers.CharField(), required=True, allow_empty=True)
-
 
 class GetLogsValidations(BaseSerializer):
     validation_job_id = serializers.IntegerField(required=True)

@@ -8,6 +8,7 @@ from .calibration_sloth_param import CalibrationSlothParam
 from .calibration_stop_criteria import CalibrationStopCriteria
 from .domain import Domain
 from .forcing_source import ForcingSource
+from .forecast_cycle import ForecastCycle
 from .gage import Gage
 from .geopackage_source import GeopackageSource
 from .iteration import Iteration

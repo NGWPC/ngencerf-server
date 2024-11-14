@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand
 
 from calibration.enums import DataTypeEnum
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
-    GeopackageSource
+    GeopackageSource, ForecastCycle
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
@@ -50,6 +50,7 @@ class Command(BaseCommand):
         self.define_forcing_source()
         self.define_observational_source()
         self.define_geopackage_source()
+        self.define_forecast_cycle()
         self.define_optimization()
         self.define_metric()
         self.define_status()
@@ -193,7 +194,7 @@ class Command(BaseCommand):
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Agency", "description": "From the owning agency", "is_active": True},
+                  {"name": "Data Services", "description": "NGWPC Enterprise Data Services", "is_active": True},
                   {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
@@ -216,6 +217,23 @@ class Command(BaseCommand):
                                                       defaults={"is_active": v.get('is_active', True),
                                                                 "description": v['description'],
                                                                 "created_by": self.user})
+
+    def define_forecast_cycle(self):
+        if self.DELETE_FLAG:
+            ForecastCycle.objects.all().delete()
+
+        values = [{"name": "Short Range Forecast", "description": "to be provided", "is_active": True},
+                  {"name": "Extended AnA", "description": "to be provided", "is_active": True},
+                  {"name": "Medium Range Forecast", "description": "to be provided", "is_active": True},
+                  {"name": "Long Range AnA", "description": "to be provided", "is_active": True},
+                  {"name": "Long Range Forecast", "description": "to be provided", "is_active": True},
+                  ]
+
+        for v in values:
+            ForecastCycle.objects.update_or_create(name=v['name'],
+                                                   defaults={"is_active": v.get('is_active', True),
+                                                             "description": v['description'],
+                                                             "created_by": self.user})
 
     def define_optimization(self):
         if self.DELETE_FLAG:
