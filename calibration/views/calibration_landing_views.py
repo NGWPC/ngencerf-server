@@ -10,7 +10,8 @@ from django.db.models import F, Q
 from django.db.models.deletion import Collector
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -382,6 +383,7 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
+@permission_classes([AllowAny])
 def get_footer(request: Request) -> Response:
     """
     Retrieve footer data such as version and contact email.
