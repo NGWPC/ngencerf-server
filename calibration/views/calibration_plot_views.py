@@ -3,8 +3,10 @@ import os
 from typing import Any
 
 import pandas as pd
-from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -38,9 +40,6 @@ logger = logging.getLogger(__name__)
             description="Internal server error"
         )
     },
-    parameters=[
-        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
-    ],
     description="Get a list of plot names"
 )
 @api_view(['GET', 'POST'])
@@ -114,16 +113,13 @@ def png_to_base64_url(png):
             description="Internal server error"
         )
     },
-    parameters=[
-        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
-    ],
-    description="Return a base64 url for a plot image"
+    description="Return a base64 URL for a plot image and the associated data"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_plot(request: Request) -> Response:
     """
-    Retrieves a specific plot for a calibration run or validation run, returning the plot file location and optional data.
+    Retrieves a specific plot for a calibration run or validation run, returning the plot file location and optional data with pagination support.
     If a calibration_run_id is given, then we can retrieve plots for the calibration run or the validation best run.
     If a validation_run_id is given, then we can retrieve plots for that specific validation run as well as the calibration run.
 
@@ -144,6 +140,20 @@ def get_plot(request: Request) -> Response:
     validation_run_id = validator.get('validation_run_id')
     plot_name = validator.get('plot_name')
     include_data = validator.get('include_data')
+    page = validator.get('page')
+    page_size = validator.get('page_size')
+
+    # Replace spaces with underscores in plot_name to avoid CacheKeyWarning
+    sanitized_plot_name = plot_name.replace(" ", "_")
+    # Base cache key common part
+    cache_key_base = f"{sanitized_plot_name}_{calibration_run_id or validation_run_id}"
+    cache_key_plot_data = f"plot_data_{cache_key_base}"
+    cache_key_plot_url = f"plot_url_{cache_key_base}"
+
+    # Try to retrieve cached data once
+    cached_plot_data = cache.get(cache_key_plot_data)
+    plot_url = cache.get(cache_key_plot_url)
+    plot_file_name = None
 
     # Select the correct function and retrieve the run object
     run_func = get_calibration_run if calibration_run_id else get_validation_run
@@ -155,73 +165,120 @@ def get_plot(request: Request) -> Response:
 
     # Identify the associated calibration run, handling both calibration and validation cases
     calibration_run = run if calibration_run_id else run.calibration_run
-    gage_id = calibration_run.gage.gage_id
 
-    # Fetch plot definition based on plot name and calibration run specifics
-    plot_definition = get_filtered_plot_definitions(calibration_run, plot_name=plot_name, first_match=True)
-    if not plot_definition:
-        return ResponseError(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
+    # Process if cache is empty
+    if cached_plot_data is None:
+        gage_id = calibration_run.gage.gage_id
 
-    job_description = get_job_description(run)
+        # Fetch plot definition based on plot name and calibration run specifics
+        plot_definition = get_filtered_plot_definitions(calibration_run, plot_name=plot_name, first_match=True)
+        if not plot_definition:
+            return ResponseError(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
 
-    # Determine the appropriate plot location based on validation or calibration type
-    match plot_definition['location']:
-        case 'plot_valid':
-            if calibration_run_id or run.validation_type != ValidationType.VALID_ITERATION.value:
-                location = get_output_validation_plot_dir(calibration_run)
-            else:
-                location = get_output_validation_iteration_plot_dir(
-                    calibration_run, run.iteration.iteration_num, run.iteration.worker_name
-                )
+        # Determine the appropriate plot location based on validation or calibration type
+        match plot_definition['location']:
+            case 'plot_valid':
+                if calibration_run_id or run.validation_type != ValidationType.VALID_ITERATION.value:
+                    location = get_output_validation_plot_dir(calibration_run)
+                else:
+                    location = get_output_validation_iteration_plot_dir(
+                        calibration_run, run.iteration.iteration_num, run.iteration.worker_name
+                    )
 
-        case 'output_calibration':
-            location = get_output_calibration_run_dir(calibration_run)
+            case 'output_calibration':
+                location = get_output_calibration_run_dir(calibration_run)
 
-        case 'plot_iteration':
-            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            if worker_dir is None:
-                return ResponseError(f'Plots could not be found for {job_description}')
-            location = os.path.join(worker_dir, 'Plot_Iteration')
+            case 'plot_iteration':
+                worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+                if worker_dir is None:
+                    return ResponseError(f'Plots could not be found for {get_job_description(run)}')
+                location = os.path.join(worker_dir, 'Plot_Iteration')
 
-        case _:
-            # Default case (if no match is found)
-            return ResponseError(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
+            case _:
+                # Default case (if no match is found)
+                return ResponseError(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
 
-    # Formulate the full path for the plot file
-    plot_file_name = plot_definition['filename_mask'].format(gage_id=gage_id)
-    plot_file_path = os.path.join(location, plot_file_name)
+        # Formulate the full path for the plot file
+        plot_file_name = plot_definition['filename_mask'].format(gage_id=gage_id)
+        plot_file_path = os.path.join(location, plot_file_name)
 
-    if not os.path.exists(plot_file_path):
-        return ResponseError(f"Plot {plot_file_path} not found at expected location")
+        if not os.path.exists(plot_file_path):
+            return ResponseError(f"Plot {plot_file_path} not found at expected location")
 
-    plot_url = png_to_base64_url(plot_file_path)
+        plot_url = png_to_base64_url(plot_file_path)
+        logger.info(f'Retrieving plot {plot_file_name} from {plot_file_path}')
 
-    logger.info(f'Retrieving plot {plot_file_name} from {plot_file_path}')
+        # Retrieve and cache plot data if `include_data` is True
+        plot_data = get_plot_data(calibration_run, plot_definition) if include_data else None
+        cache.set(cache_key_plot_data, plot_data, timeout=3600)  # Cache data for 1 hour
+        cache.set(cache_key_plot_url, plot_url, timeout=3600)  # Cache URL for 1 hour
+    else:
+        plot_data = cached_plot_data
 
-    plot_data = get_plot_data(calibration_run, plot_definition) if include_data else None
+    # Handle pagination if `include_data` is True
+    paginated_data = None
+    if include_data:
+        if not plot_data:
+            logger.warning(f"Data not available for {plot_name}")
+        else:
+            paginator = PlotDataPagination(page=page, page_size=page_size)
+            paginated_data = paginator.paginate_queryset(plot_data, request)
+            paginated_data = replace_nan_with_none(paginated_data) if paginated_data else []
 
     response = {
         'calibration_run_id': calibration_run.id,
-        'plot_name': plot_definition['name'],
-        'plot_file_name': plot_file_name,
-        'plot_url': plot_url
+        'plot_name': plot_name,
     }
+
+    # Include plot_url and plot_file_name only if we just retrieved it and set it in cache
+    if cached_plot_data is None:
+        response['plot_url'] = plot_url
+        if plot_file_name:
+            response['plot_file_name'] = plot_file_name
+
     if validation_run_id:
         response['validation_run_id'] = validation_run_id
     if include_data:
-        if not plot_data:
-            logger.warning(f"Data not available for {plot_definition['name']}")
+        response['plot_data'] = paginated_data if paginated_data else replace_nan_with_none(plot_data)
 
-        # NaN is not valid Json
-        response['plot_data'] = replace_nan_with_none(plot_data)
-
-    response_validator, error_response = validate_response(GetPlotResponseSerializer, response, fields_to_truncate=['plot_url', 'plot_data'])
+    response_validator, error_response = validate_response(
+        GetPlotResponseSerializer, response,
+        fields_to_truncate=['plot_url', 'plot_data'], max_length=10
+    )
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"])}')
+        f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10)}')
 
     return Response(response_validator.data)
+
+
+class PlotDataPagination(PageNumberPagination):
+    def __init__(self, page=1, page_size=100):
+        super().__init__()
+        self.page_number = page
+        self.page_size = page_size
+
+    def paginate_queryset(self, queryset, request, view=None):
+        # Manually set the page number and page size for pagination
+        request.query_params._mutable = True
+        request.query_params['page'] = self.page_number
+        request.query_params['page_size'] = self.page_size
+        request.query_params._mutable = False
+
+        # Call the parent paginate_queryset method, which now uses our custom page and page_size
+        return super().paginate_queryset(queryset, request, view)
+
+    def get_paginated_response(self, data):
+
+        return Response({
+            'count': self.page.paginator.count,
+            'total_pages': self.page.paginator.num_pages,
+            'current_page': self.page.number,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'results': data
+        })
 
 
 def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[Any]:
