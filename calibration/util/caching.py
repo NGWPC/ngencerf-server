@@ -22,7 +22,7 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
 CACHED_GAGES_KEY = 'cached_gages'
 
 
-def get_cached_gages() -> dict:
+def get_cached_gages() -> dict[str, dict]:
     """
     Retrieves all active gages from the cache or the database if not cached.
     :return: A dictionary of gages with gage_id as the key and gage details as values.
@@ -39,7 +39,7 @@ def get_cached_gages() -> dict:
         for gage in gages_lookup.values():
             gage['domain'] = gage.pop('domain__name')
 
-        cache.set('cached_gages', gages_lookup, timeout=None)
+        cache.set(CACHED_GAGES_KEY, gages_lookup, timeout=None)
     return gages_lookup
 
 
@@ -73,7 +73,7 @@ def get_metrics_lookup() -> dict:
     if not metrics_lookup:
         # Fetch from the database and cache the results
         metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
-        cache.set('metrics_cache', metrics_lookup, None)  # Cache indefinitely
+        cache.set(METRICS_LOOKUP_KEY, metrics_lookup, None)  # Cache indefinitely
     return metrics_lookup
 
 

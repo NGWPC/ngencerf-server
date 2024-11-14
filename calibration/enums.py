@@ -2,7 +2,7 @@ from typing import Dict, Any, Type
 
 from django.core.cache import cache
 
-from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition, ForecastCycle
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -42,7 +42,7 @@ class ForcingSourceEnum(AbstractEnum):
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
-        # Apply the filter to only return active statuses
+        # Apply the filter to return only active elements
         return {'is_active': True}
 
 
@@ -64,7 +64,7 @@ class ObservationalSourceEnum(AbstractEnum):
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
-        # Apply the filter to only return active statuses
+        # Apply the filter to return only active elements
         return {'is_active': True}
 
 
@@ -86,7 +86,22 @@ class GeopackageSourceEnum(AbstractEnum):
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
-        # Apply the filter to only return active statuses
+        # Apply the filter to return only active elements
+        return {'is_active': True}
+
+
+class ForecastCycleEnum(AbstractEnum):
+    """
+    Enum for Forecast Cycles,
+    """
+
+    @classmethod
+    def get_model(cls) -> Type[ForecastCycle]:
+        return ForecastCycle
+
+    @classmethod
+    def get_filter(cls) -> Dict[str, Any]:
+        # Apply the filter to return only active elements
         return {'is_active': True}
 
 

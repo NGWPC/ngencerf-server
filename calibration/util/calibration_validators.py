@@ -5,7 +5,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum
 
 
 class BaseSerializer(serializers.Serializer):
@@ -739,6 +739,18 @@ class GetJobDirResponseSerializer(GenericResponseSerializer):
 
 
 ##################################
+# Formulation Tab
+##################################
+class ForecastCycleSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
+    description = serializers.CharField(required=True)
+
+
+class LoadForecastTabResponseSerializer(BaseSerializer):
+    forecast_cycle_values = ForecastCycleSerializer(many=True)
+
+
+##################################
 # Import/Export
 ##################################
 # All fields are required, so that the user can see what is missing.
@@ -889,10 +901,6 @@ class ValidationJobsResponseSerializer(BaseSerializer):
 class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
-#
-# class GetLogsValidationEntrySerializer(BaseSerializer):
-#     log = serializers.ListField(child=serializers.CharField(), required=True, allow_empty=True)
-
 
 class GetLogsValidations(BaseSerializer):
     validation_job_id = serializers.IntegerField(required=True)
@@ -904,7 +912,8 @@ class GetLogsValidations(BaseSerializer):
 class GetLogsResponseSerializer(GenericResponseSerializer):
     validation_run_id = serializers.IntegerField(required=False)
     validations = GetLogsValidations(many=True, required=True)
-    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=False, allow_empty=True)
+    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=False,
+                                 allow_empty=True)
 
 
 ##################################
