@@ -10,7 +10,6 @@ observational_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
 }
 
-
 hydrofabric_module_metadata_real_data = {
     "modules": [
         {
@@ -518,7 +517,187 @@ hydrofabric_module_metadata_real_data = {
                 }
             ]
         },
-    
+
+        {
+            "module_name": "Sac-SMA",
+            "parameter_file": {
+                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/Sac-SMA/2024_Nov_14_15_58_57"
+            },
+            "calibrate_parameters": [
+                {
+                    "name": "uztwm",
+                    "initial_value": "53.633659362793",
+                    "description": "upper zone tension water maximum storage",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "mm"
+                },
+                {
+                    "name": "uzfwm",
+                    "initial_value": "49.4127578735352",
+                    "description": "Maximum upper zone free water",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "mm"
+                },
+                {
+                    "name": "lztwm",
+                    "initial_value": "167.917007446289",
+                    "description": "Maximum lower zone tension water",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "mm"
+                },
+                {
+                    "name": "lzfsm",
+                    "initial_value": "12.5138731002808",
+                    "description": "Maximum lower zone free water, secondary (aka supplemental)",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "mm"
+                },
+                {
+                    "name": "lzfpm",
+                    "initial_value": "179.637054443359",
+                    "description": "Maximum lower zone free water, primary",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "mm"
+                },
+                {
+                    "name": "adimp",
+                    "initial_value": "0.0",
+                    "description": "Additional impervious area due to saturation",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "decimal percent"
+                },
+                {
+                    "name": "uzk",
+                    "initial_value": "0.504685878753662",
+                    "description": "Upper zone recession coefficient",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "per day "
+                },
+                {
+                    "name": "lzpk",
+                    "initial_value": "0.0421152859926224",
+                    "description": "Lower zone recession coefficient, primary",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "decimal percent"
+                },
+                {
+                    "name": "lzsk",
+                    "initial_value": "0.177162826061249",
+                    "description": "Lower zone recession coefficient, secondary (aka supplemental)",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "decimal percent"
+                },
+                {
+                    "name": "zperc",
+                    "initial_value": "46.9980163574219",
+                    "description": "Minimum percolation rate coefficient",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": None
+                },
+                {
+                    "name": "rexp",
+                    "initial_value": "1.38430523872375",
+                    "description": "Percolation equation exponent",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": None
+                },
+                {
+                    "name": "pctim",
+                    "initial_value": "0.0",
+                    "description": "impervious  fraction of the watershed area ",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "decimal percent"
+                },
+                {
+                    "name": "pfree",
+                    "initial_value": "0.0709966793656349",
+                    "description": "fraction of water percolating from upper zone directly to lower zone free water storage. ",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "decimal percent"
+                },
+                {
+                    "name": "riva",
+                    "initial_value": "0.0",
+                    "description": "Percent of the basin that is riparian area",
+                    "min": None,
+                    "max": None,
+                    "data_type": None,
+                    "units": "decimal percent"
+                }
+            ],
+            "output_variables": [
+                {
+                    "variable": "baseflow non-channel component ",
+                    "description": "baseflow non-channel component "
+                },
+                {
+                    "variable": "bfp",
+                    "description": "channel baseflow component "
+                },
+                {
+                    "variable": "bfs",
+                    "description": "channel baseflow component"
+                },
+                {
+                    "variable": "eta",
+                    "description": "actual evapotranspiration"
+                },
+                {
+                    "variable": "qg",
+                    "description": "baseflow"
+                },
+                {
+                    "variable": "qs",
+                    "description": "surface runoff from all sources."
+                },
+                {
+                    "variable": "roimp",
+                    "description": "impervious area runoff"
+                },
+                {
+                    "variable": "sdro",
+                    "description": "direct runoff"
+                },
+                {
+                    "variable": "sif",
+                    "description": "interflow"
+                },
+                {
+                    "variable": "ssur",
+                    "description": "surface runoff "
+                },
+                {
+                    "variable": "tci",
+                    "description": "total channel inflow"
+                }
+            ]
+        },
 
         {
             "module_name": "T-Route",
