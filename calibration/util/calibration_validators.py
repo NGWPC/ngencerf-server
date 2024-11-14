@@ -345,9 +345,17 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
-class GenericResponseSerializer(BaseSerializer):
+class GenericMessageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
+
+
+class GenericResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+
+
+class GenericResponseSerializerWithValidation(GenericMessageResponseSerializer):
+    validation_run_id = serializers.IntegerField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
@@ -476,10 +484,6 @@ class CreateAndRunValidationSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     run_date = serializers.DateTimeField(required=True, allow_null=False)
-
-
-class GenericMessageResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
 
 
 # Geopackage from Hydrofabric

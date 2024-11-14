@@ -19,7 +19,7 @@ from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_sl
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer
+    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, GenericResponseSerializerWithValidation
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
@@ -384,7 +384,7 @@ def cancel_job(request):
         f"{'calibration_run_id' if calibration_run_id else 'validation_run_id'}": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    response_validator, error_response = validate_response(GenericResponseSerializerWithValidation, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
