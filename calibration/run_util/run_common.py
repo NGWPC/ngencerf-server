@@ -184,7 +184,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
                                                                 validation_type=ValidationType.VALID_BEST)
             # Set the iteration containing the best values before we run it
             iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
-            validation_run.iteration = iteration
+            new_validation_run.iteration = iteration
             validation_run.save(update_fields=['iteration'])
             submit_validation_job(new_validation_run)
 

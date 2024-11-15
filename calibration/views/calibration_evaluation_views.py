@@ -72,9 +72,17 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
 
     iterations = get_iterations_for_calibration_job(run)
 
-    # Construct iteration data with parameters and metrics for each iteration
+
+    # Construct iteration data with parameters, metrics and validation reference for each iteration
     iteration_data = []
     for iteration in iterations:
+        # Find a ValidationRun with status 'Done' for this iteration
+        validation_run = (
+            ValidationRun.objects
+            .filter(iteration=iteration, status=StatusEnum.from_enum(StatusEnum.DONE))
+            .first()
+        )
+
         iteration_element = {
             'iteration_num': iteration.iteration_num,
             'iteration_id': iteration.id,
@@ -90,6 +98,8 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
                 for metric in iteration.iterationmetric_set.all()
             ]
         }
+        if validation_run:
+            iteration_element['validation_run_id'] = validation_run.id
         iteration_data.append(iteration_element)
 
     response = {
