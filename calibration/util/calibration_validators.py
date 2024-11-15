@@ -887,6 +887,7 @@ class MetricDataByIteration(BaseSerializer):
 class CalibrationDataByIteration(BaseSerializer):
     iteration_num = serializers.IntegerField(required=True, allow_null=False, min_value=0)
     iteration_id = serializers.IntegerField(required=True, allow_null=False)
+    validation_run_id = serializers.IntegerField(required=False)
     worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     best_params = serializers.BooleanField(required=True, allow_null=False)
     objective_function_value = serializers.FloatField(required=True, allow_null=False)

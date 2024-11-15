@@ -115,7 +115,21 @@ def create_and_run_validation(request: Request) -> Response:
     if error_return:
         return error_return
 
-    validation_run = create_validation_run_internal(calibration_run, iteration_id, validation_type=ValidationType.VALID_ITERATION)
+    # Check if a ValidationRun already exists for this CalibrationRun and Iteration
+    existing_validation_run = ValidationRun.objects.filter(
+        calibration_run=calibration_run,
+        iteration_id=iteration_id,
+        status=StatusEnum.from_enum(StatusEnum.DONE)
+    ).first()
+    if existing_validation_run:
+        return ResponseError(f'Validation Run {existing_validation_run.id} already exists for '
+                             f'Calibration Run {calibration_run.id}, iteration {iteration_id}')
+
+    validation_run = create_validation_run_internal(
+        calibration_run,
+        iteration_id,
+        validation_type=ValidationType.VALID_ITERATION
+    )
     submit_validation_job(validation_run)
 
     response = {
