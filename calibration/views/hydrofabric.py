@@ -1,4 +1,5 @@
 import logging
+import os
 from urllib.parse import urljoin
 
 import requests
@@ -8,10 +9,10 @@ from django.db.models import QuerySet
 
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun, Gage
 from calibration.util.aws_util import convert_s3_uri_to_fs
+from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
     S3DirectoryValidator
 from calibration.views.common import validate_response_data
-from calibration.util.caching import get_cached_module_by_name
 from hydrofabric_test_data import hydrofabric_test_data
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,12 @@ def fetch_from_hydrofabric(method, url, headers=None, payload=None):
 
 
 class HydrofabricException(Exception):
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class HydrofabricBMIException(HydrofabricException):
     def __init__(self, message, status_code=None):
         super().__init__(message)
         self.status_code = status_code
@@ -165,6 +172,7 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
 
     extra_names = hydrofabric_module_names - my_module_names
 
+    bmi_error = None
     # Save the output variables and parameters for each module
     with transaction.atomic():
         for module in module_metadata.get('modules'):
@@ -180,6 +188,10 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
 
             # Save the config
             calibration_formulation.bmi_config_path = convert_s3_uri_to_fs(module['parameter_file']['uri'])
+            # Since this is path mapped to an S3 bucket, warn the user if we don't have access
+            if not os.path.exists(calibration_formulation.bmi_config_path):
+                bmi_error = f'Unable to access BMI directory at {calibration_formulation.bmi_config_path}'
+
             calibration_formulation.save(update_fields=['bmi_config_path'])
 
             # Save output variables
@@ -216,6 +228,9 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
                     calibration_parameter.initial_value = str_to_float(p['initial_value'])
                     calibration_parameter.save(update_fields=['initial_value'])
 
+    print('bmi_error', bmi_error)
+    if bmi_error:
+        raise HydrofabricBMIException(bmi_error)
     if missing_names:
         raise HydrofabricException(f'Response from Hydrofabric is missing entries for {missing_names}')
 

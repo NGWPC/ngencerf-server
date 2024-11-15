@@ -249,7 +249,7 @@ def save_gage_tab(request: Request):
                     hydrofabric_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
-                        'status_code': e.status_code if e.status_code else '5xx'
+                        'status_code': e.status_code if e.status_code else None
                     })
         else:
             run.geopackage_hydrofabric_file_path = None
@@ -272,7 +272,7 @@ def save_gage_tab(request: Request):
                     hydrofabric_errors.append({
                         'name': 'observational',
                         'message': str(e),
-                        'status_code': e.status_code if e.status_code else '5xx'
+                        'status_code': e.status_code if e.status_code else None
                     })
         else:
             run.observational_hydrofabric_file_path = None
@@ -293,7 +293,7 @@ def save_gage_tab(request: Request):
                     hydrofabric_errors.append({
                         'name': 'forcing',
                         'message': str(e),
-                        'status_code': e.status_code if e.status_code else '5xx'
+                        'status_code': e.status_code if e.status_code else None
                     })
         else:
             run.forcing_hydrofabric_dir_path = None
@@ -392,7 +392,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
                 return {
                     'name': 'parameters',
                     'message': str(e),
-                    'status_code': e.status_code if e.status_code else '5xx'
+                    'status_code': e.status_code if e.status_code else None
                 }
 
 
