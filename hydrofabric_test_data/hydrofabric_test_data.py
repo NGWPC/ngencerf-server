@@ -530,7 +530,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "upper zone tension water maximum storage",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "mm"
                 },
                 {
@@ -539,7 +539,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Maximum upper zone free water",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "mm"
                 },
                 {
@@ -548,7 +548,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Maximum lower zone tension water",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "mm"
                 },
                 {
@@ -557,7 +557,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Maximum lower zone free water, secondary (aka supplemental)",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "mm"
                 },
                 {
@@ -566,7 +566,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Maximum lower zone free water, primary",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "mm"
                 },
                 {
@@ -575,7 +575,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Additional impervious area due to saturation",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "decimal percent"
                 },
                 {
@@ -584,7 +584,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Upper zone recession coefficient",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "per day "
                 },
                 {
@@ -593,7 +593,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Lower zone recession coefficient, primary",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "decimal percent"
                 },
                 {
@@ -602,7 +602,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Lower zone recession coefficient, secondary (aka supplemental)",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "decimal percent"
                 },
                 {
@@ -611,7 +611,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Minimum percolation rate coefficient",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": None
                 },
                 {
@@ -620,7 +620,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Percolation equation exponent",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": None
                 },
                 {
@@ -629,7 +629,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "impervious  fraction of the watershed area ",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "decimal percent"
                 },
                 {
@@ -638,7 +638,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "fraction of water percolating from upper zone directly to lower zone free water storage. ",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "decimal percent"
                 },
                 {
@@ -647,7 +647,7 @@ hydrofabric_module_metadata_real_data = {
                     "description": "Percent of the basin that is riparian area",
                     "min": None,
                     "max": None,
-                    "data_type": None,
+                    "data_type": "double",
                     "units": "decimal percent"
                 }
             ],
