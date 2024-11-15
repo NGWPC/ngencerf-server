@@ -511,14 +511,26 @@ class GetPLotNamesResponseSerializer(BaseSerializer):
 class GetPlotRequestSerializer(CalibrationOrValidationRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
     include_data = serializers.BooleanField(required=False, default=False)
+    force_include_plot = serializers.BooleanField(required=False, default=False)
+    page = serializers.IntegerField(required=False, default=1, min_value=1)
+    page_size = serializers.IntegerField(required=False, default=100, min_value=1)
+
+
+class PaginationMetadataSerializer(BaseSerializer):
+    count = serializers.IntegerField(required=True)
+    total_pages = serializers.IntegerField(required=True)
+    current_page = serializers.IntegerField(required=True)
+    next = serializers.CharField(required=False, allow_null=True)
+    previous = serializers.CharField(required=False, allow_null=True)
 
 
 class GetPlotResponseSerializer(CalibrationRunSerializer):
     validation_run_id = serializers.IntegerField(required=False)
     plot_name = serializers.CharField(required=True, allow_null=False)
-    plot_file_name = serializers.CharField(required=True, allow_null=False)
-    plot_url = serializers.CharField(required=True, allow_null=False)
+    plot_file_name = serializers.CharField(required=False, allow_null=False)
+    plot_url = serializers.CharField(required=False, allow_null=False)
     plot_data = serializers.JSONField(required=False)
+    pagination_metadata = PaginationMetadataSerializer(required=False)
 
 
 ##################################
