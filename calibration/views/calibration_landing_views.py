@@ -137,7 +137,7 @@ def create_and_run_validation(request: Request) -> Response:
         'calibration_run_id': calibration_run.id,
         'validation_run_id': validation_run.id,
         'status': validation_run.status.name,
-        'run_date': validation_run.run_date
+        'submit_date': validation_run.submit_date
     }
 
     response_validator, error_response = validate_response(CreateAndRunValidationSerializer, response)
@@ -301,7 +301,7 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 
     # Define the fields for selection
     default_fields = [
-        'id', 'gage__gage_id', 'run_date', 'formulation_name',
+        'id', 'gage__gage_id', 'submit_date', 'formulation_name',
         'calibration_start_period', 'calibration_end_period',
         'status__name', 'job_genesis', 'created_at'
     ]
@@ -374,7 +374,7 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
         # Append detailed information for each validation job
         result.append({
             'validation_run_id': validation_run.id,
-            'run_date': validation_run.run_date,
+            'submit_date': validation_run.submit_date,
             'status': validation_run.status.name,
             'validation_type': validation_run.validation_type,
             'parameters': params_list,

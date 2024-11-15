@@ -2,6 +2,7 @@ import functools
 import logging
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import datetime, timezone
 from typing import Callable, List
 
 from django.conf import settings
@@ -93,6 +94,8 @@ def run_job_callback_common(run: CalibrationRun | ValidationRun, future: Future)
     job_description = get_job_description(run)
 
     logger.info(f'Job end callback received for {job_description}')
+    run.run_end = datetime.now(timezone.utc)
+    run.save(update_fields=['end_date'])
 
     try:
         if future.exception() is not None:
