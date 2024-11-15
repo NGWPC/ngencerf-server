@@ -224,14 +224,14 @@ def save_gage_tab(request: Request):
     if error_return:
         return error_return
 
-    hydrofabric_errors = []
+    eds_errors = []
 
     geopackage_image_url = None
     if gage_id:
         try:
-            hydrofabric_errors_entry = save_gage(run, gage_id)
-            if hydrofabric_errors_entry:
-                hydrofabric_errors.append(hydrofabric_errors_entry)
+            eds_errors_entry = save_gage(run, gage_id)
+            if eds_errors_entry:
+                eds_errors.append(eds_errors_entry)
         except Gage.DoesNotExist:
             return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
@@ -246,7 +246,7 @@ def save_gage_tab(request: Request):
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
                     logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
@@ -269,7 +269,7 @@ def save_gage_tab(request: Request):
                     get_observational_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
@@ -290,7 +290,7 @@ def save_gage_tab(request: Request):
                     get_forcing_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
@@ -307,8 +307,8 @@ def save_gage_tab(request: Request):
 
     response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url}
-    if hydrofabric_errors:
-        response['hydrofabric_errors'] = hydrofabric_errors
+    if eds_errors:
+        response['eds_errors'] = eds_errors
 
     response_validator, error_response = validate_response(SaveGageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
     if error_response:

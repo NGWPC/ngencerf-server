@@ -116,7 +116,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         errors = []
         info = []
-        hydrofabric_errors = []
+        eds_errors = []
 
         #############################
         # Gage
@@ -161,7 +161,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving geopackage data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
@@ -185,7 +185,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     get_forcing_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving forcing data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
@@ -208,7 +208,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving observational data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
@@ -259,14 +259,14 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 get_module_metadata_from_hydrofabric(run.gage, modules)
             except HydrofabricBMIException as e:
                 logger.error(f"{str(e)}: {traceback.format_exc()}")
-                hydrofabric_errors.append({
+                eds_errors.append({
                     'name': 'bmi',
                     'message': str(e),
                     'status_code': None
                 })
             except HydrofabricException as e:
                 errors.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                hydrofabric_errors.append({
+                eds_errors.append({
                     'name': 'parameters',
                     'message': str(e),
                     'status_code': e.status_code if e.status_code else None
@@ -282,7 +282,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             return None, None, ResponseError('Parameters cannot be specified without modules')
 
         # Don't bother validating parameters if we got a hydrofabric error
-        if not any(error.get('name') == 'parameters' for error in hydrofabric_errors):
+        if not any(error.get('name') == 'parameters' for error in eds_errors):
             error_message = validate_parameters(run, parameters)
             if error_message:
                 return None, None, ResponseError(error_message)
@@ -347,8 +347,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         messages['errors'] = errors
     if info:
         messages['info'] = info
-    if hydrofabric_errors:
-        messages['hydrofabric_errors'] = hydrofabric_errors
+    if eds_errors:
+        messages['eds_errors'] = eds_errors
 
     return run, messages, None
 

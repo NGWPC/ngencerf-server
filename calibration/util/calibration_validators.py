@@ -432,7 +432,7 @@ class SaveGageRequestSerializer(BaseSerializer):
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
-    hydrofabric_errors = serializers.JSONField(required=False)
+    eds_errors = serializers.JSONField(required=False)
 
 
 class DomainResponseSerializer(BaseSerializer):
@@ -563,7 +563,7 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     nwm_warning = serializers.BooleanField(required=True)
     formulation_warning = serializers.JSONField(required=False)
-    hydrofabric_errors = serializers.JSONField(required=False)
+    eds_errors = serializers.JSONField(required=False)
 
 
 class ModuleStaticSerializer(BaseSerializer):
