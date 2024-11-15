@@ -301,7 +301,7 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 
     # Define the fields for selection
     default_fields = [
-        'id', 'gage__gage_id', 'run_date', 'formulation_name',
+        'id', 'gage__gage_id', 'submit_date', 'formulation_name',
         'calibration_start_period', 'calibration_end_period',
         'status__name', 'job_genesis', 'created_at'
     ]

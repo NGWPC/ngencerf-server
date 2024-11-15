@@ -112,7 +112,7 @@ def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn):
     with transaction.atomic():
         run.submit_date = datetime.now(timezone.utc)
         run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
-        run.save(update_fields=['run_date', 'status'])
+        run.save(update_fields=['submit_date', 'status'])
 
         job_execution_fn(run)
 
