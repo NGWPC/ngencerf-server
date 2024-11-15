@@ -6,7 +6,7 @@ import pandas as pd
 from django.core.cache import cache
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import PageNumberPagination, BasePagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -141,8 +141,8 @@ def get_plot(request: Request) -> Response:
     plot_name = validator.get('plot_name')
     include_data = validator.get('include_data')
     force_include_plot = validator.get('force_include_plot')
-    page = validator.get('page')
-    page_size = validator.get('page_size')
+    start = validator.get('start')
+    limit = validator.get('limit')
 
     # Replace spaces with underscores in plot_name to avoid CacheKeyWarning
     sanitized_plot_name = plot_name.replace(" ", "_")
@@ -203,18 +203,16 @@ def get_plot(request: Request) -> Response:
         if not plot_data:
             logger.warning(f"Data not available for {plot_name}")
         else:
-            paginator = PlotDataPagination(page=page, page_size=page_size)
+            paginator = RowNumberPagination(start=start, limit=limit)
             paginated_data = paginator.paginate_queryset(plot_data, request)
             paginated_data = replace_nan_with_none(paginated_data) if paginated_data else []
 
             # Extract pagination metadata if paginated_data is not empty
             if paginated_data:
                 pagination_metadata = {
-                    'count': paginator.page.paginator.count,
-                    'total_pages': paginator.page.paginator.num_pages,
-                    'current_page': paginator.page.number,
-                    'next': paginator.get_next_link(),
-                    'previous': paginator.get_previous_link()
+                    'start': paginator.start,
+                    'limit': paginator.limit,
+                    'count': len(plot_data),
                 }
 
     response = {
@@ -280,11 +278,39 @@ def determine_plot_location(calibration_run: CalibrationRun, run: CalibrationRun
             raise ResponseError(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
 
 
-class PlotDataPagination(PageNumberPagination):
-    def __init__(self, page: int = 1, page_size: int = 100):
-        super().__init__()
-        self.page_number = page
-        self.page_size = page_size
+class RowNumberPagination(BasePagination):
+    def __init__(self, start: int = 0, limit: int = 100):
+        self.start = max(start, 0)
+        self.limit = limit
+        self.queryset = None  # Store queryset for use in other methods
+
+    def paginate_queryset(self, queryset, request, view=None):
+        """
+        Paginate the queryset based on `start` and `limit`.
+        """
+        try:
+            self.start = int(request.query_params.get('start', self.start))
+            self.limit = int(request.query_params.get('limit', self.limit))
+        except ValueError:
+            self.start = 0  # Default to 0-based indexing
+            self.limit = 100
+
+        if self.start < 0 or self.limit <= 0:
+            return []
+
+        self.queryset = queryset  # Save queryset for future reference
+
+        # Slice the queryset using 0-based indexing
+        end_idx = self.start + self.limit
+        return list(queryset)[self.start:end_idx]
+
+    def get_next_start(self) -> int | None:
+        """
+        Calculate the next `start` value for pagination (0-based indexing).
+        """
+        if self.start + self.limit >= len(self.queryset):
+            return None
+        return self.start + self.limit  # Return the next start value
 
 
 def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[Any]:
