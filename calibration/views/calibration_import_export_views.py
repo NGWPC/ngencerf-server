@@ -451,7 +451,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
     else:
         # Basic information for UI display, not intended for import/export
         calibration_run_data['calibration_run_id'] = run.id
-        calibration_run_data['run_date'] = run.run_date
+        calibration_run_data['submit_date'] = run.submit_date
         calibration_run_data['time_range'] = time_range
         calibration_run_data['gage'] = {
             'gage_id': run.gage.gage_id, 'agency': run.gage.agency,

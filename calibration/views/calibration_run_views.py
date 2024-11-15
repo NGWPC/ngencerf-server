@@ -10,6 +10,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_status(request):
+def get_status(request: Request) -> Response:
     data = request.data
     logger.debug(f'get_status() request from {request.user.email} - {data}')
 
@@ -76,7 +77,7 @@ def get_status(request):
     validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
         "performance_metrics"
     ).only(
-        "id", "status__name", "validation_type", "run_date",
+        "id", "status__name", "validation_type", "submit_date",
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
@@ -90,7 +91,8 @@ def get_status(request):
             'validation_run_id': run.id,
             'status': run.status.name,
             'validation_type': run.validation_type,
-            'run_date': run.run_date,
+            'submit_date': run.submit_date,
+            'run_start': run.run_start,
             'run_end': run.run_end,
             'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
@@ -103,7 +105,8 @@ def get_status(request):
         'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
-        'run_date': calibration_run.run_date,
+        'submit_date': calibration_run.submit_date,
+        'run_start': calibration_run.run_start,
         'run_end': calibration_run.run_end,
         'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
         'validations': validation_response
@@ -143,7 +146,7 @@ def get_status(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-def run_calibration(request):
+def run_calibration(request: Request) -> Response:
     data = request.data
     logger.debug(f'run_calibration() request from {request.user.email} - {data}')
 
@@ -162,7 +165,7 @@ def run_calibration(request):
         return response
 
     response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name, 'run_date': run.run_date}
+                'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user.email} from run_calibration() - {response_validator.data}')
@@ -307,7 +310,7 @@ def report_iteration(request):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_iteration(request):
+def get_iteration(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_iteration() request from {request.user.email} - {data}')
 
@@ -357,7 +360,7 @@ def get_iteration(request):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def cancel_job(request):
+def cancel_job(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'cancel_job() request from {request.user.email} - {data}')
 
@@ -412,7 +415,7 @@ def cancel_job(request):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_job_dir(request):
+def get_job_dir(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'cancel_job() request from {request.user.email} - {data}')
 
@@ -460,7 +463,7 @@ def get_job_dir(request):
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
-def calibration_job_slurm_callback(request):
+def calibration_job_slurm_callback(request: Request) -> Response:
     data = request.data
     logger.debug(f'calibration_job_slurm_callback() request from {request.user.email} - {data}')
 
@@ -501,7 +504,7 @@ def calibration_job_slurm_callback(request):
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
-def validation_job_slurm_callback(request):
+def validation_job_slurm_callback(request: Request) -> Response:
     data = request.data
     logger.debug(f'validation_job_slurm_callback() request from {request.user.email} - {data}')
 
@@ -550,7 +553,7 @@ def validation_job_slurm_callback(request):
 )
 @api_view(['GET'])
 @handle_exceptions
-def get_slurm_token(request):
+def get_slurm_token(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_slurm_token() request from {request.user.email} - {data}')
 

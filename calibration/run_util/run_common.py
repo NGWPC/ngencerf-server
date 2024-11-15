@@ -110,7 +110,7 @@ def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn):
     :param job_execution_fn: The function responsible for executing the job.
     """
     with transaction.atomic():
-        run.run_date = datetime.now(timezone.utc)
+        run.submit_date = datetime.now(timezone.utc)
         run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
         run.save(update_fields=['run_date', 'status'])
 

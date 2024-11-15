@@ -278,7 +278,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
@@ -314,7 +314,7 @@ def validate_automatic_validation(value):
 
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
@@ -483,7 +483,7 @@ class CreateAndRunValidationSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     validation_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=False)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
 # Geopackage from Hydrofabric
@@ -716,7 +716,8 @@ class PerformanceMetricsSerializer(BaseSerializer):
 class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     validation_type = serializers.CharField(required=True)
-    run_date = serializers.DateTimeField(required=False, allow_null=True)
+    submit_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_start = serializers.DateTimeField(required=False, allow_null=True)
     run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
@@ -725,7 +726,8 @@ class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
 class GetStatusResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
-    run_date = serializers.DateTimeField(required=False, allow_null=True)
+    submit_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_start = serializers.DateTimeField(required=False, allow_null=True)
     run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
@@ -737,7 +739,7 @@ class ImportResponseSerializer(GenericResponseSerializer):
 
 
 class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
-    run_date = serializers.DateTimeField(required=True, allow_null=False)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
 class GetIterationsResponseSerializer(GenericResponseSerializer):
@@ -910,7 +912,7 @@ class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSeri
 
 class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
     validation_type = serializers.CharField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)

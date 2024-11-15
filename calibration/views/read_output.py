@@ -43,15 +43,19 @@ def read_validation_output(validation_run: ValidationRun) -> None:
             metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType(validation_run.validation_type))
 
         performance_metrics = parse_performance_metrics(metrics_file)
+
+        # Use a reserved_time of 0 if performance_metrics is None
+        reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
+        validation_run.run_start = validation_run.submit_date + reserved_time
+
         validation_run.performance_metrics = performance_metrics
-        validation_run.save(update_fields=['performance_metrics'])
+        validation_run.save(update_fields=['performance_metrics', 'run_start'])
 
         process_validation_for_validation_run(validation_run)
 
     logger.info(f"End of processing output for {job_description}")
 
 
-# Function to read the output of a calibration run
 def read_calibration_output(calibration_run: CalibrationRun) -> None:
     """
     Process the output of a CalibrationRun. This function handles reading and
@@ -65,6 +69,11 @@ def read_calibration_output(calibration_run: CalibrationRun) -> None:
 
     with transaction.atomic():
         performance_metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
+
+        # Use a reserved_time of 0 if performance_metrics is None
+        reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
+        calibration_run.run_start = calibration_run.submit_date + reserved_time
+
         calibration_run.performance_metrics = performance_metrics
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
@@ -77,7 +86,7 @@ def read_calibration_output(calibration_run: CalibrationRun) -> None:
         calibration_run.save()
         process_iterations_for_all_workers(calibration_run)
 
-        calibration_run.save()
+        calibration_run.save(update_fields=['run_start', 'performance_metrics', 'realization_file_path'])
 
     logger.info(f"End of processing output for {job_description}")
 
@@ -326,10 +335,10 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
 # Function to process a single metrics row
 def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
-            iteration: Iteration,
-            metrics_row: dict[str, float | None],
-            metrics_to_create: list[IterationMetric],
-            metrics_lookup: dict[str, Any]):
+                                        iteration: Iteration,
+                                        metrics_row: dict[str, float | None],
+                                        metrics_to_create: list[IterationMetric],
+                                        metrics_lookup: dict[str, Any]):
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
@@ -364,10 +373,10 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
 
 # Function to process a single parameters row
 def process_params_row(calibration_run: CalibrationRun,
-       iteration: Iteration,
-       params_row: dict[str, float | None],
-       params_to_create: list[IterationParameter],
-       best_iteration_for_worker: int) -> None:
+                       iteration: Iteration,
+                       params_row: dict[str, float | None],
+                       params_to_create: list[IterationParameter],
+                       best_iteration_for_worker: int) -> None:
     """
     Process a single row from the parameters file and create IterationParameter objects.
     Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
@@ -522,7 +531,7 @@ def count_rows_in_csv(file_path: str) -> int:
         return sum(1 for _ in file) - 1
 
 
-def parse_duration(duration_str:str) -> timedelta:
+def parse_duration(duration_str: str) -> timedelta:
     """Converts a duration string (HH:MM:SS) into a timedelta object."""
     hours, minutes, seconds = map(int, duration_str.split(':'))
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
