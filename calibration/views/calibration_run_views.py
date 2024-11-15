@@ -317,7 +317,8 @@ def get_iteration(request):
 
     # We allow the Ready status since when a job is submitted, it doesn't go to Running right away.  This allows the UI to poll
     run, error_return = get_calibration_run(calibration_run_id, request.user,
-                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED,
+                                                        StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
@@ -419,7 +420,8 @@ def get_job_dir(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+    run, error_return = get_calibration_run(calibration_run_id, request.user,
+                                            run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
