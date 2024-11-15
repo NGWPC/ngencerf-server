@@ -4,7 +4,8 @@ from typing import Any
 
 import pandas as pd
 from django.core.cache import cache
-from drf_spectacular.utils import extend_schema, OpenApiResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
 from rest_framework.decorators import api_view
 from rest_framework.pagination import PageNumberPagination, BasePagination
 from rest_framework.request import Request
@@ -101,7 +102,62 @@ def png_to_base64_url(png):
 
 
 @extend_schema(
-    request=GetPlotRequestSerializer,
+    # drf-spectacular doesn't have a way to infer the parameters from GetPlotRequestSerializer
+    parameters=[
+        OpenApiParameter(
+            name="calibration_run_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="The ID of the calibration run"
+        ),
+        OpenApiParameter(
+            name="validation_run_id",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="The ID of the validation run"
+        ),
+        OpenApiParameter(
+            name="plot_name",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=True,
+            description="The name of the plot to retrieve"
+        ),
+        OpenApiParameter(
+            name="include_data",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            default=False,
+            description="Whether to include plot data in the response"
+        ),
+        OpenApiParameter(
+            name="force_include_plot",
+            type=OpenApiTypes.BOOL,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            default=False,
+            description="Whether to force inclusion of the plot URL"
+        ),
+        OpenApiParameter(
+            name="start",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            default=0,
+            description="The starting index for pagination (0-based)"
+        ),
+        OpenApiParameter(
+            name="limit",
+            type=OpenApiTypes.INT,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            default=100,
+            description="The maximum number of items to retrieve per page"
+        ),
+    ],
     responses={
         200: GetPlotResponseSerializer,
         400: OpenApiResponse(
