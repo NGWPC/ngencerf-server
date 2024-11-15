@@ -94,7 +94,7 @@ def run_job_callback_common(run: CalibrationRun | ValidationRun, future: Future)
     job_description = get_job_description(run)
 
     logger.info(f'Job end callback received for {job_description}')
-    run.end_date = datetime.now(timezone.utc)
+    run.run_end = datetime.now(timezone.utc)
     run.save(update_fields=['end_date'])
 
     try:
@@ -132,7 +132,6 @@ def run_calibration_job_callback_local(calibration_run: CalibrationRun, future: 
     if run_job_callback_common(calibration_run, future):
         read_calibration_output(calibration_run)
         set_job_status(calibration_run, StatusEnum.DONE)
-        # calibration_run.end_date = datetime.now(timezone.utc)
         # Always submit a control run
         create_and_submit_validation_control(calibration_run)
 

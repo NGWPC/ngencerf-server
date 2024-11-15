@@ -717,6 +717,7 @@ class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     validation_type = serializers.CharField(required=True)
     run_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
 
@@ -725,6 +726,7 @@ class GetStatusResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
     run_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
 

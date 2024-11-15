@@ -91,6 +91,7 @@ def get_status(request):
             'status': run.status.name,
             'validation_type': run.validation_type,
             'run_date': run.run_date,
+            'run_end': run.run_end,
             'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
         if should_include_metrics(run.status):
@@ -103,6 +104,7 @@ def get_status(request):
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'run_date': calibration_run.run_date,
+        'run_end': calibration_run.run_end,
         'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
         'validations': validation_response
     }

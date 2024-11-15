@@ -8,7 +8,7 @@ class ValidationRun(BaseModel):
     iteration = models.ForeignKey('Iteration', null=True, on_delete=models.CASCADE)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     run_date = models.DateTimeField(null=True)
-    end_date = models.DateTimeField(null=True)
+    run_end = models.DateTimeField(null=True)
     performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.CASCADE)
     ngen_commit_hash = models.CharField(max_length=50, null=True)
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)

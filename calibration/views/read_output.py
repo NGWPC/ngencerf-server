@@ -7,7 +7,7 @@ from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Any
 
 import pandas as pd
 from django.db import transaction
@@ -31,19 +31,19 @@ BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
-def read_validation_output(validation_run: ValidationRun):
+def read_validation_output(validation_run: ValidationRun) -> None:
     job_description = get_job_description(validation_run)
 
-    logger.info(f"Processing output for {job_description} ")
+    logger.info(f"Processing output for {job_description}")
 
-    with (transaction.atomic()):
+    with transaction.atomic():
         if validation_run.validation_type == ValidationType.VALID_ITERATION:
             metrics_file = get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
         else:
             metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType(validation_run.validation_type))
 
-        metrics = parse_performance_metrics(metrics_file)
-        validation_run.performance_metrics = metrics
+        performance_metrics = parse_performance_metrics(metrics_file)
+        validation_run.performance_metrics = performance_metrics
         validation_run.save(update_fields=['performance_metrics'])
 
         process_validation_for_validation_run(validation_run)
@@ -52,7 +52,7 @@ def read_validation_output(validation_run: ValidationRun):
 
 
 # Function to read the output of a calibration run
-def read_calibration_output(calibration_run: CalibrationRun):
+def read_calibration_output(calibration_run: CalibrationRun) -> None:
     """
     Process the output of a CalibrationRun. This function handles reading and
     processing the worker directories and their iteration files.
@@ -64,8 +64,8 @@ def read_calibration_output(calibration_run: CalibrationRun):
     logger.info(f"Processing output for {job_description}")
 
     with transaction.atomic():
-        metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
-        calibration_run.performance_metrics = metrics
+        performance_metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
+        calibration_run.performance_metrics = performance_metrics
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
             raise CerfException(f"End of job processing has already been completed for {job_description}")
@@ -201,7 +201,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
 
 
 # Function to process iterations for all workers in a run
-def process_iterations_for_all_workers(calibration_run: CalibrationRun):
+def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     """
     Process all Iteration objects for the workers of a given CalibrationRun.
     It uses prefetching to optimize database queries and processes the iterations
@@ -220,7 +220,7 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun):
 
 
 # Function to process iterations for a specific worker
-def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations):
+def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations) -> None:
     """
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
@@ -325,7 +325,11 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
 
 # Function to process a single metrics row
-def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iteration: Iteration, metrics_row, metrics_to_create, metrics_lookup):
+def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
+            iteration: Iteration,
+            metrics_row: dict[str, float | None],
+            metrics_to_create: list[IterationMetric],
+            metrics_lookup: dict[str, Any]):
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
@@ -359,7 +363,11 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iterati
 
 
 # Function to process a single parameters row
-def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, params_row, params_to_create, best_iteration_for_worker):
+def process_params_row(calibration_run: CalibrationRun,
+       iteration: Iteration,
+       params_row: dict[str, float | None],
+       params_to_create: list[IterationParameter],
+       best_iteration_for_worker: int) -> None:
     """
     Process a single row from the parameters file and create IterationParameter objects.
     Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
@@ -425,7 +433,7 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
 
 
 # Function to update the output variables for the worker's iterations
-def update_output_variables(metrics_iteration_file, calibration_run: CalibrationRun, worker_name):
+def update_output_variables(metrics_iteration_file: str, calibration_run: CalibrationRun, worker_name: str) -> None:
     """
     Update the output variable values for each iteration in a worker's metrics file.
 
@@ -470,7 +478,7 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
 
 
 # Function to read the last line of a file
-def read_last_line(filename):
+def read_last_line(filename: str) -> str:
     """
     Reads and returns the last line of a file.
 
@@ -482,7 +490,7 @@ def read_last_line(filename):
 
 
 # Function to process worker directories for a CalibrationRun
-def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda):
+def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda: callable) -> None:
     """
     Loops through directories matching the pattern "ngen_xxxxx_worker" and applies the worker_lambda function.
 
@@ -502,7 +510,7 @@ def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda):
 
 
 # Function to count the number of rows in a CSV file
-def count_rows_in_csv(file_path):
+def count_rows_in_csv(file_path: str) -> int:
     """
     Counts the number of rows in a CSV file, excluding the header.
 
@@ -514,13 +522,13 @@ def count_rows_in_csv(file_path):
         return sum(1 for _ in file) - 1
 
 
-def parse_duration(duration_str):
+def parse_duration(duration_str:str) -> timedelta:
     """Converts a duration string (HH:MM:SS) into a timedelta object."""
     hours, minutes, seconds = map(int, duration_str.split(':'))
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
-def parse_performance_metrics(file_path):
+def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
     """
     Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database.
     Logs a warning if any expected field is missing. Assumes MaxRSS, MaxDiskRead, and MaxDiskWrite are only on
