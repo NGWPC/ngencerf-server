@@ -176,7 +176,7 @@ def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name
         list[dict] | dict | None: A list of dictionaries representing plot definitions that match the criteria, a single
                                    dictionary if first_match is True, or None if no match is found.
     """
-    cached_plot_definitions = PlotDefinitionsEnum.active_choices_with_fields(
+    cached_plot_definitions = PlotDefinitionsEnum.get_active_choices_with_fields(
         fields=['name', 'description', 'valid_optimizations', 'validation', 'location', 'filename_mask']
     )
 

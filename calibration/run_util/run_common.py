@@ -26,7 +26,7 @@ job_registry: Dict[tuple[int, int | None], subprocess.Popen] = {}
 
 def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
     """Set the status for the CalibrationRun and save it."""
-    run.status = StatusEnum.from_enum(status)
+    run.status = status.db_instance
     # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
     run.slurm_job_id = None
     run.save(update_fields=['status', 'slurm_job_id'])
@@ -111,7 +111,7 @@ def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn):
     """
     with transaction.atomic():
         run.submit_date = datetime.now(timezone.utc)
-        run.status = StatusEnum.from_enum(StatusEnum.RUNNING)
+        run.status = StatusEnum.RUNNING.db_instance
         run.save(update_fields=['submit_date', 'status'])
 
         job_execution_fn(run)
@@ -131,7 +131,7 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
         logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
         create_input(config_file)
     except Exception as e:
-        CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.from_enum(StatusEnum.FAILED))
+        CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
         logger.exception(f'Exception from create_input - {str(e)}')
         return ResponseError(f'Exception from create_input - {str(e)}')
 

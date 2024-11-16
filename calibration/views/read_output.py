@@ -264,7 +264,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Check for the best iteration based on optimization type (DDS, GWO, PSO)
     best_iteration_for_worker = -1
-    if calibration_run.optimization.name == 'DDS':
+    if calibration_run.optimization == OptimizationEnum.DDS.db_instance:
         if not Path(objective_log_best_file).is_file():
             raise CerfException(f'{objective_log_best_file} does not exist for CalibrationRun {calibration_run.id}')
         # Read the best iteration from the log
@@ -394,7 +394,7 @@ def process_params_row(calibration_run: CalibrationRun,
 
     # Initialize global_best_params_dict if not using DDS optimization
     best_params_dict: Dict[str, float] = {}
-    if calibration_run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
+    if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
         global_best_params_file = get_global_best_params_file(calibration_run)
         if not Path(global_best_params_file).is_file():
             raise CerfException(f"{global_best_params_file} does not exist")

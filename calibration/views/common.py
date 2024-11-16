@@ -50,7 +50,7 @@ def get_run_instance(
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
-    allowed_statuses: List[Status] = [cast(Status, StatusEnum.from_enum(status_enum)) for status_enum in run_status]
+    allowed_statuses: List[Status] = [status_enum.db_instance for status_enum in run_status]
 
     query: QuerySet = model.objects.filter(id=run_id)
     if additional_filters:
@@ -150,7 +150,7 @@ def create_calibration_run_internal(user, genesis: JobGenesis = None) -> Calibra
     :param genesis: Genesis of the job
     :return: The newly created CalibrationRun instance.
      """
-    run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.from_enum(StatusEnum.SAVED))
+    run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.SAVED.db_instance)
 
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
@@ -197,7 +197,7 @@ def create_validation_run_internal(
     else:
         iteration_object = None
 
-    validation_run = ValidationRun.objects.create(status=StatusEnum.from_enum(StatusEnum.SAVED),
+    validation_run = ValidationRun.objects.create(status=StatusEnum.SAVED.db_instance,
                                                   calibration_run=calibration_run,
                                                   validation_type=validation_type.value,
                                                   iteration=iteration_object)
@@ -308,7 +308,7 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
     """
     job_specific_file = get_path_func()
     if source:
-        if source == upload_enum.from_enum(upload_enum):
+        if source == upload_enum.db_instance:
             # Check job-specific path first
             if job_specific_file and Path(job_specific_file).exists():
                 return job_specific_file

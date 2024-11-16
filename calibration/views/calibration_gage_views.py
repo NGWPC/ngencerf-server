@@ -81,10 +81,10 @@ def load_gage_tab(request: Request) -> Response:
         return error_return
 
     # Retrieve active source and domain options
-    forcing_source_values = ForcingSourceEnum.active_choices_with_fields(fields=['name', 'description'])
-    observational_source_values = ObservationalSourceEnum.active_choices_with_fields(fields=['name', 'description'])
-    geopackage_source_values = GeopackageSourceEnum.active_choices_with_fields(fields=['name', 'description'])
-    domain_values = DomainEnum.active_choices_with_fields(fields=['name', 'description'])
+    forcing_source_values = ForcingSourceEnum.get_active_choices_with_fields(fields=['name', 'description'])
+    observational_source_values = ObservationalSourceEnum.get_active_choices_with_fields(fields=['name', 'description'])
+    geopackage_source_values = GeopackageSourceEnum.get_active_choices_with_fields(fields=['name', 'description'])
+    domain_values = DomainEnum.get_active_choices_with_fields(fields=['name', 'description'])
 
     # Retrieve cached gages with necessary fields
     gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibrated': gage.get('nwm_v3_calibrated'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')}
@@ -436,7 +436,7 @@ def upload_observational_data(request: Request) -> Response:
     if error_return:
         return error_return
 
-    run.observational_source = ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
+    run.observational_source = ObservationalSourceEnum.UPLOAD.db_instance
 
     # Save to the run-specific observational directory
     fs = FileSystemStorage(location=get_observational_dir_for_job(run))
@@ -514,7 +514,7 @@ def upload_forcing_data(request: Request) -> Response:
     # if not run.gage:
     #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
 
-    run.forcing_source = ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
+    run.forcing_source = ForcingSourceEnum.UPLOAD.db_instance
 
     # Validate the file keys and how many there are
     key = 'forcing_files'
@@ -601,7 +601,7 @@ def upload_geopackage_data(request: Request) -> Response:
     if error_return:
         return error_return
 
-    run.geopackage_source = GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
+    run.geopackage_source = GeopackageSourceEnum.UPLOAD.db_instance
 
     # Save to the run-specific geopackage directory
     fs = FileSystemStorage(location=get_geopackage_dir_for_job(run))

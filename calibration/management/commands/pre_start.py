@@ -19,8 +19,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if settings.NGEN_ENVIRONMENT != NgenEnvironmentEnum.PARALLEL_WORKS:
             with transaction.atomic():
-                running_status = StatusEnum.from_enum(StatusEnum.RUNNING)
-                error_status = StatusEnum.from_enum(StatusEnum.SERVER_ERROR)
+                running_status = StatusEnum.RUNNING.db_instance
+                error_status = StatusEnum.SERVER_ERROR.db_instance
 
                 count = CalibrationRun.objects.filter(status=running_status).update(status=error_status)
                 logger.info(f'Updated {count} calibration run records')

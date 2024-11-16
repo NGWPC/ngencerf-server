@@ -108,7 +108,7 @@ def get_static_optimizations() -> List[Dict[str, Any]]:
 
     :return: A list of optimizations with related input fields.
     """
-    optimization_list = OptimizationEnum.active_choices_with_fields(
+    optimization_list = OptimizationEnum.get_active_choices_with_fields(
         fields=['name', 'description', 'is_active']
     )
 
