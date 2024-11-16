@@ -497,7 +497,7 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     found_worker_dir = None
 
     # Custom function to check worker directories
-    def check_worker(worker_dir, run: CalibrationRun):
+    def check_worker(worker_dir: str, run: CalibrationRun):
         nonlocal found_worker_dir
         plot_iteration_dir = os.path.join(worker_dir, 'Plot_Iteration')
 

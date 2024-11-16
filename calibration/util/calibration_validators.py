@@ -927,11 +927,10 @@ class GetLogsValidations(BaseSerializer):
     validation_job_id = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     validation_type = serializers.CharField(required=True)
-    log = serializers.ListField(child=serializers.CharField(), required=True, allow_empty=True)
+    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=True, allow_empty=True)
 
 
 class GetLogsResponseSerializer(GenericResponseSerializer):
-    validation_run_id = serializers.IntegerField(required=False)
     validations = GetLogsValidations(many=True, required=True)
     logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=False,
                                  allow_empty=True)

@@ -31,24 +31,52 @@ worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
 def read_validation_output(validation_run: ValidationRun) -> None:
+    """
+    Processes the output of a validation run by identifying the correct worker, retrieving performance metrics,
+    and updating the validation run's attributes.
+
+    :param validation_run: The ValidationRun instance.
+    """
     job_description = get_job_description(validation_run)
 
     logger.info(f"Processing output for {job_description}")
 
     with transaction.atomic():
-        if validation_run.validation_type == ValidationType.VALID_ITERATION:
-            metrics_file = get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
-        else:
-            metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType(validation_run.validation_type))
+        # Convert validation_type to an instance of ValidationType
+        validation_type = ValidationType(validation_run.validation_type)
 
+        # Identify the matching worker based on validation type
+        matching_worker = find_validation_worker_with_matching_log(
+            validation_run,
+            validation_type=validation_type,
+            worker_name=validation_run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
+            iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
+        )
+        validation_run.validation_worker_name = matching_worker
+
+        # Determine the metrics file path based on validation type
+        if validation_type == ValidationType.VALID_ITERATION:
+            metrics_file = get_validation_performance_file(
+                validation_run.calibration_run,
+                validation_run.worker_name,
+                validation_run.iteration_num
+            )
+        else:
+            metrics_file = get_validation_special_performance_file(
+                validation_run.calibration_run,
+                validation_type
+            )
+
+        # Parse performance metrics and determine run_start
         performance_metrics = parse_performance_metrics(metrics_file)
 
         # Use a reserved_time of 0 if performance_metrics is None
         reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
         validation_run.run_start = validation_run.submit_date + reserved_time
 
+        # Update validation run fields
         validation_run.performance_metrics = performance_metrics
-        validation_run.save(update_fields=['performance_metrics', 'run_start'])
+        validation_run.save(update_fields=['performance_metrics', 'run_start', 'validation_worker_name'])
 
         process_validation_for_validation_run(validation_run)
 
@@ -228,7 +256,7 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
 
 
 # Function to process iterations for a specific worker
-def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations) -> None:
+def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations: list[Iteration]) -> None:
     """
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
@@ -255,6 +283,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Contains the best for DDS
     objective_log_best_file = get_objective_log_best_file(calibration_run, worker_name)
 
+    # Check if the files exist
     if not os.path.isfile(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
     if not os.path.isfile(params_iteration_file):
@@ -293,14 +322,18 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Loop over both metrics and parameters DataFrames row by row
     for _, (metrics_row, params_row) in enumerate(zip(metrics_df.iterrows(), params_df.iterrows())):
-        iteration_num = metrics_row[1]['iteration']
+        # Convert the pandas.Series objects to dictionaries
+        metrics_row_dict = metrics_row[1].to_dict()
+        params_row_dict = params_row[1].to_dict()
+
+        iteration_num = metrics_row_dict['iteration']
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} for CalibrationRun {calibration_run.id}")
 
         # Process metrics and parameters for this iteration
-        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row[1], metrics_to_create, metrics_lookup)
-        process_params_row(calibration_run, iteration, params_row[1], params_to_create, best_iteration_for_worker)
+        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create, metrics_lookup)
+        process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker)
 
     # Bulk create IterationMetric and IterationParameter objects in chunks
     if metrics_to_create:
@@ -496,23 +529,35 @@ def read_last_line(filename: str) -> str:
         return deque(file, maxlen=1).pop().decode().strip()
 
 
-# Function to process worker directories for a CalibrationRun
-def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda: callable) -> None:
+def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Callable[[str, CalibrationRun | ValidationRun], None]) -> None:
     """
-    Loops through directories matching the pattern "ngen_xxxxx_worker" and applies the worker_lambda function.
+    Generalized function to process worker directories for either a CalibrationRun or ValidationRun.
 
-    :param calibration_run: The CalibrationRun instance to process.
+    :param run: The CalibrationRun or ValidationRun instance to process.
     :param worker_lambda: A lambda function that processes each worker directory.
+    :raises CerfException: If the output directory is not found.
     """
-    output_calibration_run_dir = get_output_calibration_run_dir(calibration_run)
-    if not os.path.exists(output_calibration_run_dir):
-        raise CerfException(f"Cannot find expected data at {output_calibration_run_dir}")
-    for item in os.listdir(output_calibration_run_dir):
-        item_path = os.path.join(output_calibration_run_dir, item)
+    if isinstance(run, CalibrationRun):
+        output_run_dir = get_output_calibration_run_dir(run)
+        run_id = run.id
+    elif isinstance(run, ValidationRun):
+        output_run_dir = get_output_validation_run_dir(run.calibration_run)
+        run_id = run.calibration_run.id
+    else:
+        raise ValueError(f"Invalid run object: {type(run).__name__}. Expected CalibrationRun or ValidationRun.")
+
+    if not os.path.exists(output_run_dir):
+        raise CerfException(f"Cannot find expected data at {output_run_dir}")
+
+    job_description = get_job_description(run)
+    print('job_description', job_description)
+
+    for item in os.listdir(output_run_dir):
+        worker_dir = os.path.join(output_run_dir, item)
         # Check if the item is a directory and matches the pattern
-        if os.path.isdir(item_path) and worker_directory_pattern.match(item):
-            logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Processing worker directory: {item_path}')
-            worker_lambda(item_path, calibration_run)
+        if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
+            logger.debug(f'{job_description} Processing worker directory: {worker_dir}')
+            worker_lambda(worker_dir, run)
 
 
 # Function to count the number of rows in a CSV file
@@ -603,3 +648,54 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
         return metrics
 
     return None
+
+
+def find_validation_worker_with_matching_log(
+        validation_run: ValidationRun,
+        validation_type: ValidationType,
+        worker_name: str | None = None,
+        iteration_num: int | None = None
+) -> str | None:
+    """
+    Searches the worker directories of a validation run to locate the worker directory
+    containing the ngen stdout file. The matching criteria depend on the validation type:
+    - For VALID_ITERATION: Matches the worker name and iteration number in the log.
+    - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
+
+    :param validation_run: The validation run object to process.
+    :param validation_type: The type of validation (VALID_ITERATION, VALID_BEST, VALID_CONTROL).
+    :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
+    :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
+    :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
+    """
+    matching_worker_name = None
+
+    # Determine the expected first line of the log based on validation type
+    if validation_type == ValidationType.VALID_ITERATION:
+        if not worker_name or iteration_num is None:
+            raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
+        expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
+    elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
+        expected_first_line = f"Starting {validation_type.value.replace('_', ' ').capitalize()} Run"
+    else:
+        raise ValueError(f"Unsupported validation type: {validation_type}")
+
+    # Custom function to check worker directories for the ngen.log file
+    def check_worker(worker_dir: str, run: ValidationRun):
+        nonlocal matching_worker_name
+        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
+
+        # Check if ngen.log exists in the current worker directory
+        if os.path.isfile(potential_log_path):
+            # Read the first line of the file
+            with open(potential_log_path, 'r') as file:
+                first_line = file.readline().strip()
+
+            # Check if the first line matches the expected format
+            if first_line == expected_first_line:
+                matching_worker_name = os.path.basename(worker_dir)
+
+    # Call process_worker_dirs to iterate through the worker directories
+    process_worker_dirs(validation_run, check_worker)
+
+    return matching_worker_name

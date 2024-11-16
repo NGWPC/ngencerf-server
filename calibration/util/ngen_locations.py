@@ -75,6 +75,14 @@ def get_observational_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'observation')
 
 
+def get_ngen_stdout_log_filename() -> str:
+    return 'ngen_stdout_stderr.log'
+
+
+def get_ngen_log_path(run: CalibrationRun) -> str:
+    return os.path.join(f"{run.job_data_dir}", 'logs', 'ngen.log')
+
+
 def get_observational_filename(run: CalibrationRun) -> str:
     return f"{run.gage.gage_id}_hourly_discharge.csv"
 
