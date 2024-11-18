@@ -139,7 +139,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
     :return: Tuple containing any errors and the path to the config file (if created).
     """
     # Check if the run's status allows it to be prepared for execution
-    if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
+    if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         return None, None
 
     config = dict(config_template)
