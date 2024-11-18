@@ -334,7 +334,7 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 
 def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool = True) -> list[dict[str, any]] | list[int]:
     """
-    Retrieves validation jobs for a specific calibration run based on common conditions.
+    Retrieves validation jobs for a specific calibration job, regardless of status
 
     :param calibration_run_id: ID of the calibration run to get validation jobs for.
     :param return_ids_only: If True, returns only validation job IDs. If False, returns a list of dicts with detailed fields.
@@ -342,7 +342,6 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
     """
     # Define the filter condition for DONE or RUNNING statuses, excluding VALID_CONTROL
     validation_filter_condition = (
-            Q(status__in=[StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.RUNNING)]) &
             ~Q(validation_type=ValidationType.VALID_CONTROL.value)
     )
 
