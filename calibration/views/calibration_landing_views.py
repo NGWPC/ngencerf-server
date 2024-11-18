@@ -376,6 +376,7 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
             'submit_date': validation_run.submit_date,
             'status': validation_run.status.name,
             'validation_type': validation_run.validation_type,
+            'iteration_num': validation_run.iteration.iteration_num if validation_run.iteration else None,
             'parameters': params_list,
             'best': validation_run.validation_type == ValidationType.VALID_BEST.value
         })
