@@ -355,6 +355,7 @@ class GenericResponseSerializer(GenericMessageResponseSerializer):
 
 
 class GenericResponseSerializerWithValidation(GenericMessageResponseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False)
     validation_run_id = serializers.IntegerField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
@@ -914,6 +915,7 @@ class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     validation_type = serializers.CharField(required=True)
+    iteration_num = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
     best = serializers.BooleanField(required=True)

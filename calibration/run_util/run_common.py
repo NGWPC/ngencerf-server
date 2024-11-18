@@ -180,13 +180,13 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
     # If we just ran Validation Control, see if we want to run Validation Best
     if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         if validation_run.calibration_run.automatic_validation:
-            new_validation_run = create_validation_run_internal(validation_run.calibration_run, None,
+            best_validation_run = create_validation_run_internal(validation_run.calibration_run, None,
                                                                 validation_type=ValidationType.VALID_BEST)
             # Set the iteration containing the best values before we run it
             iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
-            new_validation_run.iteration = iteration
-            validation_run.save(update_fields=['iteration'])
-            submit_validation_job(new_validation_run)
+            best_validation_run.iteration = iteration
+            best_validation_run.save(update_fields=['iteration'])
+            submit_validation_job(best_validation_run)
 
 
 def submit_job_execution(run, input_file, output_file, job_type, submit_fn):
