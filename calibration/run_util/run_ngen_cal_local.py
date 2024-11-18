@@ -95,7 +95,7 @@ def run_job_callback_common(run: CalibrationRun | ValidationRun, future: Future)
 
     logger.info(f'Job end callback received for {job_description}')
     run.run_end = datetime.now(timezone.utc)
-    run.save(update_fields=['end_date'])
+    run.save(update_fields=['run_end'])
 
     try:
         if future.exception() is not None:
