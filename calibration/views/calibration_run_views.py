@@ -68,7 +68,7 @@ def get_status(request: Request) -> Response:
 
     # Check if the job's status allows retrieving performance metrics
     def should_include_metrics(status):
-        return include_performance_metrics and status in [StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.FAILED)]
+        return include_performance_metrics and status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
 
     # Conditionally retrieve calibration performance metrics
     calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status) else None
@@ -117,7 +117,7 @@ def get_status(request: Request) -> Response:
         response['performance_metrics'] = calibration_metrics
 
     # Add error messages if applicable
-    if calibration_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
         if messages:
             response['errors'] = messages
@@ -382,7 +382,7 @@ def cancel_job(request: Request) -> Response:
     if not cancel_job_common(run):
         return ResponseError(f"{'Calibration' if calibration_run_id else 'Validation'} Run {run.id} is not running")
 
-    run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)
+    run.status = StatusEnum.CANCELLED.db_instance
     run.save(update_fields=['status'])
 
     response = {

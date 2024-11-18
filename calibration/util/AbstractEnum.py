@@ -165,22 +165,29 @@ class AbstractEnum(Generic[T], Enum):
 
         return instance
 
-    @classmethod
-    def from_enum(cls, enum_member: Enum) -> T:
-        """
-        This method allows you to retrieve the model instance associated with a specific
-        enum member (e.g., StatusEnum.RUNNING). It internally calls get_instance() with
-        the enum member's value.
-        Only applicable if a model is defined.
 
-        :param enum_member: The enum member (e.g., StatusEnum.RUNNING)
-        :return: The model instance associated with the enum member
+    @property
+    def db_instance(self) -> T:
         """
-        # Uses get_instance to retrieve based on the enum member's value
-        return cls.get_instance(enum_member.value)
+        Returns the database model instance associated with this enum member.
+
+        This property retrieves the corresponding database row (model instance)
+        for the current enum member based on its `value`. The lookup is performed
+        using the `get_instance` method, which ensures that the data is retrieved
+        from the cache or, if necessary, loaded from the database.
+
+        Example Usage:
+            # Access the database instance for the DONE status
+            done_instance = StatusEnum.DONE.db_instance
+
+        :return: The model instance associated with the current enum member.
+        :raises ValueError: If the enum class is not linked to a database model or
+                            if the corresponding model instance cannot be found.
+        """
+        return self.__class__.get_instance(self.value)
 
     @classmethod
-    def active_choices_with_fields(cls, fields: List[str] = None) -> List[Dict[str, Any]]:
+    def get_active_choices_with_fields(cls, fields: List[str] = None) -> List[Dict[str, Any]]:
         """
         Returns a list of items from the database, including only the specified fields in each item
         (defaults to 'name' and 'description'). This method is useful for front-end selections.

@@ -79,7 +79,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         # Find a ValidationRun with status 'Done' for this iteration
         validation_run = (
             ValidationRun.objects
-            .filter(iteration=iteration, status=StatusEnum.from_enum(StatusEnum.DONE))
+            .filter(iteration=iteration, status=StatusEnum.DONE.db_instance)
             .first()
         )
 

@@ -40,7 +40,7 @@ def load_forecast_tab(request: Request) -> Response:
     if error_return:
         return error_return
 
-    cycle_values = ForecastCycleEnum.active_choices_with_fields(fields=['name', 'description'])
+    cycle_values = ForecastCycleEnum.get_active_choices_with_fields(fields=['name', 'description'])
 
     response = {'forecast_cycle_values': cycle_values}
 

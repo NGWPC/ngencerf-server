@@ -145,7 +145,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         # Geopackage Handling
         #############################
-        if run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD):
+        if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
             geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
             if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
                 # Copy file to job-specific directory
@@ -169,7 +169,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         # Forcing Data Handling
         #############################
-        if run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD):
+        if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy directory to job-specific path
@@ -193,7 +193,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         # Observational Data Handling
         #############################
-        if run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD):
+        if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy file to job-specific path
@@ -464,8 +464,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        geopackage_path = get_geopackage_file_for_job(run) if run.geopackage_source == GeopackageSourceEnum.from_enum(
-            GeopackageSourceEnum.UPLOAD) else run.geopackage_hydrofabric_file_path
+        geopackage_path = get_geopackage_file_for_job(run) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_hydrofabric_file_path
         if geopackage_path and os.path.exists(geopackage_path):
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
@@ -538,7 +537,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
     calibration_run_data['stop_criteria'] = stop_criteria
 
     # Additional data for running or completed jobs
-    if not export and run.status in [StatusEnum.from_enum(StatusEnum.RUNNING), StatusEnum.from_enum(StatusEnum.DONE)]:
+    if not export and run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.DONE.db_instance]:
         # Other stuff we need for Running/Done jobs
         pass
 

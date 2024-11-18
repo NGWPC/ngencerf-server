@@ -119,7 +119,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status=StatusEnum.from_enum(StatusEnum.DONE)
+        status=StatusEnum.DONE.db_instance
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Run {existing_validation_run.id} already exists for '
@@ -294,7 +294,7 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 
     # Filter jobs by run_status if specified
     if run_status:
-        model_status_values = [StatusEnum.from_enum(status_enum) for status_enum in run_status]
+        model_status_values = [status_enum.db_instance for status_enum in run_status]
         query &= Q(status__in=model_status_values)
 
     runs_query = CalibrationRun.objects.filter(query).annotate(formulation_name=F('user_formulation_name'))
@@ -516,9 +516,9 @@ def clone_job(request: Request) -> Response:
         return fatal_error
 
     # Set the new status to Saved and then we check it
-    new_run.status = StatusEnum.from_enum(StatusEnum.SAVED)
+    new_run.status = StatusEnum.SAVED.db_instance
     ready_to_run_messages = None
-    if new_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+    if new_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         ready_to_run_messages, _ = ngen_cal_input.ready_to_run(new_run)
 
     # noinspection PyUnresolvedReferences
@@ -576,12 +576,12 @@ def delete_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    if run.status == StatusEnum.from_enum(StatusEnum.RUNNING):
+    if run.status == StatusEnum.RUNNING.db_instance:
         return ResponseError(f'Calibration Run {run.id} is running.  Cannot delete a running job')
 
     run_id = run.id
 
-    if run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+    if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         hard_delete(run)
     else:
         logger.debug(f"Deleting (soft delete) Calibration Run {run.id}")

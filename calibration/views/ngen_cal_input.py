@@ -139,7 +139,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
     :return: Tuple containing any errors and the path to the config file (if created).
     """
     # Check if the run's status allows it to be prepared for execution
-    if run.status not in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+    if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         return None, None
 
     config = dict(config_template)
@@ -160,7 +160,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         # Determine the source of the forcing data (user-uploaded or pre-configured)
         if not is_missing(run.forcing_source, 'Forcing source', errors):
-            is_forcing_upload = run.forcing_source == ForcingSourceEnum.from_enum(ForcingSourceEnum.UPLOAD)
+            is_forcing_upload = run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance
             if is_forcing_upload:
                 # Check if forcing data has been uploaded
                 forcing_dir = get_forcing_dir_for_job(run)
@@ -180,7 +180,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         # Determine the source of observational data (user-uploaded or pre-configured)
         if not is_missing(run.observational_source, 'Observational source', errors):
-            is_observational_upload = run.observational_source == ObservationalSourceEnum.from_enum(ObservationalSourceEnum.UPLOAD)
+            is_observational_upload = run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance
             if is_observational_upload:
                 user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
                 if not user_uploaded_observational_file:
@@ -205,7 +205,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
         if not is_missing(run.geopackage_source, 'Geopackage source', errors):
-            is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.from_enum(GeopackageSourceEnum.UPLOAD)
+            is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
             if is_geopackage_upload:
                 user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
                 if not user_uploaded_geopackage_file:
@@ -399,7 +399,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, datafile['calib_parameter_file'])
 
-    run.status = StatusEnum.from_enum(StatusEnum.SAVED if errors else StatusEnum.READY)
+    run.status = StatusEnum.SAVED.db_instance if errors else StatusEnum.READY.db_instance
 
     run.save()
 
