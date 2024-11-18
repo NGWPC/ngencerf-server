@@ -36,24 +36,30 @@ ngen_login() {
 
     # Extract the HTTP status code
     http_status="${response: -3}"
-    response_body=$(cat /tmp/curl_response)
 
-    # Check if login succeeded and print only a success message
+    # Read the response body if the file exists
+    response_body=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+
+    # Handle login success
     if [[ "$http_status" -eq 200 ]]; then
         access_token=$(echo "$response_body" | jq -r '.access' 2>/dev/null)
         export ACCESS_TOKEN="$access_token"
         echo "'$email' login successful."
     else
-        # If login fails, display the full response for troubleshooting
-        echo "Login failed with status code $http_status."
-        echo "$response_body" | jq --indent 3
+        # Handle login failure or connection issues
+        if [[ "$http_status" -eq 000 ]]; then
+            echo "Login failed: Unable to connect to the server."
+        else
+            echo "Login failed with status code $http_status."
+            echo "$response_body" | jq --indent 3 2>/dev/null || echo "$response_body"
+        fi
+        rm -f /tmp/curl_response
         exit 1
     fi
 
     # Clean up the temp file
     rm -f /tmp/curl_response
 }
-
 
 # Function for register with optional email argument
 ngen_register() {
@@ -91,10 +97,18 @@ ngen_register() {
     if [ "$http_status" -eq 201 ]; then
         echo "Registration successful for user '$email'."
     else
-        echo "Registration failed. HTTP Status: $http_status"
-        echo "Response Body: $response_body"
+        if [[ "$http_status" -eq 000 ]]; then
+            echo "Registration failed: Unable to connect to the server."
+        else
+            echo "Registration failed. HTTP Status: $http_status"
+            echo "$response_body" | jq --indent 3 2>/dev/null || echo "$response_body"
+        fi
+        rm -f /tmp/curl_response
         return 1
     fi
+
+    # Clean up the temp file
+    rm -f /tmp/curl_response
 }
 
 # Clean up the temp file
