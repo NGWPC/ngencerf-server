@@ -78,7 +78,7 @@ def run_job_callback_common_pw(run: CalibrationRun | ValidationRun, slurm_status
     job_description = get_job_description(run)
     logger.info(f'Job end callback received for {job_description} with status {slurm_status}')
     run.run_end = datetime.now(timezone.utc)
-    run.save(update_fields=['end_date'])
+    run.save(update_fields=['run_end'])
 
     if slurm_status == SlurmStatusEnum.CANCELED:
         logger.error(f'{job_description} was cancelled')
