@@ -80,6 +80,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         validation_run = (
             ValidationRun.objects
             .filter(iteration=iteration, status=StatusEnum.DONE.db_instance)
+            .select_related('calibration_run')
             .first()
         )
 
@@ -137,6 +138,7 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> Query
     return (
         Iteration.objects
         .filter(calibration_run=calibration_run)
+        .select_related('calibration_run')
         .prefetch_related('iterationparameter_set__calibration_parameter', 'iterationmetric_set')
         .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
     )
@@ -249,42 +251,39 @@ def get_logs(request: Request) -> Response:
 
     # Fetch logs based on the run type and validation type
     if calibration_run_id or validation_type in {ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value}:
-        if calibration_run_id:
-            # Find the Best and Control validation runs
-            validations = ValidationRun.objects.filter(
-                calibration_run=calibration_run,
-                validation_type__in=[ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value]
-            )
+        # Find the Best and Control validation runs
+        validations = ValidationRun.objects.filter(
+            calibration_run=calibration_run,
+            validation_type__in=[ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value]
+        ).select_related('calibration_run', 'iteration')
 
-            # Retrieve calibration logs
-            response['logs'] = get_calibration_logs(calibration_run)
+        # Retrieve calibration logs
+        response['logs'] = get_calibration_logs(calibration_run)
 
-            # Retrieve logs for Best and Control validation types
-            response['validations'].extend(get_best_and_control_validation_ngen_cal_stdout_logs(calibration_run))
+        # Retrieve logs for Best and Control validation types
+        response['validations'].extend(get_best_and_control_validation_ngen_cal_stdout_logs(calibration_run))
 
-            # Loop through the validation runs to add the ngen stdout log
-            for v in validations:
-                ngen_stdout_content = fetch_log(find_validation_ngen_stdout_log(v), 'ngen stdout')
-                if ngen_stdout_content:
-                    # Find the corresponding validation entry and append the ngen stdout log
-                    for validation_entry in response['validations']:
-                        if validation_entry['validation_run_id'] == v.id:
-                            # Ensure logs key exists and append the fetched logs
-                            if 'logs' not in validation_entry:
-                                validation_entry['logs'] = []
-                            validation_entry['logs'].extend(ngen_stdout_content)
-                            break
+        # Loop through the validation runs to add the ngen stdout log
+        for v in validations:
+            ngen_stdout_content = fetch_log(find_ngen_stdout_log(v), 'ngen stdout')
+            if ngen_stdout_content:
+                # Find the corresponding validation entry and append the ngen stdout log
+                for validation_entry in response['validations']:
+                    if validation_entry['validation_run_id'] == v.id:
+                        # Ensure logs key exists and append the fetched logs
+                        if 'logs' not in validation_entry:
+                            validation_entry['logs'] = []
+                        validation_entry['logs'].extend(ngen_stdout_content)
+                        break
     elif validation_type == ValidationType.VALID_ITERATION.value:
         # For VALID_ITERATION type, retrieve specific validation iteration logs
-        iteration_logs = fetch_log(find_validation_ngen_stdout_log(validation_run), 'ngen stdout log')
-        ngen_cal_stdout_content = fetch_log(get_validation_iteration_stdout_file(validation_run), 'ngen-cal stdout log')
+        iteration_logs = fetch_log(find_ngen_stdout_log(validation_run), 'ngen stdout')
+        ngen_cal_stdout_content = fetch_log(get_validation_iteration_stdout_file(calibration_run, validation_run.iteration.worker_name, validation_run.iteration.iteration_num), 'ngen-cal stdout')
 
-        response['validations'].append({
-            'validation_run_id': validation_run.id,
-            'validation_type': validation_run.validation_type,
-            'status': validation_run.status.name,
-            'logs': iteration_logs + ngen_cal_stdout_content if iteration_logs or ngen_cal_stdout_content else []
-        })
+        validation_entry = get_validation_iteration_logs(validation_run)
+        # Ensure the logs from fetch_log are added to the existing entry
+        validation_entry['logs'] = iteration_logs + ngen_cal_stdout_content if iteration_logs or ngen_cal_stdout_content else []
+        response['validations'].append(validation_entry)
 
     # Add ngen logs to the response
     response.setdefault('logs', []).extend(get_ngen_log(calibration_run))
@@ -319,7 +318,7 @@ def get_calibration_logs(calibration_run: CalibrationRun) -> list[dict[str, list
     """
     logs = []
     logs.extend(fetch_log(get_calibration_stdout_file(calibration_run), 'ngen_cal stdout'))
-    logs.extend(fetch_log(find_calibration_ngen_stdout_log(calibration_run), 'ngen stdout'))
+    logs.extend(fetch_log(find_ngen_stdout_log(calibration_run), 'ngen stdout'))
     return logs
 
 
@@ -386,24 +385,24 @@ def get_validation_iteration_logs(validation_run: ValidationRun) -> dict[str, An
     )
     logs = fetch_log(stdout_file, 'ngen-cal stdout')
     return {
-        'validation_job_id': validation_run.id,
+        'validation_run_id': validation_run.id,
         'status': validation_run.status.name,
         'validation_type': validation_run.validation_type,
         'logs': logs
     }
 
 
-def find_calibration_ngen_stdout_log(calibration_run: CalibrationRun) -> str | None:
+def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     """
-    Searches the worker directories of a calibration run to locate the ngen stdout file.
+    Searches the worker directories of a run to locate the ngen stdout file.
 
-    :param calibration_run: The calibration run object to process.
+    :param run: The CalibrationRun or ValidationRun object to process.
     :return: The path of the ngen stdout file if found, otherwise None.
     """
     ngen_log_path = None
 
     # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, run: CalibrationRun):
+    def check_worker(worker_dir: str, run_object: CalibrationRun | ValidationRun):
         nonlocal ngen_log_path
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 
@@ -412,29 +411,6 @@ def find_calibration_ngen_stdout_log(calibration_run: CalibrationRun) -> str | N
             ngen_log_path = potential_log_path
 
     # Call process_worker_dirs to iterate through the worker directories
-    process_worker_dirs(calibration_run, check_worker)
-
-    return ngen_log_path
-
-def find_validation_ngen_stdout_log(validation_run: ValidationRun) -> str | None:
-    """
-    Searches the worker directories of a calibration run to locate the ngen stdout file.
-
-    :param validation_run: The calibration run object to process.
-    :return: The path of the ngen stdout file if found, otherwise None.
-    """
-    ngen_log_path = None
-
-    # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, run: CalibrationRun):
-        nonlocal ngen_log_path
-        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
-
-        # Check if ngen stdout file exists in the current worker directory
-        if os.path.isfile(potential_log_path):
-            ngen_log_path = potential_log_path
-
-    # Call process_worker_dirs to iterate through the worker directories
-    process_worker_dirs(validation_run, check_worker)
+    process_worker_dirs(run, check_worker)
 
     return ngen_log_path

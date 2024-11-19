@@ -18,6 +18,11 @@ class Iteration(BaseModel):
                                     name='iteration_iteration_num_worker_calibration_run__unique')
         ]
 
+        indexes = [
+            models.Index(fields=['calibration_run'], name='iteration_calibration_run_idx'),
+            models.Index(fields=['worker_number'], name='iteration_worker_number_idx'),
+        ]
+
     def __str__(self):
         return (
             f"Iteration: {self.id}, "
