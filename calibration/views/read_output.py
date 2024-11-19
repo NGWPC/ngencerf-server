@@ -6,7 +6,7 @@ from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
-from typing import Dict, Any
+from typing import Dict, Any, Callable
 
 import pandas as pd
 from django.db import transaction
@@ -19,7 +19,7 @@ from calibration.util.ngen_locations import get_realization_file_path, get_metri
     get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
-    get_validation_special_performance_file
+    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
