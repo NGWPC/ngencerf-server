@@ -6,7 +6,6 @@ from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
-from pathlib import Path
 from typing import Dict, Any
 
 import pandas as pd
@@ -105,7 +104,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
     logger.info(f"Processing '{metrics_file} for {job_description}")
 
     # Check if the file exists
-    if not Path(metrics_file).is_file():
+    if not os.path.isfile(metrics_file):
         logger.error(f'{metrics_file} does not exist')
         return
 
@@ -247,7 +246,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Get the worker's path
     worker_path = get_worker_path(calibration_run, worker_name)
-    if not Path(worker_path).is_dir():
+    if not os.path.isdir(worker_path):
         raise CerfException(f"{worker_path} does not exist or is not a directory for CalibrationRun {calibration_run.id}")
 
     # Get the necessary files for metrics, parameters, and best objective function log
@@ -256,16 +255,15 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Contains the best for DDS
     objective_log_best_file = get_objective_log_best_file(calibration_run, worker_name)
 
-    # Check if the files exist
-    if not Path(metrics_iteration_file).is_file():
+    if not os.path.isfile(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
-    if not Path(params_iteration_file).is_file():
+    if not os.path.isfile(params_iteration_file):
         raise CerfException(f'{params_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
 
     # Check for the best iteration based on optimization type (DDS, GWO, PSO)
     best_iteration_for_worker = -1
     if calibration_run.optimization == OptimizationEnum.DDS.db_instance:
-        if not Path(objective_log_best_file).is_file():
+        if not os.path.isfile(objective_log_best_file):
             raise CerfException(f'{objective_log_best_file} does not exist for CalibrationRun {calibration_run.id}')
         # Read the best iteration from the log
         last_line = read_last_line(objective_log_best_file)
@@ -396,7 +394,7 @@ def process_params_row(calibration_run: CalibrationRun,
     best_params_dict: Dict[str, float] = {}
     if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
         global_best_params_file = get_global_best_params_file(calibration_run)
-        if not Path(global_best_params_file).is_file():
+        if not os.path.isfile(global_best_params_file):
             raise CerfException(f"{global_best_params_file} does not exist")
 
         # Read the global best parameters into a DataFrame
@@ -507,15 +505,14 @@ def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda: callable
     :param worker_lambda: A lambda function that processes each worker directory.
     """
     output_calibration_run_dir = get_output_calibration_run_dir(calibration_run)
-    output_calibration_run_dir_path = Path(output_calibration_run_dir)
-    if not output_calibration_run_dir_path.exists():
+    if not os.path.exists(output_calibration_run_dir):
         raise CerfException(f"Cannot find expected data at {output_calibration_run_dir}")
-    for item in output_calibration_run_dir_path.iterdir():
+    for item in os.listdir(output_calibration_run_dir):
+        item_path = os.path.join(output_calibration_run_dir, item)
         # Check if the item is a directory and matches the pattern
-        if item.is_dir() and worker_directory_pattern.match(item.name):
-            worker_dir = output_calibration_run_dir_path / item
-            logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Processing worker directory: {worker_dir}')
-            worker_lambda(worker_dir, calibration_run)
+        if os.path.isdir(item_path) and worker_directory_pattern.match(item):
+            logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Processing worker directory: {item_path}')
+            worker_lambda(item_path, calibration_run)
 
 
 # Function to count the number of rows in a CSV file
