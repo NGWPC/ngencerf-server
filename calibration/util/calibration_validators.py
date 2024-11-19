@@ -924,7 +924,7 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
 
 
 class GetLogsValidations(BaseSerializer):
-    validation_job_id = serializers.IntegerField(required=True)
+    validation_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     validation_type = serializers.CharField(required=True)
     logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=True, allow_empty=True)
