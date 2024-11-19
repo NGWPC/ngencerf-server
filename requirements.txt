@@ -21,5 +21,8 @@ pandas~=2.2.3
 pyogrio~=0.10.0
 numpy~=2.1.2
 
+# There is also a dependancy on git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput"
+# That dependancy is installed separately in runCerf.sh in order to ensure that we get the latest code
+
 
 
