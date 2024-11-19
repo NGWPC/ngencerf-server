@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import traceback
 from typing import Tuple
 
 from django.db import transaction
@@ -17,7 +18,7 @@ from calibration.run_util.run_common import submit_calibration_job
 from calibration.util import ngen_locations
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
-    ExportResponseSerializer,  ErrorResponseSerializer
+    ExportResponseSerializer, ErrorResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
@@ -33,7 +34,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 from calibration.views.hydrofabric import HydrofabricException, get_module_metadata_from_hydrofabric, get_geopackage_from_hydrofabric, \
-    get_forcing_data_from_hydrofabric
+    get_forcing_data_from_hydrofabric, HydrofabricBMIException
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         errors = []
         info = []
-        hydrofabric_errors = []
+        eds_errors = []
 
         #############################
         # Gage
@@ -160,10 +161,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving geopackage data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
-                        'status_code': e.status_code if e.status_code else '5xx'
+                        'status_code': e.status_code if e.status_code else None
                     })
 
         #############################
@@ -184,10 +185,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     get_forcing_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving forcing data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
-                        'status_code': e.status_code if e.status_code else '5xx'
+                        'status_code': e.status_code if e.status_code else None
                     })
 
         #############################
@@ -207,10 +208,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving observational data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                    hydrofabric_errors.append({
+                    eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
-                        'status_code': e.status_code if e.status_code else '5xx'
+                        'status_code': e.status_code if e.status_code else None
                     })
 
         #############################
@@ -254,13 +255,21 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         if modules and run.gage:
             try:
+                # get_module_metadata_from_hydrofabric(run.gage, modules)
                 get_module_metadata_from_hydrofabric(run.gage, modules)
+            except HydrofabricBMIException as e:
+                logger.error(f"{str(e)}: {traceback.format_exc()}")
+                eds_errors.append({
+                    'name': 'bmi',
+                    'message': str(e),
+                    'status_code': None
+                })
             except HydrofabricException as e:
                 errors.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
-                hydrofabric_errors.append({
+                eds_errors.append({
                     'name': 'parameters',
                     'message': str(e),
-                    'status_code': e.status_code if e.status_code else '5xx'
+                    'status_code': e.status_code if e.status_code else None
                 })
 
         #############################
@@ -268,11 +277,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
 
         parameters = calibration_run_data.get('parameters')
+
         if parameters and not modules:
             return None, None, ResponseError('Parameters cannot be specified without modules')
 
         # Don't bother validating parameters if we got a hydrofabric error
-        if not any(error.get('name') == 'parameters' for error in hydrofabric_errors):
+        if not any(error.get('name') == 'parameters' for error in eds_errors):
             error_message = validate_parameters(run, parameters)
             if error_message:
                 return None, None, ResponseError(error_message)
@@ -337,6 +347,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         messages['errors'] = errors
     if info:
         messages['info'] = info
+    if eds_errors:
+        messages['eds_errors'] = eds_errors
 
     return run, messages, None
 
@@ -425,7 +437,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
         # calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
+        # calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
+
         # There fields are exported so we can import them later
         # Note that it makes sense to export the unsubsetted Hydrofabric files
         # We will subset them again with the new job, when it is imported

@@ -14,7 +14,7 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
-from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException
+from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException, HydrofabricBMIException
 
 logger = logging.getLogger(__name__)
 
@@ -160,8 +160,8 @@ def save_formulation_tab(request) -> Response:
     # Set run.use_sloth and handle Sloth parameters
     run.use_sloth = use_sloth
 
-    # Initialize the hydrofabric_errors list
-    hydrofabric_errors = []
+    # Initialize the eds_errors list
+    eds_errors = []
 
     if new_module_names:
         # Retrieve current module names for the CalibrationRun
@@ -196,13 +196,21 @@ def save_formulation_tab(request) -> Response:
                     if new_formulations_qs.exists() and run.gage:
                         try:
                             get_module_metadata_from_hydrofabric(run.gage, new_formulations_qs)
+                        except HydrofabricBMIException as e:
+                            logger.error(f"{str(e)}: {traceback.format_exc()}")
+                            eds_errors.append({
+                                'name': 'bmi',
+                                'message': str(e),
+                                'status_code': None
+                            })
                         except HydrofabricException as e:
                             logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
-                            hydrofabric_errors.append({
+                            eds_errors.append({
                                 'name': 'parameters',
                                 'message': str(e),
-                                'status_code': e.status_code if e.status_code else '5xx'
+                                'status_code': e.status_code if e.status_code else None
                             })
+
 
             # Delete existing Sloth params for this run and re-add them
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
@@ -223,8 +231,8 @@ def save_formulation_tab(request) -> Response:
     }
     if formulation_warning is not None:
         response['formulation_warning'] = formulation_warning
-    if hydrofabric_errors:
-        response['hydrofabric_errors'] = hydrofabric_errors
+    if eds_errors:
+        response['eds_errors'] = eds_errors
 
     response_validator, error_response = validate_response(SaveFormulationResponseSerializer, response)
     if error_response:
