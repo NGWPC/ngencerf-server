@@ -21,6 +21,8 @@ services:
   ngencerf-services:
     build: 
       context: .
+      args:
+        - CREATE_INPUT_TAG=development
       secrets:
         - gitlab_token
         - aws_token
