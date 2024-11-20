@@ -15,6 +15,7 @@ class ValidationRun(BaseModel):
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
     slurm_job_id = models.IntegerField(null=True)
     validation_type = models.CharField(max_length=20, null=False)
+    validation_worker_name = models.CharField(null=True)
 
     class Meta:
         db_table = 'validation_run'

@@ -1,5 +1,6 @@
 import logging
 import os
+from typing import Any
 
 from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -10,10 +11,9 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
-    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, CalibrationOrValidationRunSerializer, \
-    GetLogsResponseSerializer
+    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
-    get_validation_iteration_stdout_file
+    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_landing_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
     replace_nan_with_none, get_validation_run
@@ -64,6 +64,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         NWMRetrospectiveMetrics.objects
         .filter(period=ValidationMetricPeriod.valid.value, calibration_run=run)
         .select_related('metric')
+        .only('metric__name', 'metric_value')
         .annotate(metric_name=F('metric__name'))
         .values('metric_name', 'metric_value')
     )
@@ -72,16 +73,17 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
 
     iterations = get_iterations_for_calibration_job(run)
 
+    # Prefetch validation runs for all iterations
+    validation_runs = ValidationRun.objects.filter(
+        iteration__in=iterations, status=StatusEnum.DONE.db_instance
+    ).select_related('calibration_run')
 
-    # Construct iteration data with parameters, metrics and validation reference for each iteration
+    validation_runs_by_iteration = {vr.iteration_id: vr for vr in validation_runs}
+
+    # Construct iteration data with parameters, metrics, and validation reference
     iteration_data = []
     for iteration in iterations:
-        # Find a ValidationRun with status 'Done' for this iteration
-        validation_run = (
-            ValidationRun.objects
-            .filter(iteration=iteration, status=StatusEnum.DONE.db_instance)
-            .first()
-        )
+        validation_run = validation_runs_by_iteration.get(iteration.id)
 
         iteration_element = {
             'iteration_num': iteration.iteration_num,
@@ -135,11 +137,13 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> Query
     :return: A queryset of Iteration objects associated with the calibration run.
     """
     return (
-        Iteration.objects
-        .filter(calibration_run=calibration_run)
-        .prefetch_related('iterationparameter_set__calibration_parameter', 'iterationmetric_set')
+        Iteration.objects.filter(calibration_run=calibration_run)
+        .select_related('calibration_run')
+        .prefetch_related('iterationparameter_set__calibration_parameter',
+                          'iterationmetric_set')
         .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
     )
+
 
 @extend_schema(
     request=CalibrationRunSerializer,
@@ -190,9 +194,9 @@ def get_validation_jobs(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationOrValidationRunSerializer,
+    request=ValidationRunSerializer,
     responses={
-        200: GetValidationJobsResponseSerializer,
+        200: GetLogsResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -202,74 +206,71 @@ def get_validation_jobs(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Get logs for a completed job"
+    description="Get logs for a validation run and its associated calibration run"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def get_logs(request: Request) -> Response:
     """
-    Retrieves logs for a calibration or validation job, depending on the provided identifiers.
+    Retrieves logs for a validation run and its associated calibration run.
 
-    :param request: The HTTP request object containing job identifiers.
-    :return: JSON response with job logs or error information.
+    :param request: The HTTP request object containing validation run ID.
+    :return: JSON response with logs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_logs() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
+    validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
 
-    # Determine job type and run function
-    run_func = get_calibration_run if calibration_run_id else get_validation_run
-    run_id = calibration_run_id or validation_run_id
-
-    run, error_return = run_func(
-        run_id,
+    validation_run, error_return = get_validation_run(
+        validation_run_id,
         request.user,
         run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
     )
     if error_return:
         return error_return
 
-    # Get the calibration run and determine if this is a validation run case
-    calibration_run = run if calibration_run_id else run.calibration_run
-    validation_run = run if validation_run_id else None
-    validation_type = validation_run.validation_type if validation_run else None
-
-    validations: list[dict] = []
+    # Retrieve associated calibration run
+    calibration_run = validation_run.calibration_run
 
     response = {
-        'message': f"{'Calibration' if calibration_run_id else 'Validation'} Run job {run.id} logs retrieved",
+        'message': f"Validation Run job {validation_run_id} logs retrieved",
         'calibration_run_id': calibration_run.id,
-        'status': run.status.name,
-        'validations': validations
+        'status': calibration_run.status.name,
+        'validations': [],
+        'logs': get_calibration_logs(calibration_run)
     }
 
-    if validation_run_id:
-        response['validation_run_id'] = validation_run_id
+    # Fetch logs for the validation run
+    validation_logs = [fetch_logs_for_validation(validation_run, calibration_run)]
+    response['validations'].extend(validation_logs)
 
-    # If this is a calibration run or a validation with type valid_best or valid_control, include logs
-    if calibration_run_id or (validation_type in {ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value}):
-        logs = get_calibration_logs(calibration_run)
-        validations.extend(get_best_and_control_validation_logs(calibration_run))
-        response['logs'] = logs
+    # Add ngen logs to the response
+    response.setdefault('logs', []).extend(get_ngen_log(calibration_run))
 
-    # If the request is for a specific validation iteration, fetch only its logs without calibration logs
-    elif validation_type == ValidationType.VALID_ITERATION.value:
-        validation_logs = get_validation_iteration_logs(validation_run)
-        validations.append(validation_logs)
-
-    # Validate and respond
     response_validator, error_response = validate_response(GetLogsResponseSerializer, response)
     if error_response:
         return error_response
 
     logger.debug(f'Returning to {request.user.email} from get_logs() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+def fetch_log(file_path: str, log_key: str) -> list[dict[str, list[str]]]:
+    """
+    Reads a log file and returns its content as a dictionary with the given key.
+
+    :param file_path: The path to the log file.
+    :param log_key: The key under which the log content will be stored.
+    :return: A list containing a dictionary with the log content, or an empty list if the file doesn't exist.
+    """
+    if file_path and os.path.exists(file_path):
+        return [{log_key: read_file_with_null_replacement(file_path)}]
+    return []
 
 
 def get_calibration_logs(calibration_run: CalibrationRun) -> list[dict[str, list[str]]]:
@@ -280,16 +281,19 @@ def get_calibration_logs(calibration_run: CalibrationRun) -> list[dict[str, list
     :return: A list of log entries.
     """
     logs = []
-
-    stdout_file = get_calibration_stdout_file(calibration_run)
-    if os.path.exists(stdout_file):
-        logs.append({'ngen_cal': read_file_with_null_replacement(stdout_file)})
-
-    ngen_log = find_ngen_log(calibration_run)
-    if ngen_log and os.path.exists(ngen_log):
-        logs.append({'ngen': read_file_with_null_replacement(ngen_log)})
-
+    logs.extend(fetch_log(get_calibration_stdout_file(calibration_run), 'ngen_cal stdout'))
+    logs.extend(fetch_log(find_ngen_stdout_log(calibration_run), 'ngen stdout'))
     return logs
+
+
+def get_ngen_log(calibration_run: CalibrationRun) -> list[dict[str, list[str]]]:
+    """
+    Retrieves the ngen logs.
+
+    :param calibration_run: The CalibrationRun object.
+    :return: A list of log entries.
+    """
+    return fetch_log(get_ngen_log_path(calibration_run), 'ngen')
 
 
 def read_file_with_null_replacement(file_path: str) -> list[str]:
@@ -303,72 +307,110 @@ def read_file_with_null_replacement(file_path: str) -> list[str]:
         return [line.replace('\x00', ' ') for line in file]
 
 
-def get_best_and_control_validation_logs(calibration_run: CalibrationRun) -> list[dict]:
+def fetch_logs_for_validation(validation_run: ValidationRun, calibration_run: CalibrationRun) -> dict[str, Any]:
+    """
+    Fetch logs for a specific validation run, including ngen stdout and ngen-cal stdout logs.
+
+    :param validation_run: The ValidationRun instance.
+    :param calibration_run: The associated CalibrationRun instance.
+    :return: A dictionary containing the validation logs.
+    """
+    validation_type = validation_run.validation_type
+    logs = []
+
+    if validation_type in {ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value}:
+        logs.extend(fetch_log(
+            get_validation_best_stdout_file(calibration_run) if validation_type == ValidationType.VALID_BEST.value
+            else get_validation_control_stdout_file(calibration_run),
+            'ngen-cal stdout'
+        ))
+    elif validation_type == ValidationType.VALID_ITERATION.value:
+        logs.extend(fetch_log(
+            get_validation_iteration_stdout_file(
+                calibration_run,
+                validation_run.iteration.worker_name,
+                validation_run.iteration.iteration_num
+            ),
+            'ngen-cal stdout'
+        ))
+
+    # Add the ngen stdout log
+    logs.extend(fetch_log(find_ngen_stdout_log(validation_run), 'ngen stdout'))
+
+    return {
+        'validation_run_id': validation_run.id,
+        'status': validation_run.status.name,
+        'validation_type': validation_type,
+        'logs': logs
+    }
+
+
+def get_best_and_control_validation_ngen_cal_stdout_logs(validation_run: ValidationRun) -> list[dict[str, Any]]:
     """
     Retrieves logs for 'valid_best' and 'valid_control' validation types for a calibration run.
 
-    :param calibration_run: The CalibrationRun instance.
+    :param validation_run: The ValidationRun instance.
     :return: A list of validation log entries.
     """
-    validation_logs = []
+    calibration_run = validation_run.calibration_run
+    validation_type = validation_run.validation_type
+    stdout_file = (
+        get_validation_best_stdout_file(calibration_run)
+        if validation_type == ValidationType.VALID_BEST.value
+        else get_validation_control_stdout_file(calibration_run)
+    )
 
-    for validation_type, get_file_func in [
-        (ValidationType.VALID_BEST.value, get_validation_best_stdout_file),
-        (ValidationType.VALID_CONTROL.value, get_validation_control_stdout_file)
-    ]:
-        validation_run = calibration_run.validations.filter(validation_type=validation_type).first()
-        if validation_run:
-            stdout_file = get_file_func(calibration_run)
-            log_data = {
-                'validation_job_id': validation_run.id,
-                'status': validation_run.status.name,
-                'validation_type': validation_type,
-                'log': read_file_with_null_replacement(stdout_file) if os.path.exists(stdout_file) else []
-            }
-            validation_logs.append(log_data)
-
-    return validation_logs
+    logs = fetch_log(stdout_file, 'ngen-cal stdout')
+    return [{
+        'validation_run_id': validation_run.id,
+        'status': validation_run.status.name,
+        'validation_type': validation_type,
+        'logs': logs
+    }]
 
 
-def get_validation_iteration_logs(validation_run: ValidationRun) -> dict[str, list[str]]:
+def get_validation_iteration_logs(validation_run: ValidationRun) -> list[dict[str, Any]]:
     """
     Retrieves logs for a specific 'valid_iteration' type validation run.
 
     :param validation_run: The ValidationRun instance.
-    :return: A dictionary containing validation log data.
+    :return: A list containing a dictionary with validation log data.
     """
+    calibration_run = validation_run.calibration_run
     stdout_file = get_validation_iteration_stdout_file(
         validation_run.calibration_run,
         validation_run.worker_name,
         validation_run.iteration_num
     )
-    return {
-        'validation_job_id': validation_run.id,
+
+    logs = fetch_log(stdout_file, 'ngen-cal stdout')
+    return [{
+        'validation_run_id': validation_run.id,
         'status': validation_run.status.name,
         'validation_type': validation_run.validation_type,
-        'log': read_file_with_null_replacement(stdout_file) if os.path.exists(stdout_file) else []
-    }
+        'logs': logs
+    }]
 
 
-def find_ngen_log(calibration_run: CalibrationRun) -> str | None:
+def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     """
-    Searches the worker directories of a calibration run to locate the 'ngen.log' file.
+    Searches the worker directories of a run to locate the ngen stdout file.
 
-    :param calibration_run: The calibration run object to process.
-    :return: The path of the 'ngen.log' file if found, otherwise None.
+    :param run: The CalibrationRun or ValidationRun object to process.
+    :return: The path of the ngen stdout file if found, otherwise None.
     """
     ngen_log_path = None
 
     # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, run: CalibrationRun):
+    def check_worker(worker_dir: str, run_object: CalibrationRun | ValidationRun):
         nonlocal ngen_log_path
-        potential_log_path = os.path.join(worker_dir, 'ngen.log')
+        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 
-        # Check if 'ngen.log' exists in the current worker directory
+        # Check if ngen stdout file exists in the current worker directory
         if os.path.isfile(potential_log_path):
             ngen_log_path = potential_log_path
 
     # Call process_worker_dirs to iterate through the worker directories
-    process_worker_dirs(calibration_run, check_worker)
+    process_worker_dirs(run, check_worker)
 
     return ngen_log_path
