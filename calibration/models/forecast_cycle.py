@@ -7,6 +7,8 @@ class ForecastCycle(BaseModel):
     description = models.TextField(null=False)
     is_active = models.BooleanField(null=False, default=True)
     name = models.CharField(max_length=50, unique=True, null=False)
+    data_sources = models.CharField(max_length=100, null=False)
+    time_range = models.CharField(max_length=100, null=False)
 
     class Meta:
         db_table = 'forecast_cycle'
