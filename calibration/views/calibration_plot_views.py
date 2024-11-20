@@ -318,7 +318,7 @@ def determine_plot_location(calibration_run: CalibrationRun, run: CalibrationRun
             if calibration_run.id or run.validation_type != ValidationType.VALID_ITERATION.value:
                 return get_output_validation_plot_dir(calibration_run)
             return get_output_validation_iteration_plot_dir(
-                calibration_run, run.iteration.iteration_num, run.iteration.worker_name
+                calibration_run, run.iteration_num, run.worker_name
             )
 
         case 'output_calibration':

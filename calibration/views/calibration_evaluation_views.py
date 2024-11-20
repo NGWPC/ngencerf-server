@@ -339,8 +339,8 @@ def get_validation_iteration_logs(validation_run: ValidationRun) -> dict[str, li
     """
     stdout_file = get_validation_iteration_stdout_file(
         validation_run.calibration_run,
-        validation_run.iteration.worker_name,
-        validation_run.iteration.iteration_num
+        validation_run.worker_name,
+        validation_run.iteration_num
     )
     return {
         'validation_job_id': validation_run.id,
