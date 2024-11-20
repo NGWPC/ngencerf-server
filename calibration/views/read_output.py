@@ -550,7 +550,6 @@ def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Call
         raise CerfException(f"Cannot find expected data at {output_run_dir}")
 
     job_description = get_job_description(run)
-    print('job_description', job_description)
 
     for item in os.listdir(output_run_dir):
         worker_dir = os.path.join(output_run_dir, item)
