@@ -449,7 +449,7 @@ class Command(BaseCommand):
             PlotDefinition.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
                                                                               "description": v['description'],
                                                                               "location": v['location'],
-                                                                              "valid_optimizations": v['valid_optimizations'],
-                                                                              "validation": v['validation'],
+                                                                              "valid_optimizations": v.get('valid_optimizations'),
+                                                                              "job_type": v['job_type'],
                                                                               "filename_mask": v['filename_mask'],
                                                                               "created_by": self.user})
