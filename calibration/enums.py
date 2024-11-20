@@ -196,6 +196,12 @@ class ValidationType(AbstractEnum):
     VALID_ITERATION = 'valid_iteration'
 
 
+class JobType(AbstractEnum):
+    CALIBRATION = 'calibration'
+    VALIDATION = 'validation'
+    FORECAST = 'forecast'
+
+
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
 class ValidationMetricPeriod(AbstractEnum):
     calib = 'calib'
