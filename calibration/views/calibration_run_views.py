@@ -14,7 +14,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import Iteration, ValidationRun
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status
 from calibration.run_util.run_common import cancel_job_common, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
             description="Internal server error"
         )
     },
-    description="Return the status of a calibration job and associated validation jobs"
+    description="Return the status of a calibration job and associated validation and forecast jobs"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
@@ -68,7 +68,7 @@ def get_status(request: Request) -> Response:
         return model_to_dict(performance_metrics, fields=fields) if performance_metrics else {field: None for field in fields}
 
     # Check if the job's status allows retrieving performance metrics
-    def should_include_metrics(status):
+    def should_include_metrics(status: Status):
         return include_performance_metrics and status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
 
     # Conditionally retrieve calibration performance metrics
@@ -79,6 +79,17 @@ def get_status(request: Request) -> Response:
         "performance_metrics"
     ).only(
         "id", "status__name", "validation_type", "submit_date",
+        "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
+        "performance_metrics__cpu_time", "performance_metrics__max_rss",
+        "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
+        "performance_metrics__reserved_time"
+    )
+
+    # Retrieve validation runs with related PerformanceMetrics data
+    forecast_runs = ForecastRun.objects.filter(calibration_run=calibration_run).select_related(
+        "performance_metrics"
+    ).only(
+        "id", "status__name", "submit_date",
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
@@ -101,6 +112,21 @@ def get_status(request: Request) -> Response:
             validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
         validation_response.append(validation_data)
 
+    # Construct validation response with performance metrics as needed
+    forecast_response = []
+    for run in forecast_runs:
+        forecast_data = {
+            'forecast_run_id': run.id,
+            'status': run.status.name,
+            'submit_date': run.submit_date,
+            'run_start': run.run_start,
+            'run_end': run.run_end,
+            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
+        }
+        if should_include_metrics(run.status):
+            forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
+        forecast_response.append(forecast_data)
+
     # Prepare the main response without calibration performance metrics if not requested
     response = {
         'message': f'Calibration Job {calibration_run.id}, status is {calibration_run.status.name}',
@@ -110,7 +136,8 @@ def get_status(request: Request) -> Response:
         'run_start': calibration_run.run_start,
         'run_end': calibration_run.run_end,
         'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
-        'validations': validation_response
+        'validations': validation_response,
+        'forecasts': forecast_response
     }
 
     # Conditionally add calibration run performance metrics to response if requested and status is DONE or FAIL
