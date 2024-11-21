@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
-from calibration.run_util.run_common import submit_validation_job
+from calibration.run_util.run_common import submit_validation_job, submit_forecast_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
@@ -167,7 +167,7 @@ def create_and_run_validation(request: Request) -> Response:
 @handle_exceptions
 def create_and_run_forecast(request: Request) -> Response:
     """
-    Creates and runs a new forecast run for a specified calibration run and cycle name.
+    Creates and runs a new forecast run for a specified calibration run and cycle_name name.
 
     :param request: The HTTP request object containing calibration and iteration details.
     :return: JSON response with validation run details or error information.
@@ -201,7 +201,7 @@ def create_and_run_forecast(request: Request) -> Response:
         calibration_run,
         ForecastCycleEnum.get_instance(cycle_name)
     )
-    submit_forecast_job(validation_run)
+    submit_forecast_job(forecast_run)
 
     response = {
         'message': f'Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',

@@ -8,3 +8,8 @@ class Status(BaseModel):
 
     class Meta:
         db_table = 'status'
+
+    def __str__(self):
+        return (
+            f"Status {self.name}"
+        )

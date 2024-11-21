@@ -2,7 +2,7 @@ import logging
 import os
 import subprocess
 from datetime import datetime, timezone
-from typing import Dict
+from typing import Dict, Callable
 
 from createInput import create_input
 from django.conf import settings
@@ -39,7 +39,7 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum) -> N
         job_registry.pop(key, None)
 
 
-def execute_job(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, job_type: str) -> None:
+def execute_job(run: CalibrationRun | ValidationRun | ForecastRun, input_file: str, output_file: str, job_type: str) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
@@ -53,24 +53,46 @@ def execute_job(run: CalibrationRun | ValidationRun, input_file: str, output_fil
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
             run_calibration_job_local(run, input_file, output_file)
-        else:
+        elif job_type == "validation":
             from calibration.run_util.run_ngen_cal_local import run_validation_job_local
             run_validation_job_local(run, input_file, output_file)
+        else:
+            # Forecast run
+            pass
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
             run_calibration_job_parallel_works(run, run.owner, input_file, output_file)
-        else:
+        elif job_type == "validation":
             from calibration.run_util.run_ngen_cal_pw import run_validation_job_parallel_works
             run_validation_job_parallel_works(run, run.calibration_run.owner, input_file, output_file)
+        else:
+            # Forecast run
+            pass
     else:
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
+
+
+def cancel_job_common(run: CalibrationRun | ValidationRun | ForecastRun) -> bool:
+    """
+    Cancel a job using the appropriate environment-specific logic.
+
+    :param run: The CalibrationRun or ValidationRun object.
+    """
+    from calibration.run_util.run_ngen_cal_local import cancel_local_job
+    from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
+    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
+        return cancel_local_job(run)
+    else:
+        return cancel_slurm_job(run)
 
 
 def run_calibration_job(calibration_run: CalibrationRun) -> None:
     """
     Start a calibration job by determining input and output file paths
-        and delegating the job to either a local or Docker execution environment.
+    and delegating the job to either a local or Docker execution environment.
+
+    This callable is intended to be used as an input to submit_job
 
     :param calibration_run: The CalibrationRun object representing the job.
     """
@@ -87,7 +109,10 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 def run_validation_job(validation_run: ValidationRun) -> None:
     """
     Start a validation job by determining input and output file paths
-            and delegating the job to either a local or Docker execution environment.
+    and delegating the job to either a local or Docker execution environment.
+
+    This callable is intended to be used as an input to submit_job
+
 
     :param validation_run: The ValidationRun object representing the job.
     """
@@ -109,21 +134,22 @@ def run_validation_job(validation_run: ValidationRun) -> None:
     execute_job(validation_run, input_file, output_file, job_type="validation")
 
 
-def cancel_job_common(run: CalibrationRun | ValidationRun) -> None:
+def run_forecast_job(forecast_run: ForecastRun) -> None:
     """
-    Cancel a job using the appropriate environment-specific logic.
+    Start a forecast job by determining input and output file paths
+    and delegating the job to either a local or Docker execution environment.
 
-    :param run: The CalibrationRun or ValidationRun object.
+    This callable is intended to be used as an input to submit_job
+
+
+    :param forecast_run: The ForecastRun object representing the job.
     """
-    from calibration.run_util.run_ngen_cal_local import cancel_local_job
-    from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
-    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        cancel_local_job(run)
-    else:
-        cancel_slurm_job(run)
+
+    # execute_job(forecast_run, input_file, output_file, job_type="forecast")
+    pass
 
 
-def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn: Callable[[CalibrationRun | ValidationRun], None]) -> None:
+def submit_job(run: CalibrationRun | ValidationRun | ForecastRun, job_execution_fn: Callable[[CalibrationRun | ValidationRun | ForecastRun], None]) -> None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -136,8 +162,6 @@ def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn: Callable[[
         run.save(update_fields=['submit_date', 'status'])
 
         job_execution_fn(run)
-
-    return None
 
 
 def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
@@ -175,21 +199,38 @@ def submit_forecast_job(forecast_run: ForecastRun) -> None:
 
     :param forecast_run: The ForecastRun object to submit.
     """
-    submit_job(forecast_run, job_execution_fn=run_forecast_job)
+
+    # TODO Forecast jobs work slightly differently from other jobs.
+    # If it's a new job, we submit a request to the forcing server first with it's own callback.
+    # After we get the data from the forcing server, we call submit_job similar to the other jobs
+    if not forecast_run.have_forcing_data:
+        # get forcing data
+        # I think we need another status.  And need to figure out how to deal with submit data
+        forecast_run.submit_date = datetime.now(timezone.utc)
+        forecast_run.status = StatusEnum.RUNNING.db_instance
+        forecast_run.save(update_fields=['submit_date', 'status'])
+    else:
+        submit_job(forecast_run, job_execution_fn=run_forecast_job)
 
     return None
 
 
-def get_job_registry_key(run: CalibrationRun | ValidationRun) -> tuple[int, int]:
+def get_job_registry_key(run: CalibrationRun | ValidationRun | ForecastRun) -> tuple[int, int]:
     """
-    Generate a unique key for the job registry based on calibration_run_id and validation_run_id.
+    Generate a unique key for the job registry based on run type.
 
-    :param run: The CalibrationRun or ValidationRun object.
-    :return: A tuple (calibration_run_id, validation_run_id).
+    The first element is always the calibration run ID.
+    The second element is the specific run ID or -1 for CalibrationRun.
+
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
+    :return: A tuple (calibration_run_id, specific_run_id).
     """
-    calibration_run_id = run.id if isinstance(run, CalibrationRun) else run.calibration_run.id
-    validation_run_id = run.id if isinstance(run, ValidationRun) else -1
-    return calibration_run_id, validation_run_id
+    if isinstance(run, CalibrationRun):
+        return run.id, -1
+    elif isinstance(run, ValidationRun) or isinstance(run, ForecastRun):
+        return run.calibration_run.id, run.id
+
+
 
 
 def create_and_submit_validation_control(calibration_run: CalibrationRun) -> None:

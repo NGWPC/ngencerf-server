@@ -71,6 +71,7 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+# TDOO Do we still need this after we've fully impelmented Forecast
 class CalibrationOrValidationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
     validation_run_id = serializers.IntegerField(required=False, allow_null=True)
@@ -83,6 +84,35 @@ class CalibrationOrValidationRunSerializer(BaseSerializer):
         if bool(calibration_run_id) == bool(validation_run_id):  # Both are specified or both are None
             raise serializers.ValidationError(
                 "You must specify either 'calibration_run_id' or 'validation_run_id', but not both."
+            )
+
+        return data
+
+
+class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
+    validation_run_id = serializers.IntegerField(required=False, allow_null=True)
+    forecast_run_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        """
+        Ensure that only one of calibration_run_id, validation_run_id, or forecast_run_id is specified.
+        """
+        calibration_run_id = data.get('calibration_run_id')
+        validation_run_id = data.get('validation_run_id')
+        forecast_run_id = data.get('forecast_run_id')
+
+        # Collect the IDs that are specified (non-null and non-zero values)
+        specified_ids = [
+            id_value
+            for id_value in [calibration_run_id, validation_run_id, forecast_run_id]
+            if id_value is not None
+        ]
+
+        # Check that exactly one ID is specified
+        if len(specified_ids) != 1:
+            raise serializers.ValidationError(
+                "You must specify exactly one of 'calibration_run_id', 'validation_run_id', or 'forecast_run_id'."
             )
 
         return data
