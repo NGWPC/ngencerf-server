@@ -4,7 +4,7 @@ import logging
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, Dict, List, cast, Any
+from typing import Type, Tuple, Dict, List, Any
 
 import numpy as np
 from django.conf import settings
@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
-from calibration.models import CalibrationRun, ValidationRun, Status
+from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun
 from calibration.models import Iteration
 from calibration.util.calibration_validators import ErrorResponseSerializer
 
@@ -201,9 +201,29 @@ def create_validation_run_internal(
                                                   calibration_run=calibration_run,
                                                   validation_type=validation_type.value,
                                                   iteration=iteration_object)
-    logger.info(f"Creating Validation Run {validation_run.id} for Calibration Job {calibration_run.id} with validation_type {validation_type}")
+    logger.info(f"Creating Validation Job {validation_run.id} for Calibration Job {calibration_run.id} with validation_type {validation_type}")
 
     return validation_run
+
+
+def create_forecast_run_internal(
+        calibration_run: CalibrationRun,
+        cycle: ForecastCycle
+) -> ForecastRun:
+    """
+    Create a new ForecastRun object for the given CalibrationRun.
+
+    :param calibration_run: The calibration run that this validation run is associated with.
+    :param cycle: The cycle for this forecast
+    :return: The newly created ForecastRun instance.
+    """
+
+    forecast_run = ForecastRun.objects.create(status=StatusEnum.SAVED.db_instance,
+                                              calibration_run=calibration_run,
+                                              cycle=cycle)
+    logger.info(f"Creating Forecast Job {forecast_run.id} for Calibration Job {calibration_run.id}")
+
+    return forecast_run
 
 
 token_slurm_scope = 'slurm_callback'

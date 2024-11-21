@@ -15,7 +15,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
 from calibration.run_util.run_common import submit_validation_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
@@ -26,7 +26,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, truncate_large_fields, create_validation_run_internal
+    validate_request, truncate_large_fields, create_validation_run_internal, create_forecast_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +199,7 @@ def create_and_run_forecast(request: Request) -> Response:
 
     forecast_run = create_forecast_run_internal(
         calibration_run,
-        cycle_name
+        ForecastCycleEnum.get_instance(cycle_name)
     )
     submit_forecast_job(validation_run)
 

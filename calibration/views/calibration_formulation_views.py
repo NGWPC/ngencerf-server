@@ -211,7 +211,6 @@ def save_formulation_tab(request) -> Response:
                                 'status_code': e.status_code if e.status_code else None
                             })
 
-
             # Delete existing Sloth params for this run and re-add them
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
 

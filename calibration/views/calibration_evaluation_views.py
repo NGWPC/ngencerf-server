@@ -238,7 +238,7 @@ def get_logs(request: Request) -> Response:
     calibration_run = validation_run.calibration_run
 
     response = {
-        'message': f"Validation Run job {validation_run_id} logs retrieved",
+        'message': f"Validation Job {validation_run_id} logs retrieved",
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'validations': [],

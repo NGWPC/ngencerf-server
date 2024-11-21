@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import transaction
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun, ValidationRun, Iteration
+from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file
 from calibration.views import ngen_cal_input
@@ -19,13 +19,17 @@ from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
-# Store future and process objects by job id
-# Need to change this to a compound key.  Either calibration_id or calibration_id#validation_id
-job_registry: Dict[tuple[int, int | None], subprocess.Popen] = {}
+# Job registry to store subprocess objects keyed by a tuple of (calibration_run_id, validation_run_id)
+job_registry: Dict[tuple[int, int], subprocess.Popen] = {}
 
 
-def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
-    """Set the status for the CalibrationRun and save it."""
+def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum) -> None:
+    """
+    Update the status of a CalibrationRun or ValidationRun and clear the job registry if applicable.
+
+    :param run: The CalibrationRun or ValidationRun object.
+    :param status: The new status to set.
+    """
     run.status = status.db_instance
     # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
     run.slurm_job_id = None
@@ -35,7 +39,16 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum):
         job_registry.pop(key, None)
 
 
-def execute_job(run: CalibrationRun | ValidationRun, input_file, output_file, job_type="calibration"):
+def execute_job(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, job_type: str) -> None:
+    """
+    Execute a job based on the configured NGEN environment.
+
+    :param run: The CalibrationRun or ValidationRun object.
+    :param input_file: The input file path.
+    :param output_file: The output file path.
+    :param job_type: Type of the job ("calibration" or "validation").
+    :raises CerfException: If the environment is unsupported.
+    """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
@@ -54,11 +67,12 @@ def execute_job(run: CalibrationRun | ValidationRun, input_file, output_file, jo
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
 
 
-def run_calibration_job(calibration_run: CalibrationRun):
+def run_calibration_job(calibration_run: CalibrationRun) -> None:
     """
-    Start the execution of a calibration job by retrieving the input/output file paths
-    and delegating the job to either a local or Docker execution environment.
-    :param calibration_run: The CalibrationRun object representing the job run.
+    Start a calibration job by determining input and output file paths
+        and delegating the job to either a local or Docker execution environment.
+
+    :param calibration_run: The CalibrationRun object representing the job.
     """
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
@@ -70,11 +84,12 @@ def run_calibration_job(calibration_run: CalibrationRun):
     execute_job(calibration_run, input_file, output_file, job_type="calibration")
 
 
-def run_validation_job(validation_run: ValidationRun):
+def run_validation_job(validation_run: ValidationRun) -> None:
     """
-    Start the execution of a validation job
-    and delegating the job to either a local or Docker execution environment.
-    :param validation_run: The ValidationRun object representing the job run.
+    Start a validation job by determining input and output file paths
+            and delegating the job to either a local or Docker execution environment.
+
+    :param validation_run: The ValidationRun object representing the job.
     """
     if validation_run.validation_type == ValidationType.VALID_BEST.value:
         input_file = get_validation_best_input_file(validation_run.calibration_run)
@@ -89,25 +104,31 @@ def run_validation_job(validation_run: ValidationRun):
 
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Validation Run {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
+            f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
 
     execute_job(validation_run, input_file, output_file, job_type="validation")
 
 
-def cancel_job_common(run: CalibrationRun | ValidationRun):
+def cancel_job_common(run: CalibrationRun | ValidationRun) -> None:
+    """
+    Cancel a job using the appropriate environment-specific logic.
+
+    :param run: The CalibrationRun or ValidationRun object.
+    """
     from calibration.run_util.run_ngen_cal_local import cancel_local_job
     from calibration.run_util.run_ngen_cal_pw import cancel_slurm_job
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        return cancel_local_job(run)
+        cancel_local_job(run)
     else:
-        return cancel_slurm_job(run)
+        cancel_slurm_job(run)
 
 
-def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn):
+def submit_job(run: CalibrationRun | ValidationRun, job_execution_fn: Callable[[CalibrationRun | ValidationRun], None]) -> None:
     """
-    Handle the common submission process for both calibration and validation jobs.
+    Submit a job after setting initial status and submission date.
+
     :param run: The CalibrationRun or ValidationRun object.
-    :param job_execution_fn: The function responsible for executing the job.
+    :param job_execution_fn: The function to execute the job.
     """
     with transaction.atomic():
         run.submit_date = datetime.now(timezone.utc)
@@ -143,34 +164,48 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
 
 
 def submit_validation_job(validation_run: ValidationRun):
-    submit_job(validation_run,  job_execution_fn=run_validation_job)
+    submit_job(validation_run, job_execution_fn=run_validation_job)
 
     return None
 
 
-def get_job_registry_key(run: CalibrationRun | ValidationRun):
+def submit_forecast_job(forecast_run: ForecastRun) -> None:
     """
-    Generate a key for the job registry using calibration_run_id and validation_run_id.
+    Submit a forecast job for execution.
+
+    :param forecast_run: The ForecastRun object to submit.
+    """
+    submit_job(forecast_run, job_execution_fn=run_forecast_job)
+
+    return None
+
+
+def get_job_registry_key(run: CalibrationRun | ValidationRun) -> tuple[int, int]:
+    """
+    Generate a unique key for the job registry based on calibration_run_id and validation_run_id.
+
     :param run: The CalibrationRun or ValidationRun object.
-    :return: A tuple representing the job key.
+    :return: A tuple (calibration_run_id, validation_run_id).
     """
     calibration_run_id = run.id if isinstance(run, CalibrationRun) else run.calibration_run.id
-    validation_run_id = run.id if isinstance(run, ValidationRun) else None
+    validation_run_id = run.id if isinstance(run, ValidationRun) else -1
     return calibration_run_id, validation_run_id
 
 
-def create_and_submit_validation_control(calibration_run: CalibrationRun):
+def create_and_submit_validation_control(calibration_run: CalibrationRun) -> None:
     """
     Create a validation run of type VALID_CONTROL and submit it.
-    :param calibration_run: The CalibrationRun object.
+
+    :param calibration_run: The CalibrationRun object for which the validation control run is created.
     """
     validation_run = create_validation_run_internal(calibration_run, None, validation_type=ValidationType.VALID_CONTROL)
     submit_validation_job(validation_run)
 
 
-def process_validation_output_and_maybe_create_best(validation_run: ValidationRun):
+def process_validation_output_and_maybe_create_best(validation_run: ValidationRun) -> None:
     """
     Process the validation output and create a new VALID_BEST run if the validation type is VALID_CONTROL.
+
     :param validation_run: The ValidationRun object representing the job run.
     """
     # Process the validation output
@@ -181,7 +216,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
     if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         if validation_run.calibration_run.automatic_validation:
             best_validation_run = create_validation_run_internal(validation_run.calibration_run, None,
-                                                                validation_type=ValidationType.VALID_BEST)
+                                                                 validation_type=ValidationType.VALID_BEST)
             # Set the iteration containing the best values before we run it
             iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
             best_validation_run.iteration = iteration
@@ -189,16 +224,23 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
             submit_validation_job(best_validation_run)
 
 
-def submit_job_execution(run, input_file, output_file, job_type, submit_fn):
+def submit_job_execution(
+        run: CalibrationRun | ValidationRun,
+        input_file: str,
+        output_file: str,
+        job_type: str,
+        submit_fn: Callable[[CalibrationRun | ValidationRun, str, str, str], None]
+) -> None:
     """
     Common job execution logic for submitting calibration and validation jobs.
     Handles both local and Slurm-based job execution.
 
-    :param run: The CalibrationRun or ValidationRun object.
-    :param input_file: The input file path.
-    :param output_file: The output file path.
+    :param run: The CalibrationRun or ValidationRun object to execute.
+    :param input_file: The input file path for the job.
+    :param output_file: The output file path for the job.
     :param job_type: The type of job ("calibration" or "validation").
-    :param submit_fn: The function that will handle environment-specific submission logic.
+    :param submit_fn: The function that handles the submission logic for the specific environment.
+    :raises CerfException: If the environment is unsupported.
     """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == "calibration":

@@ -539,10 +539,8 @@ def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Call
     """
     if isinstance(run, CalibrationRun):
         output_run_dir = get_output_calibration_run_dir(run)
-        run_id = run.id
     elif isinstance(run, ValidationRun):
         output_run_dir = get_output_validation_run_dir(run.calibration_run)
-        run_id = run.calibration_run.id
     else:
         raise ValueError(f"Invalid run object: {type(run).__name__}. Expected CalibrationRun or ValidationRun.")
 
