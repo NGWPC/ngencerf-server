@@ -267,7 +267,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
                         Need to prefix with ngen_ and suffix with _worker.
     :param iterations: A list of Iteration objects for the worker.
     """
-    logger.info(f"Processing iterations for {worker_name} for Calibration Run {calibration_run.id}")
+    logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
     # Get the cached metrics once for this batch of processing
     metrics_lookup = get_metrics_lookup()
@@ -539,10 +539,8 @@ def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Call
     """
     if isinstance(run, CalibrationRun):
         output_run_dir = get_output_calibration_run_dir(run)
-        run_id = run.id
     elif isinstance(run, ValidationRun):
         output_run_dir = get_output_validation_run_dir(run.calibration_run)
-        run_id = run.calibration_run.id
     else:
         raise ValueError(f"Invalid run object: {type(run).__name__}. Expected CalibrationRun or ValidationRun.")
 

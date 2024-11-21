@@ -71,6 +71,7 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+# TDOO Do we still need this after we've fully impelmented Forecast
 class CalibrationOrValidationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
     validation_run_id = serializers.IntegerField(required=False, allow_null=True)
@@ -88,8 +89,41 @@ class CalibrationOrValidationRunSerializer(BaseSerializer):
         return data
 
 
+class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
+    validation_run_id = serializers.IntegerField(required=False, allow_null=True)
+    forecast_run_id = serializers.IntegerField(required=False, allow_null=True)
+
+    def validate(self, data):
+        """
+        Ensure that only one of calibration_run_id, validation_run_id, or forecast_run_id is specified.
+        """
+        calibration_run_id = data.get('calibration_run_id')
+        validation_run_id = data.get('validation_run_id')
+        forecast_run_id = data.get('forecast_run_id')
+
+        # Collect the IDs that are specified (non-null and non-zero values)
+        specified_ids = [
+            id_value
+            for id_value in [calibration_run_id, validation_run_id, forecast_run_id]
+            if id_value is not None
+        ]
+
+        # Check that exactly one ID is specified
+        if len(specified_ids) != 1:
+            raise serializers.ValidationError(
+                "You must specify exactly one of 'calibration_run_id', 'validation_run_id', or 'forecast_run_id'."
+            )
+
+        return data
+
+
 class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration_id = serializers.IntegerField(required=True)
+
+
+class CreateForecastRequestSerializer(CalibrationRunSerializer):
+    cycle_name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
 
 
 ##################################
@@ -479,10 +513,18 @@ class CreateCalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CreateAndRunValidationSerializer(BaseSerializer):
+class CreateAndRunValidationResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     validation_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+class CreateAndRunForecastResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    forecast_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
@@ -762,7 +804,17 @@ class GetJobDirResponseSerializer(GenericResponseSerializer):
 ##################################
 class ForecastCycleSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
-    description = serializers.CharField(required=True)
+    data_sources = serializers.CharField(required=False, allow_null=True)
+    time_range = serializers.CharField(required=False, allow_null=True)
+
+    def to_representation(self, instance):
+        """Map internal field names to the expected output keys."""
+        representation = super().to_representation(instance)
+        return {
+            'Cycle': representation['name'],
+            'Data Sources': representation['data_sources'],
+            'Time Range (NgenCERF)': representation['time_range']
+        }
 
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
@@ -927,7 +979,8 @@ class GetLogsValidations(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     validation_type = serializers.CharField(required=True)
-    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=True, allow_empty=True)
+    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=True,
+                                 allow_empty=True)
 
 
 class GetLogsResponseSerializer(GenericResponseSerializer):

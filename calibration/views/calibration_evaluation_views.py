@@ -105,7 +105,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         iteration_data.append(iteration_element)
 
     response = {
-        'message': f'Calibration Run {run.id}, data retrieved',
+        'message': f'Calibration Job {run.id}, data retrieved',
         'objective_function_metric': run.objective_function.name,
         'iteration_data': iteration_data,
         'retrospective_data': retrospective_data
@@ -238,7 +238,7 @@ def get_logs(request: Request) -> Response:
     calibration_run = validation_run.calibration_run
 
     response = {
-        'message': f"Validation Run job {validation_run_id} logs retrieved",
+        'message': f"Validation Job {validation_run_id} logs retrieved",
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'validations': [],

@@ -8,7 +8,7 @@ from typing import Callable, List
 from django.conf import settings
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import CalibrationRun, ValidationRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, create_and_submit_validation_control, \
     process_validation_output_and_maybe_create_best
 from calibration.views.common import get_job_description
@@ -18,19 +18,19 @@ from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironment
 logger = logging.getLogger(__name__)
 
 # Create a global thread pool that will be reused across multiple execute() calls
-pool = ThreadPoolExecutor()
+pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
 def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, script_cmd: str,
                   callback_function: Callable[[CalibrationRun | ValidationRun, Future], None]) -> None:
     """
-    Executes a local job by calling the shell script
-    with appropriate input and output file arguments, and registering a callback for job end.
+    Executes a local job by calling the shell script with appropriate input and output file arguments,
+    and registers a callback for job completion.
 
     :param run: The CalibrationRun or ValidationRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
-    :param script_cmd: The script cmd to run (e.g., 'calibration', 'validation', 'validation_iteration').
+    :param script_cmd: The script command to execute (e.g., 'calibration', 'validation').
     :param callback_function: The callback function to invoke when the process completes.
     """
     # Construct the shell script path
@@ -39,8 +39,7 @@ def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_f
         extra = [output_file, NGEN_CAL_VENV]
     elif NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
         spawn_command = DOCKER_CMD.split()
-        # Don't need venv for Docker
-        extra = [output_file]
+        extra = [output_file]  # Venv not required for Docker
     else:
         spawn_command = []
         extra = []
@@ -62,7 +61,7 @@ def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_f
 
 def run_calibration_job_local(calibration_run: CalibrationRun, input_file: str, output_file: str) -> None:
     """
-    Executes a local calibration job by preparing the required arguments and invoking the run_job_local function.
+    Executes a local calibration job by invoking run_job_local with appropriate arguments.
 
     :param calibration_run: The CalibrationRun object representing the job run.
     :param input_file: Path to the input file.
@@ -73,7 +72,7 @@ def run_calibration_job_local(calibration_run: CalibrationRun, input_file: str, 
 
 def run_validation_job_local(validation_run: ValidationRun, input_file: str, output_file: str) -> None:
     """
-    Executes a local validation job by preparing the required arguments and invoking the run_job_local function.
+    Executes a local validation job by invoking run_job_local with appropriate arguments.
 
     :param validation_run: The ValidationRun object representing the job run.
     :param input_file: Path to the input file.
@@ -87,9 +86,9 @@ def run_job_callback_common(run: CalibrationRun | ValidationRun, future: Future)
     """
     Common logic for the callback function that gets executed when a job completes.
 
-    :param run: The CalibrationRun or ValidationRun object representing the job run.
+    :param run: The CalibrationRun or ValidationRun object.
     :param future: The Future object representing the asynchronous job process.
-    :return: A boolean indicating whether the job completed successfully.
+    :return: True if the job completed successfully, False otherwise.
     """
     job_description = get_job_description(run)
 
@@ -124,9 +123,9 @@ def run_job_callback_common(run: CalibrationRun | ValidationRun, future: Future)
 
 def run_calibration_job_callback_local(calibration_run: CalibrationRun, future: Future) -> None:
     """
-    Callback function that gets executed when a calibration job completes.
+    Callback function to handle the completion of a calibration job.
 
-    :param calibration_run: The CalibrationRun object representing the job run.
+    :param calibration_run: The CalibrationRun object.
     :param future: The Future object representing the asynchronous job process.
     """
     if run_job_callback_common(calibration_run, future):
@@ -138,9 +137,9 @@ def run_calibration_job_callback_local(calibration_run: CalibrationRun, future: 
 
 def run_validation_job_callback_local(validation_run: ValidationRun, future: Future) -> None:
     """
-    Callback function that gets executed when a validation job completes.
+    Callback function to handle the completion of a validation job.
 
-    :param validation_run: The ValidationRun object representing the job run.
+    :param validation_run: The ValidationRun object.
     :param future: The Future object representing the asynchronous job process.
     """
     if run_job_callback_common(validation_run, future):
@@ -180,14 +179,20 @@ def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_f
         f'{job_description} is running in the background')
 
 
-def cancel_local_job(run: CalibrationRun | ValidationRun):
+def cancel_local_job(run: CalibrationRun | ValidationRun | ForecastRun) -> bool:
     """
-    Terminates a job with the given calibration_run_id by killing the associated process.
-    :param run: The CalibrationRun to terminate.
+    Cancel a running local job by terminating the associated process.
+
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object to cancel.
+    :return: True if the job was successfully terminated, False otherwise.
     """
     job_description = get_job_description(run)
 
     logger.info(f"Cancelling {job_description}")
+
+    if isinstance(run, ForecastRun):
+        # Special handling.  If we are downloading the forcing data, then we need to send a cancel request to the Forcing server
+        pass
 
     key = get_job_registry_key(run)
     process = job_registry.get(key)

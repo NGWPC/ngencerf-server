@@ -15,18 +15,18 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
-from calibration.run_util.run_common import submit_validation_job
+from calibration.run_util.run_common import submit_validation_job, submit_forecast_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
-    CreateAndRunValidationSerializer, CreateValidationRequestSerializer, \
-    GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer
+    CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
+    GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, truncate_large_fields, create_validation_run_internal
+    validate_request, truncate_large_fields, create_validation_run_internal, create_forecast_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def create_calibration_run(request: Request) -> Response:
     with transaction.atomic():
         run = create_calibration_run_internal(request.user)
 
-        response = {'message': f'Calibration Run {run.id} created', 'calibration_run_id': run.id}
+        response = {'message': f'Calibration Job {run.id} created', 'calibration_run_id': run.id}
 
         response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
         if error_response:
@@ -80,7 +80,7 @@ def create_calibration_run(request: Request) -> Response:
 @extend_schema(
     request=CreateValidationRequestSerializer,
     responses={
-        201: CreateAndRunValidationSerializer,
+        201: CreateAndRunValidationResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -90,7 +90,7 @@ def create_calibration_run(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Create and run a new validation for a specific worker_name and iteration"
+    description="Create and run a new validation for a specific iteration"
 )
 @api_view(['POST'])
 @handle_exceptions
@@ -122,8 +122,8 @@ def create_and_run_validation(request: Request) -> Response:
         status=StatusEnum.DONE.db_instance
     ).first()
     if existing_validation_run:
-        return ResponseError(f'Validation Run {existing_validation_run.id} already exists for '
-                             f'Calibration Run {calibration_run.id}, iteration {iteration_id}')
+        return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
+                             f'Calibration Job {calibration_run.id}, iteration {iteration_id}')
 
     validation_run = create_validation_run_internal(
         calibration_run,
@@ -133,19 +133,91 @@ def create_and_run_validation(request: Request) -> Response:
     submit_validation_job(validation_run)
 
     response = {
-        'message': f'Validation Run {validation_run.id} created and submitted for Calibration Run {calibration_run.id}',
+        'message': f'Validation Job {validation_run.id} created and submitted for Calibration Job {calibration_run.id}',
         'calibration_run_id': calibration_run.id,
         'validation_run_id': validation_run.id,
         'status': validation_run.status.name,
         'submit_date': validation_run.submit_date
     }
 
-    response_validator, error_response = validate_response(CreateAndRunValidationSerializer, response)
+    response_validator, error_response = validate_response(CreateAndRunValidationResponseSerializer, response)
     if error_response:
         return error_response
 
     logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {response_validator.data}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    request=CreateForecastRequestSerializer,
+    responses={
+        201: CreateAndRunForecastResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Create and run a new forecast"
+)
+@api_view(['POST'])
+@handle_exceptions
+def create_and_run_forecast(request: Request) -> Response:
+    """
+    Creates and runs a new forecast run for a specified calibration run and cycle_name name.
+
+    :param request: The HTTP request object containing calibration and iteration details.
+    :return: JSON response with validation run details or error information.
+    """
+    data = request.data
+    logger.debug(f'create_and_run_forecast() request from {request.user.email}')
+
+    validator, error_return = validate_request(CreateForecastRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    cycle_name = validator.get('cycle_name')
+
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+    if error_return:
+        return error_return
+
+    # TODO Not sure if we need this
+    # # Check if a ValidationRun already exists for this CalibrationRun and Iteration
+    # existing_validation_run = ValidationRun.objects.filter(
+    #     calibration_run=calibration_run,
+    #     iteration_id=iteration_id,
+    #     status=StatusEnum.DONE.db_instance
+    # ).first()
+    # if existing_validation_run:
+    #     return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
+    #                          f'Calibration Job {calibration_run.id}, iteration {iteration_id}')
+
+    forecast_run = create_forecast_run_internal(
+        calibration_run,
+        ForecastCycleEnum.get_instance(cycle_name)
+    )
+    submit_forecast_job(forecast_run)
+
+    response = {
+        'message': f'Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',
+        'calibration_run_id': calibration_run.id,
+        'forecast_run_id': forecast_run.id,
+        'status': forecast_run.status.name,
+        'submit_date': forecast_run.submit_date
+    }
+
+    response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {response_validator.data}')
+    return Response(response_validator.data, status=status.HTTP_201_CREATED)
+
 
 
 @extend_schema(
@@ -577,14 +649,14 @@ def delete_job(request: Request) -> Response:
         return error_return
 
     if run.status == StatusEnum.RUNNING.db_instance:
-        return ResponseError(f'Calibration Run {run.id} is running.  Cannot delete a running job')
+        return ResponseError(f'Calibration Job {run.id} is running.  Cannot delete a running job')
 
     run_id = run.id
 
     if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         hard_delete(run)
     else:
-        logger.debug(f"Deleting (soft delete) Calibration Run {run.id}")
+        logger.debug(f"Deleting (soft delete) Calibration Job {run.id}")
         run.is_deleted = True
         run.save(update_fields=['is_deleted'])
 
@@ -609,7 +681,7 @@ def hard_delete(run: CalibrationRun) -> None:
     # Collect related objects that will be deleted due to cascade
     collector.collect([run])
 
-    logger.debug(f"Deleting (hard delete) Calibration Run {run.id}, associated records and files")
+    logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
     # Iterate through the collected objects and list IDs and other fields
     for model, instances in collector.data.items():
         logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")

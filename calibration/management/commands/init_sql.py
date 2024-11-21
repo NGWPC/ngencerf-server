@@ -222,17 +222,21 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ForecastCycle.objects.all().delete()
 
-        values = [{"name": "Short Range Forecast", "description": "to be provided", "is_active": True},
-                  {"name": "Extended AnA", "description": "to be provided", "is_active": True},
-                  {"name": "Medium Range Forecast", "description": "to be provided", "is_active": True},
-                  {"name": "Long Range AnA", "description": "to be provided", "is_active": True},
-                  {"name": "Long Range Forecast", "description": "to be provided", "is_active": True},
-                  ]
+        values = [
+            {"name": "Analysis and Assimilation (AnA)", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "3 hr",
+             "is_active": True},
+            {"name": "Short Range Forecast", "data_sources": "HRRR, RAP", "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
+            {"name": "Extended AnA", "data_sources": "RAP, HRRR, Stage IV", "time_range": "tbd", "is_active": True},
+            {"name": "Medium Range Forecast", "data_sources": "tbd", "time_range": "tbd", "is_active": True},
+            {"name": "Long Range AnA", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "tbd", "is_active": True},
+            {"name": "Long Range Forecast", "data_sources": "tbd", "time_range": "tbd", "is_active": True},
+        ]
 
         for v in values:
             ForecastCycle.objects.update_or_create(name=v['name'],
                                                    defaults={"is_active": v.get('is_active', True),
-                                                             "description": v['description'],
+                                                             "data_sources": v['data_sources'],
+                                                             "time_range": v['time_range'],
                                                              "created_by": self.user})
 
     def define_optimization(self):

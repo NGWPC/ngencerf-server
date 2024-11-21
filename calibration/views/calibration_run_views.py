@@ -20,10 +20,11 @@ from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_sl
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, GenericResponseSerializerWithValidation
+    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, GenericResponseSerializerWithValidation, \
+    CalibrationOrValidationOrForecastRunSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run
 from calibration.views.read_output import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ def get_status(request: Request) -> Response:
 
     # Prepare the main response without calibration performance metrics if not requested
     response = {
-        'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
+        'message': f'Calibration Job {calibration_run.id}, status is {calibration_run.status.name}',
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'submit_date': calibration_run.submit_date,
@@ -164,7 +165,7 @@ def run_calibration(request: Request) -> Response:
     if response:
         return response
 
-    response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+    response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
@@ -212,7 +213,7 @@ def process_calibration_output(request):
 
     read_calibration_output(run)
 
-    response = {'message': f"End of job processing completed for Calibration Run {run.id}",
+    response = {'message': f"End of job processing completed for Calibration Job {run.id}",
                 'calibration_run_id': run.id,
                 'status': run.status.name}
 
@@ -281,7 +282,7 @@ def report_iteration(request):
         if not created:
             return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
-        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
+        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Job {run.id}",
                     'calibration_run_id': run.id,
                     'status': run.status.name}
 
@@ -330,7 +331,7 @@ def get_iteration(request: Request) -> Response:
     high_iteration = Iteration.objects.filter(calibration_run=run, worker_number=1).order_by('-iteration_num').first()
     high_iteration_number = high_iteration.iteration_num if high_iteration else None
 
-    response = {'message': f'Calibration Run {run.id} has completed {high_iteration_number} iterations',
+    response = {'message': f'Calibration Job {run.id} has completed {high_iteration_number} iterations',
                 'calibration_run_id': run.id,
                 'status': run.status.name,
                 'iteration': high_iteration_number}
@@ -344,7 +345,7 @@ def get_iteration(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationOrValidationRunSerializer,
+    request=CalibrationOrValidationOrForecastRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -361,33 +362,50 @@ def get_iteration(request: Request) -> Response:
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def cancel_job(request: Request) -> Response:
+    """
+    Cancel a running job for CalibrationRun, ValidationRun, or ForecastRun.
+
+    :param request: The HTTP request containing the run ID to cancel.
+    :return: A Response indicating the cancellation result.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'cancel_job() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
 
-    # Determine job type and run function
-    run_func = get_calibration_run if calibration_run_id else get_validation_run
-    run_id = calibration_run_id or validation_run_id
+    # Determine job type and retrieve the appropriate run instance
+    if calibration_run_id:
+        run_func = get_calibration_run
+        run_id = calibration_run_id
+        run_type = 'Calibration'
+    elif validation_run_id:
+        run_func = get_validation_run
+        run_id = validation_run_id
+        run_type = 'Validation'
+    else:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = 'Forecast'
 
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     if not cancel_job_common(run):
-        return ResponseError(f"{'Calibration' if calibration_run_id else 'Validation'} Run {run.id} is not running")
+        return ResponseError(f"Unable to cancel {run_type} Job {run.id}")
 
     run.status = StatusEnum.CANCELLED.db_instance
     run.save(update_fields=['status'])
 
     response = {
-        'message': f"{'Calibration' if calibration_run_id else 'Validation'} Run job {run.id} has been canceled",
-        f"{'calibration_run_id' if calibration_run_id else 'validation_run_id'}": run.id,
+        'message': f"{run_type} Run job {run.id} has been canceled",
+        f"{run_type.lower()}_run_id": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
     response_validator, error_response = validate_response(GenericResponseSerializerWithValidation, response)
@@ -431,7 +449,7 @@ def get_job_dir(request: Request) -> Response:
         return error_return
 
     response = {
-        'message': f"Calibration Run job {run.id} data directory is {run.job_data_dir}",
+        'message': f"Calibration Job job {run.id} data directory is {run.job_data_dir}",
         'calibration_run_id': run.id,
         'data_dir': run.job_data_dir,
         'status': run.status.name

@@ -211,7 +211,6 @@ def save_formulation_tab(request) -> Response:
                                 'status_code': e.status_code if e.status_code else None
                             })
 
-
             # Delete existing Sloth params for this run and re-add them
             CalibrationSlothParam.objects.filter(calibration_run=run).delete()
 
@@ -224,7 +223,7 @@ def save_formulation_tab(request) -> Response:
     ngen_cal_input.ready_to_run(run)
 
     response = {
-        'message': f'Calibration Run {run.id} updated',
+        'message': f'Calibration Job {run.id} updated',
         'calibration_run_id': run.id,
         'status': run.status.name,
         'nwm_warning': nwm_warning

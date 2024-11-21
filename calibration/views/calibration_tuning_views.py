@@ -249,7 +249,7 @@ def save_tuning_tab(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+    response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
@@ -355,7 +355,7 @@ def upload_user_parameters(request: Request) -> Response:
     run.save(update_fields=['user_parameter_filename'])
 
     response = {
-        'message': f"Parameter file '{parameter_file.name}' saved for Calibration Run {run.id}",
+        'message': f"Parameter file '{parameter_file.name}' saved for Calibration Job {run.id}",
         'calibration_run_id': run.id,
         'user_parameter_file': parsed_data
     }

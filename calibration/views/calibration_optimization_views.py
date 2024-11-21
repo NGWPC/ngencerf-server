@@ -201,7 +201,7 @@ def save_optimization_tab(request) -> Response:
 
         ngen_cal_input.ready_to_run(run)
 
-        response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
+        response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name}
 
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:

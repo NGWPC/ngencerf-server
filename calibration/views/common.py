@@ -4,7 +4,7 @@ import logging
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, Dict, List, cast, Any
+from typing import Type, Tuple, Dict, List, Any
 
 import numpy as np
 from django.conf import settings
@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
-from calibration.models import CalibrationRun, ValidationRun, Status
+from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun
 from calibration.models import Iteration
 from calibration.util.calibration_validators import ErrorResponseSerializer
 
@@ -29,18 +29,18 @@ SLOTH = 'SLoTH'
 
 
 def get_run_instance(
-        model: Type[CalibrationRun] | Type[ValidationRun],
+        model: Type[CalibrationRun] | Type[ValidationRun] | Type[ForecastRun],
         run_id: int,
         user: User | None,
         run_status: List[StatusEnum] | None = None,
         owner_field: str = 'owner',
         additional_filters: Dict[str, bool] | None = None
-) -> Tuple[CalibrationRun | ValidationRun | None, Response | None]:
+) -> Tuple[CalibrationRun | ValidationRun | ForecastRun | None, Response | None]:
     """
-    Get an instance of a run (either CalibrationRun or ValidationRun) by id, optionally filtering by owner
-    and by status. If the run exists but has a disallowed status, return a specific error message.
+    Retrieve an instance of a CalibrationRun, ValidationRun, or ForecastRun by its ID,
+    optionally filtering by owner, status, or additional conditions.
 
-    :param model: The model to query (either CalibrationRun or ValidationRun).
+    :param model: The model class to query (CalibrationRun, ValidationRun, or ForecastRun).
     :param run_id: The ID of the run to retrieve.
     :param user: The user requesting the run. If None, no filtering by owner is done.
     :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
@@ -71,7 +71,7 @@ def get_run_instance(
     if run.status not in allowed_statuses:
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
         return run, Response(
-            {'error': (f'{model.__name__} {run_id} is not '
+            {'error': (f'{model.__name__} {run_id} is not in an allowed status '
                        f'({join_with_or(allowed_status_names)}). '
                        f'Current status: {run.status.name}')},
             status=status.HTTP_400_BAD_REQUEST)
@@ -85,7 +85,12 @@ def get_calibration_run(
         run_status: List[StatusEnum] | None = None
 ) -> Tuple[CalibrationRun | None, Response | None]:
     """
-    Wrapper around the generic get_run_instance for CalibrationRun.
+    Retrieve a CalibrationRun instance by its ID, filtering by owner and status.
+
+    :param calibration_run_id: The ID of the CalibrationRun to retrieve.
+    :param user: The user requesting the CalibrationRun. If None, no owner filtering is applied.
+    :param run_status: A list of allowed statuses for the CalibrationRun.
+    :return: A tuple containing the CalibrationRun instance (or None if not found) and an optional Response with an error.
     """
     return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', {'is_deleted': False})
 
@@ -96,9 +101,30 @@ def get_validation_run(
         run_status: List[StatusEnum] | None = None
 ) -> Tuple[ValidationRun | None, Response | None]:
     """
-    Wrapper around the generic get_run_instance for ValidationRun.
+    Retrieve a ValidationRun instance by its ID, filtering by owner and status.
+
+    :param validation_run_id: The ID of the ValidationRun to retrieve.
+    :param user: The user requesting the ValidationRun. If None, no owner filtering is applied.
+    :param run_status: A list of allowed statuses for the ValidationRun.
+    :return: A tuple containing the ValidationRun instance (or None if not found) and an optional Response with an error.
     """
     return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', {'calibration_run__is_deleted': False})
+
+
+def get_forecast_run(
+        forecast_run_id: int,
+        user: User | None,
+        run_status: List[StatusEnum] | None = None
+) -> Tuple[ForecastRun | None, Response | None]:
+    """
+    Retrieve a ForecastRun instance by its ID, filtering by owner and status.
+
+    :param forecast_run_id: The ID of the ForecastRun to retrieve.
+    :param user: The user requesting the ForecastRun. If None, no owner filtering is applied.
+    :param run_status: A list of allowed statuses for the ForecastRun.
+    :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
+    """
+    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', {'calibration_run__is_deleted': False})
 
 
 def join_with_or(items):
@@ -201,9 +227,29 @@ def create_validation_run_internal(
                                                   calibration_run=calibration_run,
                                                   validation_type=validation_type.value,
                                                   iteration=iteration_object)
-    logger.info(f"Creating Validation Run {validation_run.id} for Calibration Run {calibration_run.id} with validation_type {validation_type}")
+    logger.info(f"Creating Validation Job {validation_run.id} for Calibration Job {calibration_run.id} with validation_type {validation_type}")
 
     return validation_run
+
+
+def create_forecast_run_internal(
+        calibration_run: CalibrationRun,
+        cycle: ForecastCycle
+) -> ForecastRun:
+    """
+    Create a new ForecastRun object for the given CalibrationRun.
+
+    :param calibration_run: The calibration run that this validation run is associated with.
+    :param cycle: The cycle for this forecast
+    :return: The newly created ForecastRun instance.
+    """
+
+    forecast_run = ForecastRun.objects.create(status=StatusEnum.SAVED.db_instance,
+                                              calibration_run=calibration_run,
+                                              cycle=cycle)
+    logger.info(f"Creating Forecast Job {forecast_run.id} for Calibration Job {calibration_run.id}")
+
+    return forecast_run
 
 
 token_slurm_scope = 'slurm_callback'
@@ -451,17 +497,19 @@ class CerfException(Exception):
         return self.message
 
 
-def get_job_description(run: CalibrationRun | ValidationRun) -> str:
+def get_job_description(run: CalibrationRun | ValidationRun | ForecastRun) -> str:
     """
     Provides a descriptive string for a job, identifying its type and user.
 
-    :param run: The job instance, either CalibrationRun or ValidationRun.
+    :param run: The job instance, either CalibrationRun, ValidationRun or ForecastRun.
     :return: A description of the job.
     """
     if isinstance(run, CalibrationRun):
-        return f"Calibration Run {run.id}, user: {run.owner.username}"
+        return f"Calibration Job {run.id}, user: {run.owner.username}"
+    elif isinstance(run, ValidationRun):
+        return f"Validation Job {run.id} for Calibration Job {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
     else:
-        return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
+        return f"Forecast Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
 
 
 def replace_nan_with_none(data: Any) -> Any:
