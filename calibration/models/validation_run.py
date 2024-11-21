@@ -31,7 +31,7 @@ class ValidationRun(BaseModel):
     def __str__(self):
         return (
             f"ValidationRun {self.id}, "
-            f"Calibration Run {self.calibration_run.id}, "
+            f"Calibration Job {self.calibration_run.id}, "
             f"owner: {self.calibration_run.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
             f"status.name: {self.status.name}"
         )

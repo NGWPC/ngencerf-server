@@ -267,7 +267,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
                         Need to prefix with ngen_ and suffix with _worker.
     :param iterations: A list of Iteration objects for the worker.
     """
-    logger.info(f"Processing iterations for {worker_name} for Calibration Run {calibration_run.id}")
+    logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
     # Get the cached metrics once for this batch of processing
     metrics_lookup = get_metrics_lookup()

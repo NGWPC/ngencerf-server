@@ -201,7 +201,7 @@ def create_validation_run_internal(
                                                   calibration_run=calibration_run,
                                                   validation_type=validation_type.value,
                                                   iteration=iteration_object)
-    logger.info(f"Creating Validation Run {validation_run.id} for Calibration Run {calibration_run.id} with validation_type {validation_type}")
+    logger.info(f"Creating Validation Run {validation_run.id} for Calibration Job {calibration_run.id} with validation_type {validation_type}")
 
     return validation_run
 
@@ -459,9 +459,9 @@ def get_job_description(run: CalibrationRun | ValidationRun) -> str:
     :return: A description of the job.
     """
     if isinstance(run, CalibrationRun):
-        return f"Calibration Run {run.id}, user: {run.owner.username}"
+        return f"Calibration Job {run.id}, user: {run.owner.username}"
     else:
-        return f"Validation Run {run.id} for Calibration Run {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
+        return f"Validation Job {run.id} for Calibration Job {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
 
 
 def replace_nan_with_none(data: Any) -> Any:

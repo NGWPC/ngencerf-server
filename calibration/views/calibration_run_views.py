@@ -102,7 +102,7 @@ def get_status(request: Request) -> Response:
 
     # Prepare the main response without calibration performance metrics if not requested
     response = {
-        'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
+        'message': f'Calibration Job {calibration_run.id}, status is {calibration_run.status.name}',
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'submit_date': calibration_run.submit_date,
@@ -164,7 +164,7 @@ def run_calibration(request: Request) -> Response:
     if response:
         return response
 
-    response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+    response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
@@ -212,7 +212,7 @@ def process_calibration_output(request):
 
     read_calibration_output(run)
 
-    response = {'message': f"End of job processing completed for Calibration Run {run.id}",
+    response = {'message': f"End of job processing completed for Calibration Job {run.id}",
                 'calibration_run_id': run.id,
                 'status': run.status.name}
 
@@ -281,7 +281,7 @@ def report_iteration(request):
         if not created:
             return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
-        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
+        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Job {run.id}",
                     'calibration_run_id': run.id,
                     'status': run.status.name}
 
@@ -330,7 +330,7 @@ def get_iteration(request: Request) -> Response:
     high_iteration = Iteration.objects.filter(calibration_run=run, worker_number=1).order_by('-iteration_num').first()
     high_iteration_number = high_iteration.iteration_num if high_iteration else None
 
-    response = {'message': f'Calibration Run {run.id} has completed {high_iteration_number} iterations',
+    response = {'message': f'Calibration Job {run.id} has completed {high_iteration_number} iterations',
                 'calibration_run_id': run.id,
                 'status': run.status.name,
                 'iteration': high_iteration_number}
@@ -431,7 +431,7 @@ def get_job_dir(request: Request) -> Response:
         return error_return
 
     response = {
-        'message': f"Calibration Run job {run.id} data directory is {run.job_data_dir}",
+        'message': f"Calibration Job job {run.id} data directory is {run.job_data_dir}",
         'calibration_run_id': run.id,
         'data_dir': run.job_data_dir,
         'status': run.status.name

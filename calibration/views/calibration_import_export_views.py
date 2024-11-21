@@ -88,7 +88,7 @@ def import_job(request: Request) -> Response:
             submit_calibration_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 
-    response = {'message': f'Calibration Run {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
+    response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
     if messages:
         response['messages'] = messages
     if errors:

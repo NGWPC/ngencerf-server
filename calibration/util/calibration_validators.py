@@ -92,6 +92,10 @@ class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration_id = serializers.IntegerField(required=True)
 
 
+class CreateForecastRequestSerializer(CalibrationRunSerializer):
+    cycle_name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
+
+
 ##################################
 # Common serializers that need to be defined before usage
 ##################################
@@ -479,10 +483,18 @@ class CreateCalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CreateAndRunValidationSerializer(BaseSerializer):
+class CreateAndRunValidationResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
     calibration_run_id = serializers.IntegerField(required=True)
     validation_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+class CreateAndRunForecastResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    forecast_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
@@ -928,7 +940,8 @@ class GetLogsValidations(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     validation_type = serializers.CharField(required=True)
-    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=True, allow_empty=True)
+    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=True,
+                                 allow_empty=True)
 
 
 class GetLogsResponseSerializer(GenericResponseSerializer):

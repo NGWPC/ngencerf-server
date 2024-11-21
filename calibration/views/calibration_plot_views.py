@@ -229,7 +229,7 @@ def get_plot(request: Request) -> Response:
     if force_include_plot or not plot_url or include_data:
         plot_definition = get_filtered_plot_definitions(calibration_run, plot_name=plot_name, first_match=True)
         if not plot_definition:
-            return ResponseError(f"Plot '{plot_name}' not found for Calibration Run {run.id}")
+            return ResponseError(f"Plot '{plot_name}' not found for Calibration Job {run.id}")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:

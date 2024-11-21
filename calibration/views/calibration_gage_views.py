@@ -305,7 +305,7 @@ def save_gage_tab(request: Request):
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
+    response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url}
     if eds_errors:
         response['eds_errors'] = eds_errors
@@ -461,7 +461,7 @@ def upload_observational_data(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f"Observational file '{user_observational_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+    response = {'message': f"Observational file '{user_observational_file.name}' saved for Calibration Job {run.id}", 'calibration_run_id': run.id,
                 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
@@ -511,9 +511,6 @@ def upload_forcing_data(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # if not run.gage:
-    #     return ResponseError(f'Calibration Run {run.id} does not yet have a gage specified')
-
     run.forcing_source = ForcingSourceEnum.UPLOAD.db_instance
 
     # Validate the file keys and how many there are
@@ -550,7 +547,7 @@ def upload_forcing_data(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response_message = f"{number_of_files} forcing file{'s' if len(files) > 1 else ''} saved for Calibration Run {run.id}"
+    response_message = f"{number_of_files} forcing file{'s' if len(files) > 1 else ''} saved for Calibration Job {run.id}"
     response = {'message': response_message, 'calibration_run_id': run.id, 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
@@ -624,7 +621,7 @@ def upload_geopackage_data(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Run {run.id}", 'calibration_run_id': run.id,
+    response = {'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Job {run.id}", 'calibration_run_id': run.id,
                 'status': run.status.name}
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url

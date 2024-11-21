@@ -63,7 +63,7 @@ def run_calibration_job(calibration_run: CalibrationRun):
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Calibration Run {calibration_run.id}, user: {calibration_run.owner.username}")
+            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}")
 
     output_file = get_calibration_stdout_file(calibration_run)
 
@@ -125,17 +125,17 @@ def submit_calibration_job(calibration_run: CalibrationRun, config_file=None):
         messages, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
 
         if messages:
-            return ResponseError(f'Calibration Run {calibration_run.id} is not ready', validation_errors=messages)
+            return ResponseError(f'Calibration Job {calibration_run.id} is not ready', validation_errors=messages)
 
     try:
-        logger.info(f'Running create_input for Calibration Run {calibration_run.id}')
+        logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
         create_input(config_file)
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
         logger.exception(f'Exception from create_input - {str(e)}')
         return ResponseError(f'Exception from create_input - {str(e)}')
 
-    logger.info(f'Return from create_input for Calibration Run {calibration_run.id}')
+    logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
 
     submit_job(calibration_run, job_execution_fn=run_calibration_job)
 
