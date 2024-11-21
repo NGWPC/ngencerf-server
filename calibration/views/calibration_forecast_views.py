@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def load_forecast_tab(request: Request) -> Response:
+    """
+    Load data for the forecast tab, including forecast cycles with associated data sources and time ranges.
+
+    :param request: HTTP request containing calibration_run_id
+    :return: JSON response with forecast cycle values.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'load_forecast_tab() request from {request.user.email} - {data}')
 
