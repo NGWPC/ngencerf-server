@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
     ],
-    description="Get a list of plot names"
+    description="Load forecast tab data"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
@@ -40,7 +40,7 @@ def load_forecast_tab(request: Request) -> Response:
     if error_return:
         return error_return
 
-    cycle_values = ForecastCycleEnum.get_active_choices_with_fields(fields=['name', 'description'])
+    cycle_values = ForecastCycleEnum.get_active_choices_with_fields(fields=['name', 'data_sources', 'time_range'])
 
     response = {'forecast_cycle_values': cycle_values}
 

@@ -762,7 +762,8 @@ class GetJobDirResponseSerializer(GenericResponseSerializer):
 ##################################
 class ForecastCycleSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
-    description = serializers.CharField(required=True)
+    data_sources = serializers.CharField(required=False, allow_null=True)
+    time_range = serializers.CharField(required=False, allow_null=True)
 
 
 class LoadForecastTabResponseSerializer(BaseSerializer):

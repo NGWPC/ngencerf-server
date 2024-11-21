@@ -4,7 +4,6 @@ from calibration.models.base_model import BaseModel
 
 
 class ForecastCycle(BaseModel):
-    description = models.TextField(null=False)
     is_active = models.BooleanField(null=False, default=True)
     name = models.CharField(max_length=50, unique=True, null=False)
     data_sources = models.CharField(max_length=100, null=True)

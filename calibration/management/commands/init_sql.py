@@ -227,9 +227,9 @@ class Command(BaseCommand):
              "is_active": True},
             {"name": "Short Range Forecast", "data_sources": "HRRR, RAP", "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
             {"name": "Extended AnA", "data_sources": "RAP, HRRR, Stage IV", "is_active": True},
-            {"name": "Medium Range Forecast", "data_sources": "", "is_active": True},
+            {"name": "Medium Range Forecast", "is_active": True},
             {"name": "Long Range AnA", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "is_active": True},
-            {"name": "Long Range Forecast", "data_sources": "", "is_active": True},
+            {"name": "Long Range Forecast", "is_active": True},
         ]
 
         for v in values:
