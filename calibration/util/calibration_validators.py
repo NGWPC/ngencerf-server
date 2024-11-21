@@ -90,9 +90,9 @@ class CalibrationOrValidationRunSerializer(BaseSerializer):
 
 
 class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
-    validation_run_id = serializers.IntegerField(required=False, allow_null=True)
-    forecast_run_id = serializers.IntegerField(required=False, allow_null=True)
+    calibration_run_id = serializers.IntegerField(required=False, allow_null=False)
+    validation_run_id = serializers.IntegerField(required=False, allow_null=False)
+    forecast_run_id = serializers.IntegerField(required=False, allow_null=False)
 
     def validate(self, data):
         """
@@ -545,13 +545,12 @@ class PlotListStaticSerializer(BaseSerializer):
     # filename = serializers.CharField(required=True, allow_blank=False)
 
 
-class GetPLotNamesResponseSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
+class GetPLotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):
     plot_names = PlotListStaticSerializer(many=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
-class GetPlotRequestSerializer(CalibrationOrValidationRunSerializer):
+class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
     include_data = serializers.BooleanField(required=False, default=False)
     force_include_plot = serializers.BooleanField(required=False, default=False)
@@ -567,6 +566,7 @@ class PaginationMetadataSerializer(BaseSerializer):
 
 class GetPlotResponseSerializer(CalibrationRunSerializer):
     validation_run_id = serializers.IntegerField(required=False)
+    forecast_run_id = serializers.IntegerField(required=False)
     plot_name = serializers.CharField(required=True, allow_null=False)
     plot_file_name = serializers.CharField(required=False, allow_null=False)
     plot_url = serializers.CharField(required=False, allow_null=False)

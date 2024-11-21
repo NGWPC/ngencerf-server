@@ -15,21 +15,22 @@ from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
-    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
+    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     get_validation_metrics_valid_best_file, get_validation_metrics_nwm_retrospective_file, get_validation_metrics_valid_control_file, \
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none, get_validation_run, get_job_description
+    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none, get_validation_run, get_job_description, \
+    get_forecast_run
 from calibration.views.read_output import process_worker_dirs
 
 logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationOrValidationOrForecastRunSerializer,
     responses={
         200: GetPLotNamesResponseSerializer,
         400: OpenApiResponse(
@@ -58,13 +59,29 @@ def get_plot_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+    # Determine job type and retrieve the appropriate run instance
+    if calibration_run_id:
+        run_func = get_calibration_run
+        run_id = calibration_run_id
+        run_type = 'Calibration'
+    elif validation_run_id:
+        run_func = get_validation_run
+        run_id = validation_run_id
+        run_type = 'Validation'
+    else:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = 'Forecast'
+
+    run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 
@@ -74,7 +91,10 @@ def get_plot_names(request: Request) -> Response:
     # Create a list of plot names with descriptions
     plot_names = [{'name': plot['name'], 'description': plot['description']} for plot in filtered_plot_definitions]
 
-    response = {'calibration_run_id': calibration_run_id, 'plot_names': plot_names, 'status': run.status.name}
+    response = {
+        f"{run_type.lower()}_run_id": run.id,
+        'plot_names': plot_names,
+        'status': run.status.name}
 
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
@@ -194,6 +214,9 @@ def get_plot(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+
+
     plot_name = validator.get('plot_name')
     include_data = validator.get('include_data')
     force_include_plot = validator.get('force_include_plot')
@@ -213,23 +236,33 @@ def get_plot(request: Request) -> Response:
     plot_file_name = None
     plot_url_calculated = False  # Tracks if plot_url was calculated in this request
 
-    # Select the correct function and retrieve the run object
-    run_func = get_calibration_run if calibration_run_id else get_validation_run
-    run_id = calibration_run_id or validation_run_id
+    # Determine job type and retrieve the appropriate run instance
+    if calibration_run_id:
+        run_func = get_calibration_run
+        run_id = calibration_run_id
+        run_type = 'Calibration'
+    elif validation_run_id:
+        run_func = get_validation_run
+        run_id = validation_run_id
+        run_type = 'Validation'
+    else:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = 'Forecast'
 
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 
-    # Identify the associated calibration run, handling both calibration and validation cases
+    # Identify the associated calibration run, handling both calibration, validation and forecast cases
     calibration_run = run if calibration_run_id else run.calibration_run
 
     # Fetch plot definition if needed for force_include_plot, include_data, or when plot_url is missing
     plot_definition = None
     if force_include_plot or not plot_url or include_data:
-        plot_definition = get_filtered_plot_definitions(calibration_run, plot_name=plot_name, first_match=True)
+        plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
         if not plot_definition:
-            return ResponseError(f"Plot '{plot_name}' not found for Calibration Job {run.id}")
+            return ResponseError(f"Plot '{plot_name}' not found for {run_type} Job {run.id}")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:
@@ -286,6 +319,8 @@ def get_plot(request: Request) -> Response:
 
     if validation_run_id:
         response['validation_run_id'] = validation_run_id
+    if forecast_run_id:
+        response['forecast_run_id'] = forecast_run_id
     if include_data:
         response['plot_data'] = paginated_data or plot_data
         if pagination_metadata:
@@ -327,11 +362,15 @@ def determine_plot_location(calibration_run: CalibrationRun, run: CalibrationRun
         case 'plot_iteration':
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
             if worker_dir is None:
-                raise ResponseError(f'Plots could not be found for {get_job_description(run)}')
+                raise CerfException(f'Plots could not be found for {get_job_description(run)}')
             return os.path.join(worker_dir, 'Plot_Iteration')
 
+        case 'forecast_output':
+            # TODO Need to figure out the name of the forecast directory
+            return 'dummy_dir'
+
         case _:
-            raise ResponseError(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
+            raise CerfException(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
 
 
 class RowNumberPagination(BasePagination):

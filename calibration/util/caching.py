@@ -163,7 +163,8 @@ def get_cached_module_groups() -> list:
     return module_groups
 
 
-def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name: str | None = None, first_match: bool = False) -> list[dict] | dict | None:
+def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name: str | None = None, first_match: bool = False) -> list[
+                                                                                                                                       dict] | dict | None:
     """
     Retrieve filtered plot definitions for the specified run and plot name, with a case-insensitive match.
 
@@ -182,20 +183,31 @@ def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name
 
     # Determine if validation plots should be included
     include_validation_plots = isinstance(run, ValidationRun) or (
-        isinstance(run, CalibrationRun) and run.automatic_validation
+            isinstance(run, CalibrationRun) and run.automatic_validation
     )
 
-    # Filter plots based on job type, optimization, and optional plot_name criteria
-    filtered_plots = [
-        plot for plot in cached_plot_definitions
-        if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
-        and plot['valid_optimizations'] is not None  # Exclude plots with null valid_optimizations.  This will be for Forecasting
-        and (run.optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
-        and (
-            plot['job_type'] == JobType.CALIBRATION.value or
-            (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
-        )  # Include based on job type
-    ]
+    if isinstance(run, CalibrationRun) or isinstance(run, ValidationRun):
+        optimization = run.optimization if isinstance(run, CalibrationRun) else run.calibration_run.optimization
+        # Filter plots based on job type, optimization, and optional plot_name criteria
+        filtered_plots = [
+            plot for plot in cached_plot_definitions
+            if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
+               and plot['valid_optimizations'] is not None  # Exclude plots with null valid_optimizations.  This will be for Forecasting
+               and (optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
+               and (
+                       plot['job_type'] == JobType.CALIBRATION.value or
+                       (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
+               )  # Include based on job type
+        ]
+    else:
+        # Get plots for Forecast
+        filtered_plots = [
+            plot for plot in cached_plot_definitions
+            if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
+               and (
+                       plot['job_type'] == JobType.FORECAST.value
+               )
+        ]
 
     # Return the first match if first_match is True, otherwise return the list of matches
     if first_match:
