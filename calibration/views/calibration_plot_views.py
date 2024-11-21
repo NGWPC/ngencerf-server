@@ -15,21 +15,22 @@ from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
-    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer
+    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     get_validation_metrics_valid_best_file, get_validation_metrics_nwm_retrospective_file, get_validation_metrics_valid_control_file, \
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none, get_validation_run, get_job_description
+    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none, get_validation_run, get_job_description, \
+    get_forecast_run
 from calibration.views.read_output import process_worker_dirs
 
 logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationOrValidationOrForecastRunSerializer,
     responses={
         200: GetPLotNamesResponseSerializer,
         400: OpenApiResponse(
@@ -58,13 +59,29 @@ def get_plot_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+    # Determine job type and retrieve the appropriate run instance
+    if calibration_run_id:
+        run_func = get_calibration_run
+        run_id = calibration_run_id
+        run_type = 'Calibration'
+    elif validation_run_id:
+        run_func = get_validation_run
+        run_id = validation_run_id
+        run_type = 'Validation'
+    else:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = 'Forecast'
+
+    run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 
@@ -74,7 +91,10 @@ def get_plot_names(request: Request) -> Response:
     # Create a list of plot names with descriptions
     plot_names = [{'name': plot['name'], 'description': plot['description']} for plot in filtered_plot_definitions]
 
-    response = {'calibration_run_id': calibration_run_id, 'plot_names': plot_names, 'status': run.status.name}
+    response = {
+        f"{run_type.lower()}_run_id": run.id,
+        'plot_names': plot_names,
+        'status': run.status.name}
 
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
