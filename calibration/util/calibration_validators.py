@@ -550,7 +550,7 @@ class GetPLotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSeriali
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
-class GetPlotRequestSerializer(CalibrationOrValidationRunSerializer):
+class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
     plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
     include_data = serializers.BooleanField(required=False, default=False)
     force_include_plot = serializers.BooleanField(required=False, default=False)
@@ -566,6 +566,7 @@ class PaginationMetadataSerializer(BaseSerializer):
 
 class GetPlotResponseSerializer(CalibrationRunSerializer):
     validation_run_id = serializers.IntegerField(required=False)
+    forecast_run_id = serializers.IntegerField(required=False)
     plot_name = serializers.CharField(required=True, allow_null=False)
     plot_file_name = serializers.CharField(required=False, allow_null=False)
     plot_url = serializers.CharField(required=False, allow_null=False)

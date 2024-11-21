@@ -214,6 +214,9 @@ def get_plot(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+
+
     plot_name = validator.get('plot_name')
     include_data = validator.get('include_data')
     force_include_plot = validator.get('force_include_plot')
@@ -233,23 +236,33 @@ def get_plot(request: Request) -> Response:
     plot_file_name = None
     plot_url_calculated = False  # Tracks if plot_url was calculated in this request
 
-    # Select the correct function and retrieve the run object
-    run_func = get_calibration_run if calibration_run_id else get_validation_run
-    run_id = calibration_run_id or validation_run_id
+    # Determine job type and retrieve the appropriate run instance
+    if calibration_run_id:
+        run_func = get_calibration_run
+        run_id = calibration_run_id
+        run_type = 'Calibration'
+    elif validation_run_id:
+        run_func = get_validation_run
+        run_id = validation_run_id
+        run_type = 'Validation'
+    else:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = 'Forecast'
 
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 
-    # Identify the associated calibration run, handling both calibration and validation cases
+    # Identify the associated calibration run, handling both calibration, validation and forecast cases
     calibration_run = run if calibration_run_id else run.calibration_run
 
     # Fetch plot definition if needed for force_include_plot, include_data, or when plot_url is missing
     plot_definition = None
     if force_include_plot or not plot_url or include_data:
-        plot_definition = get_filtered_plot_definitions(calibration_run, plot_name=plot_name, first_match=True)
+        plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
         if not plot_definition:
-            return ResponseError(f"Plot '{plot_name}' not found for Calibration Job {run.id}")
+            return ResponseError(f"Plot '{plot_name}' not found for {run_type} Job {run.id}")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:
@@ -306,6 +319,8 @@ def get_plot(request: Request) -> Response:
 
     if validation_run_id:
         response['validation_run_id'] = validation_run_id
+    if forecast_run_id:
+        response['forecast_run_id'] = forecast_run_id
     if include_data:
         response['plot_data'] = paginated_data or plot_data
         if pagination_metadata:
@@ -347,11 +362,15 @@ def determine_plot_location(calibration_run: CalibrationRun, run: CalibrationRun
         case 'plot_iteration':
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
             if worker_dir is None:
-                raise ResponseError(f'Plots could not be found for {get_job_description(run)}')
+                raise CerfException(f'Plots could not be found for {get_job_description(run)}')
             return os.path.join(worker_dir, 'Plot_Iteration')
 
+        case 'forecast_output':
+            # TODO Need to figure out the name of the forecast directory
+            return 'dummy_dir'
+
         case _:
-            raise ResponseError(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
+            raise CerfException(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
 
 
 class RowNumberPagination(BasePagination):
