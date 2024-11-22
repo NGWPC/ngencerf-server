@@ -8,7 +8,7 @@ from createInput import create_input
 from django.conf import settings
 from django.db import transaction
 
-from calibration.enums import StatusEnum, ValidationType
+from calibration.enums import StatusEnum, ValidationType, JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file
@@ -39,7 +39,7 @@ def set_job_status(run: CalibrationRun | ValidationRun, status: StatusEnum) -> N
         job_registry.pop(key, None)
 
 
-def execute_job(run: CalibrationRun | ValidationRun | ForecastRun, input_file: str, output_file: str, job_type: str) -> None:
+def execute_job(run: CalibrationRun | ValidationRun | ForecastRun, input_file: str, output_file: str, job_type: JobType) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
@@ -50,20 +50,20 @@ def execute_job(run: CalibrationRun | ValidationRun | ForecastRun, input_file: s
     :raises CerfException: If the environment is unsupported.
     """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        if job_type == "calibration":
+        if job_type == JobType.CALIBRATION:
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
             run_calibration_job_local(run, input_file, output_file)
-        elif job_type == "validation":
+        elif job_type == JobType.VALIDATION:
             from calibration.run_util.run_ngen_cal_local import run_validation_job_local
             run_validation_job_local(run, input_file, output_file)
         else:
             # Forecast run
             pass
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        if job_type == "calibration":
+        if job_type == JobType.CALIBRATION:
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
             run_calibration_job_parallel_works(run, run.owner, input_file, output_file)
-        elif job_type == "validation":
+        elif job_type == JobType.VALIDATION:
             from calibration.run_util.run_ngen_cal_pw import run_validation_job_parallel_works
             run_validation_job_parallel_works(run, run.calibration_run.owner, input_file, output_file)
         else:
@@ -103,7 +103,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     output_file = get_calibration_stdout_file(calibration_run)
 
-    execute_job(calibration_run, input_file, output_file, job_type="calibration")
+    execute_job(calibration_run, input_file, output_file, JobType.CALIBRATION)
 
 
 def run_validation_job(validation_run: ValidationRun) -> None:
@@ -131,7 +131,7 @@ def run_validation_job(validation_run: ValidationRun) -> None:
         raise CerfException(
             f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
 
-    execute_job(validation_run, input_file, output_file, job_type="validation")
+    execute_job(validation_run, input_file, output_file, JobType.VALIDATION)
 
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
@@ -145,11 +145,11 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     :param forecast_run: The ForecastRun object representing the job.
     """
 
-    # execute_job(forecast_run, input_file, output_file, job_type="forecast")
-    pass
+    # execute_job(forecast_run, input_file, output_file, JobType.Forecast)
 
 
-def submit_job(run: CalibrationRun | ValidationRun | ForecastRun, job_execution_fn: Callable[[CalibrationRun | ValidationRun | ForecastRun], None]) -> None:
+def submit_job(run: CalibrationRun | ValidationRun | ForecastRun,
+               job_execution_fn: Callable[[CalibrationRun | ValidationRun | ForecastRun], None]) -> None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -231,8 +231,6 @@ def get_job_registry_key(run: CalibrationRun | ValidationRun | ForecastRun) -> t
         return run.calibration_run.id, run.id
 
 
-
-
 def create_and_submit_validation_control(calibration_run: CalibrationRun) -> None:
     """
     Create a validation run of type VALID_CONTROL and submit it.
@@ -265,11 +263,12 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
             submit_validation_job(best_validation_run)
 
 
+# TODO This appears to be unused.  Must have been an partial idea that was never completed
 def submit_job_execution(
         run: CalibrationRun | ValidationRun,
         input_file: str,
         output_file: str,
-        job_type: str,
+        job_type: JobType,
         submit_fn: Callable[[CalibrationRun | ValidationRun, str, str, str], None]
 ) -> None:
     """
@@ -284,12 +283,12 @@ def submit_job_execution(
     :raises CerfException: If the environment is unsupported.
     """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        if job_type == "calibration":
+        if job_type == JobType.CALIBRATION:
             submit_fn(run, input_file, output_file, "local_calibration")
         else:
             submit_fn(run, input_file, output_file, "local_validation")
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        if job_type == "calibration":
+        if job_type == JobType.CALIBRATION:
             submit_fn(run, input_file, output_file, "slurm_calibration")
         else:
             submit_fn(run, input_file, output_file, "slurm_validation")
