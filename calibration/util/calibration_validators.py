@@ -71,6 +71,10 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+class ForecastRunSerializer(BaseSerializer):
+    forecast_run_id = serializers.IntegerField(required=True)
+
+
 # TDOO Do we still need this after we've fully impelmented Forecast
 class CalibrationOrValidationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
@@ -383,15 +387,18 @@ class GenericMessageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
 
 
+class MessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
+    message = serializers.CharField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+
+
 class GenericResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
-class GenericResponseSerializerWithValidation(GenericMessageResponseSerializer):
+class GenericResponseSerializerWithValidation(MessageAndStatusResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=False)
     validation_run_id = serializers.IntegerField(required=False)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
 ##################################
@@ -508,24 +515,17 @@ class LoadGageResponseSerializer(BaseSerializer):
     domain_values = DomainResponseSerializer(many=True)
 
 
-class CreateCalibrationRunSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
+class CreateCalibrationRunSerializer(MessageAndStatusResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CreateAndRunValidationResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
+class CreateAndRunValidationResponseSerializer(GenericResponseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
-class CreateAndRunForecastResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
+class CreateAndRunForecastResponseSerializer(GenericResponseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
@@ -754,9 +754,8 @@ class PerformanceMetricsSerializer(BaseSerializer):
     reserved_time = serializers.DurationField(required=False, allow_null=True)
 
 
-class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
+class CommonStatusFieldsMixin(serializers.Serializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-    validation_type = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     run_start = serializers.DateTimeField(required=False, allow_null=True)
     run_end = serializers.DateTimeField(required=False, allow_null=True)
@@ -764,9 +763,18 @@ class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
     performance_metrics = PerformanceMetricsSerializer(required=False)
 
 
+class GetStatusValidationsResponseSerializer(CommonStatusFieldsMixin, ValidationRunSerializer):
+    validation_type = serializers.CharField(required=True)
+
+
+class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer):
+    pass
+
+
 class GetStatusResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
+    forecasts = GetStatusForecastsResponseSerializer(many=True)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     run_start = serializers.DateTimeField(required=False, allow_null=True)
     run_end = serializers.DateTimeField(required=False, allow_null=True)
