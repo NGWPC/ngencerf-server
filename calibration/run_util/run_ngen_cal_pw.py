@@ -44,7 +44,7 @@ def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun, owner
     else:
         payload.update({'calibration_run_id': (None, run.id)})
 
-    logger.info(f'slurm payload: {payload}')
+    logger.info(f'Slurm submit-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 
@@ -129,7 +129,7 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun):
         'slurm_job_id': (None, run.slurm_job_id)
     }
 
-    logger.info(f'slurm cancel-job payload: {payload}')
+    logger.info(f'Slurm cancel-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
