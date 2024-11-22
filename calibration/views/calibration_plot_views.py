@@ -11,7 +11,7 @@ from rest_framework.pagination import BasePagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
+from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, JobType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
@@ -71,16 +71,15 @@ def get_plot_names(request: Request) -> Response:
     if calibration_run_id:
         run_func = get_calibration_run
         run_id = calibration_run_id
-        run_type = 'Calibration'
+        run_type = JobType.CALIBRATION.value.capitalize()
     elif validation_run_id:
         run_func = get_validation_run
         run_id = validation_run_id
-        run_type = 'Validation'
+        run_type = JobType.VALIDATION.value.capitalize()
     else:
         run_func = get_forecast_run
         run_id = forecast_run_id
-        run_type = 'Forecast'
-
+        run_type = JobType.FORECAST.value.capitalize()
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
@@ -240,15 +239,15 @@ def get_plot(request: Request) -> Response:
     if calibration_run_id:
         run_func = get_calibration_run
         run_id = calibration_run_id
-        run_type = 'Calibration'
+        run_type = JobType.CALIBRATION.value.capitalize()
     elif validation_run_id:
         run_func = get_validation_run
         run_id = validation_run_id
-        run_type = 'Validation'
+        run_type = JobType.VALIDATION.value.capitalize()
     else:
         run_func = get_forecast_run
         run_id = forecast_run_id
-        run_type = 'Forecast'
+        run_type = JobType.FORECAST.value.capitalize()
 
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:

@@ -410,15 +410,15 @@ def cancel_job(request: Request) -> Response:
     if calibration_run_id:
         run_func = get_calibration_run
         run_id = calibration_run_id
-        run_type = 'Calibration'
+        run_type = JobType.CALIBRATION.value.capitalize()
     elif validation_run_id:
         run_func = get_validation_run
         run_id = validation_run_id
-        run_type = 'Validation'
+        run_type = JobType.VALIDATION.value.capitalize()
     else:
         run_func = get_forecast_run
         run_id = forecast_run_id
-        run_type = 'Forecast'
+        run_type = JobType.FORECAST.value.capitalize()
 
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:

@@ -13,7 +13,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum, JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
@@ -373,7 +373,7 @@ def validate_simulation_within_range(
         data_end: datetime,
         simulation_start: datetime,
         simulation_end: datetime,
-        label: str
+        job_type: JobType
 ) -> str | None:
     """
     Validates that the specified simulation period is within the provided data range.
@@ -383,14 +383,14 @@ def validate_simulation_within_range(
         data_end (datetime): The end date of the data range.
         simulation_start (datetime): The start date of the simulation period.
         simulation_end (datetime): The end date of the simulation period.
-        label (str): A label indicating whether it's for calibration or validation, used in the error message.
+        job_type (enum): A label indicating whether it's for calibration or validation, used in the error message.
 
     Returns:
         str | None: An error message if the simulation period is out of range; otherwise, None.
     """
     if simulation_start < data_start or simulation_end > data_end:
         return (
-            f"{label} simulation times must be within the intersection of forcing data and "
+            f"{job_type.value.capitalize()} simulation times must be within the intersection of forcing data and "
             f"observational data - {format_datetime(data_start)} to {format_datetime(data_end)}"
         )
     return None
@@ -422,7 +422,7 @@ def validate_time_range_against_data(
     calibration_end = calibration_times.get('simulation_end_time') if calibration_times else run.calibration_end_period
 
     if calibration_start and calibration_end:
-        error_message = validate_simulation_within_range(data_start, data_end, calibration_start, calibration_end, "Calibration")
+        error_message = validate_simulation_within_range(data_start, data_end, calibration_start, calibration_end, JobType.CALIBRATION)
         if error_message:
             return error_message
 
@@ -431,7 +431,7 @@ def validate_time_range_against_data(
     validation_end = validation_times.get('simulation_end_time') if validation_times else run.validation_end_period
 
     if run.automatic_validation and validation_start and validation_end:
-        return validate_simulation_within_range(data_start, data_end, validation_start, validation_end, "Validation")
+        return validate_simulation_within_range(data_start, data_end, validation_start, validation_end, JobType.VALIDATION)
 
     return None
 
