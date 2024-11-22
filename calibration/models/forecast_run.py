@@ -7,6 +7,7 @@ class ForecastRun(BaseModel):
     calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="forecasts", on_delete=models.CASCADE, db_index=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     cycle = models.ForeignKey("ForecastCycle", null=False, on_delete=models.RESTRICT)
+    # TODO I don't think we need this flag. We'll see
     have_forcing_data = models.BooleanField(default=False)
     submit_date = models.DateTimeField(null=True)
     run_start = models.DateTimeField(null=True)
