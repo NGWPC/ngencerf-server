@@ -7,7 +7,7 @@ from django.conf import settings
 from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
-from calibration.models import CalibrationRun, ValidationRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.run_util.run_common import set_job_status, create_and_submit_validation_control, process_validation_output_and_maybe_create_best
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
 from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description
@@ -17,7 +17,7 @@ from calibration.views.read_output import read_calibration_output
 logger = logging.getLogger(__name__)
 
 
-def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun, owner, input_file, output_file):
+def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun | ForecastRun, owner, input_file, output_file):
     """
     Submits a job to Slurm.
     :param url_endpoint: Slurm URL endpoint for submission.
@@ -41,8 +41,11 @@ def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun, owner
             'worker_name': (None, run.worker_name),
             'iteration': (None, run.iteration_num)
         })
-    else:
+    elif isinstance(run ,CalibrationRun):
         payload.update({'calibration_run_id': (None, run.id)})
+    else:
+        # Forecast
+        pass
 
     logger.info(f'Slurm submit-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)
@@ -67,13 +70,17 @@ def run_validation_job_parallel_works(validation_run: ValidationRun, owner, inpu
     submit_job_to_slurm(settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT, validation_run, owner, input_file, output_file)
 
 
-def run_job_callback_common_pw(run: CalibrationRun | ValidationRun, slurm_status: SlurmStatusEnum) -> bool:
+def run_forecast_job_parallel_works(forecast_run: ForecastRun, owner, input_file, output_file):
+    submit_job_to_slurm(settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT, forecast_run, owner, input_file, output_file)
+
+
+def run_job_callback_common_pw(run: CalibrationRun | ValidationRun | ForecastRun, slurm_status: SlurmStatusEnum) -> bool:
     """
     Common logic for the callback function that gets executed when a Slurm job completes.
 
-    :param run: The CalibrationRun or ValidationRun object representing the job run.
+    :param run: The CalibrationRun, ValidationRun or ForecastRun object representing the job run.
     :param slurm_status: The status of the Slurm job process.
-    :return: A boolean indicating whether the job completed successfully.
+    :return: True if the job completed successfully, False otherwise.
     """
     job_description = get_job_description(run)
     logger.info(f'Job end callback received for {job_description} with status {slurm_status}')
@@ -114,6 +121,19 @@ def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_statu
     """
     if run_job_callback_common_pw(validation_run, slurm_status):
         process_validation_output_and_maybe_create_best(validation_run)
+
+
+def run_forecast_job_callback_slurm(forecast_run: ForecastRun, slurm_status: SlurmStatusEnum) -> None:
+    """
+    Callback function that gets executed when a validation job completes via Slurm.
+
+    :param forecast_run: The ValidationRun object representing the job run.
+    :param slurm_status: The status of the Slurm job process.
+    """
+    if run_job_callback_common_pw(forecast_run, slurm_status):
+        # TODO Not sure if there's any other processing we need to do
+        set_job_status(forecast_run, StatusEnum.DONE)
+
 
 
 def cancel_slurm_job(run: CalibrationRun | ValidationRun):

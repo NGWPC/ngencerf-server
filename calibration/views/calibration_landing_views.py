@@ -186,17 +186,6 @@ def create_and_run_forecast(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # TODO Not sure if we need this
-    # # Check if a ValidationRun already exists for this CalibrationRun and Iteration
-    # existing_validation_run = ValidationRun.objects.filter(
-    #     calibration_run=calibration_run,
-    #     iteration_id=iteration_id,
-    #     status=StatusEnum.DONE.db_instance
-    # ).first()
-    # if existing_validation_run:
-    #     return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
-    #                          f'Calibration Job {calibration_run.id}, iteration {iteration_id}')
-
     forecast_run = create_forecast_run_internal(
         calibration_run,
         ForecastCycleEnum.get_instance(cycle_name)
