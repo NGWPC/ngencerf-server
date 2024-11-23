@@ -27,13 +27,13 @@ def run_job_local(run: CalibrationRun | ValidationRun | ForecastRun, input_file:
     Executes a local job by calling the shell script with appropriate input and output file arguments,
     and registers a callback for job completion.
 
-    :param run: The CalibrationRun or ValidationRun object representing the job run.
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     :param script_cmd: The script command to execute (e.g., 'calibration', 'validation').
     :param callback_function: The callback function to invoke when the process completes.
     """
-    # Construct the shell script path
+    # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
         spawn_command = [settings.RUN_NGEN_CAL_SCRIPT]
         extra = [output_file, NGEN_CAL_VENV]
@@ -74,7 +74,7 @@ def run_validation_job_local(validation_run: ValidationRun, input_file: str, out
     """
     Executes a local validation job by invoking run_job_local with appropriate arguments.
 
-    :param validation_run: The ValidationRun object representing the job run.
+    :param validation_run: The ValidationRun object representing the validation job.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     """
@@ -83,6 +83,13 @@ def run_validation_job_local(validation_run: ValidationRun, input_file: str, out
 
 
 def run_forecast_job_local(forecast_run: ForecastRun, input_file: str, output_file: str) -> None:
+    """
+    Executes a local forecast job by invoking run_job_local with appropriate arguments.
+
+    :param forecast_run: The ForecastRun object representing the job run.
+    :param input_file: Path to the input file.
+    :param output_file: Path to the output file.
+    """
     run_job_local(forecast_run, input_file, output_file, 'forecast', run_forecast_job_callback_local)
 
 
@@ -90,7 +97,7 @@ def run_job_callback_common(run: CalibrationRun | ValidationRun | ForecastRun, f
     """
     Common logic for the callback function that gets executed when a job completes.
 
-    :param run: The CalibrationRun, ValidationRun or ForecastRun object.
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
     :param future: The Future object representing the asynchronous job process.
     :return: True if the job completed successfully, False otherwise.
     """
@@ -152,7 +159,7 @@ def run_validation_job_callback_local(validation_run: ValidationRun, future: Fut
 
 def run_forecast_job_callback_local(forecast_run: ForecastRun, future: Future) -> None:
     """
-    Callback function to handle the completion of a validation job.
+    Callback function to handle the completion of a forecast job.
 
     :param forecast_run: The ForecastRun object.
     :param future: The Future object representing the asynchronous job process.

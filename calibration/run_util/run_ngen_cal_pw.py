@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun | ForecastRun, owner, input_file, output_file):
     """
-    Submits a job to Slurm.
+    Submits a job to Slurm, including setting up payload data and handling HTTP responses.
+
     :param url_endpoint: Slurm URL endpoint for submission.
-    :param run: The CalibrationRun or ValidationRun object.
-    :param owner: The owner (User object) of the job, for generating the auth token.
-    :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
+    :param owner: The owner (User object) of the job, used to generate the auth token.
+    :param input_file: Path to the input file for the job.
+    :param output_file: Path to the output file for the job.
     """
     url = urljoin(settings.SLURM_URL, url_endpoint)
     payload = {
@@ -41,7 +42,7 @@ def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun | Fore
             'worker_name': (None, run.worker_name),
             'iteration': (None, run.iteration_num)
         })
-    elif isinstance(run ,CalibrationRun):
+    elif isinstance(run, CalibrationRun):
         payload.update({'calibration_run_id': (None, run.id)})
     else:
         # Forecast
@@ -63,14 +64,38 @@ def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun | Fore
 
 
 def run_calibration_job_parallel_works(calibration_run: CalibrationRun, owner, input_file, output_file):
+    """
+    Initiates the submission of a calibration job to Slurm using the parallel works framework.
+
+    :param calibration_run: The CalibrationRun object representing the calibration job.
+    :param owner: The owner (User object) of the job, used to generate the auth token.
+    :param input_file: Path to the input file for the calibration job.
+    :param output_file: Path to the output file for the calibration job.
+    """
     submit_job_to_slurm(settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT, calibration_run, owner, input_file, output_file)
 
 
 def run_validation_job_parallel_works(validation_run: ValidationRun, owner, input_file, output_file):
+    """
+    Initiates the submission of a validation job to Slurm using the parallel works framework.
+
+    :param validation_run: The ValidationRun object representing the validation job.
+    :param owner: The owner (User object) of the job, used to generate the auth token.
+    :param input_file: Path to the input file for the validation job.
+    :param output_file: Path to the output file for the validation job.
+    """
     submit_job_to_slurm(settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT, validation_run, owner, input_file, output_file)
 
 
 def run_forecast_job_parallel_works(forecast_run: ForecastRun, owner, input_file, output_file):
+    """
+    Initiates the submission of a forecast job to Slurm using the parallel works framework.
+
+    :param forecast_run: The ForecastRun object representing the forecast job.
+    :param owner: The owner (User object) of the job, used to generate the auth token.
+    :param input_file: Path to the input file for the forecast job.
+    :param output_file: Path to the output file for the forecast job.
+    """
     submit_job_to_slurm(settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT, forecast_run, owner, input_file, output_file)
 
 
@@ -135,12 +160,13 @@ def run_forecast_job_callback_slurm(forecast_run: ForecastRun, slurm_status: Slu
         set_job_status(forecast_run, StatusEnum.DONE)
 
 
-
-def cancel_slurm_job(run: CalibrationRun | ValidationRun):
+def cancel_slurm_job(run: CalibrationRun | ValidationRun | ForecastRun):
     """
-     Terminates a job with the given calibration_run_id or validation_run_id by sending a request to slurm.
-     :param run: The CalibrationRun or ValidationRun to terminate.
-     """
+    Terminates a Slurm job by sending a cancellation request for the provided run.
+
+    :param run: The CalibrationRun,  ValidationRun or ForecastRun object to terminate.
+    :return: True if the job was successfully cancelled, False otherwise.
+    """
     job_description = get_job_description(run)
     logger.info(f"Cancelling slurm job {run.slurm_job_id} for {job_description}")
 
@@ -175,6 +201,12 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun):
 
 
 class SlurmJobException(Exception):
+    """
+    Custom exception class for handling Slurm job-related errors.
+
+    :param message: The error message describing the exception.
+    :param status_code: Optional HTTP status code associated with the error.
+    """
     def __init__(self, message, status_code=None):
         super().__init__(message)
         self.status_code = status_code
@@ -183,6 +215,7 @@ class SlurmJobException(Exception):
 def handle_slurm_http_error(response, url, job_id):
     """
     Handle HTTP errors for Slurm job submissions or cancellations, and log detailed error messages.
+
     :param response: The HTTP response object from the Slurm API call.
     :param url: The URL that was called.
     :param job_id: The calibration or validation run ID.

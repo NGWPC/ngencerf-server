@@ -14,7 +14,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
+from calibration.enums import StatusEnum, JobType
 from calibration.models import Iteration, ValidationRun, ForecastRun, Status
 from calibration.run_util.run_common import cancel_job_common, submit_calibration_job
 from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
@@ -49,6 +49,13 @@ logger = logging.getLogger(__name__)
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_status(request: Request) -> Response:
+    """
+    Retrieves the status of a calibration job, including associated validation and forecast jobs.
+    Optionally includes performance metrics based on the request parameters.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the status and associated job details.
+    """
     data = request.data
     logger.debug(f'get_status() request from {request.user.email} - {data}')
 
@@ -63,13 +70,17 @@ def get_status(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Helper function to retrieve performance metrics if available
     def get_performance_metrics(performance_metrics):
+        """
+        Helper function to retrieve selected performance metrics if available.
+        """
         fields = ["elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"]
         return model_to_dict(performance_metrics, fields=fields) if performance_metrics else {field: None for field in fields}
 
-    # Check if the job's status allows retrieving performance metrics
     def should_include_metrics(status: Status):
+        """
+        Determines if performance metrics should be included based on job status and request parameters.
+        """
         return include_performance_metrics and status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
 
     # Conditionally retrieve calibration performance metrics
@@ -176,6 +187,12 @@ def get_status(request: Request) -> Response:
 @api_view(['POST'])
 @handle_exceptions
 def run_calibration(request: Request) -> Response:
+    """
+    Submits a calibration job for processing.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response indicating job submission status.
+    """
     data = request.data
     logger.debug(f'run_calibration() request from {request.user.email} - {data}')
 
@@ -221,9 +238,9 @@ def run_calibration(request: Request) -> Response:
 @handle_exceptions
 def process_calibration_output(request):
     """
-     This endpoint is mostly for testing, to kick of the processing of output for a completed job
-     Normally read_output() is called automatically when a job completes.
-     This endpoint can be used in case the output processing doesn't work.
+    This endpoint is mostly for testing, to kick off the processing of output for a completed job.
+    Normally read_output() is called automatically when a job completes.
+    This endpoint can be used in case the output processing doesn't work.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
@@ -272,6 +289,13 @@ def process_calibration_output(request):
 @api_view(['POST'])
 @handle_exceptions
 def report_iteration(request):
+    """
+    Reports an iteration for a running calibration job. This endpoint updates or creates an
+    iteration record for a specific worker in the calibration job.
+
+    :param request: HTTP request containing iteration details.
+    :return: JSON response indicating the success of the operation.
+    """
     data = request.data
     logger.debug(f'report_iteration() request from {request.user.email} - {data}')
 
@@ -340,6 +364,12 @@ def report_iteration(request):
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_iteration(request: Request) -> Response:
+    """
+    Retrieves the current iteration of a running calibration job.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the current iteration details.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_iteration() request from {request.user.email} - {data}')
 
@@ -349,7 +379,7 @@ def get_iteration(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    # We allow the Ready status since when a job is submitted, it doesn't go to Running right away.  This allows the UI to poll
+    # Allow status Ready for UI polling immediately after submission.
     run, error_return = get_calibration_run(calibration_run_id, request.user,
                                             run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED,
                                                         StatusEnum.SERVER_ERROR])
@@ -462,8 +492,14 @@ def cancel_job(request: Request) -> Response:
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_job_dir(request: Request) -> Response:
+    """
+    Retrieves the directory path where the data for a specific calibration run is stored.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the data directory path.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'cancel_job() request from {request.user.email} - {data}')
+    logger.debug(f'get_job_dir() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -492,7 +528,7 @@ def get_job_dir(request: Request) -> Response:
         new_job_data_dir = run.job_data_dir
 
     response = {
-        'message': f"Calibration Job job {run.id} data directory is {run.job_data_dir}",
+        'message': f"Calibration Job {run.id} data directory is {run.job_data_dir}",
         'calibration_run_id': run.id,
         'data_dir': new_job_data_dir,
         'status': run.status.name
@@ -519,12 +555,18 @@ def get_job_dir(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Callback for slurm to call when a calibration job ends"
+    description="Callback for Slurm to call when a calibration job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
 def calibration_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a calibration job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
     data = request.data
     logger.debug(f'calibration_job_slurm_callback() request from {request.user.email} - {data}')
 
@@ -560,12 +602,18 @@ def calibration_job_slurm_callback(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Callback for slurm to call when a validation job ends"
+    description="Callback for Slurm to call when a validation job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
 def validation_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a validation job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
     data = request.data
     logger.debug(f'validation_job_slurm_callback() request from {request.user.email} - {data}')
 
@@ -610,11 +658,17 @@ def validation_job_slurm_callback(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Return a token for use by slurm"
+    description="Return a token for use by Slurm"
 )
 @api_view(['GET'])
 @handle_exceptions
 def get_slurm_token(request: Request) -> Response:
+    """
+    Generates and returns a token for use by Slurm.
+
+    :param request: HTTP request.
+    :return: JSON response containing the generated token.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_slurm_token() request from {request.user.email} - {data}')
 
@@ -626,6 +680,14 @@ def get_slurm_token(request: Request) -> Response:
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+    """
+    Subsets the files in a directory based on a provided time range and saves the filtered
+    files into an output directory.
+
+    :param input_directory: Path to the input directory.
+    :param output_directory: Path to the output directory.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    """
     logger.info(f'Subsetting directory {input_directory}')
 
     if not os.path.isdir(output_directory):
@@ -642,6 +704,14 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
 
 
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
+    """
+    Reads a CSV file, filters rows based on a time range, and writes the filtered data
+    to an output file.
+
+    :param input_file: Path to the input CSV file.
+    :param output_file: Path to the output CSV file.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    """
     logger.info(f'Subsetting file {input_file} to {output_file}')
 
     # Read the CSV into a DataFrame, parsing dates in the first column
@@ -653,7 +723,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     subset_df = df.loc[
         (df['dateTime'] >= date_time_range.start_datetime) &
         (df['dateTime'] <= date_time_range.end_datetime)
-        ]
+    ]
 
     # Write the filtered DataFrame to the output CSV file
     subset_df.to_csv(output_file, index=False)

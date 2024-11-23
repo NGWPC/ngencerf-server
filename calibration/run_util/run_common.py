@@ -25,9 +25,9 @@ job_registry: Dict[tuple[int, int], subprocess.Popen] = {}
 
 def set_job_status(run: CalibrationRun | ValidationRun | ForecastRun, status: StatusEnum) -> None:
     """
-    Update the status of a CalibrationRun or ValidationRun and clear the job registry if applicable.
+    Update the status of a CalibrationRun, ValidationRun, or ForecastRun and clear the job registry if applicable.
 
-    :param run: The CalibrationRun or ValidationRun object.
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
     :param status: The new status to set.
     """
     run.status = status.db_instance
@@ -43,13 +43,12 @@ def execute_job(run: CalibrationRun | ValidationRun, input_file: str, output_fil
     """
     Execute a job based on the configured NGEN environment.
 
-    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
+    :param run: The CalibrationRun or ValidationRun object.
     :param input_file: The input file path.
     :param output_file: The output file path.
-    :param job_type: Type of the job ("calibration" or "validation").
+    :param job_type: The type of the job ("calibration" or "validation").
     :raises CerfException: If the environment is unsupported.
     """
-
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == JobType.CALIBRATION:
             from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
@@ -292,33 +291,33 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
 
 
 # TODO This appears to be unused.  Must have been an partial idea that was never completed
-def submit_job_execution(
-        run: CalibrationRun | ValidationRun,
-        input_file: str,
-        output_file: str,
-        job_type: JobType,
-        submit_fn: Callable[[CalibrationRun | ValidationRun, str, str, str], None]
-) -> None:
-    """
-    Common job execution logic for submitting calibration and validation jobs.
-    Handles both local and Slurm-based job execution.
-
-    :param run: The CalibrationRun or ValidationRun object to execute.
-    :param input_file: The input file path for the job.
-    :param output_file: The output file path for the job.
-    :param job_type: The type of job ("calibration" or "validation").
-    :param submit_fn: The function that handles the submission logic for the specific environment.
-    :raises CerfException: If the environment is unsupported.
-    """
-    if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        if job_type == JobType.CALIBRATION:
-            submit_fn(run, input_file, output_file, "local_calibration")
-        else:
-            submit_fn(run, input_file, output_file, "local_validation")
-    elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        if job_type == JobType.CALIBRATION:
-            submit_fn(run, input_file, output_file, "slurm_calibration")
-        else:
-            submit_fn(run, input_file, output_file, "slurm_validation")
-    else:
-        raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
+# def submit_job_execution(
+#         run: CalibrationRun | ValidationRun,
+#         input_file: str,
+#         output_file: str,
+#         job_type: JobType,
+#         submit_fn: Callable[[CalibrationRun | ValidationRun, str, str, str], None]
+# ) -> None:
+#     """
+#     Common job execution logic for submitting calibration and validation jobs.
+#     Handles both local and Slurm-based job execution.
+#
+#     :param run: The CalibrationRun or ValidationRun object to execute.
+#     :param input_file: The input file path for the job.
+#     :param output_file: The output file path for the job.
+#     :param job_type: The type of job ("calibration" or "validation").
+#     :param submit_fn: The function that handles the submission logic for the specific environment.
+#     :raises CerfException: If the environment is unsupported.
+#     """
+#     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
+#         if job_type == JobType.CALIBRATION:
+#             submit_fn(run, input_file, output_file, "local_calibration")
+#         else:
+#             submit_fn(run, input_file, output_file, "local_validation")
+#     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+#         if job_type == JobType.CALIBRATION:
+#             submit_fn(run, input_file, output_file, "slurm_calibration")
+#         else:
+#             submit_fn(run, input_file, output_file, "slurm_validation")
+#     else:
+#         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
