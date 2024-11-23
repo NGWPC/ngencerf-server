@@ -1,5 +1,5 @@
+import functools
 import logging
-from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 import requests
@@ -8,11 +8,10 @@ from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
-from calibration.run_util.run_common import set_job_status, create_and_submit_validation_control, process_validation_output_and_maybe_create_best
+from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, finalize_validation_after_callback, finalize_forecast_after_callback
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
 from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description
 from calibration.views.hydrofabric import validate_response_data
-from calibration.views.read_output import read_calibration_output
 
 logger = logging.getLogger(__name__)
 
@@ -99,65 +98,113 @@ def run_forecast_job_parallel_works(forecast_run: ForecastRun, owner, input_file
     submit_job_to_slurm(settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT, forecast_run, owner, input_file, output_file)
 
 
-def run_job_callback_common_pw(run: CalibrationRun | ValidationRun | ForecastRun, slurm_status: SlurmStatusEnum) -> bool:
-    """
-    Common logic for the callback function that gets executed when a Slurm job completes.
+# def run_job_callback_common_pw(run: CalibrationRun | ValidationRun | ForecastRun, slurm_status: SlurmStatusEnum) -> bool:
+#     """
+#     Common logic for the callback function that gets executed when a Slurm job completes.
+#
+#     :param run: The CalibrationRun, ValidationRun or ForecastRun object representing the job run.
+#     :param slurm_status: The status of the Slurm job process.
+#     :return: True if the job completed successfully, False otherwise.
+#     """
+#     job_description = get_job_description(run)
+#     logger.info(f'Job end callback received for {job_description} with status {slurm_status}')
+#     run.run_end = datetime.now(timezone.utc)
+#     run.save(update_fields=['run_end'])
+#
+#     if slurm_status == SlurmStatusEnum.CANCELED:
+#         logger.error(f'{job_description} was cancelled')
+#         set_job_status(run, StatusEnum.CANCELLED)
+#         return False
+#     elif slurm_status == SlurmStatusEnum.FAILED:
+#         logger.error(f'{job_description} ending due to abnormal return code')
+#         set_job_status(run, StatusEnum.FAILED)
+#         return False
+#     return True
 
-    :param run: The CalibrationRun, ValidationRun or ForecastRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
+
+def check_pw_status(run: CalibrationRun | ValidationRun | ForecastRun, slurm_status: SlurmStatusEnum) -> bool:
+    """
+    Checks the status of a job executed in a Parallel Works environment and updates its status accordingly.
+
+    :param run: The job object (CalibrationRun, ValidationRun, or ForecastRun) being monitored.
+    :param slurm_status: The SlurmStatusEnum indicating the job's completion status.
     :return: True if the job completed successfully, False otherwise.
     """
-    job_description = get_job_description(run)
-    logger.info(f'Job end callback received for {job_description} with status {slurm_status}')
-    run.run_end = datetime.now(timezone.utc)
-    run.save(update_fields=['run_end'])
-
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'{job_description} was cancelled')
+        logger.error(f"{get_job_description(run)} was cancelled")
         set_job_status(run, StatusEnum.CANCELLED)
         return False
     elif slurm_status == SlurmStatusEnum.FAILED:
-        logger.error(f'{job_description} ending due to abnormal return code')
+        logger.error(f"{get_job_description(run)} ending due to abnormal return code")
         set_job_status(run, StatusEnum.FAILED)
         return False
     return True
 
 
-def run_calibration_job_callback_slurm(calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum) -> None:
-    """
-    Callback function that gets executed when a calibration job completes via Slurm.
+#
+# def run_calibration_job_callback_slurm(calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum) -> None:
+#     """
+#     Callback function that gets executed when a calibration job completes via Slurm.
+#
+#     :param calibration_run: The CalibrationRun object representing the job run.
+#     :param slurm_status: The status of the Slurm job process.
+#     """
+#     if run_job_callback_common_pw(calibration_run, slurm_status):
+#         read_calibration_output(calibration_run)
+#         set_job_status(calibration_run, StatusEnum.DONE)
+#         # Always submit a control run
+#         create_and_submit_validation_control(calibration_run)
+#
+#
+# def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_status: SlurmStatusEnum) -> None:
+#     """
+#     Callback function that gets executed when a validation job completes via Slurm.
+#
+#     :param validation_run: The ValidationRun object representing the job run.
+#     :param slurm_status: The status of the Slurm job process.
+#     """
+#     if run_job_callback_common_pw(validation_run, slurm_status):
+#         process_validation_output_and_maybe_create_best(validation_run)
+#
+#
+# def run_forecast_job_callback_slurm(forecast_run: ForecastRun, slurm_status: SlurmStatusEnum) -> None:
+#     """
+#     Callback function that gets executed when a validation job completes via Slurm.
+#
+#     :param forecast_run: The ValidationRun object representing the job run.
+#     :param slurm_status: The status of the Slurm job process.
+#     """
+#     if run_job_callback_common_pw(forecast_run, slurm_status):
+#         # TODO Not sure if there's any other processing we need to do
+#         set_job_status(forecast_run, StatusEnum.DONE)
+#
 
-    :param calibration_run: The CalibrationRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
-    """
-    if run_job_callback_common_pw(calibration_run, slurm_status):
-        read_calibration_output(calibration_run)
-        set_job_status(calibration_run, StatusEnum.DONE)
-        # Always submit a control run
-        create_and_submit_validation_control(calibration_run)
 
+# Parallel Works callbacks
+# These callbacks are used to handle job completion events for Calibration, Validation, and Forecast jobs
+# in the Parallel Works (PW) environment. They wrap the `run_generic_job_callback` function,
+# providing environment-specific status checks (`check_pw_status`) and job-specific finalization functions.
 
-def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_status: SlurmStatusEnum) -> None:
-    """
-    Callback function that gets executed when a validation job completes via Slurm.
+# Handles the completion of a calibration job in the PW environment.
+# - Uses `check_pw_status` to check the Slurm job's status (e.g., CANCELED or FAILED).
+# - Executes `finalize_calibration` to read job output, mark the job as DONE, and possibly create validation runs.
+run_calibration_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_calibration_after_callback
+)
 
-    :param validation_run: The ValidationRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
-    """
-    if run_job_callback_common_pw(validation_run, slurm_status):
-        process_validation_output_and_maybe_create_best(validation_run)
+# Handles the completion of a validation job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_validation` to process validation results and potentially mark the best validation run.
+run_validation_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_validation_after_callback
+)
 
-
-def run_forecast_job_callback_slurm(forecast_run: ForecastRun, slurm_status: SlurmStatusEnum) -> None:
-    """
-    Callback function that gets executed when a validation job completes via Slurm.
-
-    :param forecast_run: The ValidationRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
-    """
-    if run_job_callback_common_pw(forecast_run, slurm_status):
-        # TODO Not sure if there's any other processing we need to do
-        set_job_status(forecast_run, StatusEnum.DONE)
+# Handles the completion of a forecast job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_forecast_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_forecast_after_callback
+)
 
 
 def cancel_slurm_job(run: CalibrationRun | ValidationRun | ForecastRun):
@@ -193,9 +240,9 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun | ForecastRun):
 
     logger.info(f"{job_description} - {payload['slurm_job_id']} cancelled successfully")
     if isinstance(run, CalibrationRun):
-        run_calibration_job_callback_slurm(run, SlurmStatusEnum.CANCELED)
+        run_calibration_job_callback_pw(run, SlurmStatusEnum.CANCELED)
     else:
-        run_validation_job_callback_slurm(run, SlurmStatusEnum.CANCELED)
+        run_validation_job_callback_pw(run, SlurmStatusEnum.CANCELED)
 
     return True
 
@@ -207,6 +254,7 @@ class SlurmJobException(Exception):
     :param message: The error message describing the exception.
     :param status_code: Optional HTTP status code associated with the error.
     """
+
     def __init__(self, message, status_code=None):
         super().__init__(message)
         self.status_code = status_code

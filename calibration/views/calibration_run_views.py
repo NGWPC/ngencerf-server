@@ -582,7 +582,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
         return error_return
 
     slurm_status = SlurmStatusEnum(job_status)
-    run_calibration_job_callback_slurm(calibration_run, slurm_status)
+    run_calibration_job_callback_pw(calibration_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from calibration_job_slurm_callback()')
 
@@ -629,7 +629,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
         return error_return
 
     slurm_status = SlurmStatusEnum(job_status)
-    run_validation_job_callback_slurm(validation_run, slurm_status)
+    run_validation_job_callback_pw(validation_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from validation_job_slurm_callback()')
 
