@@ -204,6 +204,7 @@ NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
+NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 NGEN_LOGGING_DIR = Path(BASE_DIR) / 'run-logs'
 
 print(f"Logs can be found in {NGEN_LOGGING_DIR}")

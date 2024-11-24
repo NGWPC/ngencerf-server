@@ -3,6 +3,7 @@ import os
 
 import pandas as pd
 from datetimerange import DateTimeRange
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
 from django.forms import model_to_dict
@@ -475,10 +476,25 @@ def get_job_dir(request: Request) -> Response:
     if error_return:
         return error_return
 
+    if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
+        # Convert path inside the container to the mapped host pth outside the continer
+        container_job_data_dir = run.job_data_dir
+        # Ensure the absolute path starts with the old root
+        if not os.path.isabs(container_job_data_dir):
+            raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
+        if not container_job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
+            raise ValueError(f"The path '{container_job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
+
+        # Replace the old root with the new root
+        relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
+        new_job_data_dir = os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
+    else:
+        new_job_data_dir = run.job_data_dir
+
     response = {
         'message': f"Calibration Job job {run.id} data directory is {run.job_data_dir}",
         'calibration_run_id': run.id,
-        'data_dir': run.job_data_dir,
+        'data_dir': new_job_data_dir,
         'status': run.status.name
     }
 
