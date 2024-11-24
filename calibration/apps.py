@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 
 def print_db_info():
     db_info = settings.DATABASES['default']
-    print(f"Database Engine: {db_info['ENGINE']}")
-    print(f"Database Name: {db_info['NAME']}")
-    print(f"Database URL: {db_info['HOST']}:{db_info['PORT']}")
-    print(f"Database User: {db_info['USER']}")
+    logger.info(f"Database Engine: {db_info['ENGINE']}")
+    logger.info(f"Database Name: {db_info['NAME']}")
+    logger.info(f"Database URL: {db_info['HOST']}:{db_info['PORT']}")
+    logger.info(f"Database User: {db_info['USER']}")
 
 
 def print_banner():
@@ -42,7 +42,7 @@ def print_banner():
 ███████║███████╗██║  ██║ ╚████╔╝ ███████╗██║  ██║                    
 ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝  ╚══════╝╚═╝  ╚═╝ {END}"""
 
-    print(banner)
+    logger.info(banner)
 
 
 class CalibrationConfig(AppConfig):
@@ -54,13 +54,16 @@ class CalibrationConfig(AppConfig):
         if 'runserver' in sys.argv or 'runsslserver' in sys.argv:
             print_banner()
 
-        print(f'Version: {settings.VERSION}')
+        logger.info(f'Version: {settings.VERSION}')
 
-        print(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
-        print()
+        logger.info(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
+        logger.info('')
 
         print_db_info()
-        print()
+        logger.info('')
+
+        logger.info(f'internal data path - {settings.NGEN_CAL_MOUNT_POINT}')
+        logger.info(f'external data path - {settings.NGEN_CAL_DATA_PATH}')
 
         # Make sure the logging directory exists
         NGEN_LOGGING_DIR.mkdir(exist_ok=True)
