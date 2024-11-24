@@ -208,7 +208,6 @@ def create_and_run_forecast(request: Request) -> Response:
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
-
 @extend_schema(
     request=EmptySerializer,
     responses={
@@ -403,7 +402,7 @@ def get_validation_jobs_internal(calibration_run_id: int, return_ids_only: bool 
     """
     # Define the filter condition for DONE or RUNNING statuses, excluding VALID_CONTROL
     validation_filter_condition = (
-            ~Q(validation_type=ValidationType.VALID_CONTROL.value)
+        ~Q(validation_type=ValidationType.VALID_CONTROL.value)
     )
 
     # Base query for validation jobs associated with the specified calibration run

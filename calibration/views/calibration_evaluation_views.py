@@ -368,28 +368,27 @@ def get_best_and_control_validation_ngen_cal_stdout_logs(validation_run: Validat
         'logs': logs
     }]
 
-
-def get_validation_iteration_logs(validation_run: ValidationRun) -> list[dict[str, Any]]:
-    """
-    Retrieves logs for a specific 'valid_iteration' type validation run.
-
-    :param validation_run: The ValidationRun instance.
-    :return: A list containing a dictionary with validation log data.
-    """
-    calibration_run = validation_run.calibration_run
-    stdout_file = get_validation_iteration_stdout_file(
-        validation_run.calibration_run,
-        validation_run.worker_name,
-        validation_run.iteration_num
-    )
-
-    logs = fetch_log(stdout_file, 'ngen-cal stdout')
-    return [{
-        'validation_run_id': validation_run.id,
-        'status': validation_run.status.name,
-        'validation_type': validation_run.validation_type,
-        'logs': logs
-    }]
+#
+# def get_validation_iteration_logs(validation_run: ValidationRun) -> list[dict[str, Any]]:
+#     """
+#     Retrieves logs for a specific 'valid_iteration' type validation run.
+#
+#     :param validation_run: The ValidationRun instance.
+#     :return: A list containing a dictionary with validation log data.
+#     """
+#     stdout_file = get_validation_iteration_stdout_file(
+#         validation_run.calibration_run,
+#         validation_run.worker_name,
+#         validation_run.iteration_num
+#     )
+#
+#     logs = fetch_log(stdout_file, 'ngen-cal stdout')
+#     return [{
+#         'validation_run_id': validation_run.id,
+#         'status': validation_run.status.name,
+#         'validation_type': validation_run.validation_type,
+#         'logs': logs
+#     }]
 
 
 def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:

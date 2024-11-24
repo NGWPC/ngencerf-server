@@ -149,7 +149,6 @@ class TimeRangeSerializerAllowEmpty(BaseSerializer):
     end_time = serializers.DateTimeField(required=False)
 
 
-
 class CalibrationTimeControls(BaseSerializer):
     calibration_start_time = serializers.DateTimeField()
     calibration_end_time = serializers.DateTimeField()
@@ -517,6 +516,7 @@ class LoadGageResponseSerializer(BaseSerializer):
 
 class CreateCalibrationRunSerializer(GenericResponseSerializer):
     pass
+
 
 class CreateAndRunValidationResponseSerializer(GenericResponseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
