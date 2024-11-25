@@ -813,6 +813,7 @@ class ForecastCycleSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
     data_sources = serializers.CharField(required=False, allow_null=True)
     time_range = serializers.CharField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(required=True)
 
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
