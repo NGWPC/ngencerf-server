@@ -165,7 +165,6 @@ class AbstractEnum(Generic[T], Enum):
 
         return instance
 
-
     @property
     def db_instance(self) -> T:
         """

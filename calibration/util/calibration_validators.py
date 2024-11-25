@@ -75,7 +75,7 @@ class ForecastRunSerializer(BaseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
 
-# TDOO Do we still need this after we've fully impelmented Forecast
+# TDOO Do we still need this after we've fully implemented Forecast
 class CalibrationOrValidationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
     validation_run_id = serializers.IntegerField(required=False, allow_null=True)
@@ -396,8 +396,7 @@ class GenericResponseSerializer(MessageAndStatusResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class GenericResponseSerializerWithValidation(MessageAndStatusResponseSerializer):
-    calibration_run_id = serializers.IntegerField(required=False)
+class GenericResponseSerializerWithValidation(GenericResponseSerializer):
     validation_run_id = serializers.IntegerField(required=False)
 
 
@@ -515,8 +514,8 @@ class LoadGageResponseSerializer(BaseSerializer):
     domain_values = DomainResponseSerializer(many=True)
 
 
-class CreateCalibrationRunSerializer(MessageAndStatusResponseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
+class CreateCalibrationRunSerializer(GenericResponseSerializer):
+    pass
 
 
 class CreateAndRunValidationResponseSerializer(GenericResponseSerializer):

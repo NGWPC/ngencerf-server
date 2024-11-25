@@ -2,17 +2,16 @@ import functools
 import logging
 import subprocess
 from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime, timezone
 from typing import Callable, List
 
 from django.conf import settings
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
-from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, create_and_submit_validation_control, \
-    process_validation_output_and_maybe_create_best
+from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, run_generic_job_callback, \
+    finalize_calibration_after_callback, \
+    finalize_validation_after_callback, finalize_forecast_after_callback
 from calibration.views.common import get_job_description
-from calibration.views.read_output import read_calibration_output
 from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironmentEnum, DOCKER_CMD
 
 logger = logging.getLogger(__name__)
@@ -21,19 +20,19 @@ logger = logging.getLogger(__name__)
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
-def run_job_local(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, script_cmd: str,
-                  callback_function: Callable[[CalibrationRun | ValidationRun, Future], None]) -> None:
+def run_job_local(run: CalibrationRun | ValidationRun | ForecastRun, input_file: str, output_file: str, script_cmd: str,
+                  callback_function: Callable[[CalibrationRun | ValidationRun | ForecastRun, Future], None]) -> None:
     """
     Executes a local job by calling the shell script with appropriate input and output file arguments,
     and registers a callback for job completion.
 
-    :param run: The CalibrationRun or ValidationRun object representing the job run.
+    :param run: The CalibrationRun, ValidationRun, or ForecastRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     :param script_cmd: The script command to execute (e.g., 'calibration', 'validation').
     :param callback_function: The callback function to invoke when the process completes.
     """
-    # Construct the shell script path
+    # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
         spawn_command = [settings.RUN_NGEN_CAL_SCRIPT]
         extra = [output_file, NGEN_CAL_VENV]
@@ -74,7 +73,7 @@ def run_validation_job_local(validation_run: ValidationRun, input_file: str, out
     """
     Executes a local validation job by invoking run_job_local with appropriate arguments.
 
-    :param validation_run: The ValidationRun object representing the job run.
+    :param validation_run: The ValidationRun object representing the validation job.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
     """
@@ -82,68 +81,72 @@ def run_validation_job_local(validation_run: ValidationRun, input_file: str, out
     run_job_local(validation_run, input_file, output_file, script_type, run_validation_job_callback_local)
 
 
-def run_job_callback_common(run: CalibrationRun | ValidationRun, future: Future) -> bool:
+def run_forecast_job_local(forecast_run: ForecastRun, input_file: str, output_file: str) -> None:
     """
-    Common logic for the callback function that gets executed when a job completes.
+    Executes a local forecast job by invoking run_job_local with appropriate arguments.
 
-    :param run: The CalibrationRun or ValidationRun object.
-    :param future: The Future object representing the asynchronous job process.
+    :param forecast_run: The ForecastRun object representing the job run.
+    :param input_file: Path to the input file.
+    :param output_file: Path to the output file.
+    """
+    run_job_local(forecast_run, input_file, output_file, 'forecast', run_forecast_job_callback_local)
+
+
+def check_local_status(run: CalibrationRun | ValidationRun | ForecastRun, future: Future) -> bool:
+    """
+    Checks the status of a locally executed job and updates its status accordingly.
+
+    :param run: The job object (CalibrationRun, ValidationRun, or ForecastRun) being monitored.
+    :param future: The Future object representing the asynchronous process.
     :return: True if the job completed successfully, False otherwise.
     """
-    job_description = get_job_description(run)
-
-    logger.info(f'Job end callback received for {job_description}')
-    run.run_end = datetime.now(timezone.utc)
-    run.save(update_fields=['run_end'])
-
     try:
         if future.exception() is not None:
-            logger.error(f"Exception occurred in {job_description}: {future.exception()}")
+            logger.error(f"Exception occurred in {get_job_description(run)}: {future.exception()}")
             set_job_status(run, StatusEnum.FAILED)
             return False
 
         exit_code = future.result()
-        logger.info(
-            f"{job_description} completed with exit code {exit_code}")
         if exit_code == -15:
-            logger.info(f'{job_description} was cancelled')
+            logger.info(f"{get_job_description(run)} was cancelled")
             set_job_status(run, StatusEnum.CANCELLED)
             return False
         elif exit_code != 0:
-            logger.error(
-                f'{job_description} ending due to abnormal return code')
+            logger.error(f"{get_job_description(run)} ending due to abnormal return code")
             set_job_status(run, StatusEnum.FAILED)
             return False
         return True
     except Exception as e:
-        logger.exception(f"Error in callback for {job_description}: {str(e)}")
+        logger.exception(f"Error in callback for {get_job_description(run)}: {str(e)}")
         set_job_status(run, StatusEnum.FAILED)
         return False
 
 
-def run_calibration_job_callback_local(calibration_run: CalibrationRun, future: Future) -> None:
-    """
-    Callback function to handle the completion of a calibration job.
+# Local callbacks
+# These callbacks are used to handle job completion events for Calibration, Validation, and Forecast jobs
+# executed in a local environment. They wrap the `run_generic_job_callback` function, providing
+# environment-specific status checks (`check_local_status`) and job-specific finalization functions.
 
-    :param calibration_run: The CalibrationRun object.
-    :param future: The Future object representing the asynchronous job process.
-    """
-    if run_job_callback_common(calibration_run, future):
-        read_calibration_output(calibration_run)
-        set_job_status(calibration_run, StatusEnum.DONE)
-        # Always submit a control run
-        create_and_submit_validation_control(calibration_run)
+# Handles the completion of a calibration job in the local environment.
+# - Uses `check_local_status` to validate the job's exit code.
+# - Executes `finalize_calibration` to read job output, mark the job as DONE, and possibly create validation runs.
+run_calibration_job_callback_local = functools.partial(
+    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_calibration_after_callback
+)
 
+# Handles the completion of a validation job in the local environment.
+# - Uses `check_local_status` to validate the job's exit code.
+# - Executes `finalize_validation` to process validation results and potentially mark the best validation run.
+run_validation_job_callback_local = functools.partial(
+    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_validation_after_callback
+)
 
-def run_validation_job_callback_local(validation_run: ValidationRun, future: Future) -> None:
-    """
-    Callback function to handle the completion of a validation job.
-
-    :param validation_run: The ValidationRun object.
-    :param future: The Future object representing the asynchronous job process.
-    """
-    if run_job_callback_common(validation_run, future):
-        process_validation_output_and_maybe_create_best(validation_run)
+# Handles the completion of a forecast job in the local environment.
+# - Uses `check_local_status` to validate the job's exit code.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_forecast_job_callback_local = functools.partial(
+    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_forecast_after_callback
+)
 
 
 def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
