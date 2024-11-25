@@ -21,6 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
 from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun
 from calibration.models import Iteration
+from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.calibration_validators import ErrorResponseSerializer
 
 logger = logging.getLogger(__name__)
@@ -238,15 +239,19 @@ def create_forecast_run_internal(
 ) -> ForecastRun:
     """
     Create a new ForecastRun object for the given CalibrationRun.
+    The forecast_forcing_download object is always created at the same time to facilitate the separate job needed for downloadaing the forcing data
 
-    :param calibration_run: The calibration run that this validation run is associated with.
+    :param calibration_run: The calibration run that this forecast run is associated with.
     :param cycle: The cycle for this forecast
     :return: The newly created ForecastRun instance.
     """
 
+    forcing_download_run = ForecastForcingDownloadRun.objects.create(status=StatusEnum.SAVED.db_instance)
+
     forecast_run = ForecastRun.objects.create(status=StatusEnum.SAVED.db_instance,
                                               calibration_run=calibration_run,
-                                              cycle=cycle)
+                                              cycle=cycle,
+                                              forcing_download_run=forcing_download_run)
     logger.info(f"Creating Forecast Job {forecast_run.id} for Calibration Job {calibration_run.id}")
 
     return forecast_run

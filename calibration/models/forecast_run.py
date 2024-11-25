@@ -6,15 +6,13 @@ from calibration.models.base_model import BaseModel
 class ForecastRun(BaseModel):
     calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="forecasts", on_delete=models.CASCADE, db_index=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
-    cycle = models.ForeignKey("ForecastCycle", null=False, on_delete=models.RESTRICT)
-    # TODO I don't think we need this flag. We'll see
-    have_forcing_data = models.BooleanField(default=False)
     submit_date = models.DateTimeField(null=True)
     run_start = models.DateTimeField(null=True)
     run_end = models.DateTimeField(null=True)
+    cycle = models.ForeignKey("ForecastCycle", null=False, on_delete=models.RESTRICT)
     performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.CASCADE)
-
     slurm_job_id = models.IntegerField(null=True)
+    forcing_download_run = models.OneToOneField('ForecastForcingDownloadRun', null=False, on_delete=models.CASCADE, related_name='forecast_run')
 
     class Meta:
         db_table = 'forecast_run'
