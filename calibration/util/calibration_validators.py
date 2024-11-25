@@ -814,15 +814,6 @@ class ForecastCycleSerializer(BaseSerializer):
     data_sources = serializers.CharField(required=False, allow_null=True)
     time_range = serializers.CharField(required=False, allow_null=True)
 
-    def to_representation(self, instance):
-        """Map internal field names to the expected output keys."""
-        representation = super().to_representation(instance)
-        return {
-            'Cycle': representation['name'],
-            'Data Sources': representation['data_sources'],
-            'Time Range (NgenCERF)': representation['time_range']
-        }
-
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
     forecast_cycle_values = ForecastCycleSerializer(many=True)
