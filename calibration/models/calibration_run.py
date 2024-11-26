@@ -1,7 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import models
 
-from calibration.models.base_model import BaseModel
 from calibration.models.base_run import BaseRun
 
 

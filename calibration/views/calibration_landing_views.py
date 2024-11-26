@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
-from calibration.run_util.run_common import submit_validation_job, submit_forecast_forcing_download_job
+from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
@@ -130,7 +130,7 @@ def create_and_run_validation(request: Request) -> Response:
         iteration_id,
         validation_type=ValidationType.VALID_ITERATION
     )
-    submit_validation_job(validation_run)
+    submit_job(validation_run)
 
     response = {
         'message': f'Validation Job {validation_run.id} created and submitted for Calibration Job {calibration_run.id}',
@@ -190,7 +190,7 @@ def create_and_run_forecast(request: Request) -> Response:
         calibration_run,
         ForecastCycleEnum.get_instance(cycle_name)
     )
-    submit_forecast_forcing_download_job(forecast_run.forcing_download_run)
+    submit_job(forecast_run.forcing_download_run)
 
     response = {
         'message': f'Forcing download job for Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',

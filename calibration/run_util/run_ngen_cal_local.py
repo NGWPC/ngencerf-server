@@ -95,7 +95,7 @@ def check_local_status(run: BaseRun, future: Future) -> bool:
             set_job_status(run, StatusEnum.CANCELLED)
             return False
         elif exit_code != 0:
-            logger.error(f"{get_job_description(run)} ending due to abnormal return code")
+            logger.error(f"{get_job_description(run)} ending due to abnormal return code {exit_code}")
             set_job_status(run, StatusEnum.FAILED)
             return False
         return True

@@ -16,7 +16,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, JobType
 from calibration.models import Iteration, ValidationRun, ForecastRun, Status
-from calibration.run_util.run_common import cancel_job_common, submit_calibration_job
+from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
@@ -207,7 +207,7 @@ def run_calibration(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = submit_calibration_job(run)
+    response = submit_job(run)
     if response:
         return response
 
