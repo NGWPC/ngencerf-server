@@ -87,7 +87,7 @@ def load_gage_tab(request: Request) -> Response:
     domain_values = DomainEnum.get_active_choices_with_fields(fields=['name', 'description'])
 
     # Retrieve cached gages with necessary fields
-    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibrated': gage.get('nwm_v3_calibrated'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')}
+    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibration': gage.get('nwm_v3_calibration'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')}
              for gage in get_cached_gages().values()]
 
     ngen_cal_input.ready_to_run(run)

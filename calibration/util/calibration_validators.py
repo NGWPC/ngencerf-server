@@ -484,7 +484,7 @@ class GagesSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
     nws_id = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-    nwm_v3_calibrated = serializers.BooleanField(required=True)
+    nwm_v3_calibration = serializers.BooleanField(required=True)
 
 
 class ForcingSourceSerializer(BaseSerializer):
