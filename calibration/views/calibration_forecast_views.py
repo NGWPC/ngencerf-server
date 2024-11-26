@@ -93,10 +93,11 @@ def get_forecast_jobs(request: Request) -> Response:
 
     forecast_jobs = list(ForecastRun.objects
                          .filter(status=StatusEnum.DONE.db_instance, calibration_run__owner=request.user)
-                         .values('id', 'calibration_run_id', 'cycle__name', 'status__name'))
+                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name'))
     for f in forecast_jobs:
         f['forecast_run_id'] = f.pop('id')
         f['cycle'] = f.pop('cycle__name')
+        f['gage_id'] = f.pop('calibration_run__gage__gage_id')
         f['status'] = f.pop('status__name')
 
     response = {'forecast_jobs': forecast_jobs}

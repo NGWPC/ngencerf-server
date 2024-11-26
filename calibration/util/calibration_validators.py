@@ -824,7 +824,9 @@ class ForecastJobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forecast_run_id = serializers.IntegerField(required=True)
     cycle = serializers.CharField(required=True)
+    gage_id = serializers.CharField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    submit_date = serializers.DateTimeField(required=True)
 
 
 class GetForecastJobsResponseSerializer(BaseSerializer):
