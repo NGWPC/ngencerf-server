@@ -193,11 +193,11 @@ def create_and_run_forecast(request: Request) -> Response:
     submit_forecast_forcing_download_job(forecast_run.forcing_download_run)
 
     response = {
-        'message': f'Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',
+        'message': f'Forcing download job for Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',
         'calibration_run_id': calibration_run.id,
         'forecast_run_id': forecast_run.id,
-        'status': forecast_run.status.name,
-        'submit_date': forecast_run.submit_date
+        'status': forecast_run.forcing_download_run.status.name,
+        'submit_date': forecast_run.forcing_download_run.submit_date
     }
 
     response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
