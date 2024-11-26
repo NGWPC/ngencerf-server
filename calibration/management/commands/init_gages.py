@@ -78,7 +78,7 @@ class Command(BaseCommand):
                 # These are all new gages
                 gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
                         'station_name': row.get('station_name'), 'is_active': True,
-                        'nwm_v3_calibration': False, 'headwater_calibration': False,
+                        'nwm_v3_calibration': False, 'headwater_calibration': True,
                         'domain_id': alaska_domain.id}
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
@@ -118,10 +118,6 @@ class Command(BaseCommand):
                 if not agency:
                     agency = gage.get('agency')
 
-                new_nwm_v3_calibration = row.get('nwm_v3_calibration') == 'True'
-                nwm_v3_calibration = new_nwm_v3_calibration or gage.get('nwm_v3_calibration', False)
-                headwater_calibration = nwm_v3_calibration
-
                 rfc = row.get('rfc')
                 rfc_id = rfc_dict[rfc.strip()] if rfc else None
 
@@ -129,8 +125,8 @@ class Command(BaseCommand):
                     {'nws_id': nws_id or None,
                      'station_name': (station_name or '').strip(),
                      'rfc_id': rfc_id,
-                     'nwm_v3_calibration': nwm_v3_calibration,
-                     'headwater_calibration': headwater_calibration,
+                     'nwm_v3_calibration': False,
+                     'headwater_calibration': True,
                      'agency': (agency or '').strip()
                      })
 
