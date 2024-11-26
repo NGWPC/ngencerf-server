@@ -42,23 +42,29 @@ def set_job_status(run: BaseRun, status: StatusEnum) -> None:
         job_registry.pop(key, None)
 
 
-def execute_job(run: CalibrationRun | ValidationRun, input_file: str, output_file: str, job_type: JobType) -> None:
+def execute_job(run: BaseRun, input_file: str, output_file: str, job_type: JobType) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
-    :param run: The CalibrationRun or ValidationRun object.
+    :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
     :param input_file: The input file path.
     :param output_file: The output file path.
-    :param job_type: The type of the job ("calibration" or "validation").
+    :param job_type: The type of the job ("calibration", "validation", etc.).
     :raises CerfException: If the environment is unsupported.
     """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         if job_type == JobType.CALIBRATION:
-            from calibration.run_util.run_ngen_cal_local import run_calibration_job_local
-            run_calibration_job_local(run, input_file, output_file)
+            from calibration.run_util.run_ngen_cal_local import run_job_local
+            run_job_local(run, input_file, output_file)
         elif job_type == JobType.VALIDATION:
-            from calibration.run_util.run_ngen_cal_local import run_validation_job_local
-            run_validation_job_local(run, input_file, output_file)
+            from calibration.run_util.run_ngen_cal_local import run_job_local
+            run_job_local(run, input_file, output_file)
+        elif job_type == JobType.FORECAST:
+            from calibration.run_util.run_ngen_cal_local import run_job_local
+            run_job_local(run, input_file, output_file)
+        elif job_type == JobType.FORECAST_FORCING:
+            from calibration.run_util.run_ngen_cal_local import run_job_local
+            run_job_local(run, input_file, output_file)
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         if job_type == JobType.CALIBRATION:
             from calibration.run_util.run_ngen_cal_pw import run_calibration_job_parallel_works
@@ -66,17 +72,25 @@ def execute_job(run: CalibrationRun | ValidationRun, input_file: str, output_fil
         elif job_type == JobType.VALIDATION:
             from calibration.run_util.run_ngen_cal_pw import run_validation_job_parallel_works
             run_validation_job_parallel_works(run, run.calibration_run.owner, input_file, output_file)
+        elif job_type == JobType.FORECAST:
+            from calibration.run_util.run_ngen_cal_pw import run_forecast_job_parallel_works
+            run_forecast_job_parallel_works(run, run.calibration_run.owner, input_file, output_file)
+        elif job_type == JobType.FORECAST_FORCING:
+            from calibration.run_util.run_ngen_cal_pw import run_forecast_forcing_download_job_parallel_works
+            run_forecast_forcing_download_job_parallel_works(run, run.forecast_run.calibration_run.owner, input_file, output_file)
     else:
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
 
 
 def execute_forecast_job(run: ForecastRun, input_file: str, output_file: str) -> None:
     """
-    Execute a forecast job. Forecast jobs consist of two stages:
-    1) Downloading forcing data.
-    2) Running the forecast.
+    Execute the forecast stage of a forecast job.
 
-    :param run: The ForecastRun object.
+    Forecast jobs consist of two stages:
+    1) Downloading forcing data (handled separately).
+    2) Running the forecast (executed by this function).
+
+    :param run: The ForecastRun object representing the forecast job.
     :param input_file: The input file path.
     :param output_file: The output file path.
     :raises CerfException: If the environment is unsupported.
@@ -94,11 +108,11 @@ def execute_forecast_job(run: ForecastRun, input_file: str, output_file: str) ->
 
 def execute_forecast_forcing_download_job(run: ForecastForcingDownloadRun, input_file: str, output_file: str) -> None:
     """
-    Execute a forecast job. Forecast jobs consist of two stages:
-    1) Downloading forcing data.
-    2) Running the forecast.
+    Execute the forcing data download stage of a forecast job.
 
-    :param run: The ForecastRun object.
+    This function handles the download of forcing data required for a forecast run.
+
+    :param run: The ForecastForcingDownloadRun object representing the job.
     :param input_file: The input file path.
     :param output_file: The output file path.
     :raises CerfException: If the environment is unsupported.
@@ -118,6 +132,8 @@ def cancel_job_common(run: BaseRun) -> bool:
     """
     Cancel a job using the appropriate environment-specific logic.
 
+    This function handles job cancellation for LOCAL, DOCKER, and PARALLEL_WORKS environments.
+
     :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
     :return: True if the job was successfully canceled; False otherwise.
     """
@@ -131,10 +147,10 @@ def cancel_job_common(run: BaseRun) -> bool:
 
 def run_calibration_job(calibration_run: CalibrationRun) -> None:
     """
-    Start a calibration job by determining input and output file paths
-    and delegating the job to either a local or Docker execution environment.
+    Start a calibration job by determining input and output file paths.
 
-    This function is intended to be used as input to submit_job.
+    This function is intended to be passed as an argument to `submit_job`
+    and not called directly.
 
     :param calibration_run: The CalibrationRun object representing the job.
     """
@@ -150,10 +166,10 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
 def run_validation_job(validation_run: ValidationRun) -> None:
     """
-    Start a validation job by determining input and output file paths
-    and delegating the job to either a local or Docker execution environment.
+    Start a validation job by determining input and output file paths.
 
-    This function is intended to be used as input to submit_job.
+    This function is intended to be passed as an argument to `submit_job`
+    and not called directly.
 
     :param validation_run: The ValidationRun object representing the job.
     """
@@ -177,10 +193,10 @@ def run_validation_job(validation_run: ValidationRun) -> None:
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
     """
-    Start a forecast job by determining input and output file paths
-    and delegating the job to either a local or Docker execution environment.
+    Start a forecast job by determining input and output file paths.
 
-    This function is intended to be used as input to submit_job.
+    This function is intended to be passed as an argument to `submit_job`
+    and not called directly.
 
     :param forecast_run: The ForecastRun object representing the job.
     """
@@ -198,12 +214,12 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
 
 def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastForcingDownloadRun) -> None:
     """
-    Start a forecast job by determining input and output file paths
-    and delegating the job to either a local or Docker execution environment.
+    Start a forecast forcing download job by determining input and output file paths.
 
-    This function is intended to be used as input to submit_job.
+    This function is intended to be passed as an argument to `submit_job`
+    and not called directly.
 
-    :param forecast_forcing_download_run: The ForecastRun object representing the job.
+    :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
     # input_file = get_calibration_input_file(calibration_run)
     # if not os.path.exists(input_file):
@@ -217,13 +233,15 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     execute_forecast_forcing_download_job(forecast_forcing_download_run, input_file, output_file)
 
 
-def submit_job(run: BaseRun,
-               job_execution_fn: Callable[[BaseRun], None]) -> None:
+def submit_job(run: BaseRun, job_execution_fn: Callable[[BaseRun], None]) -> None:
     """
     Submit a job after setting initial status and submission date.
 
-    :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
-    :param job_execution_fn: The function to execute the job.
+    Saves the `run` object with updated fields, then calls the provided
+    job execution function to start the job.
+
+    :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.) to submit.
+    :param job_execution_fn: The function responsible for executing the job.
     """
     with transaction.atomic():
         run.submit_date = datetime.now(timezone.utc)

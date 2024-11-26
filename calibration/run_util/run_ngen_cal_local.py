@@ -22,18 +22,33 @@ logger = logging.getLogger(__name__)
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
-def run_job_local(run: BaseRun, input_file: str, output_file: str, script_cmd: str,
-                  callback_function: Callable[[BaseRun, Future], None]) -> None:
+def run_job_local(run: BaseRun, input_file: str, output_file: str) -> None:
     """
-    Executes a local job by calling the shell script with appropriate input and output file arguments,
-    and registers a callback for job completion.
+    Executes a local job by determining the appropriate script command and callback based on the run type,
+    and then running the job.
 
-    :param run: The CalibrationRun, ValidationRun, or ForecastRun object representing the job run.
+    :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object representing the job run.
     :param input_file: Path to the input file.
     :param output_file: Path to the output file.
-    :param script_cmd: The script command to execute (e.g., 'calibration', 'validation').
-    :param callback_function: The callback function to invoke when the process completes.
     """
+    # Determine the script command and callback function
+    if isinstance(run, CalibrationRun):
+        script_cmd = "calibration"
+        callback_function = run_calibration_job_callback_local
+    elif isinstance(run, ValidationRun):
+        script_cmd = (
+            "validation_iteration" if run.validation_type == ValidationType.VALID_ITERATION.value else "validation"
+        )
+        callback_function = run_validation_job_callback_local
+    elif isinstance(run, ForecastRun):
+        script_cmd = "forecast"
+        callback_function = run_forecast_job_callback_local
+    elif isinstance(run, ForecastForcingDownloadRun):
+        script_cmd = "forecast_forcing"
+        callback_function = run_forecast_forcing_download_job_callback_local
+    else:
+        raise ValueError(f"Unsupported run type: {type(run).__name__} (run id: {getattr(run, 'id', 'N/A')})")
+
     # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
         spawn_command = [settings.RUN_NGEN_CAL_SCRIPT]
@@ -60,51 +75,6 @@ def run_job_local(run: BaseRun, input_file: str, output_file: str, script_cmd: s
     execute_job(run, args, callback_function=job_callback)
 
 
-def run_calibration_job_local(calibration_run: CalibrationRun, input_file: str, output_file: str) -> None:
-    """
-    Executes a local calibration job by invoking run_job_local with appropriate arguments.
-
-    :param calibration_run: The CalibrationRun object representing the job run.
-    :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
-    """
-    run_job_local(calibration_run, input_file, output_file, "calibration", run_calibration_job_callback_local)
-
-
-def run_validation_job_local(validation_run: ValidationRun, input_file: str, output_file: str) -> None:
-    """
-    Executes a local validation job by invoking run_job_local with appropriate arguments.
-
-    :param validation_run: The ValidationRun object representing the validation job.
-    :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
-    """
-    script_type = 'validation_iteration' if validation_run.validation_type == ValidationType.VALID_ITERATION.value else 'validation'
-    run_job_local(validation_run, input_file, output_file, script_type, run_validation_job_callback_local)
-
-
-def run_forecast_job_local(forecast_run: ForecastRun, input_file: str, output_file: str) -> None:
-    """
-    Executes a local forecast job by invoking run_job_local with appropriate arguments.
-
-    :param forecast_run: The ForecastRun object representing the job run.
-    :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
-    """
-    run_job_local(forecast_run, input_file, output_file, 'forecast', run_forecast_job_callback_local)
-
-
-def run_forecast_forcing_download_job_local(forecast_forcing_download_run: ForecastForcingDownloadRun, input_file: str, output_file: str) -> None:
-    """
-    Executes a local forecast job by invoking run_job_local with appropriate arguments.
-
-    :param forecast_forcing_download_run: The ForecastRun object representing the job run.
-    :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
-    """
-    run_job_local(forecast_forcing_download_run, input_file, output_file, 'forecast_forcing', run_forecast_forcing_download_job_callback_local)
-
-
 def check_local_status(run: BaseRun, future: Future) -> bool:
     """
     Checks the status of a locally executed job and updates its status accordingly.
@@ -115,7 +85,7 @@ def check_local_status(run: BaseRun, future: Future) -> bool:
     """
     try:
         if future.exception() is not None:
-            logger.error(f"Exception occurred in {get_job_description(run)}: {future.exception()}")
+            logger.error(f"Exception occurred in {get_job_description(run)}: {future.exception() or 'Unknown error'}")
             set_job_status(run, StatusEnum.FAILED)
             return False
 
@@ -171,11 +141,11 @@ run_forecast_forcing_download_job_callback_local = functools.partial(
 
 def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
     """
-    Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script (Calibration or Validation).
+    Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script.
 
     This function handles process execution and registers the callback for when the process completes.
 
-    :param run: The CalibrationRun or ValidationRun object representing the job run.
+    :param run: The BaseRun object representing the job (e.g., CalibrationRun, ValidationRun, etc.).
     :param args: The argument list to pass to the shell script.
     :param callback_function: The callback function to invoke when the process completes.
     """
