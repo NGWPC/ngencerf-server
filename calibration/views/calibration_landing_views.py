@@ -359,35 +359,27 @@ def get_jobs(user: User, run_status: list[StatusEnum] = None, include_validation
 
     runs_query = CalibrationRun.objects.filter(query).annotate(formulation_name=F('user_formulation_name'))
 
-    # Define the fields for selection
-    default_fields = [
-        'id', 'gage__gage_id', 'submit_date', 'formulation_name',
-        'calibration_start_period', 'calibration_end_period',
-        'status__name', 'job_genesis', 'created_at'
-    ]
-    additional_fields = ['objective_function__name', 'optimization__name']
+    runs = list(
+        runs_query.values(
+            'id', 'gage__gage_id', 'submit_date', 'formulation_name',
+            'calibration_start_period', 'calibration_end_period',
+            'status__name', 'job_genesis', 'created_at',
+            'objective_function__name', 'optimization__name'
+        )
+    )
 
-    selected_fields = default_fields
-
-    # If including validations, define validation filter condition and annotations
+    # If including validations, annotate validation data
     if include_validations:
-        selected_fields += additional_fields
-        runs = list(runs_query.values(*selected_fields))
         for r in runs:
             r['validation_run_ids'] = get_validation_jobs_internal(r['id'], return_ids_only=True)
             r['validation_runs'] = len(r['validation_run_ids'])  # Count the validation runs
-
-    else:
-        runs = list(runs_query.values(*selected_fields))
 
     for r in runs:
         r['calibration_run_id'] = r.pop('id')
         r['gage_id'] = r.pop('gage__gage_id')
         r['status'] = r.pop('status__name')
-
-        if include_validations:
-            r['objective_function'] = r.pop('objective_function__name')
-            r['optimization_algorithm'] = r.pop('optimization__name')
+        r['objective_function'] = r.pop('objective_function__name')
+        r['optimization_algorithm'] = r.pop('optimization__name')
 
     return runs
 

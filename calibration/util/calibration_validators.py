@@ -317,11 +317,11 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
+    objective_function = serializers.CharField(required=False, allow_null=True)
+    optimization_algorithm = serializers.CharField(required=False, allow_null=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
-    objective_function = serializers.CharField(required=False, allow_null=False)
-    optimization_algorithm = serializers.CharField(required=False, allow_null=False)
     validation_runs = serializers.IntegerField(required=False)
     validation_run_ids = serializers.ListSerializer(child=serializers.IntegerField())
 
