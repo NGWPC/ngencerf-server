@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('calibration', '0021_remove_forecastrun_have_forcing_data_and_more'),
+        ('calibration', '0022_remove_forecastrun_have_forcing_data_and_more'),
     ]
 
     operations = [
