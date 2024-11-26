@@ -78,7 +78,8 @@ class Command(BaseCommand):
                 # These are all new gages
                 gage = {'gage_id': gage_id, 'nws_id': row.get('nws_id'), 'longitude': row.get('long'), 'latitude': row.get('lat'),
                         'station_name': row.get('station_name'), 'is_active': True,
-                        'nwm_v3_calibrated': False, 'domain_id': alaska_domain.id}
+                        'nwm_v3_calibration': False, 'headwater_calibration': False,
+                        'domain_id': alaska_domain.id}
                 gages[gage_id] = gage
         print(f'Processed {gage_count} gages from {file.name}.')
 
@@ -117,8 +118,9 @@ class Command(BaseCommand):
                 if not agency:
                     agency = gage.get('agency')
 
-                new_nwm_v3_calibrated = row.get('nwm_v3_calibrated') == 'True'
-                nwm_v3_calibrated = new_nwm_v3_calibrated or gage.get('nwm_v3_calibrated')
+                new_nwm_v3_calibration = row.get('nwm_v3_calibration') == 'True'
+                nwm_v3_calibration = new_nwm_v3_calibration or gage.get('nwm_v3_calibration', False)
+                headwater_calibration = nwm_v3_calibration
 
                 rfc = row.get('rfc')
                 rfc_id = rfc_dict[rfc.strip()] if rfc else None
@@ -127,7 +129,8 @@ class Command(BaseCommand):
                     {'nws_id': nws_id or None,
                      'station_name': (station_name or '').strip(),
                      'rfc_id': rfc_id,
-                     'nwm_v3_calibrated': nwm_v3_calibrated,
+                     'nwm_v3_calibration': nwm_v3_calibration,
+                     'headwater_calibration': headwater_calibration,
                      'agency': (agency or '').strip()
                      })
 
@@ -168,6 +171,8 @@ class Command(BaseCommand):
 
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - AK.csv', alaska_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - CONUS.csv', conus_domain)
+        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - PR.csv', conus_domain)
+        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - HI.csv', conus_domain)
 
         print()
         print('Creating objects.... this will take a minute or two')
@@ -208,6 +213,8 @@ def add_additional_gages(gage_file, domain):
                 gage_count += 1
                 gage['rfc_id'] = rfc_id
                 gage['domain_id'] = domain.id
+                # All of these gages have headwater_calibration flag on regardless of nwm_v3_calibration
+                gage['headwater_calibration'] = True
     print(f'Processed {gage_count} gages from {file.name}.')
 
 
@@ -229,7 +236,7 @@ def add_usgs_gages(usgs_file, domain):
             # There shouldn't be any overlap in the USGS files, so we should always be creating a new entry.
             gage = gages.get(gage_id)
             if not gage:
-                gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': False}
+                gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibration': False, 'header_calibration': False}
                 gages[gage_id] = gage
 
             agency = row.get('agency_name')
@@ -268,13 +275,16 @@ def add_nwm_v3(nwm_v3_file, domain):
                 new_count += 1
                 longitude = None if row.get('longitd') == 'NA' else float(row.get('longitd'))
                 latitude = None if row.get('latitud') == 'NA' else float(row.get('latitud'))
-                gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibrated': True, 'latitude': latitude, 'longitude': longitude,
+                gage = {'gage_id': gage_id, 'is_active': True,
+                        'nwm_v3_calibration': True, 'headwater_calibration': True,
+                        'latitude': latitude, 'longitude': longitude,
                         'domain_id': domain.id}
                 gages[gage_id] = gage
             else:
                 # If it already exists, update this flag
                 existing_count += 1
-                gage['nwm_v3_calibrated'] = True
+                gage['nwm_v3_calibration'] = True
+                gage['headwater_calibration'] = True
 
             rfc = row.get('rfc')
             gage['rfc_id'] = rfc_dict[rfc] if rfc else None

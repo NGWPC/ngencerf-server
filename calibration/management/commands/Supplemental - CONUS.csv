@@ -1,5 +1,5 @@
 # Another supplemental table to fill in agency/station name where we didn't have it.  These gages should already exist
-gage_id|nws_id|agency|station_name|rfc|nwm_v3_calibrated
+gage_id|nws_id|agency|station_name|rfc|nwm_v3_calibration
 10172860| |USGS| |
 MTK| |CADWR| |
 09404343|TWVA3|USGS| |
