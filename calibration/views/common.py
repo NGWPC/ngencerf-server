@@ -21,6 +21,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
 from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun
 from calibration.models import Iteration
+from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.calibration_validators import ErrorResponseSerializer
 
@@ -502,7 +503,7 @@ class CerfException(Exception):
         return self.message
 
 
-def get_job_description(run: CalibrationRun | ValidationRun | ForecastRun) -> str:
+def get_job_description(run: BaseRun) -> str:
     """
     Provides a descriptive string for a job, identifying its type and user.
 
@@ -513,8 +514,10 @@ def get_job_description(run: CalibrationRun | ValidationRun | ForecastRun) -> st
         return f"Calibration Job {run.id}, user: {run.owner.username}"
     elif isinstance(run, ValidationRun):
         return f"Validation Job {run.id} for Calibration Job {run.calibration_run.id}, type: {run.validation_type}, user: {run.calibration_run.owner.username}"
-    else:
+    elif isinstance(run, ForecastRun):
         return f"Forecast Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
+    elif isinstance(run, ForecastForcingDownloadRun):
+        return f"Forecast Forcing Download Job {run.id} for Forecast Job {run.forecast_run.id} for Calibration Job {run.forecast_run.calibration_run.id}, user: {run.forecast_run.calibration_run.owner.username}"
 
 
 def replace_nan_with_none(data: Any) -> Any:

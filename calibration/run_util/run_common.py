@@ -11,9 +11,8 @@ from django.db import transaction
 
 from calibration.enums import StatusEnum, ValidationType, JobType, SlurmStatusEnum
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun
+from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
-from calibration.run_util.run_ngen_cal_local import run_forecast_forcing_download_job_local
-from calibration.run_util.run_ngen_cal_pw import run_forecast_forcing_download_job_parallel_works
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file
 from calibration.views import ngen_cal_input
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 job_registry: Dict[tuple[int, int], subprocess.Popen] = {}
 
 
-def set_job_status(run: CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun, status: StatusEnum) -> None:
+def set_job_status(run: BaseRun, status: StatusEnum) -> None:
     """
     Update the status of a CalibrationRun, ValidationRun, or ForecastRun and clear the job registry if applicable.
 
@@ -106,16 +105,16 @@ def execute_forecast_forcing_download_job(run: ForecastForcingDownloadRun, input
     """
 
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-        from calibration.run_util.run_ngen_cal_local import run_forecast_job_local
+        from calibration.run_util.run_ngen_cal_local import run_forecast_forcing_download_job_local
         run_forecast_forcing_download_job_local(run, input_file, output_file)
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        from calibration.run_util.run_ngen_cal_pw import run_forecast_job_parallel_works
+        from calibration.run_util.run_ngen_cal_pw import run_forecast_forcing_download_job_parallel_works
         run_forecast_forcing_download_job_parallel_works(run, run.forecast_run.calibration_run.owner, input_file, output_file)
     else:
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
 
 
-def cancel_job_common(run: CalibrationRun | ValidationRun | ForecastRun) -> bool:
+def cancel_job_common(run: BaseRun) -> bool:
     """
     Cancel a job using the appropriate environment-specific logic.
 
@@ -218,8 +217,8 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     execute_forecast_forcing_download_job(forecast_forcing_download_run, input_file, output_file)
 
 
-def submit_job(run: CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun,
-               job_execution_fn: Callable[[CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun], None]) -> None:
+def submit_job(run: BaseRun,
+               job_execution_fn: Callable[[BaseRun], None]) -> None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -296,7 +295,7 @@ def submit_forecast_forcing_download_job(forecast_forcing_download_run: Forecast
     return None
 
 
-def get_job_registry_key(run: CalibrationRun | ValidationRun | ForecastRun) -> tuple[int, int]:
+def get_job_registry_key(run: BaseRun) -> tuple[int, int]:
     """
     Generate a unique key for the job registry based on run type.
 
@@ -310,6 +309,8 @@ def get_job_registry_key(run: CalibrationRun | ValidationRun | ForecastRun) -> t
         return run.id, -1
     elif isinstance(run, ValidationRun) or isinstance(run, ForecastRun):
         return run.calibration_run.id, run.id
+    elif isinstance(run, ForecastForcingDownloadRun):
+        return run.forecast_run.calibration_run.id, run.forecast_run.id
 
 
 def create_and_submit_validation_control(calibration_run: CalibrationRun) -> None:
@@ -378,10 +379,10 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
 
 
 def run_generic_job_callback(
-        run: CalibrationRun | ValidationRun | ForecastRun,
+        run: BaseRun,
         status: Future | SlurmStatusEnum,
-        job_callback_func: Callable[[CalibrationRun | ValidationRun | ForecastRun, Future | SlurmStatusEnum], bool],
-        finalize_func: Callable[[CalibrationRun | ValidationRun | ForecastRun], None]
+        job_callback_func: Callable[[BaseRun, Future | SlurmStatusEnum], bool],
+        finalize_func: Callable[[BaseRun], None]
 ) -> None:
     """
     Generic callback function for handling job completion.

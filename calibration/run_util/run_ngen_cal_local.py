@@ -8,6 +8,7 @@ from django.conf import settings
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, run_generic_job_callback, \
     finalize_calibration_after_callback, \
@@ -21,8 +22,8 @@ logger = logging.getLogger(__name__)
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
-def run_job_local(run: CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun, input_file: str, output_file: str, script_cmd: str,
-                  callback_function: Callable[[CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun, Future], None]) -> None:
+def run_job_local(run: BaseRun, input_file: str, output_file: str, script_cmd: str,
+                  callback_function: Callable[[BaseRun, Future], None]) -> None:
     """
     Executes a local job by calling the shell script with appropriate input and output file arguments,
     and registers a callback for job completion.
@@ -104,7 +105,7 @@ def run_forecast_forcing_download_job_local(forecast_forcing_download_run: Forec
     run_job_local(forecast_forcing_download_run, input_file, output_file, 'forecast_forcing', run_forecast_forcing_download_job_callback_local)
 
 
-def check_local_status(run: CalibrationRun | ValidationRun | ForecastRun, future: Future) -> bool:
+def check_local_status(run: BaseRun, future: Future) -> bool:
     """
     Checks the status of a locally executed job and updates its status accordingly.
 
@@ -201,7 +202,7 @@ def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_f
         f'{job_description} is running in the background')
 
 
-def cancel_local_job(run: CalibrationRun | ValidationRun | ForecastRun) -> bool:
+def cancel_local_job(run: BaseRun) -> bool:
     """
     Cancel a running local job by terminating the associated process.
 

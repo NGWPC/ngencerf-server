@@ -9,6 +9,7 @@ from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
@@ -23,7 +24,7 @@ User = get_user_model()  # Dynamically fetch the custom user model
 
 def submit_job_to_slurm(
         url_endpoint: str,
-        run: CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun,
+        run: BaseRun,
         owner: User,
         input_file: str,
         output_file: str
@@ -141,7 +142,7 @@ def run_forecast_forcing_download_job_parallel_works(
 
 
 def check_pw_status(
-        run: CalibrationRun | ValidationRun | ForecastRun,
+        run: BaseRun,
         slurm_status: SlurmStatusEnum
 ) -> bool:
     """
@@ -188,7 +189,6 @@ run_forecast_job_callback_pw = functools.partial(
     run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_forecast_after_callback
 )
 
-
 # Handles the completion of a forecast job in the PW environment.
 # - Uses `check_pw_status` to validate the job's status.
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
@@ -197,7 +197,7 @@ run_forecast_forcing_download_job_callback_pw = functools.partial(
 )
 
 
-def cancel_slurm_job(run: CalibrationRun | ValidationRun | ForecastRun) -> bool:
+def cancel_slurm_job(run: BaseRun) -> bool:
     """
     Terminates a Slurm job by sending a cancellation request for the provided run.
 

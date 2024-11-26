@@ -1,21 +1,15 @@
 from django.db import models
 
-from calibration.models.base_model import BaseModel
+from calibration.models.base_run import BaseRun
 
 
-class ValidationRun(BaseModel):
+class ValidationRun(BaseRun):
     calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="validations", on_delete=models.CASCADE, db_index=True)
     iteration = models.ForeignKey('Iteration', null=True, on_delete=models.CASCADE)
-    status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
-    submit_date = models.DateTimeField(null=True)
-    run_start = models.DateTimeField(null=True)
-    run_end = models.DateTimeField(null=True)
-    performance_metrics = models.ForeignKey('PerformanceMetrics', null=True, on_delete=models.CASCADE)
     ngen_commit_hash = models.CharField(max_length=50, null=True)
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
-    slurm_job_id = models.IntegerField(null=True)
     validation_type = models.CharField(max_length=20, null=False)
-    validation_worker_name = models.CharField(null=True)
+    validation_worker_name = models.CharField(max_length=20, null=True)
 
     class Meta:
         db_table = 'validation_run'
