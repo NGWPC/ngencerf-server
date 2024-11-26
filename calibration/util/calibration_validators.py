@@ -807,7 +807,7 @@ class GetJobDirResponseSerializer(GenericResponseSerializer):
 
 
 ##################################
-# Formulation Tab
+# Forecast Tab
 ##################################
 class ForecastCycleSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
@@ -818,6 +818,17 @@ class ForecastCycleSerializer(BaseSerializer):
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
     forecast_cycle_values = ForecastCycleSerializer(many=True)
+
+
+class ForecastJobsResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forecast_run_id = serializers.IntegerField(required=True)
+    cycle = serializers.CharField(required=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
+
+class GetForecastJobsResponseSerializer(BaseSerializer):
+    forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 ##################################

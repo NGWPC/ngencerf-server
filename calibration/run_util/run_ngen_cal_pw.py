@@ -19,12 +19,13 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()  # Dynamically fetch the custom user model
 
+
 def submit_job_to_slurm(
-    url_endpoint: str,
-    run: CalibrationRun | ValidationRun | ForecastRun,
-    owner: User,
-    input_file: str,
-    output_file: str
+        url_endpoint: str,
+        run: CalibrationRun | ValidationRun | ForecastRun,
+        owner: User,
+        input_file: str,
+        output_file: str
 ) -> None:
     """
     Submits a job to Slurm, including setting up payload data and handling HTTP responses.
@@ -71,10 +72,10 @@ def submit_job_to_slurm(
 
 
 def run_calibration_job_parallel_works(
-    calibration_run: CalibrationRun,
-    owner: User,
-    input_file: str,
-    output_file: str
+        calibration_run: CalibrationRun,
+        owner: User,
+        input_file: str,
+        output_file: str
 ) -> None:
     """
     Initiates the submission of a calibration job to Slurm using the parallel works framework.
@@ -88,10 +89,10 @@ def run_calibration_job_parallel_works(
 
 
 def run_validation_job_parallel_works(
-    validation_run: ValidationRun,
-    owner: User,
-    input_file: str,
-    output_file: str
+        validation_run: ValidationRun,
+        owner: User,
+        input_file: str,
+        output_file: str
 ) -> None:
     """
     Initiates the submission of a validation job to Slurm using the parallel works framework.
@@ -105,10 +106,10 @@ def run_validation_job_parallel_works(
 
 
 def run_forecast_job_parallel_works(
-    forecast_run: ForecastRun,
-    owner: User,
-    input_file: str,
-    output_file: str
+        forecast_run: ForecastRun,
+        owner: User,
+        input_file: str,
+        output_file: str
 ) -> None:
     """
     Initiates the submission of a forecast job to Slurm using the parallel works framework.
@@ -122,8 +123,8 @@ def run_forecast_job_parallel_works(
 
 
 def check_pw_status(
-    run: CalibrationRun | ValidationRun | ForecastRun,
-    slurm_status: SlurmStatusEnum
+        run: CalibrationRun | ValidationRun | ForecastRun,
+        slurm_status: SlurmStatusEnum
 ) -> bool:
     """
     Checks the status of a job executed in a Parallel Works environment and updates its status accordingly.
@@ -200,9 +201,9 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun | ForecastRun) -> bool:
                            'Cancel job response data from Slurm is not in the expected format')
 
     logger.info(f"{job_description} - {payload['slurm_job_id']} cancelled successfully")
-    #if isinstance(run, CalibrationRun):
+    # if isinstance(run, CalibrationRun):
     #    run_calibration_job_callback_pw(run, SlurmStatusEnum.CANCELED)
-    #else:
+    # else:
     #    run_validation_job_callback_pw(run, SlurmStatusEnum.CANCELED)
 
     return True

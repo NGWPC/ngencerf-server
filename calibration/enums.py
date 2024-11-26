@@ -100,7 +100,6 @@ class ForecastCycleEnum(AbstractEnum):
         return ForecastCycle
 
 
-
 class DomainEnum(AbstractEnum):
     """
     Domain Enum with database synchronization.

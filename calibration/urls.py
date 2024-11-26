@@ -80,6 +80,7 @@ urlpatterns = [
     # Forecast
     ##################################
     path('calibration/load_forecast_tab/', calibration_forecast_views.load_forecast_tab, name="loadForecastTab"),
+    path('calibration/get_forecast_jobs/', calibration_forecast_views.get_forecast_jobs, name="getForecastJobs"),
 
 
     # Testing
