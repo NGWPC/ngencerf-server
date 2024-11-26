@@ -192,11 +192,11 @@ def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name
         filtered_plots = [
             plot for plot in cached_plot_definitions
             if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
-               and plot['valid_optimizations'] is not None  # Exclude plots with null valid_optimizations.  This will be for Forecasting
-               and (optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
-               and (
-                       plot['job_type'] == JobType.CALIBRATION.value or
-                       (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
+            and plot['valid_optimizations'] is not None  # Exclude plots with null valid_optimizations.  This will be for Forecasting
+            and (optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
+            and (
+                 plot['job_type'] == JobType.CALIBRATION.value or
+                 (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
                )  # Include based on job type
         ]
     else:
@@ -204,8 +204,8 @@ def get_filtered_plot_definitions(run: CalibrationRun | ValidationRun, plot_name
         filtered_plots = [
             plot for plot in cached_plot_definitions
             if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
-               and (
-                       plot['job_type'] == JobType.FORECAST.value
+            and (
+                  plot['job_type'] == JobType.FORECAST.value
                )
         ]
 
