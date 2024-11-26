@@ -8,9 +8,10 @@ from django.conf import settings
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, run_generic_job_callback, \
     finalize_calibration_after_callback, \
-    finalize_validation_after_callback, finalize_forecast_after_callback
+    finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.views.common import get_job_description
 from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironmentEnum, DOCKER_CMD
 
@@ -20,8 +21,8 @@ logger = logging.getLogger(__name__)
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
-def run_job_local(run: CalibrationRun | ValidationRun | ForecastRun, input_file: str, output_file: str, script_cmd: str,
-                  callback_function: Callable[[CalibrationRun | ValidationRun | ForecastRun, Future], None]) -> None:
+def run_job_local(run: CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun, input_file: str, output_file: str, script_cmd: str,
+                  callback_function: Callable[[CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun, Future], None]) -> None:
     """
     Executes a local job by calling the shell script with appropriate input and output file arguments,
     and registers a callback for job completion.
@@ -92,6 +93,17 @@ def run_forecast_job_local(forecast_run: ForecastRun, input_file: str, output_fi
     run_job_local(forecast_run, input_file, output_file, 'forecast', run_forecast_job_callback_local)
 
 
+def run_forecast_forcing_download_job_local(forecast_forcing_download_run: ForecastForcingDownloadRun, input_file: str, output_file: str) -> None:
+    """
+    Executes a local forecast job by invoking run_job_local with appropriate arguments.
+
+    :param forecast_forcing_download_run: The ForecastRun object representing the job run.
+    :param input_file: Path to the input file.
+    :param output_file: Path to the output file.
+    """
+    run_job_local(forecast_forcing_download_run, input_file, output_file, 'forecast_forcing', run_forecast_forcing_download_job_callback_local)
+
+
 def check_local_status(run: CalibrationRun | ValidationRun | ForecastRun, future: Future) -> bool:
     """
     Checks the status of a locally executed job and updates its status accordingly.
@@ -146,6 +158,13 @@ run_validation_job_callback_local = functools.partial(
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_job_callback_local = functools.partial(
     run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_forecast_after_callback
+)
+
+# Handles the completion of a forecast job in the local environment.
+# - Uses `check_local_status` to validate the job's exit code.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_forecast_forcing_download_job_callback_local = functools.partial(
+    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_forecast_forcing_download_after_callback
 )
 
 

@@ -9,8 +9,9 @@ from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
-    finalize_validation_after_callback, finalize_forecast_after_callback
+    finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
 from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description
 from calibration.views.hydrofabric import validate_response_data
@@ -22,7 +23,7 @@ User = get_user_model()  # Dynamically fetch the custom user model
 
 def submit_job_to_slurm(
         url_endpoint: str,
-        run: CalibrationRun | ValidationRun | ForecastRun,
+        run: CalibrationRun | ValidationRun | ForecastRun | ForecastForcingDownloadRun,
         owner: User,
         input_file: str,
         output_file: str
@@ -122,6 +123,23 @@ def run_forecast_job_parallel_works(
     submit_job_to_slurm(settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT, forecast_run, owner, input_file, output_file)
 
 
+def run_forecast_forcing_download_job_parallel_works(
+        forecast_forcing_download_run: ForecastForcingDownloadRun,
+        owner: User,
+        input_file: str,
+        output_file: str
+) -> None:
+    """
+    Initiates the submission of a forecast job to Slurm using the parallel works framework.
+
+    :param forecast_forcing_download_run: The ForecastRun object representing the forecast job.
+    :param owner: The owner (user instance) of the job, used to generate the auth token.
+    :param input_file: Path to the input file for the forecast job.
+    :param output_file: Path to the output file for the forecast job.
+    """
+    submit_job_to_slurm(settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT, forecast_forcing_download_run, owner, input_file, output_file)
+
+
 def check_pw_status(
         run: CalibrationRun | ValidationRun | ForecastRun,
         slurm_status: SlurmStatusEnum
@@ -168,6 +186,14 @@ run_validation_job_callback_pw = functools.partial(
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_job_callback_pw = functools.partial(
     run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_forecast_after_callback
+)
+
+
+# Handles the completion of a forecast job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_forecast_forcing_download_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_forecast_forcing_download_after_callback
 )
 
 
