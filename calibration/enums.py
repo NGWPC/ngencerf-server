@@ -208,3 +208,11 @@ class JobGenesis(AbstractEnum):
     CLONE = 'clone'
     IMPORT = 'import'
     GUI = 'gui'
+
+
+class ScriptEnum(StrEnum):
+    CALIBRATION = "calibration"
+    VALIDATION = "validation"
+    VALIDATION_ITERATION = "validation_iteration"
+    FORECAST = "forecast"
+    FORECAST_FORCING = "forecast_forcing"

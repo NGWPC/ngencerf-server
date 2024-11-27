@@ -17,6 +17,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from calibration.enums import ScriptEnum
+
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -227,10 +229,23 @@ class NgenEnvironmentEnum(StrEnum):
     DOCKER = "DOCKER"
 
 
-DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+# Used when running in NGEN_ENVIRONMENT=DOCKER
+NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+NGEN_FORECAST_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+FORECAST_FORCING_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
-RUN_NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+NGEN_FORECAST_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
+FORECAST_FORCING_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-xxx.sh')
+
+RUNTIME_INFO = {
+    ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.VALIDATION_ITERATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
+    ScriptEnum.FORECAST_FORCING: (FORECAST_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
+}
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:

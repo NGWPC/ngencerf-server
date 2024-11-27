@@ -6,7 +6,7 @@ from typing import Callable, List
 
 from django.conf import settings
 
-from calibration.enums import StatusEnum, ValidationType
+from calibration.enums import StatusEnum, ValidationType, ScriptEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
@@ -14,7 +14,7 @@ from calibration.run_util.run_common import set_job_status, job_registry, get_jo
     finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.views.common import get_job_description
-from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironmentEnum, DOCKER_CMD
+from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -33,28 +33,28 @@ def run_job_local(run: BaseRun, input_file: str, output_file: str) -> None:
     """
     # Determine the script command and callback function
     if isinstance(run, CalibrationRun):
-        script_cmd = "calibration"
+        script_cmd = ScriptEnum.CALIBRATION
         callback_function = run_calibration_job_callback_local
     elif isinstance(run, ValidationRun):
         script_cmd = (
-            "validation_iteration" if run.validation_type == ValidationType.VALID_ITERATION.value else "validation"
+            ScriptEnum.VALIDATION_ITERATION if run.validation_type == ValidationType.VALID_ITERATION.value else ScriptEnum.VALIDATION
         )
         callback_function = run_validation_job_callback_local
     elif isinstance(run, ForecastRun):
-        script_cmd = "forecast"
+        script_cmd = ScriptEnum.FORECAST
         callback_function = run_forecast_job_callback_local
     elif isinstance(run, ForecastForcingDownloadRun):
-        script_cmd = "forecast_forcing"
+        script_cmd = ScriptEnum.FORECAST_FORCING
         callback_function = run_forecast_forcing_download_job_callback_local
     else:
         raise ValueError(f"Unsupported run type: {type(run).__name__} (run id: {getattr(run, 'id', 'N/A')})")
 
     # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
-        spawn_command = [settings.RUN_NGEN_CAL_SCRIPT]
+        spawn_command = [settings.RUNTIME_INFO.get(script_cmd)[1]]
         extra = [output_file, NGEN_CAL_VENV]
     elif NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
-        spawn_command = DOCKER_CMD.split()
+        spawn_command = settings.RUNTIME_INFO.get(script_cmd)[0].split()
         extra = [output_file]  # Venv not required for Docker
     else:
         spawn_command = []
@@ -65,13 +65,14 @@ def run_job_local(run: BaseRun, input_file: str, output_file: str) -> None:
     if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
         args_to_run += [run.worker_name, str(run.iteration_num)]
 
-    args = spawn_command + [script_cmd] + args_to_run + extra
+    args = spawn_command + [script_cmd.value] + args_to_run + extra
 
     # Bind the callback function for job
     job_callback = functools.partial(callback_function, run)
 
     # Execute the job
-    logger.info(f'Running command: {args}')
+    logger.info(f"Executing {script_cmd.value} for {get_job_description(run)} in {NGEN_ENVIRONMENT} environment")
+    logger.debug(f"Full command: {args}")
     execute_job(run, args, callback_function=job_callback)
 
 
