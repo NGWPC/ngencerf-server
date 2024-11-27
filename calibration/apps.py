@@ -53,6 +53,12 @@ class CalibrationConfig(AppConfig):
         # Check if the server is being started with 'runserver' or 'runsslserver'
         if 'runserver' in sys.argv or 'runsslserver' in sys.argv:
             print_banner()
+        else:
+            logger.info(f'*** Running {sys.argv[1]}')
+
+            # This is for temporary diagnostics only
+            logger.info(f'internal data path - {settings.NGEN_CAL_MOUNT_POINT}')
+            logger.info(f'external data path - {settings.NGEN_CAL_DATA_PATH}')
 
         logger.info(f'Version: {settings.VERSION}')
 
@@ -61,9 +67,6 @@ class CalibrationConfig(AppConfig):
 
         print_db_info()
         logger.info('')
-
-        logger.info(f'internal data path - {settings.NGEN_CAL_MOUNT_POINT}')
-        logger.info(f'external data path - {settings.NGEN_CAL_DATA_PATH}')
 
         # Make sure the logging directory exists
         NGEN_LOGGING_DIR.mkdir(exist_ok=True)

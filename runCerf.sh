@@ -73,7 +73,7 @@ python3 "$cerfServer"/manage.py pre_start
 
 echo
 echo "Starting server"
-python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000
+python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
 
 if [ -n "${CERF_VENV}" ]; then
     deactivate
