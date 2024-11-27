@@ -68,7 +68,7 @@ class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
-class GenericResponseSerializer(GenericMessageResponseSerializer):
+class GenericResponseSerializer(GenericMessageAndStatusResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
