@@ -603,19 +603,19 @@ def clone_job(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Delete a calibration run job"
+    description="Delete a calibration job"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def delete_job(request: Request) -> Response:
     """
-    Delete a calibration run job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+    Delete a calibration job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
 
     :param request: The HTTP request object.
     :return: A Response object with the deletion confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_run() request from {request.user.email} - {data}')
+    logger.debug(f'delete_job() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -644,7 +644,7 @@ def delete_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from delete_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from delete_job() - {response_validator.data}')
 
     return Response(response_validator.data)
 
