@@ -19,7 +19,8 @@ from calibration.util.calibration_validators import GetPLotNamesResponseSerializ
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     get_validation_metrics_valid_best_file, get_validation_metrics_nwm_retrospective_file, get_validation_metrics_valid_control_file, \
-    NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir
+    NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir, \
+    get_validation_metrics_valid_iteration_file, get_output_valid_iteration_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none, get_validation_run, get_job_description, \
@@ -287,7 +288,7 @@ def get_plot(request: Request) -> Response:
     paginated_data = None
     pagination_metadata = None
     if include_data:
-        plot_data = cached_plot_data if cached_plot_data is not None else get_plot_data(calibration_run, plot_definition)
+        plot_data = cached_plot_data if cached_plot_data is not None else get_plot_data(run, plot_definition)
         if not plot_data:
             logger.warning(f"Data not available for {plot_name}")
         else:
@@ -407,14 +408,15 @@ class RowNumberPagination(BasePagination):
         return self.start + self.limit  # Return the next start value
 
 
-def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[Any]:
+def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any]) -> list[Any]:
     """
     Retrieves data for a specific plot based on its definition.
 
-    :param run: The calibration run object.
+    :param run: The run object, either a calibration or validation run.
     :param plot_definition: Dictionary containing plot specifications.
     :return: List of data entries or empty list if no data is available.
     """
+    calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
     plot_enum = PlotDefinitionsEnum(plot_definition['name'])
     worker_dir = None  # Cache worker directory to avoid multiple lookups
 
@@ -423,16 +425,16 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
             return [
                 {'iteration': iteration.iteration_num,
                  'objective_function_value': iteration.objective_function_value}
-                for iteration in get_iterations_for_calibration_job(run)
+                for iteration in get_iterations_for_calibration_job(calibration_run)
             ]
 
         case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION | PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
-            worker_dir = worker_dir or find_worker_with_non_empty_plot_iteration(run)
+            worker_dir = worker_dir or find_worker_with_non_empty_plot_iteration(calibration_run)
             file_paths = [
-                get_observational_file_for_job(run),  # Observation
-                get_output_iteration_file(run, 0, worker_dir),  # Iteration
-                get_output_last_iteration_file(run, worker_dir),  # Last Iteration
-                get_output_best_iteration_file(run, worker_dir)  # Best Iteration
+                get_observational_file_for_job(calibration_run),  # Observation
+                get_output_iteration_file(calibration_run, 0, worker_dir),  # Iteration
+                get_output_last_iteration_file(calibration_run, worker_dir),  # Last Iteration
+                get_output_best_iteration_file(calibration_run, worker_dir)  # Best Iteration
             ]
             column_names = ["Observation", "Control Run", "Last Run", "Best Run"]
             return load_and_merge_hydrograph_files(file_paths, column_names)
@@ -443,7 +445,7 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                     'iteration': iteration.iteration_num,
                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(run)
+                for iteration in get_iterations_for_calibration_job(calibration_run)
             ]
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
@@ -453,7 +455,7 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                     'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
                                    iteration.iterationparameter_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(run)
+                for iteration in get_iterations_for_calibration_job(calibration_run)
             ]
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
@@ -463,7 +465,7 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
                     'objective_function_value': iteration.objective_function_value,
                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(run)
+                for iteration in get_iterations_for_calibration_job(calibration_run)
             ]
 
         case PlotDefinitionsEnum.STREAM_FLOW_PRECIPITATION:
@@ -475,7 +477,7 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
             return []
 
         case PlotDefinitionsEnum.COST_HISTORY:
-            cost_history = get_cost_hist_file(run)
+            cost_history = get_cost_hist_file(calibration_run)
             if not os.path.exists(cost_history):
                 logger.error(f"File not found: {cost_history}")
                 raise FileNotFoundError(f"File not found: {cost_history}")
@@ -488,10 +490,12 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
             files = [
-                get_validation_metrics_valid_control_file(run),
-                get_validation_metrics_valid_best_file(run),
-                get_validation_metrics_nwm_retrospective_file(run)
+                get_validation_metrics_valid_control_file(calibration_run),
+                get_validation_metrics_valid_best_file(calibration_run),
+                get_validation_metrics_nwm_retrospective_file(calibration_run)
             ]
+            if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
+                files.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
             plot_data = []
 
             # Read each file as a DataFrame, apply type inference, and convert to dict
@@ -508,13 +512,15 @@ def get_plot_data(run: CalibrationRun, plot_definition: dict[str, Any]) -> list[
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
             # Define files and column names for HYDROGRAPH_VALIDATION
             file_paths = [
-                get_observational_file_for_job(run),  # Observation
-                os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv'),  # NWM Retro
-                get_output_valid_control_file(run),  # Valid Control
-                get_output_valid_best_file(run)  # Valid Best
-                # get_output_validation_iteration_file(run)
+                get_observational_file_for_job(calibration_run),  # Observation
+                os.path.join(NWM_RETROSPECTIVE_DIR, f'{calibration_run.gage.gage_id}.csv'),  # NWM Retro
+                get_output_valid_control_file(calibration_run),  # Valid Control
+                get_output_valid_best_file(calibration_run)  # Valid Best
             ]
             column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
+            if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
+                file_paths.append(get_output_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
+                column_names.append(run.worker_name)
             return load_and_merge_hydrograph_files(file_paths, column_names)
 
         case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:

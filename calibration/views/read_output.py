@@ -16,7 +16,7 @@ from calibration.models import Iteration, CalibrationRun, IterationMetric, Itera
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
 from calibration.util.caching import get_metrics_lookup
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
-    get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
+    get_params_iteration_file, get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename
@@ -273,7 +273,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     metrics_lookup = get_metrics_lookup()
 
     # Get the worker's path
-    worker_path = get_worker_path(calibration_run, worker_name)
+    worker_path = get_calibration_worker_path(calibration_run, worker_name)
     if not os.path.isdir(worker_path):
         raise CerfException(f"{worker_path} does not exist or is not a directory for CalibrationRun {calibration_run.id}")
 
