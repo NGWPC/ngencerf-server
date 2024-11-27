@@ -19,7 +19,7 @@ from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCy
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
-    ErrorResponseSerializer, CreateCalibrationRunSerializer, \
+    ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer
@@ -36,7 +36,7 @@ User = get_user_model()
 @extend_schema(
     request=EmptySerializer,
     responses={
-        201: CreateCalibrationRunSerializer,
+        201: CreateCalibrationRunResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -69,7 +69,7 @@ def create_calibration_run(request: Request) -> Response:
 
         response = {'message': f'Calibration Job {run.id} created', 'calibration_run_id': run.id}
 
-        response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
+        response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
         if error_response:
             return error_response
 
@@ -641,7 +641,7 @@ def delete_job(request: Request) -> Response:
 
     response = {'message': f'Calibration Id {run_id} and associated records have been deleted', 'calibration_run_id': run_id}
 
-    response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
+    response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from delete_job() - {response_validator.data}')

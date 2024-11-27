@@ -194,7 +194,8 @@ def png_to_base64_url(png):
 @handle_exceptions
 def get_plot(request: Request) -> Response:
     """
-    Retrieves a specific plot for a calibration run or validation run, returning the plot file location and optional data with pagination support.
+    Retrieves a specific plot for a calibration run, validation run, or forecast run, returning the plot file location and optional data with pagination support.
+
     If a calibration_run_id is given, then we can retrieve plots for the calibration run or the validation best run.
     If a validation_run_id is given, then we can retrieve plots for that specific validation run as well as the calibration run.
 
@@ -231,7 +232,7 @@ def get_plot(request: Request) -> Response:
     # Try to retrieve cached data
     cached_plot_data = cache.get(cache_key_plot_data)
     plot_url = cache.get(cache_key_plot_url)
-    plot_file_name = None
+    plot_file_path = None
     plot_url_calculated = False  # Tracks if plot_url was calculated in this request
 
     # Determine job type and retrieve the appropriate run instance
@@ -252,7 +253,7 @@ def get_plot(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Identify the associated calibration run, handling both calibration, validation and forecast cases
+    # Identify the associated calibration run, handling calibration, validation, and forecast cases
     calibration_run = run if calibration_run_id else run.calibration_run
 
     # Fetch plot definition if needed for force_include_plot, include_data, or when plot_url is missing
@@ -267,7 +268,7 @@ def get_plot(request: Request) -> Response:
         gage_id = calibration_run.gage.gage_id
 
         # Determine plot location based on plot definition
-        location = determine_plot_location(calibration_run, run, plot_definition)
+        location = determine_plot_location(run, plot_definition)
         plot_file_name = plot_definition['filename_mask'].format(gage_id=gage_id)
         plot_file_path = os.path.join(location, plot_file_name)
 
@@ -312,8 +313,8 @@ def get_plot(request: Request) -> Response:
         response['plot_url'] = plot_url
 
     # Include plot_file_name if available
-    if plot_file_name:
-        response['plot_file_name'] = plot_file_name
+    if plot_file_path:
+        response['plot_file_path'] = plot_file_path
 
     if validation_run_id:
         response['validation_run_id'] = validation_run_id
@@ -337,21 +338,21 @@ def get_plot(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def determine_plot_location(calibration_run: CalibrationRun, run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any]) -> str:
+def determine_plot_location(run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any]) -> str:
     """
     Determines the location of the plot based on the plot definition's location attribute.
 
-    :param calibration_run: The calibration run object.
     :param run: The run object, either a calibration or validation run.
     :param plot_definition: The plot definition dictionary containing location details.
     :return: The determined plot location as a string path.
     """
+    calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
     match plot_definition['location']:
         case 'plot_valid':
-            if calibration_run.id or run.validation_type != ValidationType.VALID_ITERATION.value:
+            if isinstance(run, CalibrationRun) or run.validation_type != ValidationType.VALID_ITERATION.value:
                 return get_output_validation_plot_dir(calibration_run)
             return get_output_validation_iteration_plot_dir(
-                calibration_run, run.iteration_num, run.worker_name
+                run.calibration_run, run.iteration_num, run.worker_name
             )
 
         case 'output_calibration':

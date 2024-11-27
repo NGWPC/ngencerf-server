@@ -68,7 +68,7 @@ class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
-class GenericResponseSerializer(GenericMessageResponseSerializer):
+class GenericResponseSerializer(GenericMessageAndStatusResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
@@ -518,8 +518,8 @@ class LoadGageResponseSerializer(BaseSerializer):
     domain_values = DomainResponseSerializer(many=True)
 
 
-class CreateCalibrationRunSerializer(GenericResponseSerializer):
-    pass
+class CreateCalibrationRunResponseSerializer(GenericMessageResponseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
 
 
 class CreateAndRunValidationResponseSerializer(GenericResponseSerializer):
@@ -571,7 +571,7 @@ class GetPlotResponseSerializer(CalibrationRunSerializer):
     validation_run_id = serializers.IntegerField(required=False)
     forecast_run_id = serializers.IntegerField(required=False)
     plot_name = serializers.CharField(required=True, allow_null=False)
-    plot_file_name = serializers.CharField(required=False, allow_null=False)
+    plot_file_path = serializers.CharField(required=False, allow_null=False)
     plot_url = serializers.CharField(required=False, allow_null=False)
     plot_data = serializers.JSONField(required=False)
     pagination_metadata = PaginationMetadataSerializer(required=False)
