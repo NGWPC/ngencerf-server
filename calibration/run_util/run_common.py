@@ -43,6 +43,23 @@ def set_job_status(run: BaseRun, status: StatusEnum) -> None:
         job_registry.pop(key, None)
 
 
+def get_run_owner(run: BaseRun):
+    """
+    Retrieve the owner of a BaseRun object.
+
+    :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
+    :return: The owner of the associated CalibrationRun or the run itself.
+    :raises AttributeError: If the owner cannot be determined.
+    """
+    if hasattr(run, 'owner'):  # CalibrationRun case
+        return run.owner
+    elif hasattr(run, 'calibration_run'):  # ValidationRun, ForecastRun
+        return run.calibration_run.owner
+    elif hasattr(run, 'forecast_run') and hasattr(run.forecast_run, 'calibration_run'):  # ForecastForcingDownloadRun
+        return run.forecast_run.calibration_run.owner
+    raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
+
+
 def execute_job(run: BaseRun, input_file: str, output_file: str) -> None:
     """
     Execute a job based on the configured NGEN environment.
@@ -58,7 +75,10 @@ def execute_job(run: BaseRun, input_file: str, output_file: str) -> None:
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         from calibration.run_util.run_ngen_cal_pw import submit_job_to_slurm
         # Resolve owner dynamically for the Slurm submission
-        owner = run.owner if hasattr(run, 'owner') else run.calibration_run.owner  # type: ignore[attr-defined]
+        try:
+            owner = get_run_owner(run)  # Use the utility function
+        except AttributeError as e:
+            raise CerfException(f"Error retrieving owner for run {run.id}: {str(e)}")
         submit_job_to_slurm(run, owner, input_file, output_file)
     else:
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")

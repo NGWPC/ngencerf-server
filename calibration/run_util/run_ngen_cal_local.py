@@ -141,7 +141,7 @@ run_forecast_forcing_download_job_callback_local = functools.partial(
 )
 
 
-def execute_job(run: CalibrationRun | ValidationRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
+def execute_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
     """
     Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script.
 
