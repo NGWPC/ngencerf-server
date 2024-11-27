@@ -775,6 +775,7 @@ class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunS
 
 
 class GetStatusResponseSerializer(GenericResponseSerializer):
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
     forecasts = GetStatusForecastsResponseSerializer(many=True)
