@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
-from calibration.run_util.run_common import submit_validation_job, submit_forecast_job
+from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
@@ -130,7 +130,7 @@ def create_and_run_validation(request: Request) -> Response:
         iteration_id,
         validation_type=ValidationType.VALID_ITERATION
     )
-    submit_validation_job(validation_run)
+    submit_job(validation_run)
 
     response = {
         'message': f'Validation Job {validation_run.id} created and submitted for Calibration Job {calibration_run.id}',
@@ -190,14 +190,13 @@ def create_and_run_forecast(request: Request) -> Response:
         calibration_run,
         ForecastCycleEnum.get_instance(cycle_name)
     )
-    submit_forecast_job(forecast_run)
+    submit_job(forecast_run.forcing_download_run)
 
     response = {
-        'message': f'Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',
+        'message': f'Forcing download job for Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',
         'calibration_run_id': calibration_run.id,
         'forecast_run_id': forecast_run.id,
-        'status': forecast_run.status.name,
-        'submit_date': forecast_run.submit_date
+        'submit_date': forecast_run.forcing_download_run.submit_date
     }
 
     response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
@@ -528,7 +527,7 @@ def load_calibration_run(request: Request) -> Response:
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: CalibrationRunSerializer,
+        200: ImportResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -538,13 +537,13 @@ def load_calibration_run(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Clone a calibration run job"
+    description="Clone a calibration job"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def clone_job(request: Request) -> Response:
     """
-    Clone an existing calibration run job, creating a new calibration run with identical parameters.
+    Clone an existing calibration job, creating a new calibration run with identical parameters.
 
     :param request: The HTTP request object.
     :return: A Response object with the cloned calibration run data.
@@ -574,7 +573,7 @@ def clone_job(request: Request) -> Response:
         ready_to_run_messages, _ = ngen_cal_input.ready_to_run(new_run)
 
     # noinspection PyUnresolvedReferences
-    response = {'message': f'Calibration Id {run.id} has been cloned to Calibration Id {new_run.id}',
+    response = {'message': f'Calibration Job {run.id} has been cloned to Calibration Job {new_run.id}',
                 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
     # I agree that the message handling got out of hand
@@ -604,19 +603,19 @@ def clone_job(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Delete a calibration run job"
+    description="Delete a calibration job"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
 def delete_job(request: Request) -> Response:
     """
-    Delete a calibration run job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+    Delete a calibration job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
 
     :param request: The HTTP request object.
     :return: A Response object with the deletion confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_run() request from {request.user.email} - {data}')
+    logger.debug(f'delete_job() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -645,7 +644,7 @@ def delete_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CreateCalibrationRunSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from delete_run() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from delete_job() - {response_validator.data}')
 
     return Response(response_validator.data)
 

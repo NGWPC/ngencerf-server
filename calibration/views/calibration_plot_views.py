@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, JobType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.caching import get_filtered_plot_definitions
-from calibration.util.calibration_validators import CalibrationRunSerializer, GetPLotNamesResponseSerializer, \
+from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \

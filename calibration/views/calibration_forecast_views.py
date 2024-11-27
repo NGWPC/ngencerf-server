@@ -1,13 +1,18 @@
 import logging
 
+from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import ForecastCycleEnum
-from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer
-from calibration.views.common import handle_exceptions, validate_response, validate_request
+from calibration.enums import ForecastCycleEnum, StatusEnum
+from calibration.models import ForecastRun
+from calibration.run_util.run_common import submit_job
+from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
+    GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
+from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
+    ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +61,166 @@ def load_forecast_tab(request: Request) -> Response:
     logger.debug(f'load_forecast_tab() request from {request.user.email} - {response_validator.data}')
 
     return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetForecastJobsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get forecast jobs"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_forecast_jobs(request: Request) -> Response:
+    """
+    Retrieves all forecast jobs for a user
+
+    :param request: The HTTP request object containing calibration run data.
+    :return: JSON response with validation jobs or error information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_validation_jobs() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_jobs = list(ForecastRun.objects
+                         .filter(status=StatusEnum.DONE.db_instance, calibration_run__owner=request.user)
+                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name'))
+    for f in forecast_jobs:
+        f['forecast_run_id'] = f.pop('id')
+        f['cycle'] = f.pop('cycle__name')
+        f['gage_id'] = f.pop('calibration_run__gage__gage_id')
+        f['status'] = f.pop('status__name')
+
+    response = {'forecast_jobs': forecast_jobs}
+    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ForecastRunSerializer,
+    responses={
+        200: CreateAndRunForecastResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Clone and submit a forecast job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def clone_and_run_forecast_job(request: Request) -> Response:
+    """
+    Clone an existing forecast job, creating a new calibration run with identical parameters.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the cloned calibration run data.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'clone_forecast_job() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastRunSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_run_id = validator.get('forecast_run_id')
+
+    run, error_return = get_forecast_run(forecast_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    new_forecast_run = create_forecast_run_internal(run.calibration_run, run.cycle)
+    submit_job(new_forecast_run.forcing_download_run)
+
+    response = {
+        'message': f'Forcing download job for Forecast Job {new_forecast_run.id} cloned from Job {run.id} and submitted for Calibration Job {new_forecast_run.calibration_run.id}',
+        'calibration_run_id': new_forecast_run.calibration_run.id,
+        'forecast_run_id': new_forecast_run.id,
+        'submit_date': new_forecast_run.forcing_download_run.submit_date
+    }
+
+    response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from clone_forecast_job() - {response_validator.data}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ForecastRunSerializer,
+    responses={
+        200: DeleteForecastRunResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Delete a forecast job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def delete_forecast_job(request: Request) -> Response:
+    """
+    Delete a forecast job along with the associated forcing download job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the deletion confirmation.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'delete_forecast_job() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastRunSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_run_id = validator.get('forecast_run_id')
+
+    run, error_return = get_forecast_run(forecast_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    if run.status == StatusEnum.RUNNING.db_instance or run.forcing_download_run.status == StatusEnum.RUNNING.db_instance:
+        return ResponseError(f'Forecast Job {run.id} is running.  Cannot delete a running job')
+
+    run_id = run.id
+
+    with transaction.atomic():
+        # Delete the Forcing download Run  and that will automatically delete the Forecast Run
+        run.forcing_download_run.delete()
+
+        # TODO Need to delete the downloaded data
+
+    response = {'message': f'Forecast Job {run.id} and associated records have been deleted', 'forecast_run_id': run_id}
+
+    response_validator, error_response = validate_response(DeleteForecastRunResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {response_validator.data}')
+
+    return Response(response_validator.data)
+

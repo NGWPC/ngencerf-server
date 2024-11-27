@@ -59,8 +59,33 @@ class EmptySerializer(BaseSerializer):
     pass
 
 
+class GenericMessageResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+
+
+class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
+    message = serializers.CharField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+
+
+class GenericResponseSerializer(GenericMessageResponseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+
+
+class GenericResponseSerializerWithValidation(GenericResponseSerializer):
+    validation_run_id = serializers.IntegerField(required=False)
+
+
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+
+
+class ForecastRunSerializer(BaseSerializer):
+    forecast_run_id = serializers.IntegerField(required=True)
+
+
+class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
+    forecast_run_id = serializers.IntegerField(required=True)
 
 
 class GetStatusRequestSerializer(CalibrationRunSerializer):
@@ -69,10 +94,6 @@ class GetStatusRequestSerializer(CalibrationRunSerializer):
 
 class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
-
-
-class ForecastRunSerializer(BaseSerializer):
-    forecast_run_id = serializers.IntegerField(required=True)
 
 
 # TDOO Do we still need this after we've fully implemented Forecast
@@ -381,23 +402,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-
-
-class GenericMessageResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-
-
-class MessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
-    message = serializers.CharField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-
-
-class GenericResponseSerializer(MessageAndStatusResponseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-
-
-class GenericResponseSerializerWithValidation(GenericResponseSerializer):
-    validation_run_id = serializers.IntegerField(required=False)
 
 
 ##################################
@@ -807,7 +811,7 @@ class GetJobDirResponseSerializer(GenericResponseSerializer):
 
 
 ##################################
-# Formulation Tab
+# Forecast Tab
 ##################################
 class ForecastCycleSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
@@ -818,6 +822,19 @@ class ForecastCycleSerializer(BaseSerializer):
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
     forecast_cycle_values = ForecastCycleSerializer(many=True)
+
+
+class ForecastJobsResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forecast_run_id = serializers.IntegerField(required=True)
+    cycle = serializers.CharField(required=True)
+    gage_id = serializers.CharField(required=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    submit_date = serializers.DateTimeField(required=True)
+
+
+class GetForecastJobsResponseSerializer(BaseSerializer):
+    forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 ##################################

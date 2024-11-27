@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
 from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
-from calibration.run_util.run_common import submit_calibration_job
+from calibration.run_util.run_common import submit_job
 from calibration.util import ngen_locations
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
@@ -85,7 +85,7 @@ def import_job(request: Request) -> Response:
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
-            submit_calibration_job(run, config_file=config_file)
+            submit_job(run, config_file=config_file)
             imported_and_submitted = 'imported and submitted'
 
     response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}

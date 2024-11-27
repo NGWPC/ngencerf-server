@@ -16,8 +16,9 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, JobType
 from calibration.models import Iteration, ValidationRun, ForecastRun, Status
-from calibration.run_util.run_common import cancel_job_common, submit_calibration_job
-from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw
+from calibration.run_util.run_common import cancel_job_common, submit_job
+from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
+    run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
@@ -77,11 +78,11 @@ def get_status(request: Request) -> Response:
         fields = ["elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"]
         return model_to_dict(performance_metrics, fields=fields) if performance_metrics else {field: None for field in fields}
 
-    def should_include_metrics(status: Status):
+    def should_include_metrics(run_status: Status):
         """
         Determines if performance metrics should be included based on job status and request parameters.
         """
-        return include_performance_metrics and status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
+        return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
 
     # Conditionally retrieve calibration performance metrics
     calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status) else None
@@ -206,7 +207,7 @@ def run_calibration(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = submit_calibration_job(run)
+    response = submit_job(run)
     if response:
         return response
 
@@ -632,6 +633,100 @@ def validation_job_slurm_callback(request: Request) -> Response:
     run_validation_job_callback_pw(validation_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from validation_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    request=ValidationJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a forecast job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def forecast_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a forecast job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    data = request.data
+    logger.debug(f'forecast_job_slurm_callback() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+    job_status = validator.get('job_status')
+
+    validation_run, error_return = get_forecast_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum(job_status)
+    run_forecast_job_callback_pw(validation_run, slurm_status)
+
+    logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    request=ValidationJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a forecast forcing download job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a forecast forcing download job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    data = request.data
+    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+    job_status = validator.get('job_status')
+
+    validation_run, error_return = get_forecast_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum(job_status)
+    run_forecast_forcing_download_job_callback_pw(validation_run, slurm_status)
+
+    logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
