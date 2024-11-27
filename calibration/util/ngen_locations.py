@@ -133,7 +133,7 @@ def get_full_worker_filename(worker_name: str) -> str:
     return f"ngen_{worker_name}_worker"
 
 
-def get_worker_path(run: CalibrationRun, worker_name: str) -> str:
+def get_calibration_worker_path(run: CalibrationRun, worker_name: str) -> str:
     return os.path.join(get_output_calibration_run_dir(run), get_full_worker_filename(worker_name))
 
 
@@ -173,6 +173,10 @@ def get_output_valid_best_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), get_output_valid_best_csv(run))
 
 
+def get_output_valid_iteration_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
+    return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_output_valid_{worker_name}_iter{iteration_num}.csv")
+
+
 def get_output_iteration_csv(run: CalibrationRun, iteration_num: int) -> str:
     return f"{run.gage.gage_id}_output_iteration_{iteration_num:04d}.csv"
 
@@ -182,7 +186,7 @@ def get_output_iteration_file(run: CalibrationRun, iteration_num: int, worker_di
 
 
 def get_metrics_iteration_file(run: CalibrationRun, worker_name: str) -> str:
-    return os.path.join(get_worker_path(run, worker_name), get_metrics_iteration_csv(run))
+    return os.path.join(get_calibration_worker_path(run, worker_name), get_metrics_iteration_csv(run))
 
 
 def get_cost_hist_file(run: CalibrationRun) -> str:
@@ -194,11 +198,11 @@ def get_metrics_iteration_file_from_worker_dir(run: CalibrationRun, worker_dir: 
 
 
 def get_params_iteration_file(run: CalibrationRun, worker_name: str) -> str:
-    return os.path.join(get_worker_path(run, worker_name), f"{run.gage.gage_id}_params_iteration.csv")
+    return os.path.join(get_calibration_worker_path(run, worker_name), f"{run.gage.gage_id}_params_iteration.csv")
 
 
 def get_objective_log_best_file(run: CalibrationRun, worker_name: str) -> str:
-    return os.path.join(get_worker_path(run, worker_name), f"{run.gage.gage_id}_objective_log.txt")
+    return os.path.join(get_calibration_worker_path(run, worker_name), f"{run.gage.gage_id}_objective_log.txt")
 
 
 def get_calibration_stdout_file(run: CalibrationRun) -> str:
@@ -256,7 +260,7 @@ def get_validation_metrics_nwm_retrospective_file(run: CalibrationRun) -> str:
 
 
 def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
-    return os.path.join(get_worker_path(run, worker_name), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_stdout.log")
+    return os.path.join(get_calibration_worker_path(run, worker_name), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_stdout.log")
 
 
 def get_validation_metrics_valid_iteration_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
