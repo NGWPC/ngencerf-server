@@ -6,7 +6,8 @@ from typing import Callable, List
 
 from django.conf import settings
 
-from calibration.enums import StatusEnum, ValidationType, ScriptEnum
+from calibration.enums import StatusEnum, ValidationType
+from calibration.enums_vanilla import ScriptEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun

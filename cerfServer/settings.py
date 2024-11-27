@@ -17,7 +17,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from calibration.enums import ScriptEnum
+from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
@@ -221,13 +221,6 @@ NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 # Directory containing the ngen-cal virtual environment
 # This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
 NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
-
-
-class NgenEnvironmentEnum(StrEnum):
-    LOCAL = "LOCAL"
-    PARALLEL_WORKS = "PARALLEL_WORKS"
-    DOCKER = "DOCKER"
-
 
 # Used when running in NGEN_ENVIRONMENT=DOCKER
 NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
