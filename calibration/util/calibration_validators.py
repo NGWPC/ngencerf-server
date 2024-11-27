@@ -63,6 +63,10 @@ class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class ForecastRunSerializer(BaseSerializer):
+    forecast_run_id = serializers.IntegerField(required=True)
+
+
 class GetStatusRequestSerializer(CalibrationRunSerializer):
     include_performance_metrics = serializers.BooleanField(required=False, default=False)
 
@@ -387,12 +391,12 @@ class GenericMessageResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
 
 
-class MessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
+class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
     message = serializers.CharField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
-class GenericResponseSerializer(MessageAndStatusResponseSerializer):
+class GenericResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 

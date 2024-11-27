@@ -7,9 +7,10 @@ from rest_framework.response import Response
 
 from calibration.enums import ForecastCycleEnum, StatusEnum
 from calibration.models import ForecastRun
+from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
-    GetForecastJobsResponseSerializer
-from calibration.views.common import handle_exceptions, validate_response, validate_request
+    GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer
+from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -106,4 +107,59 @@ def get_forecast_jobs(request: Request) -> Response:
         return error_response
 
     logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ForecastRunSerializer,
+    responses={
+        200: CreateAndRunForecastResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Clone and submit a forecast job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def clone_and_run_forecast_job(request: Request) -> Response:
+    """
+    Clone an existing forecast job, creating a new calibration run with identical parameters.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the cloned calibration run data.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'clone_forecast_job() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastRunSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_run_id = validator.get('forecast_run_id')
+
+    run, error_return = get_forecast_run(forecast_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    new_forecast_run = create_forecast_run_internal(run.calibration_run, run.cycle)
+    submit_job(new_forecast_run.forcing_download_run)
+
+    response = {
+        'message': f'Forcing download job for Forecast Job {new_forecast_run.id} cloned from Job {run.id} and submitted for Calibration Job {new_forecast_run.calibration_run.id}',
+        'calibration_run_id': new_forecast_run.calibration_run.id,
+        'forecast_run_id': new_forecast_run.id,
+        'submit_date': new_forecast_run.forcing_download_run.submit_date
+    }
+
+    response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from clone_forecast_job() - {response_validator.data}')
+
     return Response(response_validator.data)
