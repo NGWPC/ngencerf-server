@@ -22,6 +22,7 @@ class PerformanceMetrics(BaseModel):
             NullIf(ExpressionWrapper(F('elapsed_time'), output_field=FloatField()), 0),  # NULL if elapsed_time is 0
             output_field=FloatField(),
         ),
+        output_field=FloatField(),  # Specifies the type of the generated field
         db_persist=True,  # Persist the computed value in the database
     )
 
