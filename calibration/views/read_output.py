@@ -576,16 +576,38 @@ def parse_duration(duration_str: str) -> timedelta:
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
+def parse_size_to_kb(size_str: str | None) -> int | None:
+    """
+    Converts a size string (e.g., '123K', '1.5M', '2G') to an integer in kilobytes.
+    Returns None if the string is invalid or empty.
+    """
+    if not size_str:
+        return None
+
+    size_str = size_str.strip().upper()
+    try:
+        if size_str.endswith('K'):
+            return int(float(size_str[:-1]))
+        elif size_str.endswith('M'):
+            return int(float(size_str[:-1]) * 1024)
+        elif size_str.endswith('G'):
+            return int(float(size_str[:-1]) * 1024**2)
+        else:
+            # Assume no unit means it's already in KB
+            return int(float(size_str))
+    except ValueError:
+        return None
+
+
 def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
     """
     Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database.
     Logs a warning if any expected field is missing. Assumes MaxRSS, MaxDiskRead, and MaxDiskWrite are only on
     the .batch line, while Reserved is only on the non-batch line.
     """
-
     if not os.path.exists(file_path):
         logger.error(f'Performance metrics file {file_path} not found')
-        return
+        return None
     else:
         logger.info(f'Reading performance metrics from {file_path}')
 
@@ -611,9 +633,9 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
                     'elapsed_time': parse_duration(row.get('Elapsed', '')) if row.get('Elapsed') else None,
                     'num_cpus': int(row.get('NCPUS', 0)) if row.get('NCPUS') else None,
                     'cpu_time': parse_duration(row.get('CPUTime', '')) if row.get('CPUTime') else None,
-                    'max_rss': row.get('MaxRSS', None),
-                    'max_disk_read': row.get('MaxDiskRead', None),
-                    'max_disk_write': row.get('MaxDiskWrite', None),
+                    'max_rss': parse_size_to_kb(row.get('MaxRSS', None)),
+                    'max_disk_read': parse_size_to_kb(row.get('MaxDiskRead', None)),
+                    'max_disk_write': parse_size_to_kb(row.get('MaxDiskWrite', None)),
                     'reserved_time': reserved_time  # This will be updated later if available
                 }
             else:
@@ -627,21 +649,11 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
                 reserved_time = parse_duration(row.get('Reserved', '')) if row.get('Reserved') else None
 
     if batch_metrics:
-        # Now update the reserved_time for the batch metrics
+        # Update the reserved_time for the batch metrics
         batch_metrics['reserved_time'] = reserved_time
 
         # Create or update the PerformanceMetrics record
-        metrics = PerformanceMetrics.objects.create(
-            slurm_job_id=batch_metrics['slurm_job_id'],
-            elapsed_time=batch_metrics['elapsed_time'],
-            num_cpus=batch_metrics['num_cpus'],
-            cpu_time=batch_metrics['cpu_time'],
-            max_rss=batch_metrics['max_rss'],
-            max_disk_read=batch_metrics['max_disk_read'],
-            max_disk_write=batch_metrics['max_disk_write'],
-            reserved_time=batch_metrics['reserved_time']
-        )
-
+        metrics = PerformanceMetrics.objects.create(**batch_metrics)
         return metrics
 
     return None
