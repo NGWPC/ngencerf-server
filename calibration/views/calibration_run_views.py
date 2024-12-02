@@ -529,7 +529,7 @@ def get_job_dir(request: Request) -> Response:
         new_job_data_dir = run.job_data_dir
 
     response = {
-        'message': f"Calibration Job {run.id} data directory is {run.job_data_dir}",
+        'message': f"Calibration Job {run.id} data directory is {new_job_data_dir}",
         'calibration_run_id': run.id,
         'data_dir': new_job_data_dir,
         'status': run.status.name
