@@ -17,6 +17,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum
+
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -220,17 +222,23 @@ NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
 # This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
 NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
 
-
-class NgenEnvironmentEnum(StrEnum):
-    LOCAL = "LOCAL"
-    PARALLEL_WORKS = "PARALLEL_WORKS"
-    DOCKER = "DOCKER"
-
-
-DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+# Used when running in NGEN_ENVIRONMENT=DOCKER
+NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+NGEN_FORECAST_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+FORECAST_FORCING_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
-RUN_NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+NGEN_FORECAST_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
+FORECAST_FORCING_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-xxx.sh')
+
+RUNTIME_INFO = {
+    ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.VALIDATION_ITERATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
+    ScriptEnum.FORECAST_FORCING: (FORECAST_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
+}
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
@@ -248,7 +256,7 @@ SLURM_URL = os.getenv("SLURM_URL")
 SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT = 'submit-calibration-job'
 SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT = 'submit-validation-job'
 SLURM_SUBMIT_FORECAST_JOB_ENDPOINT = 'submit-forecast-job'
-SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT = 'submit-forecast-forecast-download-job'
+SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT = 'submit-forecast-download-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
