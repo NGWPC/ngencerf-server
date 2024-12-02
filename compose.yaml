@@ -32,8 +32,10 @@ services:
       - "8000:8000"
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
-      - ../data/ngen-cal-data:/ngencerf/data/
+      - ${NGEN_CAL_DATA_PATH}:/ngencerf/data/
       - ../logs/ngencerf-server:/ngencerf/ngencerf-server/run-logs/
+    environment:
+      - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
       - path: ./ngencerf_services.env
         required: true 
