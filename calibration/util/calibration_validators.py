@@ -755,6 +755,7 @@ class PerformanceMetricsSerializer(BaseSerializer):
     max_disk_read = serializers.CharField(max_length=50, required=True, allow_null=True)
     max_disk_write = serializers.CharField(max_length=50, required=True, allow_null=True)
     reserved_time = serializers.DurationField(required=False, allow_null=True)
+    io_throughput = serializers.CharField(max_length=50, required=True, allow_null=True)
 
 
 class CommonStatusFieldsMixin(serializers.Serializer):
