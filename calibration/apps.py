@@ -63,7 +63,7 @@ class CalibrationConfig(AppConfig):
 
         print_db_info()
         logger.info('')
-        print(f'NGWPC Enterprise Data Server url: {settings.HYDROFABRIC_URL}\n')
+        logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
 
 
         # Make sure the logging directory exists

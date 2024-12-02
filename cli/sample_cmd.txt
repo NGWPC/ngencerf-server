@@ -8,8 +8,8 @@ FORCING=$SAMPLE_DATA/forcing/Gage2.2_01123000
 FORCING=/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000_new
 
 ./ngencerf.sh import ../import_test_data/import_complete.json \
-geopackage_file=$GPKG \
-observational_file=$SAMPLE_DATA/streamflow_obs/01123000_hourly_discharge.csv \
+run_after_import=true \
 forcing_dir=$FORCING \
-run_after_import=true
+geopackage_file=$GPKG \
+observational_file=$SAMPLE_DATA/streamflow_obs/01123000_hourly_discharge.csv
 

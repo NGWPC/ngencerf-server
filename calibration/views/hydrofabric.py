@@ -232,7 +232,6 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
                     calibration_parameter.initial_value = str_to_float(p['initial_value'])
                     calibration_parameter.save(update_fields=['initial_value'])
 
-    print('bmi_error', bmi_error)
     if bmi_error:
         raise HydrofabricBMIException(bmi_error)
     if missing_names:
