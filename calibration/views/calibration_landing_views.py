@@ -457,7 +457,13 @@ def get_footer(request: Request) -> Response:
     :return: A Response object with version and contact information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_footer() request from {request.user.email} - {data}')
+    user = (
+        request.user.email
+        if getattr(request.user, "is_authenticated", False) and hasattr(request.user, "email")
+        else "Anonymous"
+    )
+
+    logger.debug(f'get_footer() request from {user} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -469,7 +475,7 @@ def get_footer(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_footer() - {response_validator.data}')
+    logger.debug(f'Returning to {user} from get_footer() - {response_validator.data}')
     return Response(response_validator.data)
 
 
