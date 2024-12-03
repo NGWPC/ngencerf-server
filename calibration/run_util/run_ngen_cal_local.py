@@ -77,7 +77,7 @@ def run_job_local(run: BaseRun, input_file: str, stdout_file: str) -> None:
     # Execute the job
     logger.info(f"Executing {script_cmd.value} for {get_job_description(run)} in {NGEN_ENVIRONMENT} environment")
     logger.debug(f"Full command: {args}")
-    execute_job(run, args, callback_function=job_callback)
+    spawn_job(run, args, callback_function=job_callback)
 
 
 def check_local_status(run: BaseRun, future: Future) -> bool:
@@ -144,7 +144,7 @@ run_forecast_forcing_download_job_callback_local = functools.partial(
 )
 
 
-def execute_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
+def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
     """
     Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script.
 
