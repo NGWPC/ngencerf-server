@@ -830,6 +830,10 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     """
     logger.info(f'Subsetting file {input_file} to {output_file}')
 
+    # Ensure the output directory exists
+    output_dir = os.path.dirname(output_file)
+    os.makedirs(output_dir, exist_ok=True)
+
     # Read the CSV into a DataFrame, parsing dates in the first column
     df = pd.read_csv(input_file, delimiter=',', parse_dates=[0])
 
