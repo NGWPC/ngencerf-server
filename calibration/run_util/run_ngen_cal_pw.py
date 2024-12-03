@@ -60,7 +60,10 @@ def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, stdout_file:
     elif isinstance(run, ForecastRun):
         payload.update({'forecast_run_id': (None, run.id)})
     elif isinstance(run, ForecastForcingDownloadRun):
-        payload.update({'forecast_forcing_download_run_id': (None, run.id)})
+        payload.update({
+            'forecast_forcing_download_run_id': (None, run.id),
+            'forcing_file': get_forecast_forcing_download_file(run.forecast_run)
+        })
 
     logger.info(f'Slurm submit-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)

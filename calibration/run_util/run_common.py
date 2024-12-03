@@ -15,7 +15,8 @@ from calibration.models import CalibrationRun, ValidationRun, Iteration, Forecas
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
-    get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file
+    get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
+    get_geopackage_file_for_job, get_forecast_forcing_download_stdout_file, get_forecast_stdout_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output
@@ -159,14 +160,8 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
 
     :param forecast_run: The ForecastRun object representing the job.
     """
-    # input_file = get_calibration_input_file(calibration_run)
-    # if not os.path.exists(input_file):
-    #     raise CerfException(
-    #         f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}")
-    #
-    # output_file = get_calibration_stdout_file(calibration_run)
     input_file = 'dummy'
-    output_file = 'dummy'
+    output_file = get_forecast_stdout_file(forecast_run)
 
     execute_job(forecast_run, input_file, output_file)
 
@@ -180,14 +175,8 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
 
     :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
-    # input_file = get_calibration_input_file(calibration_run)
-    # if not os.path.exists(input_file):
-    #     raise CerfException(
-    #         f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}")
-    #
-    # output_file = get_calibration_stdout_file(calibration_run)
-    input_file = 'dummy'
-    output_file = 'dummy'
+    input_file = get_geopackage_file_for_job(forecast_forcing_download_run.forecast_run.calibration_run)
+    output_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(forecast_forcing_download_run, input_file, output_file)
 

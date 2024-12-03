@@ -14,6 +14,7 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, run_generic_job_callback, \
     finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
+from calibration.util.ngen_locations import get_forecast_forcing_download_file
 from calibration.views.common import get_job_description
 from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironmentEnum
 
@@ -65,6 +66,8 @@ def run_job_local(run: BaseRun, input_file: str, stdout_file: str) -> None:
     args_to_run = [input_file]
     if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
         args_to_run += [run.worker_name, str(run.iteration_num)]
+    if isinstance(run, ForecastForcingDownloadRun):
+        args_to_run += [get_forecast_forcing_download_file(run.forecast_run)]
 
     args = spawn_command + [script_cmd.value] + args_to_run + extra
 

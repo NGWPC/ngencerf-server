@@ -5,7 +5,7 @@ from typing import Literal
 from django.conf import settings
 
 from calibration.enums import ValidationType
-from calibration.models import CalibrationRun
+from calibration.models import CalibrationRun, ForecastRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -131,6 +131,9 @@ def get_output_validation_iteration_plot_dir(run: CalibrationRun, iteration_num:
     return os.path.join(get_output_validation_run_dir(run), f'Plot_Valid_{worker_name}_iter{iteration_num}')
 
 
+def get_output_forecast_run_dir(run: CalibrationRun) -> str:
+    return os.path.join(get_output_dir(run), 'Forecast_Run')
+
 def get_full_worker_filename(worker_name: str) -> str:
     return f"ngen_{worker_name}_worker"
 
@@ -237,6 +240,23 @@ def get_validation_control_stdout_file(run: CalibrationRun) -> str:
 
 def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_stdout.log")
+
+
+def get_forecast_dir(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_output_forecast_run_dir(forecast_run.calibration_run), f'forecast_{forecast_run.id}')
+
+
+def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
+
+
+def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_forcing_download_stdout.log')
+
+
+def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}.nc')
+
 
 
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
