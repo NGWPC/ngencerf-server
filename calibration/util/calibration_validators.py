@@ -363,6 +363,7 @@ class ValidationJobsParameter(BaseSerializer):
 class FooterResponseSerializer(BaseSerializer):
     version = serializers.CharField(required=True)
     contact_email = serializers.CharField(required=True)
+    release_date = serializers.CharField(required=True)
 
 
 def validate_automatic_validation(value):
