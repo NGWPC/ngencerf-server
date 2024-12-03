@@ -33,7 +33,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 from calibration.views.hydrofabric import HydrofabricException, get_module_metadata_from_hydrofabric, get_geopackage_from_hydrofabric, \
-    get_forcing_data_from_hydrofabric, HydrofabricBMIException
+    get_forcing_data_from_hydrofabric, HydrofabricBMIException, get_observational_data_from_hydrofabric
 
 logger = logging.getLogger(__name__)
 
@@ -205,7 +205,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         else:
             if not run.observational_eds_file_path:
                 try:
-                    get_geopackage_from_hydrofabric(run)
+                    get_observational_data_from_hydrofabric(run)
                 except HydrofabricException as e:
                     errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                     eds_errors.append({

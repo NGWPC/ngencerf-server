@@ -831,7 +831,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     logger.info(f'Subsetting file {input_file} to {output_file}')
 
     # Read the CSV into a DataFrame, parsing dates in the first column
-    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0], infer_datetime_format=True)
+    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0])
 
     df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
 
