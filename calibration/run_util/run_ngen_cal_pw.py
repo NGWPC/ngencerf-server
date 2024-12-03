@@ -21,14 +21,20 @@ logger = logging.getLogger(__name__)
 User = get_user_model()  # Dynamically fetch the custom user model
 
 
-def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, stdout_file: str) -> None:
+def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], stdout_file: str) -> None:
     """
     Submits a job to Slurm, determining the appropriate endpoint, payload, and handling HTTP responses.
 
+    This function determines the appropriate Slurm endpoint based on the job type,
+    constructs the payload with input arguments and authentication token,
+    and submits the job using an HTTP POST request.
+
     :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object.
     :param owner: The owner (user instance) of the job, used to generate the auth token.
-    :param input_file: Path to the input file for the job.
-    :param stdout_file: Path to the stdout file for the job.
+    :param arguments: Dictionary containing command-line arguments for the job (e.g., 'input_file').
+    :param stdout_file: The path to the file where job output will be written.
+    :raises ValueError: If the run type is unsupported.
+    :raises SlurmJobException: If there is an HTTP error during the job submission.
     """
     if isinstance(run, CalibrationRun):
         url_endpoint = settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT
@@ -43,7 +49,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, stdout_file:
 
     url = urljoin(settings.SLURM_URL, url_endpoint)
     payload = {
-        'input_file': (None, input_file),
+        'input_file': (None, arguments['input_file']),
         'output_file': (None, stdout_file),
         'auth_token': (None, generate_custom_token(owner, token_slurm_scope))
     }
@@ -52,8 +58,8 @@ def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, stdout_file:
         payload.update({
             'validation_run_id': (None, run.id),
             'validation_type': (None, run.validation_type),
-            'worker_name': (None, run.worker_name),
-            'iteration': (None, run.iteration_num)
+            'worker_name': (None, arguments['worker_name']),
+            'iteration': (None, arguments['iteration_num'])
         })
     elif isinstance(run, CalibrationRun):
         payload.update({'calibration_run_id': (None, run.id)})
@@ -86,6 +92,9 @@ def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, stdout_file:
 def check_pw_status(run: BaseRun, slurm_status: SlurmStatusEnum) -> bool:
     """
     Checks the status of a job executed in a Parallel Works environment and updates its status accordingly.
+
+    This function updates the job's status based on its Slurm completion status,
+    and determines whether the job was successful, cancelled, or failed.
 
     :param run: The job object (CalibrationRun, ValidationRun, ForecastRun, etc.) being monitored.
     :param slurm_status: The SlurmStatusEnum indicating the job's completion status.
@@ -138,10 +147,14 @@ run_forecast_forcing_download_job_callback_pw = functools.partial(
 
 def cancel_slurm_job(run: BaseRun) -> bool:
     """
-    Terminates a Slurm job by sending a cancellation request for the provided run.
+    Cancel a running Slurm job by sending a cancellation request.
+
+    This function constructs the payload with the Slurm job ID, sends an HTTP POST
+    request to the Slurm cancellation endpoint, and validates the response.
 
     :param run: The CalibrationRun, ValidationRun, ForecastRun, etc. object to terminate.
     :return: True if the job was successfully cancelled, False otherwise.
+    :raises requests.exceptions.HTTPError: If the cancellation request fails with an HTTP error.
     """
     job_description = get_job_description(run)
     logger.info(f"Cancelling slurm job {run.slurm_job_id} for {job_description}")
@@ -173,6 +186,9 @@ class SlurmJobException(Exception):
     """
     Custom exception class for handling Slurm job-related errors.
 
+    This exception encapsulates HTTP-related issues or invalid responses
+    during Slurm job submissions or cancellations.
+
     :param message: The error message describing the exception.
     :param status_code: Optional HTTP status code associated with the error.
     """
@@ -186,9 +202,13 @@ def handle_slurm_http_error(response: requests.Response, url: str, job_id: int) 
     """
     Handle HTTP errors for Slurm job submissions or cancellations, and log detailed error messages.
 
+    This function logs detailed error messages, validates response content,
+    and raises a custom exception for unsupported or invalid responses.
+
     :param response: The HTTP response object from the Slurm API call.
     :param url: The URL that was called.
     :param job_id: The calibration or validation run ID.
+   :raises SlurmJobException: If the response indicates an error or is in an unexpected format.
     """
     # Initialize variables to store status code and response text
     status_code = response.status_code

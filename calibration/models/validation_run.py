@@ -27,5 +27,6 @@ class ValidationRun(BaseRun):
             f"ValidationRun {self.id}, "
             f"Calibration Job {self.calibration_run.id}, "
             f"owner: {self.calibration_run.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
+            f"validation_type: {self.validation_type}, "
             f"status.name: {self.status.name}"
         )

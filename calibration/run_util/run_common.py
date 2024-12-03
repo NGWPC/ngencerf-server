@@ -32,6 +32,9 @@ def set_job_status(run: BaseRun, status: StatusEnum) -> None:
     """
     Update the status of a CalibrationRun, ValidationRun, or ForecastRun and clear the job registry if applicable.
 
+    This function updates the `status` field of the job, clears the `slurm_job_id`,
+    and removes the job from the global job registry for LOCAL or DOCKER environments.
+
     :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
     :param status: The new status to set.
     """
@@ -48,6 +51,9 @@ def get_run_owner(run: BaseRun):
     """
     Retrieve the owner of a BaseRun object.
 
+    Determines the owner of the job from its `CalibrationRun`, `ValidationRun`,
+    or `ForecastRun` relationship.
+
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
     :return: The owner of the associated CalibrationRun or the run itself.
     :raises AttributeError: If the owner cannot be determined.
@@ -61,18 +67,21 @@ def get_run_owner(run: BaseRun):
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
 
 
-def execute_job(run: BaseRun, input_file: str, output_file: str) -> None:
+def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
+    This function dynamically calls the appropriate job execution function
+    based on the environment (LOCAL, DOCKER, or PARALLEL_WORKS).
+
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
-    :param input_file: The input file path.
-    :param output_file: The output file path.
+    :param cmd_line_args: A dictionary of command-line arguments for the job.
+    :param stdout_file: The path to the file where the job's stdout will be written.
     :raises CerfException: If the environment is unsupported.
     """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
         from calibration.run_util.run_ngen_cal_local import run_job_local
-        run_job_local(run, input_file, output_file)
+        run_job_local(run, cmd_line_args, stdout_file)
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         from calibration.run_util.run_ngen_cal_pw import submit_job_to_slurm
         # Resolve owner dynamically for the Slurm submission
@@ -80,7 +89,7 @@ def execute_job(run: BaseRun, input_file: str, output_file: str) -> None:
             owner = get_run_owner(run)  # Use the utility function
         except AttributeError as e:
             raise CerfException(f"Error retrieving owner for run {run.id}: {str(e)}")
-        submit_job_to_slurm(run, owner, input_file, output_file)
+        submit_job_to_slurm(run, owner, cmd_line_args, stdout_file)
     else:
         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
 
@@ -113,15 +122,16 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
     and not called directly.
 
     :param calibration_run: The CalibrationRun object representing the job.
+    :raises CerfException: If the input file does not exist.
     """
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
         raise CerfException(
             f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}")
 
-    output_file = get_calibration_stdout_file(calibration_run)
+    stdout_File = get_calibration_stdout_file(calibration_run)
 
-    execute_job(calibration_run, input_file, output_file)
+    execute_job(calibration_run, {'intput_file': input_file}, stdout_File)
 
 
 def run_validation_job(validation_run: ValidationRun) -> None:
@@ -132,23 +142,28 @@ def run_validation_job(validation_run: ValidationRun) -> None:
     and not called directly.
 
     :param validation_run: The ValidationRun object representing the job.
+    :raises CerfException: If the input file does not exist.
     """
     if validation_run.validation_type == ValidationType.VALID_BEST.value:
         input_file = get_validation_best_input_file(validation_run.calibration_run)
-        output_file = get_validation_best_stdout_file(validation_run.calibration_run)
+        stdout_file = get_validation_best_stdout_file(validation_run.calibration_run)
     elif validation_run.validation_type == ValidationType.VALID_CONTROL.value:
         input_file = get_validation_control_input_file(validation_run.calibration_run)
-        output_file = get_validation_control_stdout_file(validation_run.calibration_run)
+        stdout_file = get_validation_control_stdout_file(validation_run.calibration_run)
     else:
         # Regular validation
         input_file = get_calibration_input_file(validation_run.calibration_run)
-        output_file = get_validation_iteration_stdout_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
+        stdout_file = get_validation_iteration_stdout_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
 
     if not os.path.exists(input_file):
         raise CerfException(
             f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
 
-    execute_job(validation_run, input_file, output_file)
+    cmd_line_args = {'input_file': input_file}
+    if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
+        cmd_line_args['worker_name'] = validation_run.worker_name
+        cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
+    execute_job(validation_run, cmd_line_args, stdout_file)
 
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
@@ -161,9 +176,9 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     :param forecast_run: The ForecastRun object representing the job.
     """
     input_file = 'dummy'
-    output_file = get_forecast_stdout_file(forecast_run)
+    stdout_file = get_forecast_stdout_file(forecast_run)
 
-    execute_job(forecast_run, input_file, output_file)
+    execute_job(forecast_run, {'input_file': input_file}, stdout_file)
 
 
 def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastForcingDownloadRun) -> None:
@@ -176,9 +191,11 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
     input_file = get_geopackage_file_for_job(forecast_forcing_download_run.forecast_run.calibration_run)
-    output_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
+    stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
-    execute_job(forecast_forcing_download_run, input_file, output_file)
+    execute_job(forecast_forcing_download_run, {'input_file': input_file,
+                                                'forecast_forcing_download_file': get_forecast_forcing_download_stdout_file(
+                                                    forecast_forcing_download_run.forecast_run)}, stdout_file)
 
 
 def submit_job(run: BaseRun, config_file=None) -> Response | None:
@@ -300,39 +317,6 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
             best_validation_run.iteration = iteration
             best_validation_run.save(update_fields=['iteration'])
             submit_job(best_validation_run)
-
-
-# TODO This appears to be unused.  Must have been an partial idea that was never completed
-# def submit_job_execution(
-#         run: CalibrationRun | ValidationRun,
-#         input_file: str,
-#         output_file: str,
-#         job_type: JobType,
-#         submit_fn: Callable[[CalibrationRun | ValidationRun, str, str, str], None]
-# ) -> None:
-#     """
-#     Common job execution logic for submitting calibration and validation jobs.
-#     Handles both local and Slurm-based job execution.
-#
-#     :param run: The CalibrationRun or ValidationRun object to execute.
-#     :param input_file: The input file path for the job.
-#     :param output_file: The output file path for the job.
-#     :param job_type: The type of job ("calibration" or "validation").
-#     :param submit_fn: The function that handles the submission logic for the specific environment.
-#     :raises CerfException: If the environment is unsupported.
-#     """
-#     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
-#         if job_type == JobType.CALIBRATION:
-#             submit_fn(run, input_file, output_file, "local_calibration")
-#         else:
-#             submit_fn(run, input_file, output_file, "local_validation")
-#     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-#         if job_type == JobType.CALIBRATION:
-#             submit_fn(run, input_file, output_file, "slurm_calibration")
-#         else:
-#             submit_fn(run, input_file, output_file, "slurm_validation")
-#     else:
-#         raise CerfException(f"Unsupported environment: {settings.NGEN_ENVIRONMENT}")
 
 
 def run_generic_job_callback(

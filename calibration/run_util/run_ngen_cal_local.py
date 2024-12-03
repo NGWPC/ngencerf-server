@@ -14,7 +14,6 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.run_util.run_common import set_job_status, job_registry, get_job_registry_key, run_generic_job_callback, \
     finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
-from calibration.util.ngen_locations import get_forecast_forcing_download_file
 from calibration.views.common import get_job_description
 from cerfServer.settings import NGEN_CAL_VENV, NGEN_ENVIRONMENT, NgenEnvironmentEnum
 
@@ -24,14 +23,19 @@ logger = logging.getLogger(__name__)
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
-def run_job_local(run: BaseRun, input_file: str, stdout_file: str) -> None:
+def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> None:
     """
     Executes a local job by determining the appropriate script command and callback based on the run type,
     and then running the job.
 
-    :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object representing the job run.
-    :param input_file: Path to the input file.
-    :param stdout_file: Path to the stdout file.
+    This function determines the type of job based on the input `run` object,
+    constructs the appropriate command and arguments, and then spawns the job
+    process with a callback for completion.
+
+    :param run: The BaseRun object representing the job (CalibrationRun, ValidationRun, etc.).
+    :param cmd_line_args: A dictionary of command-line arguments for the job.
+    :param stdout_file: The file path where the standard output of the job will be written.
+    :raises ValueError: If the `run` type is unsupported or invalid.
     """
     # Determine the script command and callback function
     if isinstance(run, CalibrationRun):
@@ -63,13 +67,13 @@ def run_job_local(run: BaseRun, input_file: str, stdout_file: str) -> None:
         extra = []
 
     # Prepare the argument list to pass to the shell script
-    args_to_run = [input_file]
-    if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
-        args_to_run += [run.worker_name, str(run.iteration_num)]
-    if isinstance(run, ForecastForcingDownloadRun):
-        args_to_run += [get_forecast_forcing_download_file(run.forecast_run)]
+    # args_to_run = [cmd_line_args]
+    # if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
+    #     args_to_run += [run.worker_name, str(run.iteration_num)]
+    # if isinstance(run, ForecastForcingDownloadRun):
+    #     args_to_run += [get_forecast_forcing_download_file(run.forecast_run)]
 
-    args = spawn_command + [script_cmd.value] + args_to_run + extra
+    args = spawn_command + [script_cmd.value] + list(cmd_line_args.values()) + extra
 
     # Bind the callback function for job
     job_callback = functools.partial(callback_function, run)
@@ -82,7 +86,10 @@ def run_job_local(run: BaseRun, input_file: str, stdout_file: str) -> None:
 
 def check_local_status(run: BaseRun, future: Future) -> bool:
     """
-    Checks the status of a locally executed job and updates its status accordingly.
+    Monitor the status of a locally executed job and update its status in the system.
+
+    This function checks whether a local job completed successfully, failed, or was cancelled.
+    It updates the status of the `run` object accordingly.
 
     :param run: The job object (CalibrationRun, ValidationRun, or ForecastRun) being monitored.
     :param future: The Future object representing the asynchronous process.
@@ -146,13 +153,16 @@ run_forecast_forcing_download_job_callback_local = functools.partial(
 
 def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None]) -> None:
     """
-    Spawn a process to run the run-ngen-cal.sh script which will call the appropriate Python script.
+    Start a new process to execute the job and register it in the system.
 
-    This function handles process execution and registers the callback for when the process completes.
+    This function spawns a subprocess using the specified arguments,
+    registers the job in the global job registry, and associates a callback
+    function to handle job completion events.
 
     :param run: The BaseRun object representing the job (e.g., CalibrationRun, ValidationRun, etc.).
-    :param args: The argument list to pass to the shell script.
+    :param args: A list of arguments to pass to the job script.
     :param callback_function: The callback function to invoke when the process completes.
+    :raises Exception: If the subprocess fails to start.
     """
     job_description = get_job_description(run)
 
@@ -179,7 +189,10 @@ def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future
 
 def cancel_local_job(run: BaseRun) -> bool:
     """
-    Cancel a running local job by terminating the associated process.
+    Terminate a running local job and remove it from the job registry.
+
+    This function attempts to gracefully terminate the process associated with the
+    given `run` object. If successful, it removes the job from the global job registry.
 
     :param run: The CalibrationRun, ValidationRun, or ForecastRun object to cancel.
     :return: True if the job was successfully terminated, False otherwise.
