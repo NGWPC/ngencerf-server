@@ -32,51 +32,60 @@ def gpkg_to_png(gpkg_path, png_path, layer=None):
 
 def gpkg_to_png_selected_layers(gpkg_path, layers_to_include=None):
     if layers_to_include is None:
-        layers_to_include = ['nexus', 'flowpaths', 'flowlines']  # Include both flowpaths and flowlines as options
+        layers_to_include = ['nexus', 'flowpaths', 'flowlines']  # Default layers to include
 
     # Initialize the plot
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
 
-    # Plot the divides layer (outline)
-    with fiona.open(gpkg_path, layer='divides') as layer:
-        for feature in layer:
-            geom = shape(feature['geometry'])
-            if isinstance(geom, Polygon):
-                exterior = geom.exterior
-                x, y = exterior.xy
-                ax.plot(x, y, color='black')
-            elif isinstance(geom, MultiPolygon):
-                for poly in geom.geoms:
-                    exterior = poly.exterior
-                    x, y = exterior.xy
-                    ax.plot(x, y, color='black')
+    # Track which layers have been labeled
+    labeled_layers = set()
+
+    # Plot the divides layer (outline) if it exists
+    if 'divides' in fiona.listlayers(gpkg_path):
+        with fiona.open(gpkg_path, layer='divides') as layer:
+            for feature in layer:
+                geom = shape(feature['geometry'])
+                label = 'divides' if 'divides' not in labeled_layers else None
+                if isinstance(geom, Polygon):
+                    x, y = geom.exterior.xy
+                    ax.plot(x, y, color='black', label=label)
+                elif isinstance(geom, MultiPolygon):
+                    for poly in geom.geoms:
+                        x, y = poly.exterior.xy
+                        ax.plot(x, y, color='black', label=label)
+                labeled_layers.add('divides')
 
     # Define a cycle of color maps for the layers
-    color_maps = cycle(['viridis', 'plasma', 'inferno', 'magma', 'cividis'])
+    color_maps = cycle(['blue', 'green', 'red', 'cyan', 'magenta'])
 
     # Plot each layer if it exists in the file
     available_layers = fiona.listlayers(gpkg_path)
 
-    for layer, cmap in zip(layers_to_include, color_maps):
+    # Plot each requested layer if it exists
+    for layer, color in zip(layers_to_include, color_maps):
         if layer in available_layers:
             with fiona.open(gpkg_path, layer=layer) as lyr:
                 for feature in lyr:
                     geom = shape(feature['geometry'])
+                    label = layer if layer not in labeled_layers else None
                     if geom.is_valid and geom.geom_type in ['LineString', 'MultiLineString']:
                         if isinstance(geom, MultiLineString):
                             for line in geom.geoms:
                                 x, y = line.xy
-                                ax.plot(x, y, color='blue')
+                                ax.plot(x, y, label=label, color=color)
                         else:
                             x, y = geom.xy
-                            ax.plot(x, y, color='blue')
+                            ax.plot(x, y, label=label, color=color)
+                    labeled_layers.add(layer)
+
+    # Add a legend explicitly
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, loc='upper right')
 
     # Remove axes for better visualization
     ax.set_axis_off()
 
-    # Add a legend with layer names
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, [layer for layer in layers_to_include if layer in available_layers] + ['divides'], loc='upper right')
+
 
     # Save the plot as a PNG file
     # plt.savefig(png_path, bbox_inches='tight', pad_inches=0.1)
