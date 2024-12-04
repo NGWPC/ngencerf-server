@@ -123,7 +123,7 @@ def create_and_run_validation(request: Request) -> Response:
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
-                             f'Calibration Job {calibration_run.id}, iteration {iteration_id}')
+                             f'Calibration Job {calibration_run.id}, iteration id {iteration_id}')
 
     validation_run = create_validation_run_internal(
         calibration_run,

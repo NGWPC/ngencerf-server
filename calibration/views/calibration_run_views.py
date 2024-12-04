@@ -73,10 +73,25 @@ def get_status(request: Request) -> Response:
 
     def get_performance_metrics(performance_metrics):
         """
-        Helper function to retrieve selected performance metrics if available.
+        Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
         """
-        fields = ["elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"]
-        return model_to_dict(performance_metrics, fields=fields) if performance_metrics else {field: None for field in fields}
+        if not performance_metrics:
+            return {field: None for field in [
+                "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+            ]}
+
+        # Convert numeric fields to kilobytes
+        metrics_dict = model_to_dict(performance_metrics, fields=[
+            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+        ])
+
+        # Convert relevant fields to 'K' units
+        for field in ["max_rss", "max_disk_read", "max_disk_write", "io_throughput"]:
+            value = metrics_dict.get(field)
+            if value is not None:  # Only convert non-null values
+                metrics_dict[field] = f"{value}K"
+
+        return metrics_dict
 
     def should_include_metrics(run_status: Status):
         """

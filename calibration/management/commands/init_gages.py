@@ -232,7 +232,7 @@ def add_usgs_gages(usgs_file, domain):
             # There shouldn't be any overlap in the USGS files, so we should always be creating a new entry.
             gage = gages.get(gage_id)
             if not gage:
-                gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibration': False, 'header_calibration': False}
+                gage = {'gage_id': gage_id, 'is_active': True, 'nwm_v3_calibration': False, 'headwater_calibration': False}
                 gages[gage_id] = gage
 
             agency = row.get('agency_name')
