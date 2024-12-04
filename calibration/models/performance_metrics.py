@@ -1,8 +1,15 @@
 from django.db import models
-from django.db.models import ExpressionWrapper, FloatField, Value, F
-from django.db.models.functions import Coalesce, NullIf
+from django.db.models import ExpressionWrapper, FloatField, Value, F, Func
+from django.db.models.functions import Coalesce, NullIf, Cast
 
 from calibration.models.base_model import BaseModel
+
+
+# Custom PostgreSQL function for extracting seconds from interval
+class ExtractEpoch(Func):
+    function = 'EXTRACT'
+    template = '%(function)s(EPOCH FROM %(expressions)s)'
+    output_field = FloatField()
 
 
 class PerformanceMetrics(BaseModel):
@@ -19,7 +26,7 @@ class PerformanceMetrics(BaseModel):
     io_throughput = models.GeneratedField(
         expression=ExpressionWrapper(
             (Coalesce(F('max_disk_read'), Value(0)) + Coalesce(F('max_disk_write'), Value(0))) /
-            NullIf(ExpressionWrapper(F('elapsed_time'), output_field=FloatField()), 0),  # NULL if elapsed_time is 0
+            NullIf(ExtractEpoch(F('elapsed_time')), 0),  # Convert elapsed_time to seconds
             output_field=FloatField(),
         ),
         output_field=FloatField(),  # Specifies the type of the generated field
@@ -28,4 +35,3 @@ class PerformanceMetrics(BaseModel):
 
     class Meta:
         db_table = 'performance_metrics'
-
