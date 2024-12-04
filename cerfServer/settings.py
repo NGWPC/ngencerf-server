@@ -27,6 +27,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 dotenv_path = Path(__file__).parent / '.env'
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
+version_path = Path(__file__).parent.parent / 'version.env'
+print(f'Loading values from {version_path}')
+load_dotenv(version_path)
+
+VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
+DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
+CONTACT_EMAIL = 'support@ngencerf.com'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/

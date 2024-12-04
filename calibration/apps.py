@@ -56,7 +56,7 @@ class CalibrationConfig(AppConfig):
         else:
             logger.info(f'*** Running {sys.argv[1]}')
 
-        logger.info(f'Version: {settings.VERSION}')
+        logger.info(f'Version: {settings.VERSION}, {settings.DATE}')
 
         logger.info(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
         logger.info('')

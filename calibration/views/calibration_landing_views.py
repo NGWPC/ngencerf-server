@@ -469,7 +469,7 @@ def get_footer(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = {"version": settings.VERSION, "contact_email": settings.CONTACT_EMAIL}
+    response = {"version": settings.VERSION, "date": settings.DATE, "contact_email": settings.CONTACT_EMAIL}
 
     response_validator, error_response = validate_response(FooterResponseSerializer, response)
     if error_response:

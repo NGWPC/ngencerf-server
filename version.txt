@@ -1,3 +1,0 @@
-version=1.0.0
-date=2024-11-01
-commit=0ca9660bc23325b28a7adae0ad43a9b21769beaf
