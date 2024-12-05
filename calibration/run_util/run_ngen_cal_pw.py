@@ -1,5 +1,6 @@
 import functools
 import logging
+import os
 from urllib.parse import urljoin
 
 import requests
@@ -49,8 +50,6 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
 
     url = urljoin(settings.SLURM_URL, url_endpoint)
     payload = {
-        'input_file': (None, arguments['input_file']),
-        'output_file': (None, stdout_file),
         'auth_token': (None, generate_custom_token(owner, token_slurm_scope))
     }
 
@@ -58,17 +57,32 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         payload.update({
             'validation_run_id': (None, run.id),
             'validation_type': (None, run.validation_type),
+            'input_file': (None, arguments['input_file']),
+            'output_file': (None, stdout_file),
             'worker_name': (None, arguments['worker_name']),
             'iteration': (None, arguments['iteration_num'])
         })
     elif isinstance(run, CalibrationRun):
-        payload.update({'calibration_run_id': (None, run.id)})
+        payload.update({
+            'calibration_run_id': (None, run.id),
+            'input_file': (None, arguments['input_file']),
+            'output_file': (None, stdout_file),
+        })
     elif isinstance(run, ForecastRun):
-        payload.update({'forecast_run_id': (None, run.id)})
+        payload.update({
+            'forecast_run_id': (None, run.id),
+            'input_file': (None, arguments['input_file']),
+            'output_file': (None, stdout_file),
+            'forcing_file': (None, get_forecast_forcing_download_file(run)),
+            'output_dir': (None, arguments['output_dir'])
+        })
     elif isinstance(run, ForecastForcingDownloadRun):
         payload.update({
             'forecast_forcing_download_run_id': (None, run.id),
-            'forcing_file': get_forecast_forcing_download_file(run.forecast_run)
+            'cycle_name': arguments['cycle_name'],
+            'gpkg_file' : os.path.join(get_geopackage_dir_for_job(run.forecast_run.calibration_run), get_geopackage_filename(run.forecast_run.calibration_run)),
+            'forcing_file': get_forecast_forcing_download_file(run.forecast_run),
+            'output_file': (None, stdout_file),
         })
 
     logger.info(f'Slurm submit-job payload to {url}: {payload}')
