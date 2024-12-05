@@ -347,13 +347,13 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
-# Get the valid path for a file that can come from Hydrofabric or user-upload
-def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
+# Get the valid path for a file that can come from Data Services or user-upload
+def get_valid_path(source, eds_path, upload_enum, get_path_func):
     """
-    Get the valid file path based on the source type, hydrofabric path, or job-specific path.
+    Get the valid file path based on the source type, EDS path, or job-specific path.
 
     :param source: The source type.
-    :param hydrofabric_path: The hydrofabric path.
+    :param eds_path: The EDS path.
     :param upload_enum: The upload enumeration.
     :param get_path_func: A function to retrieve the job-specific path.
     :return: The valid path if found; otherwise None.
@@ -364,9 +364,9 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
             # Check job-specific path first
             if job_specific_file and Path(job_specific_file).exists():
                 return job_specific_file
-        # If not found or source is different, check the hydrofabric path
-        if hydrofabric_path and Path(hydrofabric_path).exists():
-            return hydrofabric_path
+        # If not found or source is different, check the EDS path
+        if eds_path and Path(eds_path).exists():
+            return eds_path
 
     return None
 

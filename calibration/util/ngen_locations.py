@@ -6,6 +6,7 @@ from django.conf import settings
 
 from calibration.enums import ValidationType
 from calibration.models import CalibrationRun
+from calibration.util.file_util import get_single_file
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -97,12 +98,8 @@ def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'geopackage')
 
 
-def get_geopackage_filename(run: CalibrationRun) -> str:
-    return f"gauge_{run.gage.gage_id}.gpkg"
-
-
-def get_geopackage_file_for_job(run: CalibrationRun) -> str | None:
-    return os.path.join(get_geopackage_dir_for_job(run), get_geopackage_filename(run)) if run.gage else None
+# def get_geopackage_file_for_job(run: CalibrationRun) -> str | None:
+#     return get_single_file(get_geopackage_dir_for_job(run))
 
 
 def get_input_dir(run: CalibrationRun) -> str:

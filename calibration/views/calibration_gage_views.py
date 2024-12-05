@@ -22,7 +22,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
 from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
-    get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
+    get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path
@@ -245,7 +245,7 @@ def save_gage_tab(request: Request):
                 try:
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
-                    logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
+                    logger.error(f"Error retrieving geopackage data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
@@ -268,7 +268,7 @@ def save_gage_tab(request: Request):
                 try:
                     get_observational_data_from_hydrofabric(run)
                 except HydrofabricException as e:
-                    logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
+                    logger.error(f"Error retrieving observational data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
@@ -289,7 +289,7 @@ def save_gage_tab(request: Request):
                 try:
                     get_forcing_data_from_hydrofabric(run)
                 except HydrofabricException as e:
-                    logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
+                    logger.error(f"Error retrieving forcing data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
@@ -388,7 +388,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
             try:
                 get_module_metadata_from_hydrofabric(gage, my_formulations, gage_changed=True)
             except HydrofabricException as e:
-                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
                 return {
                     'name': 'parameters',
                     'message': str(e),

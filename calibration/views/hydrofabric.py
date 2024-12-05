@@ -101,7 +101,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
 
         s3_uri = hydrofabric_data.get('uri')
         run.geopackage_eds_file_path = convert_s3_uri_to_fs(s3_uri)
-        logger.info(f'Setting run.geopackage_eds_path to {run.geopackage_eds_file_path}')
+        logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')
 
 
 def get_observational_data_from_hydrofabric(run: CalibrationRun):

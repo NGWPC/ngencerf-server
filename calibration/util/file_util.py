@@ -63,20 +63,24 @@ def delete_all_files_in_directory(source_dir):
 def get_single_file(source_dir):
     """
     Retrieves the first file found in the given directory.
-    If the directory is empty, it returns None. The function does not check
-    for multiple files, so if more than one file exists, it returns the first one.
+    If the directory is empty, it returns None. If more than one file exists,
+    it issues a warning but still returns the first file.
 
     :param source_dir: Path to the directory where the file is located.
     :return: The file name (string) of the first file found, or None if no file exists.
     """
-    if os.path.isdir(source_dir):
-        # Get all files in the directory (excluding directories)
-        files = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
-
-        # If there are no files in the directory, return None.
-        if len(files) == 0:
-            return None
-
-        return os.path.join(source_dir, files[0])
-    else:
+    if not os.path.isdir(source_dir):
         return None
+
+    # Get all files in the directory (excluding directories)
+    files = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
+
+    # If there are no files in the directory, return None.
+    if not files:
+        return None
+
+    if len(files) > 1:
+        logger.warning(f"Multiple files found in directory '{source_dir}'. Returning the first file: {files[0]}")
+
+    return os.path.join(source_dir, files[0])
+
