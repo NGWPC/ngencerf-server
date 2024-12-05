@@ -10,6 +10,7 @@ from typing import Dict, Any, Callable
 
 import pandas as pd
 from django.db import transaction
+from django.utils.timezone import now
 
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
@@ -74,6 +75,11 @@ def read_validation_output(validation_run: ValidationRun) -> None:
         reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
         validation_run.run_start = validation_run.submit_date + reserved_time
 
+        if not performance_metrics:
+            # Fallback to calculate elapsed_time manually
+            elapsed_time = now() - validation_run.run_start
+            performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
+
         # Update validation run fields
         validation_run.performance_metrics = performance_metrics
         validation_run.save(update_fields=['performance_metrics', 'run_start', 'validation_worker_name'])
@@ -100,6 +106,11 @@ def read_calibration_output(calibration_run: CalibrationRun) -> None:
         # Use a reserved_time of 0 if performance_metrics is None
         reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
         calibration_run.run_start = calibration_run.submit_date + reserved_time
+
+        if not performance_metrics:
+            # Fallback to calculate elapsed_time manually
+            elapsed_time = now() - calibration_run.run_start
+            performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
 
         calibration_run.performance_metrics = performance_metrics
 

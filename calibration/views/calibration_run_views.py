@@ -110,7 +110,7 @@ def get_status(request: Request) -> Response:
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
-        "performance_metrics__reserved_time"
+        "performance_metrics__reserved_time", "performance_metrics__io_throughput"
     )
 
     # Retrieve validation runs with related PerformanceMetrics data
@@ -121,7 +121,7 @@ def get_status(request: Request) -> Response:
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
-        "performance_metrics__reserved_time"
+        "performance_metrics__reserved_time", "performance_metrics__io_throughput"
     )
 
     # Construct validation response with performance metrics as needed

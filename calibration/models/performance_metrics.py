@@ -13,10 +13,10 @@ class ExtractEpoch(Func):
 
 
 class PerformanceMetrics(BaseModel):
-    slurm_job_id = models.CharField(max_length=50, null=False)
+    slurm_job_id = models.CharField(max_length=50, null=True)
     elapsed_time = models.DurationField(null=False)
-    num_cpus = models.IntegerField(null=False)
-    cpu_time = models.DurationField(null=False)
+    num_cpus = models.IntegerField(null=True)
+    cpu_time = models.DurationField(null=True)
     max_rss = models.IntegerField(null=True)  # Stored as KB
     max_disk_read = models.IntegerField(null=True)  # Stored as KB
     max_disk_write = models.IntegerField(null=True)  # Stored as KB
