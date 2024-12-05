@@ -139,11 +139,11 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     """
     Determines the date range intersection between observational and forcing data, updating the run if changed.
     """
-    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
+    observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path,
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_eds_dir_path,
                                   ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 

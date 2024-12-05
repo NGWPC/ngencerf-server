@@ -241,7 +241,7 @@ def save_gage_tab(request: Request):
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
             if user_uploaded_geopackage_file and os.path.exists(user_uploaded_geopackage_file):
                 os.remove(user_uploaded_geopackage_file)
-            if not run.geopackage_hydrofabric_file_path:
+            if not run.geopackage_eds_file_path:
                 try:
                     get_geopackage_from_hydrofabric(run)
                 except HydrofabricException as e:
@@ -252,7 +252,7 @@ def save_gage_tab(request: Request):
                         'status_code': e.status_code if e.status_code else None
                     })
         else:
-            run.geopackage_hydrofabric_file_path = None
+            run.geopackage_eds_file_path = None
 
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
@@ -264,7 +264,7 @@ def save_gage_tab(request: Request):
             user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
             if user_uploaded_observational_file and os.path.exists(user_uploaded_observational_file):
                 os.remove(user_uploaded_observational_file)
-            if not run.observational_hydrofabric_file_path:
+            if not run.observational_eds_file_path:
                 try:
                     get_observational_data_from_hydrofabric(run)
                 except HydrofabricException as e:
@@ -275,7 +275,7 @@ def save_gage_tab(request: Request):
                         'status_code': e.status_code if e.status_code else None
                     })
         else:
-            run.observational_hydrofabric_file_path = None
+            run.observational_eds_file_path = None
 
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
@@ -285,7 +285,7 @@ def save_gage_tab(request: Request):
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir):
                 shutil.rmtree(user_uploaded_forcing_dir)
-            if not run.forcing_hydrofabric_dir_path:
+            if not run.forcing_eds_dir_path:
                 try:
                     get_forcing_data_from_hydrofabric(run)
                 except HydrofabricException as e:
@@ -296,7 +296,7 @@ def save_gage_tab(request: Request):
                         'status_code': e.status_code if e.status_code else None
                     })
         else:
-            run.forcing_hydrofabric_dir_path = None
+            run.forcing_eds_dir_path = None
 
         run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
 
@@ -329,7 +329,7 @@ def get_geopackage_image_url(run: CalibrationRun) -> str | None:
     Returns:
         str | None: A base64 URL string of the PNG image, or None if conversion fails.
     """
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
                                      lambda: get_geopackage_file_for_job(run))
 
@@ -445,7 +445,7 @@ def upload_observational_data(request: Request) -> Response:
 
     user_observational_file = files[0]
 
-    run.observational_hydrofabric_file_path = None
+    run.observational_eds_file_path = None
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
@@ -517,7 +517,7 @@ def upload_forcing_data(request: Request) -> Response:
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    run.forcing_hydrofabric_dir_path = None
+    run.forcing_eds_dir_path = None
 
     # Save to the run-specific forcing directory
     fs = FileSystemStorage(location=get_forcing_dir_for_job(run))
@@ -607,7 +607,7 @@ def upload_geopackage_data(request: Request) -> Response:
 
     user_geopackage_file = files[0]
 
-    run.geopackage_hydrofabric_file_path = None
+    run.geopackage_eds_file_path = None
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
@@ -644,15 +644,15 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     Returns:
         dict: A dictionary indicating the presence of observational, forcing, and geopackage files.
     """
-    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
+    observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path,
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_eds_dir_path,
                                   ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
                                      lambda: get_geopackage_file_for_job(run))
 

@@ -100,8 +100,8 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
                                                   'Geopackage data from Hydrofabric is not in the expected format')
 
         s3_uri = hydrofabric_data.get('uri')
-        run.geopackage_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
-        logger.info(f'Setting run.geopackage_hydrofabric_path to {run.geopackage_hydrofabric_file_path}')
+        run.geopackage_eds_file_path = convert_s3_uri_to_fs(s3_uri)
+        logger.info(f'Setting run.geopackage_eds_path to {run.geopackage_eds_file_path}')
 
 
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
@@ -121,8 +121,8 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
     s3_uri = observational_data.get('uri')
 
-    run.observational_hydrofabric_file_path = convert_s3_uri_to_fs(s3_uri)
-    logger.info(f'Setting run.observational_hydrofabric_file_path to {run.observational_hydrofabric_file_path}')
+    run.observational_eds_file_path = convert_s3_uri_to_fs(s3_uri)
+    logger.info(f'Setting run.observational_eds_file_path to {run.observational_eds_file_path}')
 
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
@@ -138,8 +138,8 @@ def get_forcing_data_from_hydrofabric(run: CalibrationRun):
 
     s3_uri = forcing_data.get('uri')
 
-    run.forcing_hydrofabric_dir_path = convert_s3_uri_to_fs(s3_uri)
-    logger.info(f'Setting run.forcing_hydrofabric_dir_path to {run.forcing_hydrofabric_dir_path}')
+    run.forcing_eds_dir_path = convert_s3_uri_to_fs(s3_uri)
+    logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
 
 
 def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: QuerySet[CalibrationFormulation], gage_changed: bool = False):

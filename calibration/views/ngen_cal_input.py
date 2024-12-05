@@ -168,7 +168,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     errors.append('Forcing data must be uploaded')
             elif build:
                 # For non-uploaded data, subset the forcing data by time range
-                source_dir = run.forcing_hydrofabric_dir_path
+                source_dir = run.forcing_eds_dir_path
                 subset_directory_by_time_range(
                     source_dir,
                     get_forcing_dir_for_job(run),
@@ -194,7 +194,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                         os.rename(user_uploaded_observational_file, observational_file_for_job_path)
             elif build:
                 # For non-uploaded data, subset the observational data by time range
-                source_file = run.observational_hydrofabric_file_path
+                source_file = run.observational_eds_file_path
                 subset_by_time_range(
                     source_file,
                     get_observational_file_for_job(run),
@@ -222,8 +222,8 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
             else:
                 # For data from Hydrofabric, we use the location that Hydrofabric gave us
-                if run.geopackage_hydrofabric_file_path:
-                    datafile['hydrofab_dir'] = os.path.dirname(run.geopackage_hydrofabric_file_path)
+                if run.geopackage_eds_file_path:
+                    datafile['hydrofab_dir'] = os.path.dirname(run.geopackage_eds_file_path)
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
