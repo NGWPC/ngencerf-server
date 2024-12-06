@@ -366,6 +366,7 @@ class FooterResponseSerializer(BaseSerializer):
     contact_email = serializers.CharField(required=True)
     commit_hash = serializers.CharField(required=True)
     ngenCerf_version = serializers.CharField(required=True)
+    ngenCerf_date = serializers.CharField(required=True)
 
 
 def validate_automatic_validation(value):
