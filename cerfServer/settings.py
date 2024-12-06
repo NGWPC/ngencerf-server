@@ -33,6 +33,7 @@ load_dotenv(version_path)
 
 VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
 DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
+COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
 CONTACT_EMAIL = 'support@ngencerf.com'
 
 # Quick-start development settings - unsuitable for production
