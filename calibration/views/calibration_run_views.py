@@ -84,12 +84,18 @@ def get_status(request: Request) -> Response:
         metrics_dict = model_to_dict(performance_metrics, fields=[
             "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
         ])
+        # Manually add io_throughput since it's a generated field
+        metrics_dict["io_throughput"] = performance_metrics.io_throughput
 
         # Convert relevant fields to 'K' units
-        for field in ["max_rss", "max_disk_read", "max_disk_write", "io_throughput"]:
+        for field in ["max_rss", "max_disk_read", "max_disk_write"]:
             value = metrics_dict.get(field)
             if value is not None:  # Only convert non-null values
-                metrics_dict[field] = f"{value}K"
+                metrics_dict[field] = f"{value:.2f}K"
+        io_throughput = metrics_dict.get("io_throughput")
+        if io_throughput is not None:
+            metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
+
 
         return metrics_dict
 
@@ -529,7 +535,7 @@ def get_job_dir(request: Request) -> Response:
         return error_return
 
     if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Convert path inside the container to the mapped host pth outside the continer
+        # Convert path inside the container to the mapped host pth outside the container
         container_job_data_dir = run.job_data_dir
         # Ensure the absolute path starts with the old root
         if not os.path.isabs(container_job_data_dir):

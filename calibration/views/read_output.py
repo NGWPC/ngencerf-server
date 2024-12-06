@@ -587,9 +587,9 @@ def parse_duration(duration_str: str) -> timedelta:
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
-def parse_size_to_kb(size_str: str | None) -> int | None:
+def parse_size_to_kb(size_str: str | None) -> float | None:
     """
-    Converts a size string (e.g., '123K', '1.5M', '2G') to an integer in kilobytes.
+    Converts a size string (e.g., '123K', '1.5M', '2G') to a float in kilobytes.
     Returns None if the string is invalid or empty.
     """
     if not size_str:
@@ -598,14 +598,14 @@ def parse_size_to_kb(size_str: str | None) -> int | None:
     size_str = size_str.strip().upper()
     try:
         if size_str.endswith('K'):
-            return int(float(size_str[:-1]))
+            return float(size_str[:-1])
         elif size_str.endswith('M'):
-            return int(float(size_str[:-1]) * 1024)
+            return float(size_str[:-1]) * 1024
         elif size_str.endswith('G'):
-            return int(float(size_str[:-1]) * 1024**2)
+            return float(size_str[:-1]) * 1024**2
         else:
             # Assume no unit means it's already in KB
-            return int(float(size_str))
+            return float(size_str)
     except ValueError:
         return None
 

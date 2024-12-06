@@ -229,6 +229,14 @@ def get_validation_best_stdout_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_best_stdout.log')
 
 
+def get_validation_control_stdout_file(run: CalibrationRun) -> str:
+    return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_control_stdout.log')
+
+
+def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
+    return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_stdout.log")
+
+
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_performance.log")
 
@@ -247,20 +255,12 @@ def get_validation_control_input_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_config_valid_control.yaml")
 
 
-def get_validation_control_stdout_file(run: CalibrationRun) -> str:
-    return os.path.join(get_output_validation_run_dir(run), 'ngen-cal_validation_control_stdout.log')
-
-
 def get_validation_metrics_valid_control_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_metrics_valid_control.csv")
 
 
 def get_validation_metrics_nwm_retrospective_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_metrics_nwm_retro.csv")
-
-
-def get_validation_iteration_stdout_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
-    return os.path.join(get_calibration_worker_path(run, worker_name), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_stdout.log")
 
 
 def get_validation_metrics_valid_iteration_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
