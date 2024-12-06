@@ -35,10 +35,10 @@ load_dotenv(version_path)
 VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
 DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
 COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
-NGENCERF_VERSION = os.getenv("CERFSERVER_NGENCERF_VERSION", "<unknown>")
+NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 # dotenv doesn't handle Unicode escaping
 NGENCERF_VERSION = codecs.decode(NGENCERF_VERSION, "unicode_escape")
-NGENCERF_DATE = os.getenv("CERFSERVER_NGENCERF_DATE", "<unknown>")
+NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
 
 CONTACT_EMAIL = 'support@ngencerf.com'
 
