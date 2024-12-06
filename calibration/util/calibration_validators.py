@@ -364,6 +364,7 @@ class FooterResponseSerializer(BaseSerializer):
     version = serializers.CharField(required=True)
     date = serializers.CharField(required=True)
     contact_email = serializers.CharField(required=True)
+    commit_hash = serializers.CharField(required=True)
 
 
 def validate_automatic_validation(value):
