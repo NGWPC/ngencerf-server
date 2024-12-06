@@ -469,7 +469,11 @@ def get_footer(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = {"version": settings.VERSION, "date": settings.DATE, "commit_hash": settings.COMMIT_HASH, "ngenCerf_version": settings.NGENCERF_VERSION, "contact_email": settings.CONTACT_EMAIL}
+    response = {"version": settings.VERSION, "date": settings.DATE,
+                "commit_hash": settings.COMMIT_HASH,
+                "ngenCerf_version": settings.NGENCERF_VERSION,
+                "ngenCerf_date": settings.NGENCERF_DATE,
+                "contact_email": settings.CONTACT_EMAIL}
 
     response_validator, error_response = validate_response(FooterResponseSerializer, response)
     if error_response:
