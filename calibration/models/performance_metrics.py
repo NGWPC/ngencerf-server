@@ -17,9 +17,9 @@ class PerformanceMetrics(BaseModel):
     elapsed_time = models.DurationField(null=False)
     num_cpus = models.IntegerField(null=True)
     cpu_time = models.DurationField(null=True)
-    max_rss = models.IntegerField(null=True)  # Stored as KB
-    max_disk_read = models.IntegerField(null=True)  # Stored as KB
-    max_disk_write = models.IntegerField(null=True)  # Stored as KB
+    max_rss = models.FloatField(null=True)  # Stored as KB
+    max_disk_read = models.FloatField(null=True)  # Stored as KB
+    max_disk_write = models.FloatField(null=True)  # Stored as KB
     reserved_time = models.DurationField(null=True, blank=True)
 
     # io_throughput as a generated field
@@ -35,3 +35,11 @@ class PerformanceMetrics(BaseModel):
 
     class Meta:
         db_table = 'performance_metrics'
+
+    def __str__(self):
+        return (
+            f"PerformanceMetrics(slurm_job_id={self.slurm_job_id}, "
+            f"elapsed_time={self.elapsed_time}, num_cpus={self.num_cpus}, "
+            f"max_rss={self.max_rss} KB, max_disk_read={self.max_disk_read} KB, "
+            f"max_disk_write={self.max_disk_write} KB, io_throughput={self.io_throughput} K/s)"
+        )

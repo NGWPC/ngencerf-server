@@ -752,11 +752,11 @@ class PerformanceMetricsSerializer(BaseSerializer):
     elapsed_time = serializers.DurationField(required=True, allow_null=True)
     num_cpus = serializers.IntegerField(required=True, allow_null=True)
     cpu_time = serializers.DurationField(required=True, allow_null=True)
-    max_rss = serializers.IntegerField(required=True, allow_null=True)
-    max_disk_read = serializers.IntegerField(required=True, allow_null=True)
-    max_disk_write = serializers.IntegerField(required=True, allow_null=True)
+    max_rss = serializers.CharField(required=True, allow_null=True)
+    max_disk_read = serializers.CharField(required=True, allow_null=True)
+    max_disk_write = serializers.CharField(required=True, allow_null=True)
     reserved_time = serializers.DurationField(required=False, allow_null=True)
-    io_throughput = serializers.FloatField(required=False, allow_null=True)
+    io_throughput = serializers.CharField(required=False, allow_null=True)
 
 
 class CommonStatusFieldsMixin(serializers.Serializer):
@@ -1003,7 +1003,7 @@ class GetLogsValidations(BaseSerializer):
 
 class GetLogsResponseSerializer(GenericResponseSerializer):
     validations = GetLogsValidations(many=True, required=True)
-    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField())), required=False, allow_empty=True)
+    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField(allow_blank=True))), required=False, allow_empty=True)
 
 
 ##################################
