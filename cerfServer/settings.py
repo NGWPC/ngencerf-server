@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
+import codecs
 import os
 import re
 from datetime import timedelta
@@ -34,6 +35,9 @@ load_dotenv(version_path)
 VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
 DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
 COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
+NGENCERF_VERSION = os.getenv("CERFSERVER_NGENCERF_VERSION", "<unknown>")
+# dotenv doesn't handle Unicode escaping
+NGENCERF_VERSION = codecs.decode(NGENCERF_VERSION, "unicode_escape")
 CONTACT_EMAIL = 'support@ngencerf.com'
 
 # Quick-start development settings - unsuitable for production
