@@ -12,7 +12,7 @@ from django.db.models.functions import Coalesce, NullIf
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('calibration', '0003_alter_performancemetrics_max_disk_read_and_more'),
+        ('calibration', '0005_rename_forcing_hydrofabric_dir_path_calibrationrun_forcing_eds_dir_path_and_more'),
     ]
 
     operations = [
