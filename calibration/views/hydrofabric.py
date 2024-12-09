@@ -94,10 +94,6 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
             geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
         else:
             logger.info('Getting dummy geopackage data')
-
-    hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
-                                              'Geopackage data from Hydrofabric is not in the expected format')
-
             geopackage_json = hydrofabric_test_data.geopackage_sample_data
 
         hydrofabric_data = validate_response_data(S3FileValidator, geopackage_json,
@@ -159,7 +155,8 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
                                              payload={'modules': my_module_names,
                                                       'gage_id': gage.gage_id,
                                                       'domain': gage.domain.name,
-                                                      'source': gage.agency})
+                                                      'source': gage.agency,
+                                                      'version': settings.ENTERPRISE_DATA_VERSION})
     else:
         logger.info('Getting dummy module metadata')
         module_json = hydrofabric_test_data.hydrofabric_module_metadata_real_data
