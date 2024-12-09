@@ -137,6 +137,7 @@ def get_status(request: Request) -> Response:
             'validation_run_id': run.id,
             'status': run.status.name,
             'validation_type': run.validation_type,
+            'iteration_num': run.iteration_num,
             'submit_date': run.submit_date,
             'run_start': run.run_start,
             'run_end': run.run_end,

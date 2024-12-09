@@ -1,5 +1,5 @@
 from django.db import models
-from django.db.models import ExpressionWrapper, FloatField, Value, F, Func
+from django.db.models import ExpressionWrapper, FloatField, Value, F, Func, When, Case
 from django.db.models.functions import Coalesce, NullIf, Cast
 
 from calibration.models.base_model import BaseModel
@@ -24,9 +24,20 @@ class PerformanceMetrics(BaseModel):
 
     # io_throughput as a generated field
     io_throughput = models.GeneratedField(
-        expression=ExpressionWrapper(
-            (Coalesce(F('max_disk_read'), Value(0)) + Coalesce(F('max_disk_write'), Value(0))) /
-            NullIf(ExtractEpoch(F('elapsed_time')), 0),  # Convert elapsed_time to seconds
+        expression=Case(
+            # If any required field is NULL, set io_throughput to NULL
+            When(
+                models.Q(max_disk_read__isnull=True) |
+                models.Q(max_disk_write__isnull=True) |
+                models.Q(elapsed_time__isnull=True),
+                then=Value(None)
+            ),
+            # Otherwise, calculate io_throughput
+            default=ExpressionWrapper(
+                (Coalesce(F('max_disk_read'), Value(0)) + Coalesce(F('max_disk_write'), Value(0))) /
+                NullIf(ExtractEpoch(F('elapsed_time')), 0),  # Avoid division by zero
+                output_field=FloatField(),
+            ),
             output_field=FloatField(),
         ),
         output_field=FloatField(),  # Specifies the type of the generated field

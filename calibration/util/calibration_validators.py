@@ -773,6 +773,7 @@ class CommonStatusFieldsMixin(serializers.Serializer):
 
 class GetStatusValidationsResponseSerializer(CommonStatusFieldsMixin, ValidationRunSerializer):
     validation_type = serializers.CharField(required=True)
+    iteration_num = serializers.IntegerField(allow_null=True)
 
 
 class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer):
