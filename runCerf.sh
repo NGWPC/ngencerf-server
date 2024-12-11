@@ -29,12 +29,14 @@ if [ "${CERF_VENV}" != "Docker" ]; then
 
       echo "Installing createInput"
        # Doing a  pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
+#       NGEN_CAL_BRANCH='development'
+       NGEN_CAL_BRANCH='129809ac'
        if pip show "createInput" > /dev/null 2>&1; then
            # Package is installed, reinstall without dependencies
-           pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput"
+           pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
        else
            # Package is not installed, install with dependencies
-           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput"
+           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
        fi
     else
        echo "CERF_VENV is not set. Please set the virtual environment variable."
