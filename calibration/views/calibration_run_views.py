@@ -22,8 +22,8 @@ from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibratio
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, GenericResponseSerializerWithValidation, \
-    CalibrationOrValidationOrForecastRunSerializer
+    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer, \
+    CancelJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run
@@ -95,7 +95,6 @@ def get_status(request: Request) -> Response:
         io_throughput = metrics_dict.get("io_throughput")
         if io_throughput is not None:
             metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
-
 
         return metrics_dict
 
@@ -489,7 +488,7 @@ def cancel_job(request: Request) -> Response:
         f"{run_type.lower()}_run_id": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
-    response_validator, error_response = validate_response(GenericResponseSerializerWithValidation, response)
+    response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
@@ -840,7 +839,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     subset_df = df.loc[
         (df['dateTime'] >= date_time_range.start_datetime) &
         (df['dateTime'] <= date_time_range.end_datetime)
-    ]
+        ]
 
     # Write the filtered DataFrame to the output CSV file
     subset_df.to_csv(output_file, index=False)

@@ -143,6 +143,12 @@ class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
         return data
 
 
+class CancelJobResponseSerializer(GenericMessageAndStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer):
+    def validate(self, data):
+        # Call the parent validate method to include its logic
+        return super().validate(data)
+
+
 class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration_id = serializers.IntegerField(required=True)
 
