@@ -86,11 +86,11 @@ class HydrofabricBMIException(HydrofabricException):
 
 def get_geopackage_from_hydrofabric(run: CalibrationRun):
     if run.gage:
-        if settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[0]:
+        if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
             logger.info('Getting geopackage from Hydrofabric')
-            url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                                                       source=run.gage.agency,
-                                                                                                       domain=run.gage.domain.name))
+            url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
+                                                                                                               source=run.gage.agency,
+                                                                                                               domain=run.gage.domain.name))
             geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
         else:
             logger.info('Getting dummy geopackage data')
@@ -105,12 +105,12 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
 
 
 def get_observational_data_from_hydrofabric(run: CalibrationRun):
-    if settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[0]:
+    if settings.ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT[0]:
         logger.info('Getting observational data from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL,
-                      settings.HYDROFABRIC_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                               agency=run.gage.agency,
-                                                                               domain=run.gage.domain.name))
+        url = urljoin(settings.ENTERPRISE_DATA_URL,
+                      settings.ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id,
+                                                                                   agency=run.gage.agency,
+                                                                                   domain=run.gage.domain.name))
         observational_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy observational data')
@@ -126,9 +126,9 @@ def get_observational_data_from_hydrofabric(run: CalibrationRun):
 
 
 def get_forcing_data_from_hydrofabric(run: CalibrationRun):
-    if settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[0]:
+    if settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[0]:
         logger.info('Getting forcing data from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
+        url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
         forcing_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy forcing data')
@@ -147,9 +147,9 @@ def get_module_metadata_from_hydrofabric(gage: Gage, calibration_formulations: Q
 
     my_module_names = list(calibration_formulations.values_list('module__name', flat=True))
 
-    if settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[0]:
+    if settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT[0]:
         logger.info('Getting module metadata from Hydrofabric')
-        url = urljoin(settings.HYDROFABRIC_URL, settings.HYDROFABRIC_MODULE_METADATA_ENDPOINT[1])
+        url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT[1])
 
         module_json = fetch_from_hydrofabric('POST', url, headers=default_headers,
                                              payload={'modules': my_module_names,
