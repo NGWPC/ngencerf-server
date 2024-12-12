@@ -36,6 +36,7 @@ def fetch_from_hydrofabric(method, url, headers=None, payload=None):
     # response = None
     status_code = None
     response_text = None
+    logger.info(f'Sending request to {url}')
     if payload:
         logger.info(f"Hydrofabric payload: {payload}")
     try:
@@ -89,7 +90,10 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
             logger.info('Getting geopackage from Hydrofabric')
             url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                                                               source=run.gage.agency,                                                                                                              domain=run.gage.domain.name))
+                                                                                                               source=run.gage.agency,
+                                                                                                               domain=run.gage.domain.name,
+                                                                                                               version=settings.ENTERPRISE_DATA_VERSION
+                                                                                                               ))
             geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
         else:
             logger.info('Getting dummy geopackage data')

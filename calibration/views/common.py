@@ -483,6 +483,7 @@ def validate_response_data(serializer_class, data, error_message):
     """
     validator = serializer_class(data=data)
     if not validator.is_valid():
+        logger.error(f"Data: {data}")
         raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
     return validator.data
 

@@ -155,7 +155,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if geopackage_user_uploaded_file_path:
                     errors.append(f"User uploaded geopackage data from '{geopackage_user_uploaded_file_path}' not found")
         else:
-            if not run.geopackage_hydrofabric_path:
+            if not run.geopackage_eds_file_path:
                 # Fetch geopackage from Hydrofabric if not set
                 try:
                     get_geopackage_from_hydrofabric(run)
