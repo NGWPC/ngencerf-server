@@ -85,8 +85,6 @@ def gpkg_to_png_selected_layers(gpkg_path, layers_to_include=None):
     # Remove axes for better visualization
     ax.set_axis_off()
 
-
-
     # Save the plot as a PNG file
     # plt.savefig(png_path, bbox_inches='tight', pad_inches=0.1)
     # plt.close()

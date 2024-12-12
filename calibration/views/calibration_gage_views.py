@@ -26,8 +26,8 @@ from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observa
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path
-from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
-    HydrofabricException, get_module_metadata_from_hydrofabric
+from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
+    get_forcing_data_from_data_services, DataServicesException, get_module_metadata_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -182,30 +182,30 @@ def get_gage(request: Request) -> Response:
 @handle_exceptions
 def save_gage_tab(request: Request):
     """
-    Saves gage tab data, updating various sources, calibration run status, and handling hydrofabric data.
+    Saves gage tab data, updating various sources, calibration run status, and handling data services data.
 
     Args:
         request (Request): The request containing either POST data or query parameters.
 
     Returns:
-        Response: A JSON response confirming the update and reporting any hydrofabric errors.
+        Response: A JSON response confirming the update and reporting any data services errors.
 
      Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
 
-     run.forcing_hydrofabric_dir_path, observational_hydrofabric_file_path and run.geopackage_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
+     run.forcing_eds_dir_path, observational_eds_file_path and run.geopackage_eds_file_path are *only* used when getting the data from data services.
 
      User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
-     For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uploads a file, then we use the job-specific path.
+     For geopackage file, if the data is from Data Services, we pass the eds path.  If the user uploads a file, then we use the job-specific path.
 
      The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
      They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
 
-     For Forcing and Observational data, if the files are obtained from Hydrofabric, the job specific path remains empty,
-     until we build the config, at which point the Hydrofabric data is subsetted by time-range and the resulting files placed in the job-specific paths.
+     For Forcing and Observational data, if the files are obtained from Data Services, the job specific path remains empty,
+     until we build the config, at which point the Data Services data is subsetted by time-range and the resulting files placed in the job-specific paths.
 
      Summary: For Forcing and Observational data, the job-specific paths are always the paths that are passed to ngen-cal.
-     They can contain either the unchanged user-uploaded data or subsetted Hyrofabric data.
-     For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
+     They can contain either the unchanged user-uploaded data or subsetted Data Services data.
+     For Geopackage, we pass either the Data Services path or the user-uploaded path.
     """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
@@ -243,8 +243,8 @@ def save_gage_tab(request: Request):
                 os.remove(user_uploaded_geopackage_file)
             if not run.geopackage_eds_file_path:
                 try:
-                    get_geopackage_from_hydrofabric(run)
-                except HydrofabricException as e:
+                    get_geopackage_from_data_services(run)
+                except DataServicesException as e:
                     logger.error(f"Error retrieving geopackage data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'geopackage',
@@ -266,8 +266,8 @@ def save_gage_tab(request: Request):
                 os.remove(user_uploaded_observational_file)
             if not run.observational_eds_file_path:
                 try:
-                    get_observational_data_from_hydrofabric(run)
-                except HydrofabricException as e:
+                    get_observational_data_from_data_services(run)
+                except DataServicesException as e:
                     logger.error(f"Error retrieving observational data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'observational',
@@ -287,8 +287,8 @@ def save_gage_tab(request: Request):
                 shutil.rmtree(user_uploaded_forcing_dir)
             if not run.forcing_eds_dir_path:
                 try:
-                    get_forcing_data_from_hydrofabric(run)
-                except HydrofabricException as e:
+                    get_forcing_data_from_data_services(run)
+                except DataServicesException as e:
                     logger.error(f"Error retrieving forcing data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'forcing',
@@ -384,8 +384,8 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
         my_formulations = CalibrationFormulation.objects.filter(calibration_run=run)
         if my_formulations.exists():
             try:
-                get_module_metadata_from_hydrofabric(gage, my_formulations, gage_changed=True)
-            except HydrofabricException as e:
+                get_module_metadata_from_data_services(gage, my_formulations, gage_changed=True)
+            except DataServicesException as e:
                 logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
                 return {
                     'name': 'parameters',

@@ -10,7 +10,7 @@ observational_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
 }
 
-hydrofabric_module_metadata_real_data = {
+eds_module_metadata_real_data = {
     "modules": [
         {
             "module_name": "CFE-S",

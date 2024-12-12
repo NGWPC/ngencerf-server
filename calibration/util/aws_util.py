@@ -20,7 +20,7 @@ def parse_s3_uri(s3_uri) -> str:
 
 def convert_s3_uri_to_fs(uri) -> str:
     """
-    Until Hydrofabric gives ua a file path, convert the S3 uri to filepath
+    Until Data Services gives ua a file path, convert the S3 uri to filepath
     :param uri:
     :return:file spec of the locally mounted bucket
     """

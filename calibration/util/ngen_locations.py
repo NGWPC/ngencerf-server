@@ -6,7 +6,6 @@ from django.conf import settings
 
 from calibration.enums import ValidationType
 from calibration.models import CalibrationRun
-from calibration.util.file_util import get_single_file
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)

@@ -14,8 +14,7 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
-from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description
-from calibration.views.hydrofabric import validate_response_data
+from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description, validate_response_data
 
 logger = logging.getLogger(__name__)
 

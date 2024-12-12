@@ -702,11 +702,11 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
     """
     Saves or updates calibration parameters for a run.
 
-    This function takes user-specified parameters and overrides the default values from Hydrofabric.
-    - If `allow_nulls` is False (the default), user-provided values will always override the Hydrofabric defaults,
+    This function takes user-specified parameters and overrides the default values from Data Services.
+    - If `allow_nulls` is False (the default), user-provided values will always override the Data Services defaults,
       regardless of whether any values are missing in the user input.
-    - If `allow_nulls` is True, user-provided values will override the Hydrofabric defaults only if they are not None.
-      In this case, any missing values will retain their defaults from Hydrofabric.
+    - If `allow_nulls` is True, user-provided values will override the Data Services defaults only if they are not None.
+      In this case, any missing values will retain their defaults from Data Services.
     """
 
     if parameters:
@@ -727,7 +727,7 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
         for p in parameters:
             calibration_param = parameter_lookup[(p['module'], p['name'])]
 
-            # Override Hydrofabric values conditionally based on `allow_nulls`
+            # Override Data Services values conditionally based on `allow_nulls`
             # If `allow_nulls` is True, update only if user input is not None
             if allow_nulls:
                 if p.get('minimum') is not None:

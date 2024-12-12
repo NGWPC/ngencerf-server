@@ -278,16 +278,16 @@ By convention with the Docker images, the mount point is at `/ngencerf/data`.   
 
 `ngen-cal-work/run_calib` contains the data for ngen and ngen-cal
 
-Files from Hydrofabric are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
+Files from Data Services are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing, observation or geopackage files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
 The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal.
 
-Prior to running the job, the Observation and Forcing files from Hydrofabric will be subsetted to conform to the time range of the job.
+Prior to running the job, the Observation and Forcing files from Data Services will be subsetted to conform to the time range of the job.
 These files will be placed in the instance specific directory, as described above.
-So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Hydrofabric or User upload
+So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Data Services or User upload
 
 
 ```
