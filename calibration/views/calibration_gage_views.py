@@ -331,7 +331,7 @@ def get_geopackage_image_url(run: CalibrationRun) -> str | None:
     """
     geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_geopackage_file_for_job(run))
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
     if geopackage_path and os.path.exists(geopackage_path):
         try:
@@ -367,9 +367,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
     if run.gage != gage:
         if run.gage:
             # Delete any user-uploaded files associated with the previous gage
-            uploaded_geopackage_file = get_geopackage_file_for_job(run)
-            if os.path.exists(uploaded_geopackage_file):
-                os.remove(uploaded_geopackage_file)
+            delete_all_files_in_directory(get_geopackage_dir_for_job(run))
 
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if os.path.exists(uploaded_forcing_dir):
@@ -654,7 +652,7 @@ def get_data_files_status(run: CalibrationRun) -> dict:
 
     geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_geopackage_file_for_job(run))
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
     return {'observational': bool(observation_path),
             'forcing': bool(forcing_path),

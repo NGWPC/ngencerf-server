@@ -240,7 +240,7 @@ def create_forecast_run_internal(
 ) -> ForecastRun:
     """
     Create a new ForecastRun object for the given CalibrationRun.
-    The forecast_forcing_download object is always created at the same time to facilitate the separate job needed for downloadaing the forcing data
+    The forecast_forcing_download object is always created at the same time to facilitate the separate job needed for downloading the forcing data
 
     :param calibration_run: The calibration run that this forecast run is associated with.
     :param cycle: The cycle for this forecast

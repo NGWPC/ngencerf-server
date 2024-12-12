@@ -83,4 +83,3 @@ def get_single_file(source_dir):
         logger.warning(f"Multiple files found in directory '{source_dir}'. Returning the first file: {files[0]}")
 
     return os.path.join(source_dir, files[0])
-
