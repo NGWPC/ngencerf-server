@@ -18,6 +18,7 @@ for arg in "$@"; do
 done
 
 if [ "${CERF_VENV}" != "Docker" ]; then
+    # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
        # shellcheck disable=SC1090
        source "$cerfServer/${CERF_VENV}/bin/activate"
@@ -29,8 +30,8 @@ if [ "${CERF_VENV}" != "Docker" ]; then
 
       echo "Installing createInput"
        # Doing a  pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
-#       NGEN_CAL_BRANCH='development'
-       NGEN_CAL_BRANCH='129809ac'
+       NGEN_CAL_BRANCH='development'
+#       NGEN_CAL_BRANCH='129809ac'
        if pip show "createInput" > /dev/null 2>&1; then
            # Package is installed, reinstall without dependencies
            pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
