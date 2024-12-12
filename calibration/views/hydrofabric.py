@@ -89,8 +89,7 @@ def get_geopackage_from_hydrofabric(run: CalibrationRun):
         if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
             logger.info('Getting geopackage from Hydrofabric')
             url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                                                               source=run.gage.agency,
-                                                                                                               domain=run.gage.domain.name))
+                                                                                                               source=run.gage.agency,                                                                                                              domain=run.gage.domain.name))
             geopackage_json = fetch_from_hydrofabric('GET', url, headers=default_headers)
         else:
             logger.info('Getting dummy geopackage data')
