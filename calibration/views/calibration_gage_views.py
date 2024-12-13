@@ -384,7 +384,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
         my_formulations = CalibrationFormulation.objects.filter(calibration_run=run)
         if my_formulations.exists():
             try:
-                get_module_metadata_from_data_services(gage, my_formulations, gage_changed=True)
+                get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)
             except DataServicesException as e:
                 logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
                 return {

@@ -1,5 +1,4 @@
 import logging
-import os
 from urllib.parse import urljoin
 
 import requests
@@ -7,11 +6,13 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
-from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun, Gage
+from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, \
     S3DirectoryValidator
+from calibration.util.file_util import copy_directory
+from calibration.util.ngen_locations import get_bmi_config_dir_for_module
 from calibration.views.common import validate_response_data
 from data_services_test_data import data_services_test_data
 
@@ -79,12 +80,6 @@ class DataServicesException(Exception):
         self.status_code = status_code
 
 
-class DataServicesBMIException(DataServicesException):
-    def __init__(self, message, status_code=None):
-        super().__init__(message)
-        self.status_code = status_code
-
-
 def get_geopackage_from_data_services(run: CalibrationRun):
     if run.gage:
         if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
@@ -144,7 +139,9 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
     logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
 
 
-def get_module_metadata_from_data_services(gage: Gage, calibration_formulations: QuerySet[CalibrationFormulation], gage_changed: bool = False):
+def get_module_metadata_from_data_services(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation],
+                                           gage_changed: bool = False):
+    gage = run.gage
     # gage_changed = False means that the modules changed.  If true, then the gage changed and we want to retain min/max
 
     my_module_names = list(calibration_formulations.values_list('module__name', flat=True))
@@ -175,7 +172,6 @@ def get_module_metadata_from_data_services(gage: Gage, calibration_formulations:
 
     extra_names = eds_module_names - my_module_names
 
-    bmi_error = None
     # Save the output variables and parameters for each module
     with transaction.atomic():
         for module in module_metadata.get('modules'):
@@ -189,13 +185,9 @@ def get_module_metadata_from_data_services(gage: Gage, calibration_formulations:
             # Get the modules object from our list
             calibration_formulation = calibration_formulations.get(module=module_instance)
 
-            # Save the config
-            calibration_formulation.bmi_config_path = convert_s3_uri_to_fs(module['parameter_file']['uri'])
-            # Since this is path mapped to an S3 bucket, warn the user if we don't have access
-            if not os.path.exists(calibration_formulation.bmi_config_path):
-                bmi_error = f'Unable to access BMI directory at {calibration_formulation.bmi_config_path}'
-
-            calibration_formulation.save(update_fields=['bmi_config_path'])
+            # Copy bmi-config to our directory
+            bmi_config = convert_s3_uri_to_fs(module['parameter_file']['uri'])
+            copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module['module_name']))
 
             # Save output variables
             outputs = module['output_variables']
@@ -231,8 +223,6 @@ def get_module_metadata_from_data_services(gage: Gage, calibration_formulations:
                     calibration_parameter.initial_value = str_to_float(p['initial_value'])
                     calibration_parameter.save(update_fields=['initial_value'])
 
-    if bmi_error:
-        raise DataServicesBMIException(bmi_error)
     if missing_names:
         raise DataServicesException(f'Response from Data Services is missing entries for {missing_names}')
 

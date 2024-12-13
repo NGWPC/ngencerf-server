@@ -14,10 +14,11 @@ from calibration.models import CalibrationOptimizationInput, CalibrationStopCrit
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.file_util import get_single_file, copy_file_to_directory
+from calibration.util.geopkg import get_catchments_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
+    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
@@ -221,6 +222,8 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
+            logger.info(f"Catchments from {datafile['hydrofab_file']} file are {get_catchments_from_gpkg(datafile['hydrofab_file'])}")
+
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
             datafile['nwmretro_file'] = nwm_retro
@@ -234,19 +237,18 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
-    module_dict = {formulation.module.name: formulation.bmi_config_path for formulation in formulations}
-
     if not is_missing(formulations, 'Modules', errors) and not is_missing(run.user_formulation_name, 'Formulation name', errors):
         general['formulation'] = run.user_formulation_name
-        general['models'] = ', '.join(module_dict.keys())
+
+        module_names = [formulation.module.name for formulation in formulations]
+        general['models'] = ', '.join(module_names)
+
         if run.use_sloth:
             general['models'] += f', {SLOTH}'
 
-        # Dynamically add keys and values from the module_dict to our config
-        for key, value in module_dict.items():
-            new_key = key.lower() + '_bmi_dir'
-            datafile[new_key] = value
+        # Dynamically add keys and values directly using the formulations list
+        for formulation in formulations:
+            datafile[get_bmi_config_key(formulation.module.name)] = get_bmi_config_dir_for_module(run, formulation.module.name)
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir

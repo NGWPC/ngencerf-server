@@ -33,7 +33,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
-    get_forcing_data_from_data_services, DataServicesBMIException, get_observational_data_from_data_services
+    get_forcing_data_from_data_services, get_observational_data_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -254,14 +254,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         if modules and run.gage:
             try:
-                get_module_metadata_from_data_services(run.gage, modules)
-            except DataServicesBMIException as e:
-                logger.error(f"{str(e)}: {traceback.format_exc()}")
-                eds_errors.append({
-                    'name': 'bmi',
-                    'message': str(e),
-                    'status_code': None
-                })
+                get_module_metadata_from_data_services(run, modules)
             except DataServicesException as e:
                 errors.append(f"Error retrieving module parameter data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
