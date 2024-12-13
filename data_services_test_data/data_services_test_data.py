@@ -10,12 +10,12 @@ observational_sample_data = {
     "uri": "s3://ngwpc-dev/Yuqiong.Liu/data/streamflow_obs/01123000_hourly_discharge.csv"
 }
 
-hydrofabric_module_metadata_real_data = {
+eds_module_metadata_real_data = {
     "modules": [
         {
             "module_name": "CFE-S",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/CFE-S/2024_Oct_22_19_37_04"
+                "uri": "s3://ngwpc-hydrofabric/2.2/CONUS/01123000/PARAMS/USGS/CFE-S/2024_Dec_07_16_16_03"
             },
             "calibrate_parameters": [
                 {
@@ -163,7 +163,7 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "CFE-X",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/CFE-X/2024_Oct_24_21_17_26"
+                "uri": "s3://ngwpc-hydrofabric/2.2/CONUS/01123000/PARAMS/USGS/CFE-X/2024_Dec_07_16_25_04"
             },
             "calibrate_parameters": [
                 {
@@ -338,7 +338,7 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "Noah-OWP-Modular",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/Noah-OWP-Modular/2024_Oct_22_13_15_07"
+                "uri": "s3://ngwpc-hydrofabric/2.2/CONUS/01123000/PARAMS/USGS/Noah-OWP-Modular/2024_Dec_06_21_39_01"
             },
             "calibrate_parameters": [
                 {
@@ -431,7 +431,7 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "SFT",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/SFT/2024_Nov_14_14_16_54"
+                "uri": "s3://ngwpc-hydrofabric/2.2/CONUS/01123000/PARAMS/USGS/SFT/2024_Dec_07_17_32_14"
             },
             "calibrate_parameters": [
                 {
@@ -521,7 +521,7 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "Sac-SMA",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/Sac-SMA/2024_Nov_14_15_58_57"
+                "uri": "s3://ngwpc-hydrofabric/2.2/CONUS/01123000/PARAMS/USGS/Sac-SMA/2024_Dec_07_16_31_08"
             },
             "calibrate_parameters": [
                 {
@@ -702,7 +702,7 @@ hydrofabric_module_metadata_real_data = {
         {
             "module_name": "T-Route",
             "parameter_file": {
-                "uri": "s3://ngwpc-hydrofabric/2.1/CONUS/01123000/PARAMS/USGS/T-Route/2024_Oct_22_13_15_08"
+                "uri": "s3://ngwpc-hydrofabric/2.2/CONUS/01123000/PARAMS/USGS/T-Route/2024_Dec_06_21_26_05"
             },
             "calibrate_parameters": [],
             "output_variables": [

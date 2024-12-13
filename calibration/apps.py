@@ -63,6 +63,7 @@ class CalibrationConfig(AppConfig):
 
         print_db_info()
         logger.info('')
+        logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
 
         # Make sure the logging directory exists
         NGEN_LOGGING_DIR.mkdir(exist_ok=True)

@@ -15,14 +15,13 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
 from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
 from calibration.run_util.run_common import submit_job
-from calibration.util import ngen_locations
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
     ExportResponseSerializer, ErrorResponseSerializer
-from calibration.util.file_util import copy_directory, copy_file_to_directory
+from calibration.util.file_util import copy_directory, copy_file_to_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
-from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, \
-    get_geopackage_dir_for_job, get_geopackage_file_for_job
+from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
+    get_observational_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
     SLOTH, add_sloth_parameters, validate_formulation
@@ -33,8 +32,8 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_output_variable, save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
-from calibration.views.hydrofabric import HydrofabricException, get_module_metadata_from_hydrofabric, get_geopackage_from_hydrofabric, \
-    get_forcing_data_from_hydrofabric, HydrofabricBMIException
+from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
+    get_forcing_data_from_data_services, get_observational_data_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -131,17 +130,17 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         # Set forcing source and path
         forcing_source_name = calibration_run_data.get('forcing_source')
         run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
-        run.forcing_hydrofabric_dir_path = calibration_run_data.get('forcing_hydrofabric_dir_path')
+        run.forcing_eds_dir_path = calibration_run_data.get('forcing_eds_dir_path')
 
         # Set observational source and path
         observational_source_name = calibration_run_data.get('observational_source')
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
-        run.observational_hydrofabric_file_path = calibration_run_data.get('observational_hydrofabric_file_path')
+        run.observational_eds_file_path = calibration_run_data.get('observational_eds_file_path')
 
         # Set geopackage source and path
         geopackage_source_name = calibration_run_data.get('geopackage_source')
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
-        run.geopackage_hydrofabric_path = calibration_run_data.get('geopackage_hydrofabric_file_path')
+        run.geopackage_eds_file_path = calibration_run_data.get('geopackage_eds_file_path')
 
         #############################
         # Geopackage Handling
@@ -155,12 +154,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if geopackage_user_uploaded_file_path:
                     errors.append(f"User uploaded geopackage data from '{geopackage_user_uploaded_file_path}' not found")
         else:
-            if not run.geopackage_hydrofabric_path:
-                # Fetch geopackage from Hydrofabric if not set
+            if not run.geopackage_eds_file_path:
+                # Fetch geopackage from Data Services if not set
                 try:
-                    get_geopackage_from_hydrofabric(run)
-                except HydrofabricException as e:
-                    errors.append(f"Error retrieving geopackage data from Hydrofabric - status code: {e.status_code} - {str(e)}")
+                    get_geopackage_from_data_services(run)
+                except DataServicesException as e:
+                    errors.append(f"Error retrieving geopackage data from Data Services - status code: {e.status_code} - {str(e)}")
                     eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
@@ -179,12 +178,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if forcing_user_uploaded_dir_path:
                     errors.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
         else:
-            if not run.forcing_hydrofabric_dir_path:
-                # Fetch forcing data from Hydrofabric if not set
+            if not run.forcing_eds_dir_path:
+                # Fetch forcing data from Data Services if not set
                 try:
-                    get_forcing_data_from_hydrofabric(run)
-                except HydrofabricException as e:
-                    errors.append(f"Error retrieving forcing data from Hydrofabric - status code: {e.status_code} - {str(e)}")
+                    get_forcing_data_from_data_services(run)
+                except DataServicesException as e:
+                    errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                     eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
@@ -203,11 +202,11 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if observational_user_uploaded_file_path:
                     errors.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
         else:
-            if not run.observational_hydrofabric_file_path:
+            if not run.observational_eds_file_path:
                 try:
-                    get_geopackage_from_hydrofabric(run)
-                except HydrofabricException as e:
-                    errors.append(f"Error retrieving observational data from Hydrofabric - status code: {e.status_code} - {str(e)}")
+                    get_observational_data_from_data_services(run)
+                except DataServicesException as e:
+                    errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                     eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
@@ -255,17 +254,9 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         if modules and run.gage:
             try:
-                # get_module_metadata_from_hydrofabric(run.gage, modules)
-                get_module_metadata_from_hydrofabric(run.gage, modules)
-            except HydrofabricBMIException as e:
-                logger.error(f"{str(e)}: {traceback.format_exc()}")
-                eds_errors.append({
-                    'name': 'bmi',
-                    'message': str(e),
-                    'status_code': None
-                })
-            except HydrofabricException as e:
-                errors.append(f"Error retrieving module parameter data from Hydrofabric - status code: {e.status_code} - {str(e)}")
+                get_module_metadata_from_data_services(run, modules)
+            except DataServicesException as e:
+                errors.append(f"Error retrieving module parameter data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
                     'name': 'parameters',
                     'message': str(e),
@@ -281,7 +272,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         if parameters and not modules:
             return None, None, ResponseError('Parameters cannot be specified without modules')
 
-        # Don't bother validating parameters if we got a hydrofabric error
+        # Don't bother validating parameters if we got a Data Services error
         if not any(error.get('name') == 'parameters' for error in eds_errors):
             error_message = validate_parameters(run, parameters)
             if error_message:
@@ -433,7 +424,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
         }
         calibration_run_data['metadata'] = metadata
 
-        # Not supporting this flag right now until Hydrofabric is ready.
+        # Not supporting this flag right now until Data Services is ready.
         # calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
@@ -441,27 +432,27 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
 
         # There fields are exported so we can import them later
-        # Note that it makes sense to export the unsubsetted Hydrofabric files
+        # Note that it makes sense to export the unsubsetted Data Services files
         # We will subset them again with the new job, when it is imported
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
-        user_uploaded_geopackage_file = ngen_locations.get_geopackage_file_for_job(run)
+        user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
         calibration_run_data[
             'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
             user_uploaded_geopackage_file) else None
 
-        user_uploaded_observational_file = ngen_locations.get_observational_file_for_job(run)
+        user_uploaded_observational_file = get_observational_file_for_job(run)
         calibration_run_data[
             'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
             user_uploaded_observational_file) else None
 
-        user_uploaded_forcing_dir = ngen_locations.get_forcing_dir_for_job(run)
+        user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
         calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
             user_uploaded_forcing_dir) else None
 
-        calibration_run_data['forcing_hydrofabric_dir_path'] = run.forcing_hydrofabric_dir_path
-        calibration_run_data['observational_hydrofabric_file_path'] = run.observational_hydrofabric_file_path
-        calibration_run_data['geopackage_hydrofabric_file_path'] = run.geopackage_hydrofabric_file_path
+        calibration_run_data['forcing_eds_dir_path'] = run.forcing_eds_dir_path
+        calibration_run_data['observational_eds_file_path'] = run.observational_eds_file_path
+        calibration_run_data['geopackage_eds_file_path'] = run.geopackage_eds_file_path
     else:
         # Basic information for UI display, not intended for import/export
         calibration_run_data['calibration_run_id'] = run.id
@@ -478,7 +469,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
 
         # For the UI, we don't need the Geopackage file, but rather, the full map
         # TODO This should be the map file, which might need to be regenerated
-        geopackage_path = get_geopackage_file_for_job(run) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_hydrofabric_file_path
+        geopackage_path = get_single_file(
+            get_geopackage_dir_for_job(run)) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_eds_file_path
         if geopackage_path and os.path.exists(geopackage_path):
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')

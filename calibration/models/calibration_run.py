@@ -27,11 +27,11 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     streamflow_threshold = models.FloatField(null=True)
     peak_flow_threshold = models.FloatField(null=True)
     geopackage_source = models.ForeignKey('GeopackageSource', null=True, on_delete=models.RESTRICT)
-    geopackage_hydrofabric_file_path = models.TextField(null=True)
-    forcing_hydrofabric_dir_path = models.TextField(null=True)
+    geopackage_eds_file_path = models.TextField(null=True)
     forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT)
-    observational_hydrofabric_file_path = models.TextField(null=True)
+    forcing_eds_dir_path = models.TextField(null=True)
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
+    observational_eds_file_path = models.TextField(null=True)
     user_parameter_filename = models.TextField(null=True)
     realization_file_path = models.TextField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
@@ -52,9 +52,9 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             f"CalibrationRun {self.id}, {gage_info}, "
             f"owner: {self.owner.username}, "  # type: ignore[attr-defined]  # Suppress PyCharm warning for unresolved attribute
             f"job_data_directory: {self.job_data_dir},"
-            f"geopackage_hydrofabric_file_path: {self.geopackage_hydrofabric_file_path}, "
-            f"forcing_hydrofabric_dir_path: {self.forcing_hydrofabric_dir_path}, "
-            f"observational_hydrofabric_file_path: {self.observational_hydrofabric_file_path}, "
+            f"geopackage_eds_file_path: {self.geopackage_eds_file_path}, "
+            f"forcing_eds_dir_path: {self.forcing_eds_dir_path}, "
+            f"observational_eds_file_path: {self.observational_eds_file_path}, "
             f"status.name: {self.status.name}, "
             f"is_deleted: {self.is_deleted}"
         )

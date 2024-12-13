@@ -188,14 +188,15 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # -----------------------------
-# Hydrofabric
+# Enterprise Data
 # -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = (True, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={source}&domain={domain}')
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = (False, 'hydrofabric/2.1/modules/parameters/')
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
-HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
+ENTERPRISE_DATA_VERSION = "2.2"
+ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = (True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}')
+ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = (True, 'hydrofabric/modules/parameters/')
+ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
+ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
 
-HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
+ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', Path.home() / 's3')

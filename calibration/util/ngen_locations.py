@@ -10,8 +10,6 @@ from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
 
-CALIB_VALID_DIR = os.path.join(settings.NGEN_CAL_REPO_ROOT, 'python', 'runCalibValid')
-
 static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
     NOAH_PARAMETER_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'bmi_config', 'Noah-OWP'),
@@ -65,6 +63,18 @@ def get_forcing_filename_pattern() -> str:
     return r"^cat-\d+\.csv$"
 
 
+def get_bmi_config_dir_for_job(run: CalibrationRun) -> str:
+    return os.path.join(run.job_data_dir, 'bmi_config')
+
+
+def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
+    return os.path.join(get_bmi_config_dir_for_job(run), module_name.lower())
+
+
+def get_bmi_config_key(module_name: str) -> str:
+    return f"{module_name.lower()}_bmi_dir"
+
+
 # Job-specific forcing directory
 def get_forcing_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'forcing')
@@ -73,14 +83,6 @@ def get_forcing_dir_for_job(run: CalibrationRun) -> str:
 # Job-specific observation directory
 def get_observational_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'observation')
-
-
-def get_ngen_stdout_log_filename() -> str:
-    return 'ngen_stdout_stderr.log'
-
-
-def get_ngen_log_path(run: CalibrationRun) -> str:
-    return os.path.join(f"{run.job_data_dir}", 'logs', 'ngen.log')
 
 
 def get_observational_filename(run: CalibrationRun) -> str:
@@ -97,12 +99,12 @@ def get_geopackage_dir_for_job(run: CalibrationRun) -> str:
     return os.path.join(run.job_data_dir, 'geopackage')
 
 
-def get_geopackage_filename(run: CalibrationRun) -> str:
-    return f"gauge_{run.gage.gage_id}.gpkg"
+def get_ngen_stdout_log_filename() -> str:
+    return 'ngen_stdout_stderr.log'
 
 
-def get_geopackage_file_for_job(run: CalibrationRun) -> str | None:
-    return os.path.join(get_geopackage_dir_for_job(run), get_geopackage_filename(run)) if run.gage else None
+def get_ngen_log_path(run: CalibrationRun) -> str:
+    return os.path.join(f"{run.job_data_dir}", 'logs', 'ngen.log')
 
 
 def get_input_dir(run: CalibrationRun) -> str:

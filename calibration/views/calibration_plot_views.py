@@ -25,7 +25,7 @@ from calibration.views.calibration_evaluation_views import get_iterations_for_ca
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, replace_nan_with_none, get_validation_run, get_job_description, \
     get_forecast_run
-from calibration.views.read_output import process_worker_dirs
+from calibration.views.end_of_job_processing import process_worker_dirs
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,6 @@ from typing import Type, Tuple, Dict, List, Any
 import numpy as np
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from rest_framework import status
 from rest_framework.decorators import permission_classes
@@ -28,6 +27,8 @@ from calibration.util.calibration_validators import ErrorResponseSerializer
 logger = logging.getLogger(__name__)
 
 SLOTH = 'SLoTH'
+
+User = get_user_model()
 
 
 def get_run_instance(
@@ -64,7 +65,7 @@ def get_run_instance(
     try:
         run = query.get()
     except model.DoesNotExist:
-        user_info = f' or is not owned by {user.username}' if user else ''
+        user_info = f' or is not owned by {user}' if user else ''
         return None, Response(
             {'error': f'{model.__name__} {run_id} does not exist{user_info}'},
             status=status.HTTP_400_BAD_REQUEST)
@@ -240,7 +241,7 @@ def create_forecast_run_internal(
 ) -> ForecastRun:
     """
     Create a new ForecastRun object for the given CalibrationRun.
-    The forecast_forcing_download object is always created at the same time to facilitate the separate job needed for downloadaing the forcing data
+    The forecast_forcing_download object is always created at the same time to facilitate the separate job needed for downloading the forcing data
 
     :param calibration_run: The calibration run that this forecast run is associated with.
     :param cycle: The cycle for this forecast
@@ -262,7 +263,7 @@ token_slurm_scope = 'slurm_callback'
 token_ngen = 'ngen'
 
 
-def generate_custom_token(user: get_user_model(), scope: str) -> str:
+def generate_custom_token(user: User, scope: str) -> str:
     """
     Generate a JWT access token for a user, with a custom scope and a 24-hour expiration.
 
@@ -347,13 +348,13 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
-# Get the valid path for a file that can come from Hydrofabric or user-upload
-def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
+# Get the valid path for a file that can come from Data Services or user-upload
+def get_valid_path(source, eds_path, upload_enum, get_path_func):
     """
-    Get the valid file path based on the source type, hydrofabric path, or job-specific path.
+    Get the valid file path based on the source type, EDS path, or job-specific path.
 
     :param source: The source type.
-    :param hydrofabric_path: The hydrofabric path.
+    :param eds_path: The EDS path.
     :param upload_enum: The upload enumeration.
     :param get_path_func: A function to retrieve the job-specific path.
     :return: The valid path if found; otherwise None.
@@ -364,9 +365,9 @@ def get_valid_path(source, hydrofabric_path, upload_enum, get_path_func):
             # Check job-specific path first
             if job_specific_file and Path(job_specific_file).exists():
                 return job_specific_file
-        # If not found or source is different, check the hydrofabric path
-        if hydrofabric_path and Path(hydrofabric_path).exists():
-            return hydrofabric_path
+        # If not found or source is different, check the EDS path
+        if eds_path and Path(eds_path).exists():
+            return eds_path
 
     return None
 
@@ -483,6 +484,7 @@ def validate_response_data(serializer_class, data, error_message):
     """
     validator = serializer_class(data=data)
     if not validator.is_valid():
+        logger.error(f"Data: {data}")
         raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
     return validator.data
 

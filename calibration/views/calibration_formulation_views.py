@@ -14,7 +14,7 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
-from calibration.views.hydrofabric import get_module_metadata_from_hydrofabric, HydrofabricException, HydrofabricBMIException
+from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
 
 logger = logging.getLogger(__name__)
 
@@ -192,19 +192,12 @@ def save_formulation_tab(request) -> Response:
                         calibration_run=run, module__name__in=to_be_added
                     )
 
-                    # Call Hydrofabric with the new formulations
+                    # Call Data Services with the new formulations
                     if new_formulations_qs.exists() and run.gage:
                         try:
-                            get_module_metadata_from_hydrofabric(run.gage, new_formulations_qs)
-                        except HydrofabricBMIException as e:
-                            logger.error(f"{str(e)}: {traceback.format_exc()}")
-                            eds_errors.append({
-                                'name': 'bmi',
-                                'message': str(e),
-                                'status_code': None
-                            })
-                        except HydrofabricException as e:
-                            logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                            get_module_metadata_from_data_services(run, new_formulations_qs)
+                        except DataServicesException as e:
+                            logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
                             eds_errors.append({
                                 'name': 'parameters',
                                 'message': str(e),

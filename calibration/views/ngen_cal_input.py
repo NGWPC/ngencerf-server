@@ -13,11 +13,12 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs
-from calibration.util.file_util import get_single_file
+from calibration.util.file_util import get_single_file, copy_file_to_directory
+from calibration.util.geopkg import get_catchments_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    get_geopackage_file_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR
+    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
@@ -86,7 +87,7 @@ config_template = {
         "forcing_dir": "",
         "obs_dir": "",
         "nwmretro_file": "",
-        "hydrofab_dir": "",
+        "hydrofab_file": "",
 
         "noah-owp-modular_bmi_dir": "",
         "cfe-s_bmi_dir": "",
@@ -158,7 +159,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
-        # Determine the source of the forcing data (user-uploaded or pre-configured)
+        # Determine the source of the forcing data (user-uploaded or EDS)
         if not is_missing(run.forcing_source, 'Forcing source', errors):
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance
             if is_forcing_upload:
@@ -168,7 +169,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     errors.append('Forcing data must be uploaded')
             elif build:
                 # For non-uploaded data, subset the forcing data by time range
-                source_dir = run.forcing_hydrofabric_dir_path
+                source_dir = run.forcing_eds_dir_path
                 subset_directory_by_time_range(
                     source_dir,
                     get_forcing_dir_for_job(run),
@@ -178,7 +179,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
-        # Determine the source of observational data (user-uploaded or pre-configured)
+        # Determine the source of observational data (user-uploaded or EDS)
         if not is_missing(run.observational_source, 'Observational source', errors):
             is_observational_upload = run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance
             if is_observational_upload:
@@ -194,7 +195,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                         os.rename(user_uploaded_observational_file, observational_file_for_job_path)
             elif build:
                 # For non-uploaded data, subset the observational data by time range
-                source_file = run.observational_hydrofabric_file_path
+                source_file = run.observational_eds_file_path
                 subset_by_time_range(
                     source_file,
                     get_observational_file_for_job(run),
@@ -205,25 +206,23 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
         if not is_missing(run.geopackage_source, 'Geopackage source', errors):
+            geopackage_dir = get_geopackage_dir_for_job(run)
             is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
-            if is_geopackage_upload:
-                user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-                if not user_uploaded_geopackage_file:
-                    errors.append('Geopackage data must be uploaded')
-                else:
-                    # We need to rename the user-uploaded file.
-                    geopackage_file_for_job_path = get_geopackage_file_for_job(run)
-                    # If the user uploaded it with the proper name, no need to rename
-                    if user_uploaded_geopackage_file != geopackage_file_for_job_path:
-                        logger.info(f"Renaming geopackage file from {user_uploaded_geopackage_file} to {geopackage_file_for_job_path}")
-                        os.rename(user_uploaded_geopackage_file, geopackage_file_for_job_path)
 
-                    # For user uploads, use the job-specific location
-                    datafile['hydrofab_dir'] = get_geopackage_dir_for_job(run)
+            if is_geopackage_upload:
+                user_uploaded_geopackage_file = get_single_file(geopackage_dir)
+                if user_uploaded_geopackage_file:
+                    # For user uploads, use the job-specific location directly
+                    datafile['hydrofab_file'] = user_uploaded_geopackage_file
+                else:
+                    errors.append('Geopackage data must be uploaded')
             else:
-                # For data from Hydrofabric, we use the location that Hydrofabric gave us
-                if run.geopackage_hydrofabric_file_path:
-                    datafile['hydrofab_dir'] = os.path.dirname(run.geopackage_hydrofabric_file_path)
+                if run.geopackage_eds_file_path:
+                    # For data from Data Services copy to job-specific location
+                    copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                    datafile['hydrofab_file'] = get_single_file(geopackage_dir)
+
+            logger.info(f"Catchments from {datafile['hydrofab_file']} file are {get_catchments_from_gpkg(datafile['hydrofab_file'])}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
@@ -238,19 +237,18 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    # Create a dictionary with 'name' as the key and 'bmi_config_path' as the value
-    module_dict = {formulation.module.name: formulation.bmi_config_path for formulation in formulations}
-
     if not is_missing(formulations, 'Modules', errors) and not is_missing(run.user_formulation_name, 'Formulation name', errors):
         general['formulation'] = run.user_formulation_name
-        general['models'] = ', '.join(module_dict.keys())
+
+        module_names = [formulation.module.name for formulation in formulations]
+        general['models'] = ', '.join(module_names)
+
         if run.use_sloth:
             general['models'] += f', {SLOTH}'
 
-        # Dynamically add keys and values from the module_dict to our config
-        for key, value in module_dict.items():
-            new_key = key.lower() + '_bmi_dir'
-            datafile[new_key] = value
+        # Dynamically add keys and values directly using the formulations list
+        for formulation in formulations:
+            datafile[get_bmi_config_key(formulation.module.name)] = get_bmi_config_dir_for_module(run, formulation.module.name)
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir

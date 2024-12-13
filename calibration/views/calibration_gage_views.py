@@ -22,12 +22,12 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
 from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
-    get_geopackage_file_for_job, get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
+    get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path
-from calibration.views.hydrofabric import get_forcing_data_from_hydrofabric, get_observational_data_from_hydrofabric, get_geopackage_from_hydrofabric, \
-    HydrofabricException, get_module_metadata_from_hydrofabric
+from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
+    get_forcing_data_from_data_services, DataServicesException, get_module_metadata_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -182,30 +182,30 @@ def get_gage(request: Request) -> Response:
 @handle_exceptions
 def save_gage_tab(request: Request):
     """
-    Saves gage tab data, updating various sources, calibration run status, and handling hydrofabric data.
+    Saves gage tab data, updating various sources, calibration run status, and handling data services data.
 
     Args:
         request (Request): The request containing either POST data or query parameters.
 
     Returns:
-        Response: A JSON response confirming the update and reporting any hydrofabric errors.
+        Response: A JSON response confirming the update and reporting any data services errors.
 
      Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
 
-     run.forcing_hydrofabric_dir_path, observational_hydrofabric_file_path and run.geopackage_hydrofabric_file_path are *only* used when getting the data from hydrofabric.
+     run.forcing_eds_dir_path, observational_eds_file_path and run.geopackage_eds_file_path are *only* used when getting the data from data services.
 
      User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
-     For geopackage file, if the data is from Hydrofabric, we pass the Hydrofabric path.  If the user uploads a file, then we use the job-specific path.
+     For geopackage file, if the data is from Data Services, we pass the eds path.  If the user uploads a file, then we use the job-specific path.
 
      The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
      They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
 
-     For Forcing and Observational data, if the files are obtained from Hydrofabric, the job specific path remains empty,
-     until we build the config, at which point the Hydrofabric data is subsetted by time-range and the resulting files placed in the job-specific paths.
+     For Forcing and Observational data, if the files are obtained from Data Services, the job specific path remains empty,
+     until we build the config, at which point the Data Services data is subsetted by time-range and the resulting files placed in the job-specific paths.
 
      Summary: For Forcing and Observational data, the job-specific paths are always the paths that are passed to ngen-cal.
-     They can contain either the unchanged user-uploaded data or subsetted Hyrofabric data.
-     For Geopackage, we pass either the Hydrofabric path or the user-uploaded path.
+     They can contain either the unchanged user-uploaded data or subsetted Data Services data.
+     For Geopackage, we pass either the Data Services path or the user-uploaded path.
     """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
@@ -241,18 +241,18 @@ def save_gage_tab(request: Request):
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
             if user_uploaded_geopackage_file and os.path.exists(user_uploaded_geopackage_file):
                 os.remove(user_uploaded_geopackage_file)
-            if not run.geopackage_hydrofabric_file_path:
+            if not run.geopackage_eds_file_path:
                 try:
-                    get_geopackage_from_hydrofabric(run)
-                except HydrofabricException as e:
-                    logger.error(f"Error retrieving geopackage data from Hydrofabric: {traceback.format_exc()}")
+                    get_geopackage_from_data_services(run)
+                except DataServicesException as e:
+                    logger.error(f"Error retrieving geopackage data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
                     })
         else:
-            run.geopackage_hydrofabric_file_path = None
+            run.geopackage_eds_file_path = None
 
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
@@ -264,18 +264,18 @@ def save_gage_tab(request: Request):
             user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
             if user_uploaded_observational_file and os.path.exists(user_uploaded_observational_file):
                 os.remove(user_uploaded_observational_file)
-            if not run.observational_hydrofabric_file_path:
+            if not run.observational_eds_file_path:
                 try:
-                    get_observational_data_from_hydrofabric(run)
-                except HydrofabricException as e:
-                    logger.error(f"Error retrieving observational data from Hydrofabric: {traceback.format_exc()}")
+                    get_observational_data_from_data_services(run)
+                except DataServicesException as e:
+                    logger.error(f"Error retrieving observational data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
                     })
         else:
-            run.observational_hydrofabric_file_path = None
+            run.observational_eds_file_path = None
 
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
@@ -285,18 +285,18 @@ def save_gage_tab(request: Request):
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir):
                 shutil.rmtree(user_uploaded_forcing_dir)
-            if not run.forcing_hydrofabric_dir_path:
+            if not run.forcing_eds_dir_path:
                 try:
-                    get_forcing_data_from_hydrofabric(run)
-                except HydrofabricException as e:
-                    logger.error(f"Error retrieving forcing data from Hydrofabric: {traceback.format_exc()}")
+                    get_forcing_data_from_data_services(run)
+                except DataServicesException as e:
+                    logger.error(f"Error retrieving forcing data from Data Services: {traceback.format_exc()}")
                     eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
                     })
         else:
-            run.forcing_hydrofabric_dir_path = None
+            run.forcing_eds_dir_path = None
 
         run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
 
@@ -329,9 +329,9 @@ def get_geopackage_image_url(run: CalibrationRun) -> str | None:
     Returns:
         str | None: A base64 URL string of the PNG image, or None if conversion fails.
     """
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_geopackage_file_for_job(run))
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
     if geopackage_path and os.path.exists(geopackage_path):
         try:
@@ -367,9 +367,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
     if run.gage != gage:
         if run.gage:
             # Delete any user-uploaded files associated with the previous gage
-            uploaded_geopackage_file = get_geopackage_file_for_job(run)
-            if os.path.exists(uploaded_geopackage_file):
-                os.remove(uploaded_geopackage_file)
+            delete_all_files_in_directory(get_geopackage_dir_for_job(run))
 
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if os.path.exists(uploaded_forcing_dir):
@@ -386,9 +384,9 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
         my_formulations = CalibrationFormulation.objects.filter(calibration_run=run)
         if my_formulations.exists():
             try:
-                get_module_metadata_from_hydrofabric(gage, my_formulations, gage_changed=True)
-            except HydrofabricException as e:
-                logger.error(f"Error retrieving module parameter data from Hydrofabric: {traceback.format_exc()}")
+                get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)
+            except DataServicesException as e:
+                logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
                 return {
                     'name': 'parameters',
                     'message': str(e),
@@ -445,7 +443,7 @@ def upload_observational_data(request: Request) -> Response:
 
     user_observational_file = files[0]
 
-    run.observational_hydrofabric_file_path = None
+    run.observational_eds_file_path = None
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
@@ -517,7 +515,7 @@ def upload_forcing_data(request: Request) -> Response:
     key = 'forcing_files'
     files = request.FILES.getlist(key)
 
-    run.forcing_hydrofabric_dir_path = None
+    run.forcing_eds_dir_path = None
 
     # Save to the run-specific forcing directory
     fs = FileSystemStorage(location=get_forcing_dir_for_job(run))
@@ -607,7 +605,7 @@ def upload_geopackage_data(request: Request) -> Response:
 
     user_geopackage_file = files[0]
 
-    run.geopackage_hydrofabric_file_path = None
+    run.geopackage_eds_file_path = None
 
     # Delete the file if it's already there
     delete_all_files_in_directory(fs.location)
@@ -644,17 +642,17 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     Returns:
         dict: A dictionary indicating the presence of observational, forcing, and geopackage files.
     """
-    observation_path = get_valid_path(run.observational_source, run.observational_hydrofabric_file_path,
+    observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_hydrofabric_dir_path,
+    forcing_path = get_valid_path(run.forcing_source, run.forcing_eds_dir_path,
                                   ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_hydrofabric_file_path,
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_geopackage_file_for_job(run))
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
     return {'observational': bool(observation_path),
             'forcing': bool(forcing_path),

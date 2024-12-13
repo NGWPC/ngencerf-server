@@ -222,8 +222,8 @@ class ValidationTimeControls(BaseSerializer):
             self.fields['simulation_end_time'].required = True
 
 
-# TODO See if we can eliminate 1 of these after Hydrofabric implementation
-# Used for the output from Hydrofabric
+# TODO See if we can eliminate 1 of these after Data Services implementation
+# Used for the output from Data Services
 class OutputVariableMetadataSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     description = serializers.CharField(required=True, allow_blank=False)
@@ -309,8 +309,8 @@ class GageSerializer(BaseSerializer):
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
-# Parameters from Hydrofabric
-# initial_value, min and max are strings, since Hydrofabric sometimes has some extra crap in there, like units
+# Parameters from Data Services
+# initial_value, min and max are strings, since Data Services sometimes has some extra crap in there, like units
 # We save them in the db as floats, so we'll have to sanitize them
 class ModuleParametersSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, allow_blank=False)
@@ -544,7 +544,7 @@ class CreateAndRunForecastResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
-# Geopackage from Hydrofabric
+# Geopackage from Data Services
 class GeopackageSerializer(BaseSerializer):
     uri = serializers.CharField(required=True, allow_blank=False)
     creation_date = serializers.DateTimeField(required=True)
@@ -665,24 +665,24 @@ class UserParameterFileUploadResponse(BaseSerializer):
     user_parameter_file = serializers.ListField(child=ParameterFileSerializer(), required=True)
 
 
-# Output variables from Hydrofabric
+# Output variables from Data Services
 class ModuleOutputVariablesSerializer(BaseSerializer):
     variable = serializers.CharField(required=True, allow_blank=False)
     # TODO This is required, cannot be null
     description = serializers.CharField(required=True, allow_blank=False, allow_null=True)
 
 
-# Module object from Hydrofabric containing module parameters and output variables
-class ModuleMetadataHydrofabricSerializer(BaseSerializer):
+# Module object from Data Services containing module parameters and output variables
+class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
     output_variables = ModuleOutputVariablesSerializer(many=True)
     parameter_file = S3FileValidator(required=True)
 
 
-# List of module objects from Hydrofabric containing module parameters and output variables
-class ModuleDataHydrofabricListSerializer(BaseSerializer):
-    modules = ModuleMetadataHydrofabricSerializer(many=True, min_length=1, required=True)
+# List of module objects from Data Services containing module parameters and output variables
+class ModuleDataListSerializer(BaseSerializer):
+    modules = ModuleMetadataSerializer(many=True, min_length=1, required=True)
 
 
 class SaveTuningRequestSerializer(BaseSerializer):
@@ -864,13 +864,13 @@ class ExportResponseSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_eds_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_user_uploaded_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
@@ -897,14 +897,14 @@ class ImportSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    forcing_hydrofabric_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    forcing_eds_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    observational_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    observational_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    geopackage_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
