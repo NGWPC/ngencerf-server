@@ -9,7 +9,6 @@ from typing import Type, Tuple, Dict, List, Any
 import numpy as np
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from rest_framework import status
 from rest_framework.decorators import permission_classes
@@ -28,6 +27,8 @@ from calibration.util.calibration_validators import ErrorResponseSerializer
 logger = logging.getLogger(__name__)
 
 SLOTH = 'SLoTH'
+
+User = get_user_model()
 
 
 def get_run_instance(
@@ -64,7 +65,7 @@ def get_run_instance(
     try:
         run = query.get()
     except model.DoesNotExist:
-        user_info = f' or is not owned by {user.username}' if user else ''
+        user_info = f' or is not owned by {user}' if user else ''
         return None, Response(
             {'error': f'{model.__name__} {run_id} does not exist{user_info}'},
             status=status.HTTP_400_BAD_REQUEST)
@@ -262,7 +263,7 @@ token_slurm_scope = 'slurm_callback'
 token_ngen = 'ngen'
 
 
-def generate_custom_token(user: get_user_model(), scope: str) -> str:
+def generate_custom_token(user: User, scope: str) -> str:
     """
     Generate a JWT access token for a user, with a custom scope and a 24-hour expiration.
 
