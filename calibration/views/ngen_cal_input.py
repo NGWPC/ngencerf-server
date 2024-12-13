@@ -13,7 +13,7 @@ from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSource
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs
-from calibration.util.file_util import get_single_file
+from calibration.util.file_util import get_single_file, copy_file_to_directory
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
@@ -205,18 +205,21 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 
         if not is_missing(run.geopackage_source, 'Geopackage source', errors):
+            geopackage_dir = get_geopackage_dir_for_job(run)
             is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
+
             if is_geopackage_upload:
-                user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-                if not user_uploaded_geopackage_file:
-                    errors.append('Geopackage data must be uploaded')
-                else:
-                    # For user uploads, use the job-specific location
+                user_uploaded_geopackage_file = get_single_file(geopackage_dir)
+                if user_uploaded_geopackage_file:
+                    # For user uploads, use the job-specific location directly
                     datafile['hydrofab_file'] = user_uploaded_geopackage_file
+                else:
+                    errors.append('Geopackage data must be uploaded')
             else:
-                # For data from Data Services, we use the location directory
                 if run.geopackage_eds_file_path:
-                    datafile['hydrofab_file'] = run.geopackage_eds_file_path
+                    # For data from Data Services copy to job-specific location
+                    copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                    datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
