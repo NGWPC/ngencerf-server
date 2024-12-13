@@ -17,7 +17,7 @@ from calibration.util.ngen_locations import get_calibration_stdout_file, get_val
 from calibration.views.calibration_landing_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
     replace_nan_with_none, get_validation_run
-from calibration.views.read_output import process_worker_dirs
+from calibration.views.end_of_job_processing import process_worker_dirs
 
 logger = logging.getLogger(__name__)
 

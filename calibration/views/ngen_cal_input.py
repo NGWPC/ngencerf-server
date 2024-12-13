@@ -214,7 +214,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     # For user uploads, use the job-specific location
                     datafile['hydrofab_file'] = user_uploaded_geopackage_file
             else:
-                # For data from Hydrofabric, we use the location that Hydrofabric gave us
+                # For data from Data Services, we use the location directory
                 if run.geopackage_eds_file_path:
                     datafile['hydrofab_file'] = run.geopackage_eds_file_path
 

@@ -673,7 +673,7 @@ class ModuleOutputVariablesSerializer(BaseSerializer):
 
 
 # Module object from Data Services containing module parameters and output variables
-class ModuleMetadataHydrofabricSerializer(BaseSerializer):
+class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
     output_variables = ModuleOutputVariablesSerializer(many=True)
@@ -681,8 +681,8 @@ class ModuleMetadataHydrofabricSerializer(BaseSerializer):
 
 
 # List of module objects from Data Services containing module parameters and output variables
-class ModuleDataHydrofabricListSerializer(BaseSerializer):
-    modules = ModuleMetadataHydrofabricSerializer(many=True, min_length=1, required=True)
+class ModuleDataListSerializer(BaseSerializer):
+    modules = ModuleMetadataSerializer(many=True, min_length=1, required=True)
 
 
 class SaveTuningRequestSerializer(BaseSerializer):

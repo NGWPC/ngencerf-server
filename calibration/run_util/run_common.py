@@ -18,7 +18,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
-from calibration.views.read_output import read_validation_output, read_calibration_output
+from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)

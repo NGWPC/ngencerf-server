@@ -98,7 +98,7 @@ $ ls ~/s3/ngwpc-dev
 environments, such as Parallel Works 
 might have other ways of implementing this functionality.  There is nothing in the server code
 that is dependant on `s3fs`.  All that matters is that the bucket is mounted as a file space
-and that there is agreement between NgenCerf and Hydrofabric path.
+and that there is agreement between NgenCerf and Data Services.
 
 
 # Static Files

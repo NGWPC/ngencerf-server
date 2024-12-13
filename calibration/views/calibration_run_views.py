@@ -27,7 +27,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run
-from calibration.views.read_output import read_calibration_output
+from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +261,7 @@ def run_calibration(request: Request) -> Response:
 def process_calibration_output(request):
     """
     This endpoint is mostly for testing, to kick off the processing of output for a completed job.
-    Normally read_output() is called automatically when a job completes.
+    Normally read_calibration_output() is called automatically when a job completes.
     This endpoint can be used in case the output processing doesn't work.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()

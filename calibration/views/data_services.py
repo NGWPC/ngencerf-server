@@ -10,7 +10,7 @@ from django.db.models import QuerySet
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun, Gage
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
-from calibration.util.calibration_validators import ModuleDataHydrofabricListSerializer, S3FileValidator, \
+from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, \
     S3DirectoryValidator
 from calibration.views.common import validate_response_data
 from data_services_test_data import data_services_test_data
@@ -163,7 +163,7 @@ def get_module_metadata_from_data_services(gage: Gage, calibration_formulations:
         logger.info('Getting dummy module metadata')
         module_json = data_services_test_data.eds_module_metadata_real_data
 
-    module_metadata = validate_response_data(ModuleDataHydrofabricListSerializer, module_json,
+    module_metadata = validate_response_data(ModuleDataListSerializer, module_json,
                                              'Module metadata from Data Services is not in the expected format')
 
     fix_module_metadata(module_metadata)

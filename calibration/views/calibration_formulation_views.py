@@ -192,7 +192,7 @@ def save_formulation_tab(request) -> Response:
                         calibration_run=run, module__name__in=to_be_added
                     )
 
-                    # Call Hydrofabric with the new formulations
+                    # Call Data Services with the new formulations
                     if new_formulations_qs.exists() and run.gage:
                         try:
                             get_module_metadata_from_data_services(run.gage, new_formulations_qs)
