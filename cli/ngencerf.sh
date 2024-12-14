@@ -55,6 +55,15 @@ print_usage() {
     exit 1
 }
 
+# Function to check if a file or directory exists
+check_existence() {
+    local path=$1
+    if [ ! -e "$path" ]; then
+        echo "Error: Required path '$path' does not exist."
+        exit 1
+    fi
+}
+
 # Main Script Execution Logic
 # ---------------------------
 
@@ -91,6 +100,19 @@ for arg in "$@"; do
         *) echo "Unknown argument: $arg"; print_usage;;
     esac
 done
+
+# Ensure required files and directories exist
+if [ -n "$geopackage_file" ]; then
+    check_existence "$geopackage_file"
+fi
+
+if [ -n "$observational_file" ]; then
+    check_existence "$observational_file"
+fi
+
+if [ -n "$forcing_dir" ]; then
+    check_existence "$forcing_dir"
+fi
 
 # Preserve the operation variable before calling login
 original_operation="$operation"
@@ -142,7 +164,10 @@ case "$operation" in
         ;;
 
     "export")
-        if [ -z "$argument" ]; then echo "Error: Calibration run ID required for export."; exit 1; fi
+        if [ -z "$argument" ]; then
+            echo "Error: Calibration run ID required for export."
+            exit 1
+        fi
         response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
             --header 'Content-Type: application/json' \
             --header "Authorization: Bearer $ACCESS_TOKEN" \

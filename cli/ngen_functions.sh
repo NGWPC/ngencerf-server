@@ -12,12 +12,6 @@ upload_geopackage_data() {
     local geopackage_file=$1
     local calibration_run_id=$2
 
-    # Check if the geopackage file exists
-    if [ ! -f "$geopackage_file" ]; then
-        echo "Error: Geopackage file '$geopackage_file' does not exist."
-        exit 1
-    fi
-
     echo "Uploading geopackage: $geopackage_file for calibration_run_id: $calibration_run_id"
 
     # Send the upload request to the server
@@ -49,12 +43,6 @@ upload_observational_data() {
     local observational_filepath=$1
     local calibration_run_id=$2
 
-    # Check if the observational file exists
-    if [ ! -f "$observational_filepath" ]; then
-        echo "Error: Observational data file '$observational_filepath' does not exist."
-        exit 1
-    fi
-
     echo "Uploading observational data: $observational_filepath for calibration_run_id: $calibration_run_id"
 
     # Send the upload request to the server
@@ -84,12 +72,6 @@ upload_forcing_data() {
 
     local forcing_dir=$1
     local calibration_run_id=$2
-
-    # Check if the forcing data directory exists
-    if [ ! -d "$forcing_dir" ]; then
-        echo "Error: Forcing data directory '$forcing_dir' does not exist."
-        exit 1
-    fi
 
     echo "Uploading forcing data from directory: '$forcing_dir' for calibration_run_id: $calibration_run_id"
 
