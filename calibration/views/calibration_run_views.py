@@ -82,7 +82,7 @@ def get_status(request: Request) -> Response:
 
         # Convert numeric fields to kilobytes
         metrics_dict = model_to_dict(performance_metrics, fields=[
-            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
         ])
         # Manually add io_throughput since it's a generated field
         metrics_dict["io_throughput"] = performance_metrics.io_throughput
@@ -92,6 +92,8 @@ def get_status(request: Request) -> Response:
             value = metrics_dict.get(field)
             if value is not None:  # Only convert non-null values
                 metrics_dict[field] = f"{value:.2f}K"
+
+        # Format io_throughput in 'K/s'
         io_throughput = metrics_dict.get("io_throughput")
         if io_throughput is not None:
             metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
@@ -115,10 +117,10 @@ def get_status(request: Request) -> Response:
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
-        "performance_metrics__reserved_time", "performance_metrics__io_throughput"
+        "performance_metrics__reserved_time"
     )
 
-    # Retrieve validation runs with related PerformanceMetrics data
+    # Retrieve forecast runs with related PerformanceMetrics data
     forecast_runs = ForecastRun.objects.filter(calibration_run=calibration_run).select_related(
         "performance_metrics"
     ).only(
@@ -126,7 +128,7 @@ def get_status(request: Request) -> Response:
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
-        "performance_metrics__reserved_time", "performance_metrics__io_throughput"
+        "performance_metrics__reserved_time"
     )
 
     # Construct validation response with performance metrics as needed
