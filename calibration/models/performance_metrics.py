@@ -4,12 +4,10 @@ from django.db.models.functions import Coalesce, NullIf
 
 from calibration.models.base_model import BaseModel
 
-
-# Custom PostgreSQL function for extracting seconds from interval
-class ExtractEpoch(Func):
-    function = 'EXTRACT'
-    template = '%(function)s(EPOCH FROM %(expressions)s)'
-    output_field = FloatField()
+class ExtractEpoch(models.Func):
+    function = "EXTRACT"
+    template = "%(function)s(EPOCH FROM %(expressions)s)"
+    output_field = models.FloatField()
 
 
 class PerformanceMetrics(BaseModel):
@@ -22,27 +20,14 @@ class PerformanceMetrics(BaseModel):
     max_disk_write = models.FloatField(null=True)  # Stored as KB
     reserved_time = models.DurationField(null=True, blank=True)
 
-    # io_throughput as a generated field
-    io_throughput = models.GeneratedField(
-        expression=Case(
-            # If any required field is NULL, set io_throughput to NULL
-            When(
-                models.Q(max_disk_read__isnull=True) |
-                models.Q(max_disk_write__isnull=True) |
-                models.Q(elapsed_time__isnull=True),
-                then=Value(None)
-            ),
-            # Otherwise, calculate io_throughput
-            default=ExpressionWrapper(
-                (Coalesce(F('max_disk_read'), Value(0)) + Coalesce(F('max_disk_write'), Value(0))) /
-                NullIf(ExtractEpoch(F('elapsed_time')), 0),  # Avoid division by zero
-                output_field=FloatField(),
-            ),
-            output_field=FloatField(),
-        ),
-        output_field=FloatField(),  # Specifies the type of the generated field
-        db_persist=True,  # Persist the computed value in the database
-    )
+    @property
+    def io_throughput(self):
+        if not self.elapsed_time or not self.max_disk_read or not self.max_disk_write:
+            return None
+        elapsed_seconds = self.elapsed_time.total_seconds()
+        if elapsed_seconds == 0:
+            return None
+        return (self.max_disk_read + self.max_disk_write) / elapsed_seconds
 
     class Meta:
         db_table = 'performance_metrics'
