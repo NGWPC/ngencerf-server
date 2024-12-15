@@ -824,7 +824,7 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     """
     Reads a CSV file, filters rows based on a time range, and writes the filtered data
-    to an output file.
+    to an output file with the original column names.
 
     :param input_file: Path to the input CSV file.
     :param output_file: Path to the output CSV file.
@@ -839,13 +839,23 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     # Read the CSV into a DataFrame, parsing dates in the first column
     df = pd.read_csv(input_file, delimiter=',', parse_dates=[0])
 
+    # Get the original first column name
+    original_time_column = df.columns[0]
+
+    # Dynamically rename the first column to a consistent name
+    df.rename(columns={original_time_column: 'dateTime'}, inplace=True)
+
+    # Localize the datetime column to UTC
     df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
 
-    # Efficiently filter rows using DataFrame.loc
+    # Efficiently filter rows using DataFrame.loc and create a copy to avoid the warning
     subset_df = df.loc[
         (df['dateTime'] >= date_time_range.start_datetime) &
         (df['dateTime'] <= date_time_range.end_datetime)
-        ]
+    ].copy()  # Explicitly create a copy
+
+    # Rename the datetime column back to its original name
+    subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
 
     # Write the filtered DataFrame to the output CSV file
     subset_df.to_csv(output_file, index=False)

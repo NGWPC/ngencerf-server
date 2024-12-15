@@ -1,4 +1,5 @@
 import logging
+import os
 from urllib.parse import urljoin
 
 import requests
@@ -128,8 +129,10 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
         url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
         forcing_json = fetch_from_data_services('GET', url, headers=default_headers)
     else:
-        logger.info('Getting dummy forcing data')
-        forcing_json = data_services_test_data.forcing_sample_data
+        get_forcing_data_from_s3(run)
+        return
+        # logger.info('Getting dummy forcing data')
+        # forcing_json = data_services_test_data.forcing_sample_data
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Data Services is not in the expected format')
 
@@ -137,6 +140,21 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
 
     run.forcing_eds_dir_path = convert_s3_uri_to_fs(s3_uri)
     logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
+
+
+def get_forcing_data_from_s3(run: CalibrationRun):
+    for s3_uri in settings.FORCING_DATA_DIRS:
+        dir_path = convert_s3_uri_to_fs(s3_uri)
+        gage_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
+        if os.path.isdir(gage_dir):
+            logger.info(f"Found forcing directory {gage_dir}")
+            run.forcing_eds_dir_path = gage_dir
+            logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
+            return
+        else:
+            logger.info(f"Forcing directory doesn't exist {gage_dir}")
+
+    raise DataServicesException(f"Could not find forcing data for {run.gage.gage_id}")
 
 
 def get_module_metadata_from_data_services(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation],
