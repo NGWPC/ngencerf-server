@@ -174,6 +174,7 @@ class Command(BaseCommand):
             ForcingSource.objects.all().delete()
 
         values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": False},
+                  {"name": "Data Services", "description": "NGWPC Enterprise Data Services", "is_active": True},
                   {"name": "User Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
