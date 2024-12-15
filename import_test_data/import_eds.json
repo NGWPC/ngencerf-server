@@ -8,7 +8,7 @@
     },
     "run_after_import": false,
     "gage_id": "01123000",
-    "forcing_source": "Data Services",
+    "forcing_source": "AORC",
     "forcing_eds_dir_path": null,
     "observational_source": "Data Services",
     "observational_eds_file_path": null,
