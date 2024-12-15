@@ -117,18 +117,21 @@ def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> lis
     :return: List of catchment identifiers (e.g., 'divide_id').
     :raises ValueError: If the specified layer or the 'divide_id' column is missing.
     """
-    # List all layers to verify the catchments layer exists
-    available_layers = fiona.listlayers(gpkg_path)
-    if layer_name not in available_layers:
-        raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
+    if gpkg_path:
+        # List all layers to verify the catchments layer exists
+        available_layers = fiona.listlayers(gpkg_path)
+        if layer_name not in available_layers:
+            raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
 
-    # Read the catchments layer
-    gdf = gpd.read_file(gpkg_path, layer=layer_name)
+        # Read the catchments layer
+        gdf = gpd.read_file(gpkg_path, layer=layer_name)
 
-    # Extract the 'divide_id' column
-    if 'divide_id' in gdf.columns:
-        catchments = gdf['divide_id'].tolist()
+        # Extract the 'divide_id' column
+        if 'divide_id' in gdf.columns:
+            catchments = gdf['divide_id'].tolist()
+        else:
+            raise ValueError("The 'divide_id' column was not found in the layer.")
+
+        return catchments
     else:
-        raise ValueError("The 'divide_id' column was not found in the layer.")
-
-    return catchments
+        return []
