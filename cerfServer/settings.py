@@ -218,6 +218,7 @@ REPO_ROOT = '/ngen-app'
 NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
+FORECAST_FORCING_DOWNLOAD_REPO = str(Path(REPO_ROOT) / 'forcing_forecast_download')
 
 # This must match the data location in the ngen/ngen-cal docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data

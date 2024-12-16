@@ -208,8 +208,10 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
 
     :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
+    # TODO Build config here
     gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.name
+    config_file = 'config'
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(forecast_forcing_download_run,
