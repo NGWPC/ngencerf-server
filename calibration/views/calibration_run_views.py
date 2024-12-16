@@ -852,7 +852,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     # Log the original start and end ranges in the file
     original_start = df['dateTime'].min()
     original_end = df['dateTime'].max()
-    logger.info(f'File {input_file} original date range: start={original_start}, end={original_end}')
+    logger.info(f'File {input_file} original date range: {original_start} - {original_end}')
 
     # Efficiently filter rows using DataFrame.loc and create a copy to avoid warnings
     subset_df = df.loc[
