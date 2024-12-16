@@ -179,9 +179,8 @@ def run_validation_job(validation_run: ValidationRun) -> None:
             f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
 
     cmd_line_args = {'input_file': input_file}
-    if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
-        cmd_line_args['worker_name'] = validation_run.worker_name
-        cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
+    cmd_line_args['worker_name'] = validation_run.worker_name if validation_run.validation_type == ValidationType.VALID_ITERATION.value else None
+    cmd_line_args['iteration_num'] = str(validation_run.iteration_num) if validation_run.validation_type == ValidationType.VALID_ITERATION.value else None
     execute_job(validation_run, cmd_line_args, stdout_file)
 
 

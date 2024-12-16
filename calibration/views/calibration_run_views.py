@@ -825,7 +825,7 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     """
     Reads a CSV file, filters rows based on a time range, and writes the filtered data
-    to an output file with the original column names and timezone-naive datatime values.
+    to an output file with the original column names and timezone-naive datetime values.
 
     :param input_file: Path to the input CSV file.
     :param output_file: Path to the output CSV file.
@@ -848,6 +848,11 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
 
     # Localize datetime column to UTC to make it timezone-aware for comparison
     df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
+
+    # Log the original start and end ranges in the file
+    original_start = df['dateTime'].min()
+    original_end = df['dateTime'].max()
+    logger.info(f'File {input_file} original date range: start={original_start}, end={original_end}')
 
     # Efficiently filter rows using DataFrame.loc and create a copy to avoid warnings
     subset_df = df.loc[
