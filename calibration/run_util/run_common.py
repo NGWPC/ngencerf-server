@@ -150,7 +150,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     stdout_File = get_calibration_stdout_file(calibration_run)
 
-    execute_job(calibration_run, {'intput_file': input_file}, stdout_File)
+    execute_job(calibration_run, {'input_file': input_file}, stdout_File)
 
 
 def run_validation_job(validation_run: ValidationRun) -> None:
