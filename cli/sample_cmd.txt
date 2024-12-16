@@ -1,6 +1,5 @@
 SAMPLE_DATA=../../data/ngen-cal-data
 GPKG=$SAMPLE_DATA/gauge_01123000.gpkg
-GPKG=$SAMPLE_DATA/gages2.2-01123000.gpkg
 GPKG=$SAMPLE_DATA/gpkg2.2/gages-01123000.gpkg
 GPKG=/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/gpkg_v2.2/CONUS/gages-01123000.gpkg
 GPKG=/home/peter.a.kronenberg/s3/ngwpc-hydrofabric/2.2/CONUS/01123000/GEOPACKAGE/USGS/2024_Dec_07_15_57_57/gauge_01123000.gpkg
