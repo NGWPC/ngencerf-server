@@ -23,14 +23,14 @@ logger = logging.getLogger(__name__)
 pool: ThreadPoolExecutor = ThreadPoolExecutor()
 
 
-def run_job_local(run: BaseRun, input_file: str, output_file: str) -> None:
+def run_job_local(run: BaseRun, input_file: str, stdout_file: str) -> None:
     """
     Executes a local job by determining the appropriate script command and callback based on the run type,
     and then running the job.
 
     :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object representing the job run.
     :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
+    :param stdout_file: Path to the stdout file.
     """
     # Determine the script command and callback function
     if isinstance(run, CalibrationRun):
@@ -53,10 +53,10 @@ def run_job_local(run: BaseRun, input_file: str, output_file: str) -> None:
     # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
         spawn_command = [settings.RUNTIME_INFO.get(script_cmd)[1]]
-        extra = [output_file, NGEN_CAL_VENV]
+        extra = [stdout_file, NGEN_CAL_VENV]
     elif NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
         spawn_command = settings.RUNTIME_INFO.get(script_cmd)[0].split()
-        extra = [output_file]  # Venv not required for Docker
+        extra = [stdout_file]  # Venv not required for Docker
     else:
         spawn_command = []
         extra = []

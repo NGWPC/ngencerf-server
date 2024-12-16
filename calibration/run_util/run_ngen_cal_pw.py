@@ -21,14 +21,14 @@ logger = logging.getLogger(__name__)
 User = get_user_model()  # Dynamically fetch the custom user model
 
 
-def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, output_file: str) -> None:
+def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, stdout_file: str) -> None:
     """
     Submits a job to Slurm, determining the appropriate endpoint, payload, and handling HTTP responses.
 
     :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object.
     :param owner: The owner (user instance) of the job, used to generate the auth token.
     :param input_file: Path to the input file for the job.
-    :param output_file: Path to the output file for the job.
+    :param stdout_file: Path to the stdout file for the job.
     """
     if isinstance(run, CalibrationRun):
         url_endpoint = settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT
@@ -44,7 +44,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, input_file: str, output_file:
     url = urljoin(settings.SLURM_URL, url_endpoint)
     payload = {
         'input_file': (None, input_file),
-        'output_file': (None, output_file),
+        'output_file': (None, stdout_file),
         'auth_token': (None, generate_custom_token(owner, token_slurm_scope))
     }
 
