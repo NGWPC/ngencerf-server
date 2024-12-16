@@ -824,13 +824,13 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     """
     Reads a CSV file, filters rows based on a time range, and writes the filtered data
-    to an output file with the original column names.
+    to an output file with the original column names and timezone-naive datatime values.
 
     :param input_file: Path to the input CSV file.
     :param output_file: Path to the output CSV file.
     :param date_time_range: DateTimeRange object specifying the time range for filtering.
     """
-    logger.info(f'Subsetting file {input_file} to {output_file}')
+    logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range}')
 
     # Ensure the output directory exists
     output_dir = os.path.dirname(output_file)
@@ -845,14 +845,17 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     # Dynamically rename the first column to a consistent name
     df.rename(columns={original_time_column: 'dateTime'}, inplace=True)
 
-    # Localize the datetime column to UTC
+    # Localize datetime column to UTC to make it timezone-aware for comparison
     df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
 
-    # Efficiently filter rows using DataFrame.loc and create a copy to avoid the warning
+    # Efficiently filter rows using DataFrame.loc and create a copy to avoid warnings
     subset_df = df.loc[
         (df['dateTime'] >= date_time_range.start_datetime) &
         (df['dateTime'] <= date_time_range.end_datetime)
     ].copy()  # Explicitly create a copy
+
+    # Convert timezone-aware datetime column to naive timestamps
+    subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
 
     # Rename the datetime column back to its original name
     subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
