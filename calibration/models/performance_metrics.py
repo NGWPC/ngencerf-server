@@ -1,13 +1,6 @@
 from django.db import models
-from django.db.models import ExpressionWrapper, FloatField, Value, F, Func, When, Case
-from django.db.models.functions import Coalesce, NullIf
 
 from calibration.models.base_model import BaseModel
-
-class ExtractEpoch(models.Func):
-    function = "EXTRACT"
-    template = "%(function)s(EPOCH FROM %(expressions)s)"
-    output_field = models.FloatField()
 
 
 class PerformanceMetrics(BaseModel):

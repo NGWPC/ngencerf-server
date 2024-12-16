@@ -130,6 +130,22 @@ def get_forecast_run(
     return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', {'calibration_run__is_deleted': False})
 
 
+def get_forecast_forcing_download_run(
+        forecast_forcing_download_run_id: int,
+        user: User | None,
+        run_status: List[StatusEnum] | None = None
+) -> Tuple[ForecastForcingDownloadRun | None, Response | None]:
+    """
+    Retrieve a ForecastForcingDownloadRun instance by its ID, filtering by owner and status.
+
+    :param forecast_forcing_download_run_id: The ID of the ForecastForcingDownloadRun to retrieve.
+    :param user: The user requesting the ForecastForcingDownloadRun. If None, no owner filtering is applied.
+    :param run_status: A list of allowed statuses for the ForecastRun.
+    :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
+    """
+    return get_run_instance(ForecastForcingDownloadRun, forecast_forcing_download_run_id, user, run_status, 'forecast_run__calibration_run__owner', {'calibration_run__is_deleted': False})
+
+
 def join_with_or(items):
     """
        Join a list of strings into a single string, using commas and 'or' for the last item.

@@ -23,7 +23,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer, \
-    CancelJobResponseSerializer
+    ForecastJobSlurmCallbackRequestSerializer, \
+    ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run
@@ -661,7 +662,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
 
 
 @extend_schema(
-    request=ValidationJobSlurmCallbackRequestSerializer,
+    request=ForecastJobSlurmCallbackRequestSerializer,
     responses={
         202: None,
         400: OpenApiResponse(
@@ -688,19 +689,19 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     data = request.data
     logger.debug(f'forecast_job_slurm_callback() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
+    validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
     if error_return:
         return error_return
 
-    validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
     job_status = validator.get('job_status')
 
-    validation_run, error_return = get_forecast_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
+    forecast_run, error_return = get_forecast_run(forecast_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_job_callback_pw(validation_run, slurm_status)
+    run_forecast_job_callback_pw(forecast_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
 
@@ -708,7 +709,7 @@ def forecast_job_slurm_callback(request: Request) -> Response:
 
 
 @extend_schema(
-    request=ValidationJobSlurmCallbackRequestSerializer,
+    request=ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
     responses={
         202: None,
         400: OpenApiResponse(
@@ -735,19 +736,19 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     data = request.data
     logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
+    validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
     if error_return:
         return error_return
 
-    validation_run_id = validator.get('validation_run_id')
+    forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
     job_status = validator.get('job_status')
 
-    validation_run, error_return = get_forecast_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
+    forecast_forcing_download_run, error_return = get_forecast_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
     slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_forcing_download_job_callback_pw(validation_run, slurm_status)
+    run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
 
