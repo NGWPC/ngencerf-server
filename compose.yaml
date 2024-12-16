@@ -25,7 +25,6 @@ services:
         - CREATE_INPUT_TAG=development
       secrets:
         - gitlab_token
-        - aws_token
     image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest
     pull_policy: build
     ports:
@@ -49,6 +48,3 @@ services:
 secrets:
   gitlab_token:
     file: ~/.gitlab_token
-  aws_token:
-    file: ./.aws_credentials
-
