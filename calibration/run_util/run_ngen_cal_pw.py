@@ -1,6 +1,5 @@
 import functools
 import logging
-import os
 from urllib.parse import urljoin
 
 import requests
@@ -15,6 +14,8 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
+from calibration.util.file_util import get_single_file
+from calibration.util.ngen_locations import get_forecast_forcing_download_file, get_geopackage_dir_for_job
 from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description, validate_response_data
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         payload.update({
             'forecast_forcing_download_run_id': (None, run.id),
             'cycle_name': arguments['cycle_name'],
-            'gpkg_file' : os.path.join(get_geopackage_dir_for_job(run.forecast_run.calibration_run), get_geopackage_filename(run.forecast_run.calibration_run)),
+            'gpkg_file': get_single_file(get_geopackage_dir_for_job(run.forecast_run.calibration_run)),
             'forcing_file': get_forecast_forcing_download_file(run.forecast_run),
             'output_file': (None, stdout_file),
         })

@@ -134,6 +134,7 @@ def get_output_validation_iteration_plot_dir(run: CalibrationRun, iteration_num:
 def get_output_forecast_run_dir(run: CalibrationRun) -> str:
     return os.path.join(get_output_dir(run), 'Forecast_Run')
 
+
 def get_full_worker_filename(worker_name: str) -> str:
     return f"ngen_{worker_name}_worker"
 
@@ -256,7 +257,6 @@ def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
 
 def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}.nc')
-
 
 
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
