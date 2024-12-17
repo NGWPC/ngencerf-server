@@ -179,8 +179,10 @@ def run_validation_job(validation_run: ValidationRun) -> None:
             f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
 
     cmd_line_args = {'input_file': input_file}
-    cmd_line_args['worker_name'] = validation_run.worker_name if validation_run.validation_type == ValidationType.VALID_ITERATION.value else None
-    cmd_line_args['iteration_num'] = str(validation_run.iteration_num) if validation_run.validation_type == ValidationType.VALID_ITERATION.value else None
+    if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
+        # For running local, we need to leave these out
+        cmd_line_args['worker_name'] = validation_run.worker_name
+        cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
     execute_job(validation_run, cmd_line_args, stdout_file)
 
 
@@ -208,8 +210,10 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
 
     :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
+    # TODO Build config here
     gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.name
+    config_file = 'config'
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(forecast_forcing_download_run,
@@ -240,11 +244,12 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
         if response is not None:
             return response  # Return the error response early
 
-    with transaction.atomic():
-        # Set submission date and status
-        run.submit_date = datetime.now(timezone.utc)
-        run.status = StatusEnum.RUNNING.db_instance
-        run.save(update_fields=['submit_date', 'status'])
+    try:
+        with transaction.atomic():
+            # Set submission date and status
+            run.submit_date = datetime.now(timezone.utc)
+            run.status = StatusEnum.RUNNING.db_instance
+            run.save(update_fields=['submit_date', 'status'])
 
         # Determine the appropriate job execution function
         if isinstance(run, CalibrationRun):
@@ -257,6 +262,11 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
             run_forecast_forcing_download_job(run)
         else:
             raise CerfException(f"Unsupported run type: {type(run).__name__}")
+    except Exception as e:
+        # Handle failures by marking the job as FAILED
+        run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
+        logger.exception(f'Exception submitting {get_job_description(run)} - {str(e)}')
+        return None
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
 

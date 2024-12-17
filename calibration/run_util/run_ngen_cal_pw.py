@@ -60,8 +60,8 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'validation_type': (None, run.validation_type),
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
-            'worker_name': (None, arguments['worker_name']),
-            'iteration': (None, arguments['iteration_num'])
+            'worker_name': (None, arguments.get('worker_name')),
+            'iteration': (None, arguments.get('iteration_num'))
         })
     elif isinstance(run, CalibrationRun):
         payload.update({
