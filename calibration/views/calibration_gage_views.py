@@ -368,16 +368,18 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
         if run.gage:
             # Delete any user-uploaded files associated with the previous gage
             delete_all_files_in_directory(get_geopackage_dir_for_job(run))
+            run.geopackage_eds_file_path = None
 
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if os.path.exists(uploaded_forcing_dir):
                 shutil.rmtree(uploaded_forcing_dir)
+            run.forcing_eds_dir_path = None
 
             uploaded_observational_file = get_observational_file_for_job(run)
             if os.path.exists(uploaded_observational_file):
                 os.remove(uploaded_observational_file)
+            run.observational_eds_file_path = None
 
-        # Update the run.gage field
         run.gage = gage
 
         # Update initial parameter values if formulations exist
