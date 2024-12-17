@@ -212,13 +212,13 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     """
     # TODO Build config here
     gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
-    cycle_name = forecast_forcing_download_run.forecast_run.cycle.name
+    cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
     config_file = 'config'
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(forecast_forcing_download_run,
                 {
-                    'gpkg_file': gpkg_file, 'cycle_name': cycle_name,
+                    'gpkg_file': gpkg_file, 'cycle_name': cycle_name, 'config_file': config_file,
                     'forecast_forcing_download_file': get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
                 },
                 stdout_file)
