@@ -458,7 +458,7 @@ def build_config(config: dict, directory: str) -> str:
     :param directory: The directory in which to save the configuration file.
     :return: The path to the saved configuration file.
     """
-    config_file = os.path.join(directory, 'input.config')
+    config_file = os.path.join(directory, 'ngen-cal.config')
 
     logger.info(f'saving config to {config_file}')
 
