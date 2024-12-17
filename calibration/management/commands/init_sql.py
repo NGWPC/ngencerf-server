@@ -110,7 +110,7 @@ class Command(BaseCommand):
                   {"name": "SFT",
                    "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
                    "groups": ["Soil Moisture"],
-                   "is_active": False},
+                   "is_active": True},
                   {"name": "T-Route",
                    "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
                    "groups": ["Routing"]},
