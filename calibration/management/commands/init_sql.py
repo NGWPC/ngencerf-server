@@ -223,13 +223,13 @@ class Command(BaseCommand):
             ForecastCycle.objects.all().delete()
 
         values = [
-            {"name": "Analysis and Assimilation (AnA)", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "3 hr",
+            {"name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "3 hr",
              "is_active": False},
-            {"name": "Short Range Forecast", "data_sources": "HRRR, RAP", "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
-            {"name": "Extended AnA", "data_sources": "RAP, HRRR, Stage IV", "time_range": "tbd", "is_active": False},
-            {"name": "Medium Range Forecast", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
-            {"name": "Long Range AnA", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "tbd", "is_active": False},
-            {"name": "Long Range Forecast", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
+            {"name": "Short Range Forecast", "internal_name": "short_range", "data_sources": "HRRR, RAP", "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
+            {"name": "Extended AnA", "internal_name": "extended_ana", "data_sources": "RAP, HRRR, Stage IV", "time_range": "tbd", "is_active": False},
+            {"name": "Medium Range Forecast", "internal_name": "medium_range", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
+            {"name": "Long Range AnA", "internal_name": "long_range_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "tbd", "is_active": False},
+            {"name": "Long Range Forecast", "internal_name": "long_range", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
         ]
 
         for v in values:

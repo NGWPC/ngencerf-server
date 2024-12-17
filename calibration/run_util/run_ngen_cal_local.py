@@ -66,13 +66,6 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str)
         spawn_command = []
         extra = []
 
-    # Prepare the argument list to pass to the shell script
-    # args_to_run = [cmd_line_args]
-    # if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
-    #     args_to_run += [run.worker_name, str(run.iteration_num)]
-    # if isinstance(run, ForecastForcingDownloadRun):
-    #     args_to_run += [get_forecast_forcing_download_file(run.forecast_run)]
-
     args = spawn_command + [script_cmd.value] + list(cmd_line_args.values()) + extra
 
     # Bind the callback function for job

@@ -80,8 +80,9 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     elif isinstance(run, ForecastForcingDownloadRun):
         payload.update({
             'forecast_forcing_download_run_id': (None, run.id),
-            'cycle_name': arguments['cycle_name'],
             'gpkg_file': get_single_file(get_geopackage_dir_for_job(run.forecast_run.calibration_run)),
+            'cycle_name': arguments['cycle_name'],
+            'config_file': arguments['config_file'],
             'forcing_file': get_forecast_forcing_download_file(run.forecast_run),
             'output_file': (None, stdout_file),
         })
