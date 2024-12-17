@@ -229,12 +229,13 @@ class Command(BaseCommand):
             {"name": "Extended AnA", "internal_name": "extended_ana", "data_sources": "RAP, HRRR, Stage IV", "time_range": "tbd", "is_active": False},
             {"name": "Medium Range Forecast", "internal_name": "medium_range", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
             {"name": "Long Range AnA", "internal_name": "long_range_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "tbd", "is_active": False},
-            {"name": "Long Range Forecast", "internal_name": "long_range", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
+            {"name": "Long Range Forecast", "internal_name": "long_range", "data_sources": "long_range_forecast", "time_range": "tbd", "is_active": False},
         ]
 
         for v in values:
             ForecastCycle.objects.update_or_create(name=v['name'],
                                                    defaults={"is_active": v.get('is_active', True),
+                                                             "internal_name": v['internal_name'],
                                                              "data_sources": v['data_sources'],
                                                              "time_range": v['time_range'],
                                                              "created_by": self.user})
