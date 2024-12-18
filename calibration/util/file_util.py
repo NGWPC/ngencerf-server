@@ -5,7 +5,29 @@ import shutil
 logger = logging.getLogger(__name__)
 
 
-def copy_directory(source_dir, destination_dir):
+def copy_file(source_file: str, destination_file: str):
+    """
+    Copy a file to another file. The destination file will be created or overwritten.
+
+    :param source_file: Path to the source file to be copied
+    :param destination_file: Path to the destination file
+    """
+    # Check if the source file exists
+    if not os.path.isfile(source_file):
+        raise FileNotFoundError(f"Source file {source_file} does not exist or is not a file.")
+
+    # Ensure the destination directory exists
+    destination_dir = os.path.dirname(destination_file)
+    if destination_dir and not os.path.exists(destination_dir):
+        os.makedirs(destination_dir)
+
+    # Copy the source file to the destination file
+    shutil.copy2(source_file, destination_file)
+
+    logger.info(f"File successfully copied from {source_file} to {destination_file}")
+
+
+def copy_directory(source_dir: str, destination_dir: str):
     """
     Copy the contents of source_dir to destination_dir. If destination_dir
     does not exist, it will be created.
@@ -24,7 +46,7 @@ def copy_directory(source_dir, destination_dir):
     # Copy the contents of the source directory to the destination directory
     shutil.copytree(source_dir, destination_dir, dirs_exist_ok=True)
 
-    return f"Directory successfully copied from {source_dir} to {destination_dir}."
+    logger.info(f"Directory successfully copied from {source_dir} to {destination_dir}.")
 
 
 def copy_file_to_directory(source_file: str, destination_dir: str):
@@ -35,32 +57,32 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     :param source_file: Path to the source file to be copied
     :param destination_dir: Path to the destination directory
     """
-    # Check if the source file exists
-    if not os.path.isfile(source_file):
-        raise FileNotFoundError(f"Source file {source_file} does not exist or is not a file.")
-
-    # Ensure the destination directory exists, if not, create it
+    # Ensure the destination directory exists
     if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
 
-    # Construct the full path for the destination file
+    # Construct the destination file path
     destination_file = os.path.join(destination_dir, os.path.basename(source_file))
 
-    # Copy the source file to the destination directory
-    shutil.copy2(source_file, destination_file)
-
-    return f"File successfully copied from {source_file} to {destination_dir}."
+    # Use copy_file to handle the file copying
+    copy_file(source_file, destination_file)
 
 
-def delete_all_files_in_directory(source_dir):
+def delete_all_files_in_directory(source_dir: str):
+    """
+    Deletes all files in the specified directory.
+
+    :param source_dir: Path to the directory whose files are to be deleted.
+    """
     if os.path.isdir(source_dir):
         for filename in os.listdir(source_dir):
             file_path = os.path.join(source_dir, filename)
             if os.path.isfile(file_path):
                 os.remove(file_path)
+    logger.info(f"All files in directory '{source_dir}' have been deleted.")
 
 
-def get_single_file(source_dir):
+def get_single_file(source_dir: str):
     """
     Retrieves the first file found in the given directory.
     If the directory is empty, it returns None. If more than one file exists,

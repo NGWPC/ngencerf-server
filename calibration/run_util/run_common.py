@@ -17,7 +17,8 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
-    get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job
+    get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_file, \
+    get_forecast_dir
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output
@@ -86,7 +87,53 @@ def get_run_owner(run: BaseRun):
     raise AttributeError(f"Cannot determine owner for run of type {type(run).__name__}")
 
 
-def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -> None:
+def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
+    """
+    Validates the command-line arguments and output file paths for LOCAL and DOCKER environments.
+
+    This function ensures that all arguments passed to subprocess-based commands are valid types
+    (str, bytes, or os.PathLike). It raises a TypeError if any invalid argument is encountered.
+
+    :param cmd_line_args: A dictionary of command-line arguments where the keys are argument names
+                          and the values are their corresponding values.
+    :param stdout_file: The path to the file where the job's stdout will be written.
+                        It must be a valid path-like object.
+    :raises TypeError: If any argument or the stdout file is not a valid type.
+    """
+
+    # Define allowed types for clarity
+    allowed_types = (str, bytes, os.PathLike)
+
+    # Validate each argument in the command-line arguments dictionary
+    for key, value in cmd_line_args.items():
+        # Check if the value is one of the allowed types
+        if not isinstance(value, allowed_types):
+            # Log the invalid argument with valid type information
+            logger.error(
+                f"Invalid argument for '{key}': {value} (type: {type(value)}). "
+                f"Expected one of {allowed_types}."
+            )
+            # Raise a TypeError with details about the invalid argument
+            raise TypeError(
+                f"Invalid argument for '{key}': {value} (type: {type(value)}). "
+                f"Expected one of {allowed_types}."
+            )
+
+    # Validate the stdout file path to ensure it's a valid type
+    if not isinstance(stdout_file, allowed_types):
+        # Log the invalid stdout file path with valid type information
+        logger.error(
+            f"Invalid stdout_file: {stdout_file} (type: {type(stdout_file)}). "
+            f"Expected one of {allowed_types}."
+        )
+        # Raise a TypeError with details about the invalid stdout file path
+        raise TypeError(
+            f"Invalid stdout_file: {stdout_file} (type: {type(stdout_file)}). "
+            f"Expected one of {allowed_types}."
+        )
+
+
+def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, simulate:bool=False) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
@@ -96,11 +143,15 @@ def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str) -
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.).
     :param cmd_line_args: A dictionary of command-line arguments for the job.
     :param stdout_file: The path to the file where the job's stdout will be written.
+    :param simulate: For LOCAL or DOCKER jobs, if True, simulates successful execution without running a real job.
     :raises CerfException: If the environment is unsupported.
     """
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
+        # Validate for LOCAL and DOCKER environments
+        validate_cmd_args(cmd_line_args, stdout_file)
+
         from calibration.run_util.run_ngen_cal_local import run_job_local
-        run_job_local(run, cmd_line_args, stdout_file)
+        run_job_local(run, cmd_line_args, stdout_file, simulate=simulate)
     elif settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         from calibration.run_util.run_ngen_cal_pw import submit_job_to_slurm
         # Resolve owner dynamically for the Slurm submission
@@ -186,21 +237,6 @@ def run_validation_job(validation_run: ValidationRun) -> None:
     execute_job(validation_run, cmd_line_args, stdout_file)
 
 
-def run_forecast_job(forecast_run: ForecastRun) -> None:
-    """
-    Start a forecast job by determining input and output file paths.
-
-    This function is intended to be passed as an argument to `submit_job`
-    and not called directly.
-
-    :param forecast_run: The ForecastRun object representing the job.
-    """
-    input_file = 'dummy'
-    stdout_file = get_forecast_stdout_file(forecast_run)
-
-    execute_job(forecast_run, {'input_file': input_file}, stdout_file)
-
-
 def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastForcingDownloadRun) -> None:
     """
     Start a forecast forcing download job by determining input and output file paths.
@@ -214,14 +250,35 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
     config_file = 'config'
+    forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(forecast_forcing_download_run,
                 {
-                    'gpkg_file': gpkg_file, 'cycle_name': cycle_name, 'config_file': config_file,
-                    'forecast_forcing_download_file': get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
+                    'gpkg_file': gpkg_file,
+                    'cycle_name': cycle_name,
+                    'config_file': config_file,
+                    'forcing_file': forcing_file,
+                    'stdout_file': get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
                 },
-                stdout_file)
+                stdout_file, simulate=True)
+
+
+def run_forecast_job(forecast_run: ForecastRun) -> None:
+    """
+    Start a forecast job by determining input and output file paths.
+
+    This function is intended to be passed as an argument to `submit_job`
+    and not called directly.
+
+    :param forecast_run: The ForecastRun object representing the job.
+    """
+    forcing_file = get_forecast_forcing_download_file(forecast_run)
+    validation_best_input = get_validation_best_input_file(forecast_run.calibration_run)
+    output_dir = os.path.basename(get_forecast_dir(forecast_run))
+    stdout_file = get_forecast_stdout_file(forecast_run)
+
+    execute_job(forecast_run, {'forcing_file': forcing_file, 'validation_best_input': validation_best_input, 'output_dir': output_dir}, stdout_file)
 
 
 def submit_job(run: BaseRun, config_file=None) -> Response | None:
@@ -256,10 +313,10 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
             run_calibration_job(run)
         elif isinstance(run, ValidationRun):
             run_validation_job(run)
-        elif isinstance(run, ForecastRun):
-            run_forecast_job(run)
         elif isinstance(run, ForecastForcingDownloadRun):
             run_forecast_forcing_download_job(run)
+        elif isinstance(run, ForecastRun):
+            run_forecast_job(run)
         else:
             raise CerfException(f"Unsupported run type: {type(run).__name__}")
     except Exception as e:
