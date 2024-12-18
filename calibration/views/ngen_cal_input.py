@@ -307,7 +307,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
         for opt_input in inputs:
             converted_value = (
-                int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER else opt_input['value']
+                int(opt_input['value']) if opt_input['data_type'] == DataTypeEnum.INTEGER.value else opt_input['value']
             )
             calibration[opt_input['name']] = converted_value
             all_input_names.discard(opt_input['name'])
