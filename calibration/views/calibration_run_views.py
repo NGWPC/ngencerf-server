@@ -123,13 +123,21 @@ def get_status(request: Request) -> Response:
 
     # Retrieve forecast runs with related PerformanceMetrics data
     forecast_runs = ForecastRun.objects.filter(calibration_run=calibration_run).select_related(
-        "performance_metrics"
+        "performance_metrics", "forcing_download_run"
     ).only(
         "id", "status__name", "submit_date",
         "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
         "performance_metrics__cpu_time", "performance_metrics__max_rss",
         "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
-        "performance_metrics__reserved_time"
+        "performance_metrics__reserved_time",
+        "forcing_download_run__status__name",
+        "forcing_download_run__performance_metrics__elapsed_time",
+        "forcing_download_run__performance_metrics__num_cpus",
+        "forcing_download_run__performance_metrics__cpu_time",
+        "forcing_download_run__performance_metrics__max_rss",
+        "forcing_download_run__performance_metrics__max_disk_read",
+        "forcing_download_run__performance_metrics__max_disk_write",
+        "forcing_download_run__performance_metrics__reserved_time"
     )
 
     # Construct validation response with performance metrics as needed
@@ -152,13 +160,20 @@ def get_status(request: Request) -> Response:
     # Construct validation response with performance metrics as needed
     forecast_response = []
     for run in forecast_runs:
+        forcing_download = run.forcing_download_run
         forecast_data = {
             'forecast_run_id': run.id,
             'status': run.status.name,
             'submit_date': run.submit_date,
             'run_start': run.run_start,
             'run_end': run.run_end,
-            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
+            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None,
+            'forcing_download': {
+                'forcing_download_run_id': forcing_download.id,
+                'status': forcing_download.status.name,
+                'elapsed_time': forcing_download.performance_metrics.elapsed_time if forcing_download.performance_metrics else None,
+                'performance_metrics': get_performance_metrics(forcing_download.performance_metrics) if should_include_metrics(forcing_download.status) else None
+            } if forcing_download else None
         }
         if should_include_metrics(run.status):
             forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
