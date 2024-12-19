@@ -224,4 +224,3 @@ def delete_forecast_job(request: Request) -> Response:
     logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {response_validator.data}')
 
     return Response(response_validator.data)
-

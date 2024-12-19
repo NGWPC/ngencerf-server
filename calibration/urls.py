@@ -75,7 +75,7 @@ urlpatterns = [
     ##################################
     path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration, name="getCalibrationDataByIteration"),
     path('calibration/get_log_names/', calibration_evaluation_views.get_log_names, name="getLogNames"),
-    path('calibration/get_logs/', calibration_evaluation_views.get_logs, name="getLogs"),
+    path('calibration/get_log/', calibration_evaluation_views.get_log, name="getLog"),
 
     ##################################
     # Forecast
