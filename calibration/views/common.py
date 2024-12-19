@@ -65,7 +65,7 @@ def get_run_instance(
     try:
         run = query.get()
     except model.DoesNotExist:
-        user_info = f' or is not owned by {user}' if user else ''
+        user_info = f' or is not owned by {user.email}' if user else ''
         return None, Response(
             {'error': f'{model.__name__} {run_id} does not exist{user_info}'},
             status=status.HTTP_400_BAD_REQUEST)
