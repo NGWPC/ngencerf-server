@@ -54,8 +54,9 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str,
         callback_function = run_forecast_forcing_download_job_callback_local
         # TODO
         # Temporarily copy a sample forcing file
-        print('temporarily copying file to', cmd_line_args['forcing_file'])
-        copy_file(os.path.join(settings.NGEN_FORECAST_REPO_ROOT, 'test_data', 'forcing.nc'), cmd_line_args['forcing_file'])
+        test_file = os.path.expanduser('~/s3/ngwpc-dev/peter.kronenberg/forcing.nc')
+        print(f"temporarily copying {test_file} to {cmd_line_args['forcing_file']}")
+        copy_file(test_file, cmd_line_args['forcing_file'])
     elif isinstance(run, ForecastRun):
         script_cmd = ScriptEnum.FORECAST
         callback_function = run_forecast_job_callback_local
