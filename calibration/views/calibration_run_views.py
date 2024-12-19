@@ -167,16 +167,21 @@ def get_status(request: Request) -> Response:
             'submit_date': run.submit_date,
             'run_start': run.run_start,
             'run_end': run.run_end,
-            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None,
-            'forcing_download': {
-                'forcing_download_run_id': forcing_download.id,
-                'status': forcing_download.status.name,
-                'elapsed_time': forcing_download.performance_metrics.elapsed_time if forcing_download.performance_metrics else None,
-                'performance_metrics': get_performance_metrics(forcing_download.performance_metrics) if should_include_metrics(forcing_download.status) else None
-            } if forcing_download else None
+            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
         if should_include_metrics(run.status):
             forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
+
+        if forcing_download:
+            forcing_download_data = {
+                'forcing_download_run_id': forcing_download.id,
+                'status': forcing_download.status.name,
+                'elapsed_time': forcing_download.performance_metrics.elapsed_time if forcing_download.performance_metrics else None
+            }
+            if should_include_metrics(forcing_download.status):
+                forcing_download_data['performance_metrics'] = get_performance_metrics(forcing_download.performance_metrics)
+            forecast_data['forcing_download'] = forcing_download_data
+
         forecast_response.append(forecast_data)
 
     # Prepare the main response without calibration performance metrics if not requested
