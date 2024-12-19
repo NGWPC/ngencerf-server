@@ -213,7 +213,8 @@ REPO_ROOT = '/ngen-app'
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 # directory that Ngen-cal is cloned into
 NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
-FORECAST_FORCING_REPO = os.path.join(REPO_ROOT, 'ngen-forcing')
+NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-fcst')
+NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 
 # This must match the data location in the ngen/ngen-cal docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
@@ -233,25 +234,26 @@ NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
 # Directory containing the ngen-cal virtual environment
-# This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
+# This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 # Used when running in NGEN_ENVIRONMENT=DOCKER
-NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest'
-NGEN_FORECAST_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest'
-FORECAST_FORCING_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+# This assumes that the docker containers have been appropriately tagged as ngen-cal, ngen-fcst or ngen-forcing
+NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-calt'
+NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
+NGEN_FORCING_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-forcing'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
 NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
-NGEN_FORECAST_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
-FORECAST_FORCING_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-xxx.sh')
+NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
+FORECAST_FORCING_SCRIPT = os.path.join(NGEN_FORCING_REPO_ROOT, 'docker', 'run-ngen-forcing.sh')
 
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
     ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
     ScriptEnum.VALIDATION_ITERATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
     ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
-    ScriptEnum.FORECAST_FORCING: (FORECAST_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
+    ScriptEnum.FORECAST_FORCING: (NGEN_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
 }
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
