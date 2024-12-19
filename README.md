@@ -279,7 +279,7 @@ Follow these steps to pull the latest docker containers.
    ```
    docker login registry.sh.nextgenwaterprediction.com
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
-   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fct:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-fcst
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest ngen-fcst
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-lumped-forcing:latest && docker image tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-lumped-forcing:latest ngen-forcing
    ```
 

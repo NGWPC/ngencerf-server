@@ -788,8 +788,15 @@ class GetStatusValidationsResponseSerializer(CommonStatusFieldsMixin, Validation
     iteration_num = serializers.IntegerField(allow_null=True)
 
 
+class GetStatusForcingDownloadSerializer(BaseSerializer):
+    forcing_download_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(required=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
+
+
 class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer):
-    pass
+    forcing_download = GetStatusForcingDownloadSerializer(required=False, allow_null=True)
 
 
 class GetStatusResponseSerializer(GenericResponseSerializer):
