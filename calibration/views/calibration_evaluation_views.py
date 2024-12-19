@@ -8,10 +8,11 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType
-from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun
+from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
-    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer
+    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
+    GetLogNamesResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_landing_views import get_validation_jobs_internal
@@ -196,6 +197,60 @@ def get_validation_jobs(request: Request) -> Response:
 @extend_schema(
     request=ValidationRunSerializer,
     responses={
+        200: GetLogNamesResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get available log names"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_log_names(request: Request) -> Response:
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_logs() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ValidationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+
+    validation_run, error_return = get_validation_run(
+        validation_run_id,
+        request.user,
+        run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+    )
+    if error_return:
+        return error_return
+
+    log_names = [
+        {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
+        {LogCategory.VALIDATION.value: ['ngen stdout', 'ngen-cal stdout']},
+        {LogCategory.GLOBAL.value: ['ngen']},
+    ]
+    # See if there are any forecast jobs
+    if ForecastRun.objects.filter(calibration_run=validation_run.calibration_run).exists():
+        log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
+
+    response = {'log_names': log_names}
+
+    response_validator, error_response = validate_response(GetLogNamesResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user.email} from get_logs() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ValidationRunSerializer,
+    responses={
         200: GetLogsResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
@@ -367,6 +422,7 @@ def get_best_and_control_validation_ngen_cal_stdout_logs(validation_run: Validat
         'validation_type': validation_type,
         'logs': logs
     }]
+
 
 #
 # def get_validation_iteration_logs(validation_run: ValidationRun) -> list[dict[str, Any]]:

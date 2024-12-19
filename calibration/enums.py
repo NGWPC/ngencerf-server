@@ -197,6 +197,13 @@ class JobType(AbstractEnum):
     FORECAST = 'forecast'
 
 
+class LogCategory(AbstractEnum):
+    CALIBRATION = 'calibration'
+    VALIDATION = 'validation'
+    FORECAST = 'forecast'
+    GLOBAL = 'global'
+
+
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
 class ValidationMetricPeriod(AbstractEnum):
     calib = 'calib'
