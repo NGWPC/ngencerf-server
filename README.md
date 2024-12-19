@@ -42,6 +42,8 @@ sudo ln -s ~/ngwpc/data /ngencerf/data
 
 
 # Access to AWS
+This needs to be done if you are running on AWS Workspace
+
 Some endpoints require access to AWS and therefore you must update your credentials.
 The credentials only last a few hours, so be prepared to refresh them at least once a day.
 Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI, 
@@ -96,9 +98,8 @@ $ ls ~/s3/ngwpc-dev
 
 **Note:** There are other tools that perform the same functionally as `s3fs`,  and 
 environments, such as Parallel Works 
-might have other ways of implementing this functionality.  There is nothing in the server code
-that is dependant on `s3fs`.  All that matters is that the bucket is mounted as a file space
-and that there is agreement between NgenCerf and Data Services.
+have other ways of implementing this functionality.  There is nothing in the server code
+that is dependent on `s3fs`.  All that matters is that the bucket is mounted as a file space.
 
 
 # Static Files
@@ -148,7 +149,18 @@ These are the steps the `runCert` is performing.  You can skip them if you've su
 
 **Ensure that you are still in the `.venv-cerf` virtual environment**
 
-Run `pip install -r requirements.txt` to update any dependencies
+Run `pip install -r requirements.txt` to update any dependencies.
+
+The `createInput` dependency should be installed separately.  If this is the first time you're installing, then run 
+
+```
+pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+```
+If you are simply updating, enter
+```
+pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+
+```
 Run `manage.py migrate` to create all the tables
 ```
 source $cerfServer/.venv-cerf/bin/activate
@@ -187,16 +199,19 @@ where `public` is the name of your schema.
 
 
 # Running the server
-To run the server, use `runCerf.sh`
+To run the server, use `runCerf.sh`.  If you are running for the first time, or you have dropped all the tables in the table base, then included the `--load-static` option
+```
+./runCerf.sh [--load-static]
+```
 
-**Note:** If running locally (ngen and ngen-cal are being spawned as processes on the same machine), then it is import to run `pre_start.py` from `manage.py` before the
+**Note:** If running with NGEN_ENVIRONMENT=LOCAL or DOCKER, then it is import to run `pre_start.py` from `manage.py` before the
 server starts in order to clean up any Calibrations or Validations that were running at the time the server went down.
 This is not necessary when running on Parallel Works
 
 
 # User Authentication
 
-All endpoints require a user to be authenticated.  You can create a user through the front-end UI or use this curl command:
+All endpoints require a user to be authenticated.  You can create a user through the front-end UI, the command-line interface or use this curl command:
 
 You can use this `curl` command
 ```
@@ -207,6 +222,9 @@ curl --location 'localhost:8000/auth/users/' \
     "password": "<password>"
 }'
 ```
+
+To use the CLI, from the `cli` directory, enter
+`./ngencerf register`
 
 User creation only needs to be done once.
 
@@ -241,8 +259,10 @@ NGEN_ENVIRONMENT = DOCKER
 ```
 
 
-1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
+1. LOCAL - ngen and ngen-cal, as well as ngen-fcst and ngen-forcing, must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 Create a symbolic link to match the specifying in settings.py.
+All the repos should be installed in the same directory.  It can be anything, but a symbolic link needs to be created to match the location in the Docker containers, 
+which is `/ngen-app`.
    ```
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
@@ -251,7 +271,7 @@ Create a symbolic link to match the specifying in settings.py.
 
 
 2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
-Follow these steps to pull the latest ngen-cal docker container.  This container includes both ngen and ngen-cal
+Follow these steps to pull the latest docker containers. 
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
    2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
@@ -259,14 +279,18 @@ Follow these steps to pull the latest ngen-cal docker container.  This container
    ```
    docker login registry.sh.nextgenwaterprediction.com
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fct:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-fcst
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-lumped-forcing:latest && docker image tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-lumped-forcing:latest ngen-forcing
    ```
 
-   **Note:** If you are developing and have updates to ngen-cal that you want to include, use the following from the ngen-cal repo directory:
+   **Note:** If you are developing and have updates to the repos that you want to include, use one of the following from the appropriate repo directory:
    ```
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-fcst . 
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-forcing . 
    ```
  
-3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
+3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
 
 
 
