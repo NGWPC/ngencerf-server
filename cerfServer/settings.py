@@ -229,6 +229,14 @@ os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
 NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
 NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
+NGEN_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'forecast_forcing_work')
+
+# -----------------------------
+# Forcing environments
+# -----------------------------
+FORCING_MESH_ENV = 'ngen_esmf_mesh_prod'
+FORCING_EXTRACT_ENV = 'forcing_extraction'
+FORCING_ENGINE_ENV = 'NextGen_Forcings_Engine'
 
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')

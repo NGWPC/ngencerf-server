@@ -1,5 +1,8 @@
 import logging
+import os
 
+import yaml
+from django.conf import settings
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -7,10 +10,12 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ForecastCycleEnum, StatusEnum
-from calibration.models import ForecastRun
+from calibration.models import ForecastRun, CalibrationRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
     GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
+from calibration.util.ngen_locations import FORCING_MESH_SCRIPT_PATH, FORCINB_EXTRACTION_SCRIPT_PATH, get_geopackage_dir_for_job, FORCING_HRRR, \
+    FORCING_RAP, FORCING_BMI_SCRIPT_PATH, get_forecast_forcing_config_file
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, truncate_large_fields
 
@@ -224,3 +229,30 @@ def delete_forecast_job(request: Request) -> Response:
     logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {response_validator.data}')
 
     return Response(response_validator.data)
+
+
+def build_config(run: ForecastRun):
+    wrapper_config_json = {
+        'global': {
+            'mesh_script_path': FORCING_MESH_SCRIPT_PATH,
+            'mesh_in_base_path': get_geopackage_dir_for_job(run.calibration_run),
+            'mesh_out_base_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'esmf_mesh'),
+            'extraction_script_path': FORCINB_EXTRACTION_SCRIPT_PATH,
+            'extraction_out_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
+            'bmi_script_path': FORCING_BMI_SCRIPT_PATH,
+            'mesh_env': settings.FORCING_MESH_ENV,
+            'extract_env': settings.FORCING_EXTRACT_ENV,
+            'engine_env': settings.FORCING_ENGINE_ENV
+        },
+        'short_range': {
+            'sr_config_path': os.path.abspath("./sr_config.yml"),
+            'hrrr_out_path': FORCING_HRRR,
+            'rap_out_path': FORCING_RAP
+        }
+    }
+
+    config_path = get_forecast_forcing_config_file(run)
+    with open(config_path, 'w') as yaml_file:
+        yaml.dump(wrapper_config_json, yaml_file, default_flow_style=False)
+
+

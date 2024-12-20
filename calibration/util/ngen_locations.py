@@ -6,7 +6,8 @@ from django.conf import settings
 
 from calibration.enums import ValidationType
 from calibration.models import CalibrationRun, ForecastRun
-from cerfServer.settings import NGEN_ENVIRONMENT
+from cerfServer.settings import NGEN_ENVIRONMENT, FORCING_DATA_DIRS
+from data_services_test_data.data_services_test_data import forcing_sample_data
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,21 @@ files = [
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
     SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so')
 ]
+
+forecast_forcing_scripts = [
+    FORCING_MESH_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'ESMF_Mesh_Domain_Configuration_Production', 'NextGen_hyfab_to_ESMF_Mesh.py'),
+    FORCING_EXTRACTION_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'Forcing_Extraction_Scripts'),
+    FORCING_BMI_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'NextGen_Forcings_Engine_BMI', 'run_bmi_model.py')
+]
+
+forecast_forcing_work_directories = [
+    FORCING_RAW_INPUT := os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
+    FORCING_HRRR := os.path.join(FORCING_RAW_INPUT, 'HRRR'),
+    FORCING_RAP := os.path.join(FORCING_RAW_INPUT, 'RAP')
+]
+
+for f in forecast_forcing_work_directories:
+    os.makedirs(f, exist_ok=True)
 
 
 def check_files():
