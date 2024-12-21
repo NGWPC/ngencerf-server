@@ -238,7 +238,8 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, include_validations=True, run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR, StatusEnum.CANCELLED])
+    jobs = get_jobs(request.user, include_validations=True,
+                    run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR, StatusEnum.CANCELLED])
 
     response = {'jobs': jobs}
 
