@@ -1,10 +1,19 @@
 #! /bin/bash
 
-# Run ngenCerf outside of Pycharm
-
+# Source environment variables
 source "./cerfserver.env"
 
 cerfServer="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+
+# Redirect stdout and stderr to two log files and the console
+mkdir -p run-logs
+LOGFILE_DEV="run-logs/ngencerf_dev.log"
+LOGFILE_PROD="run-logs/ngencerf_prod.log"
+
+# Log initial message to both files only
+printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV" "$LOGFILE_PROD"
+
+exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
 
 # Check for the --load-static flag
 LOAD_STATIC_DATA=false
@@ -28,8 +37,8 @@ if [ "${CERF_VENV}" != "Docker" ]; then
        pip install -r requirements.txt
        echo
 
-      echo "Installing createInput"
-       # Doing a  pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
+       echo "Installing createInput"
+       # Doing a pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
        NGEN_CAL_BRANCH='development'
 #       NGEN_CAL_BRANCH='129809ac'
        if pip show "createInput" > /dev/null 2>&1; then
@@ -45,37 +54,49 @@ if [ "${CERF_VENV}" != "Docker" ]; then
     fi
 fi
 
-echo
-echo "Running migrate"
-python3 manage.py migrate
+# Function to run Django management commands without logging redirection
+run_manage_command() {
+    local command="$1"
+    echo
+    echo "Running $command"
+    # Temporarily disable redirection
+    exec >/dev/tty 2>/dev/tty
+
+    python3 manage.py $command
+
+    # Restore redirection
+    exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
+}
+
+# Run management commands with proper logging
+run_manage_command "migrate"
 
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
 if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
     echo
     echo "Loading ngenCERF static data"
 
-    python3 manage.py createsuperuser_docker --noinput \
-        --password admin \
-        --email admin@nextgenwaterprediction.com
+    run_manage_command "createsuperuser_docker --noinput --password admin --email admin@nextgenwaterprediction.com"
     echo
-    echo "Calling init_sql"
-    python3 manage.py init_sql
+    run_manage_command "init_sql"
     echo
-    echo "Calling init_gages"
-    python3 manage.py init_gages
+    run_manage_command "init_gages"
 
     touch "${CERF_LOAD_STATIC_DATA}"
 else
     # Run this every time, since sometimes there are updates and it is very quick
-    python3 manage.py init_sql
+    run_manage_command "init_sql"
 fi
 
 echo
-echo "Running pre_start"
-python3 "$cerfServer"/manage.py pre_start
+run_manage_command "pre_start"
 
 echo
 echo "Starting server"
+
+# Restore original stdout and stderr before starting the server
+exec >/dev/tty 2>/dev/tty
+
 python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
 
 if [ -n "${CERF_VENV}" ]; then
