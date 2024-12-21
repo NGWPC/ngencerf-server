@@ -239,7 +239,7 @@ NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 # Used when running in NGEN_ENVIRONMENT=DOCKER
 # This assumes that the docker containers have been appropriately tagged as ngen-cal, ngen-fcst or ngen-forcing
-NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-calt'
+NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-cal'
 NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
 NGEN_FORCING_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-forcing'
 
