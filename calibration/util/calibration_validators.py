@@ -863,8 +863,9 @@ class ForecastJobsResponseSerializer(BaseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
     cycle = serializers.CharField(required=True)
     gage_id = serializers.CharField(required=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    submit_date = serializers.DateTimeField(required=True)
+    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    forcing_download_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
 
 
 class GetForecastJobsResponseSerializer(BaseSerializer):
