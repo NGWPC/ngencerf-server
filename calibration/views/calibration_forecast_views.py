@@ -12,7 +12,7 @@ from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
     GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
-    ResponseError
+    ResponseError, truncate_large_fields
 
 logger = logging.getLogger(__name__)
 
@@ -95,20 +95,21 @@ def get_forecast_jobs(request: Request) -> Response:
         return error_return
 
     forecast_jobs = list(ForecastRun.objects
-                         .filter(status=StatusEnum.DONE.db_instance, calibration_run__owner=request.user)
-                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name'))
+                         .filter(calibration_run__owner=request.user)
+                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name', 'forcing_download_run__status__name'))
     for f in forecast_jobs:
         f['forecast_run_id'] = f.pop('id')
         f['cycle'] = f.pop('cycle__name')
         f['gage_id'] = f.pop('calibration_run__gage__gage_id')
-        f['status'] = f.pop('status__name')
+        f['forecast_status'] = f.pop('status__name')
+        f['forcing_download_status'] = f.pop('forcing_download_run__status__name')
 
     response = {'forecast_jobs': forecast_jobs}
-    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response)
+    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response, fields_to_truncate=['forecast_jobs'], max_length=10)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
