@@ -2,6 +2,7 @@ import base64
 import inspect
 import json
 import logging
+import os
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
@@ -23,7 +24,8 @@ from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCy
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
-from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
+from calibration.util.calibration_validators import ErrorResponseSerializer
+from calibration.util.ngen_locations import get_forecast_dir
 
 logger = logging.getLogger(__name__)
 
@@ -144,8 +146,7 @@ def get_forecast_forcing_download_run(
     :param run_status: A list of allowed statuses for the ForecastRun.
     :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(ForecastForcingDownloadRun, forecast_forcing_download_run_id, user, run_status, 'forecast_run__calibration_run__owner',
-                            {'calibration_run__is_deleted': False})
+    return get_run_instance(ForecastForcingDownloadRun, forecast_forcing_download_run_id, user, run_status, 'forecast_run__calibration_run__owner', {'calibration_run__is_deleted': False})
 
 
 def join_with_or(items):
@@ -272,6 +273,7 @@ def create_forecast_run_internal(
                                               calibration_run=calibration_run,
                                               cycle=cycle,
                                               forcing_download_run=forcing_download_run)
+    os.makedirs(get_forecast_dir(forecast_run))
     logger.info(f"Creating Forecast Job {forecast_run.id} for Calibration Job {calibration_run.id}")
 
     return forecast_run

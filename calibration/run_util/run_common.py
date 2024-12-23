@@ -18,8 +18,9 @@ from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_file, \
-    get_forecast_dir
+    get_forecast_dir, get_forecast_forcing_config_file
 from calibration.views import ngen_cal_input
+from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output
 from cerfServer.settings import NgenEnvironmentEnum
@@ -133,7 +134,7 @@ def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
         )
 
 
-def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, simulate:bool=False) -> None:
+def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, simulate: bool = False) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
@@ -246,22 +247,22 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
 
     :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
-    # TODO Build config here
-    gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
+    build_forecast_forcing_download_config(forecast_forcing_download_run)
+
+    gpkg_file = os.path.basename(get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run)))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
-    config_file = 'config'
+    config_file = get_forecast_forcing_config_file(forecast_forcing_download_run.forecast_run)
     forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(forecast_forcing_download_run,
                 {
-                    'gpkg_file': gpkg_file,
                     'cycle_name': cycle_name,
+                    'gpkg_file': gpkg_file,
                     'config_file': config_file,
-                    'forcing_file': forcing_file,
-                    'stdout_file': get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
+                    'forcing_file': forcing_file
                 },
-                stdout_file, simulate=True)
+                stdout_file, simulate=False)
 
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
@@ -278,7 +279,13 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     output_dir = os.path.basename(get_forecast_dir(forecast_run))
     stdout_file = get_forecast_stdout_file(forecast_run)
 
-    execute_job(forecast_run, {'forcing_file': forcing_file, 'validation_best_input': validation_best_input, 'output_dir': output_dir}, stdout_file)
+    execute_job(forecast_run,
+                {
+                    'forcing_file': forcing_file,
+                    'validation_best_input': validation_best_input,
+                    'output_dir': output_dir
+                },
+                stdout_file)
 
 
 def submit_job(run: BaseRun, config_file=None) -> Response | None:

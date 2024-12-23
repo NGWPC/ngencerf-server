@@ -1,13 +1,13 @@
 import logging
 import os
+import tempfile
 from typing import Literal
 
 from django.conf import settings
 
 from calibration.enums import ValidationType
 from calibration.models import CalibrationRun, ForecastRun
-from cerfServer.settings import NGEN_ENVIRONMENT, FORCING_DATA_DIRS
-from data_services_test_data.data_services_test_data import forcing_sample_data
+from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,8 @@ files = [
 ]
 
 forecast_forcing_scripts = [
-    FORCING_MESH_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'ESMF_Mesh_Domain_Configuration_Production', 'NextGen_hyfab_to_ESMF_Mesh.py'),
+    FORCING_MESH_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'ESMF_Mesh_Domain_Configuration_Production',
+                                             'NextGen_hyfab_to_ESMF_Mesh.py'),
     FORCING_EXTRACTION_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'Forcing_Extraction_Scripts'),
     FORCING_BMI_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'NextGen_Forcings_Engine_BMI', 'run_bmi_model.py')
 ]
@@ -264,7 +265,11 @@ def get_forecast_dir(forecast_run: ForecastRun) -> str:
 
 
 def get_forecast_forcing_config_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_output_forecast_run_dir(forecast_run.calibration_run), f'forecast_forcing_config.yaml')
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_config.yaml')
+
+
+def get_forecast_forcing_cycle_config_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), f'{forecast_run.cycle.internal_name}_config.yaml')
 
 
 def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
@@ -277,6 +282,12 @@ def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
 
 def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}.nc')
+
+
+def get_forecast_temp_dir(forecast_run: ForecastRun) -> str:
+    prefix = f'forcing_work_Calibration_{forecast_run.calibration_run.id}_Forecast_{forecast_run.id}_'
+    temp_dir = tempfile.mkdtemp(prefix=prefix)
+    return temp_dir
 
 
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:

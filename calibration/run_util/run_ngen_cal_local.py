@@ -40,6 +40,7 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str,
     :param simulate: If True, simulates successful execution without running a real job.
     :raises ValueError: If the `run` type is unsupported or invalid.
     """
+    venv = NGEN_CAL_VENV
     # Determine the script command and callback function
     if isinstance(run, CalibrationRun):
         script_cmd = ScriptEnum.CALIBRATION
@@ -52,11 +53,7 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str,
     elif isinstance(run, ForecastForcingDownloadRun):
         script_cmd = ScriptEnum.FORECAST_FORCING
         callback_function = run_forecast_forcing_download_job_callback_local
-        # TODO
-        # Temporarily copy a sample forcing file
-        test_file = os.path.expanduser('~/s3/ngwpc-dev/peter.kronenberg/forcing.nc')
-        print(f"temporarily copying {test_file} to {cmd_line_args['forcing_file']}")
-        copy_file(test_file, cmd_line_args['forcing_file'])
+        venv = settings.FORCING_ENGINE_ENV
     elif isinstance(run, ForecastRun):
         script_cmd = ScriptEnum.FORECAST
         callback_function = run_forecast_job_callback_local
@@ -66,14 +63,13 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str,
     # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
         spawn_command = [settings.RUNTIME_INFO.get(script_cmd)[1]]
-        extra = [stdout_file, NGEN_CAL_VENV]
+        extra = [stdout_file, venv]
     elif NGEN_ENVIRONMENT == NgenEnvironmentEnum.DOCKER:
         spawn_command = settings.RUNTIME_INFO.get(script_cmd)[0].split()
         extra = [stdout_file]  # Venv not required for Docker
     else:
         spawn_command = []
         extra = []
-
 
     args = spawn_command + [script_cmd.value] + list(cmd_line_args.values()) + extra
 
@@ -178,8 +174,12 @@ def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future
     logger.info(f"Spawning process: {job_description} with {args}")
 
     try:
-        # Start the subprocess with the provided arguments
-        process = subprocess.Popen(args)
+        # Prepare the environment for the subprocess needed for Forecast forcing downloading
+        env = os.environ.copy()
+        env["WGRIB2"] = os.path.expanduser("~/miniconda3/envs/NextGen_Forcings_Engine/bin/wgrib2")
+
+        # Start the subprocess with the provided arguments and updated environment
+        process = subprocess.Popen(args, env=env)
 
         # Submit the process to the thread pool executor
         future = pool.submit(process.wait)

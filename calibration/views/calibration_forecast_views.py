@@ -1,8 +1,6 @@
 import logging
-import os
+import shutil
 
-import yaml
-from django.conf import settings
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -10,12 +8,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ForecastCycleEnum, StatusEnum
-from calibration.models import ForecastRun, CalibrationRun
+from calibration.models import ForecastRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
     GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
-from calibration.util.ngen_locations import FORCING_MESH_SCRIPT_PATH, FORCINB_EXTRACTION_SCRIPT_PATH, get_geopackage_dir_for_job, FORCING_HRRR, \
-    FORCING_RAP, FORCING_BMI_SCRIPT_PATH, get_forecast_forcing_config_file
+from calibration.util.ngen_locations import get_output_forecast_run_dir, get_forecast_dir
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, truncate_large_fields
 
@@ -101,7 +98,8 @@ def get_forecast_jobs(request: Request) -> Response:
 
     forecast_jobs = list(ForecastRun.objects
                          .filter(calibration_run__owner=request.user)
-                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name', 'forcing_download_run__status__name'))
+                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name',
+                                 'forcing_download_run__status__name'))
     for f in forecast_jobs:
         f['forecast_run_id'] = f.pop('id')
         f['cycle'] = f.pop('cycle__name')
@@ -110,11 +108,13 @@ def get_forecast_jobs(request: Request) -> Response:
         f['forcing_download_status'] = f.pop('forcing_download_run__status__name')
 
     response = {'forecast_jobs': forecast_jobs}
-    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response, fields_to_truncate=['forecast_jobs'], max_length=10)
+    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response, fields_to_truncate=['forecast_jobs'],
+                                                           max_length=10)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10)}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_validation_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -218,8 +218,8 @@ def delete_forecast_job(request: Request) -> Response:
     with transaction.atomic():
         # Delete the Forcing download Run  and that will automatically delete the Forecast Run
         run.forcing_download_run.delete()
-
-        # TODO Need to delete the downloaded data
+        logger.info(f"Deleting directory {get_forecast_dir(run)}")
+        shutil.rmtree(get_forecast_dir(run), ignore_errors=True)
 
     response = {'message': f'Forecast Job {run.id} and associated records have been deleted', 'forecast_run_id': run_id}
 
@@ -229,30 +229,5 @@ def delete_forecast_job(request: Request) -> Response:
     logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {response_validator.data}')
 
     return Response(response_validator.data)
-
-
-def build_config(run: ForecastRun):
-    wrapper_config_json = {
-        'global': {
-            'mesh_script_path': FORCING_MESH_SCRIPT_PATH,
-            'mesh_in_base_path': get_geopackage_dir_for_job(run.calibration_run),
-            'mesh_out_base_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'esmf_mesh'),
-            'extraction_script_path': FORCINB_EXTRACTION_SCRIPT_PATH,
-            'extraction_out_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
-            'bmi_script_path': FORCING_BMI_SCRIPT_PATH,
-            'mesh_env': settings.FORCING_MESH_ENV,
-            'extract_env': settings.FORCING_EXTRACT_ENV,
-            'engine_env': settings.FORCING_ENGINE_ENV
-        },
-        'short_range': {
-            'sr_config_path': os.path.abspath("./sr_config.yml"),
-            'hrrr_out_path': FORCING_HRRR,
-            'rap_out_path': FORCING_RAP
-        }
-    }
-
-    config_path = get_forecast_forcing_config_file(run)
-    with open(config_path, 'w') as yaml_file:
-        yaml.dump(wrapper_config_json, yaml_file, default_flow_style=False)
 
 
