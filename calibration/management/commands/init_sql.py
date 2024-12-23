@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from django.contrib.auth import get_user_model
@@ -12,6 +13,8 @@ from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -33,15 +36,15 @@ class Command(BaseCommand):
         self.user = None  # Define the attribute here
 
     def handle(self, *args, **options):
-        self.stdout.write('Initializing static tables')
+        logger.info('Initializing static tables')
         try:
             # need to get a user that is guaranteed to be there, such as admin
             self.user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
-            self.stdout.write(self.style.ERROR('Admin user does not exist.'))
+            logger.error('Admin user does not exist.')
             sys.exit(1)
 
-        self.stdout.write(f"In init_sql: email: {self.user.email}")
+        logger.info(f"In init_sql: email: {self.user.email}")
 
         self.define_module_groups()
         self.define_modules()

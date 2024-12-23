@@ -1,4 +1,5 @@
 import csv
+import logging
 import sys
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from django.core.management.base import BaseCommand
 from calibration.enums import DomainEnum
 from calibration.models import Gage, Domain, Rfc
 from cerfServer.settings import BASE_DIR
+
+logger = logging.getLogger(__name__)
 
 # Gages are loaded from several files
 # 1 USGS files
@@ -36,10 +39,10 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         data_dir = Path(options['data_dir']) if options['data_dir'] else Path(BASE_DIR) / 'calibration/management/commands'
 
-        print(f'Reading data from {data_dir}')
+        logger.info(f'Reading data from {data_dir}')
 
         if not data_dir.is_dir():
-            print(f'{data_dir} must be a directory containing the data files')
+            logger.info(f'{data_dir} must be a directory containing the data files')
             return
 
         # Gage.objects.all().delete()
@@ -48,10 +51,10 @@ class Command(BaseCommand):
             # need to get a user that is guaranteed to be there, such as admin
             user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
-            self.stdout.write(self.style.ERROR('Admin user does not exist.'))
+            logger.error('Admin user does not exist.')
             sys.exit(1)
 
-        print(f"In init_gages: email: {user.email}")
+        logger.info(f"In init_gages: email: {user.email}")
 
         add_usgs_gages(data_dir / 'USGS_gages_CONUS.csv', conus_domain)
         add_usgs_gages(data_dir / 'USGS_gages_AK.csv', alaska_domain)
@@ -81,7 +84,7 @@ class Command(BaseCommand):
                         'nwm_v3_calibration': False, 'headwater_calibration': True,
                         'domain_id': alaska_domain.id}
                 gages[gage_id] = gage
-        print(f'Processed {gage_count} gages from {file.name}.')
+        logger.info(f'Processed {gage_count} gages from {file.name}.')
 
         with (data_dir / 'Supplemental - CONUS.csv').open() as file:
             # Skip the first line before header
@@ -131,7 +134,7 @@ class Command(BaseCommand):
                      })
 
                 gages[gage_id] = gage
-        print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
+        logger.info(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
         # This file maps NWS id with USGS id
         with (data_dir / 'ALL_USGS-HADS_SITES.txt').open() as file:
@@ -148,14 +151,14 @@ class Command(BaseCommand):
                 gage_id = row.get('gage_id').strip()
                 gage = gages.get(gage_id)
                 if not gage:
-                    # print(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt")
+                    # logger.info(f"Can't find gage_id '{gage_id}' referenced in ALL_USGS-HADS_SITES.txt")
                     # According to Yuqiong, there are reservoir gage and not streamflow gages, so we can ignore them
                     skip_count += 1
                     continue
                 gage_count += 1
 
                 if 'latitude' not in gage or gage['latitude'] is None:
-                    print(f'Adding lat/long for gage {gage_id}')
+                    logger.info(f'Adding lat/long for gage {gage_id}')
                     # The ALL_USGS-HADS_SITES.txt file has all longitude values as positive, even though they are in the Western hemisphere.  So we'll switch it.
                     gage['latitude'] = dms_to_dd(row.get('latitude').strip())
                     gage['longitude'] = dms_to_dd('-' + row.get('longitude').strip())
@@ -163,15 +166,15 @@ class Command(BaseCommand):
                     gage['station_name'] = row.get('station_name')
 
                 gage['nws_id'] = nws_id
-        print(f'Processed {gage_count} gages from {file.name}.  Skipped {skip_count} gages which are assumed to be non-streamflow gages')
+        logger.info(f'Processed {gage_count} gages from {file.name}.  Skipped {skip_count} gages which are assumed to be non-streamflow gages')
 
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - AK.csv', alaska_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - CONUS.csv', conus_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - PR.csv', conus_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - HI.csv', conus_domain)
 
-        print()
-        print('Creating objects.... this will take a minute or two')
+        logger.info('')
+        logger.info('Creating objects.... this will take a minute or two')
         row_num = 0
         unique_field = 'gage_id'
         for gage in gages.values():
@@ -183,7 +186,7 @@ class Command(BaseCommand):
                 raise Exception(f'Error adding gage - {gage} - {str(e)}')
             row_num += 1
             if row_num % 1000 == 0:
-                print(row_num, 'of', len(gages), '...')
+                logger.info(f'{row_num} of  {len(gages)}...')
 
 
 def add_additional_gages(gage_file, domain):
@@ -204,14 +207,14 @@ def add_additional_gages(gage_file, domain):
                 # Find this nws_id in our collection
                 gage = next((item for item in gages.values() if item.get('nws_id') == nws_id), None)
                 if not gage:
-                    print(f"Could not find gage with nws_id {nws_id} for rfc {rfc}")
+                    logger.info(f"Could not find gage with nws_id {nws_id} for rfc {rfc}")
                     continue
                 gage_count += 1
                 gage['rfc_id'] = rfc_id
                 gage['domain_id'] = domain.id
                 # All of these gages have headwater_calibration flag on regardless of nwm_v3_calibration
                 gage['headwater_calibration'] = True
-    print(f'Processed {gage_count} gages from {file.name}.')
+    logger.info(f'Processed {gage_count} gages from {file.name}.')
 
 
 def add_usgs_gages(usgs_file, domain):
@@ -253,7 +256,7 @@ def add_usgs_gages(usgs_file, domain):
                          'altitude': altitude, 'altitude_accuracy': altitude_accuracy, 'altitude_datum': altitude_datum, 'huc': huc,
                          'drainage_area': drainage_area, 'latitude': latitude, 'longitude': longitude, 'domain_id': domain.id})
 
-    print(f'Processed {gage_count} gages from {file.name}.')
+    logger.info(f'Processed {gage_count} gages from {file.name}.')
 
 
 def add_nwm_v3(nwm_v3_file, domain):
@@ -285,7 +288,7 @@ def add_nwm_v3(nwm_v3_file, domain):
             rfc = row.get('rfc')
             gage['rfc_id'] = rfc_dict[rfc] if rfc else None
             gages[gage_id] = gage
-    print(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
+    logger.info(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing')
 
 
 def dms_to_dd(lat_long_str):
@@ -313,7 +316,6 @@ for b in bounding_boxes:
 
 
 def calculate_domain(lat, long):
-    # print(lat, long)
     lat = float(lat)
     long = float(long) + 180.0
     # Oder matters.  Do the unambiguous ones first

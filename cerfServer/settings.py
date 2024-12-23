@@ -305,7 +305,7 @@ LOGGING = {
         },
     },
     'handlers': {
-        'console': {'level': 'DEBUG', 'class': 'logging.StreamHandler'},
+        'console': {'level': 'DEBUG', 'class': 'logging.StreamHandler', 'formatter': 'simple'},
         'file_dev': {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
@@ -325,7 +325,7 @@ LOGGING = {
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'prod_format',
             'encoding': 'utf-8',
-        }
+        },
     },
     'loggers': {
         'django.db.backends': {
