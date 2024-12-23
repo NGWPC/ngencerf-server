@@ -1,7 +1,8 @@
 import io
 import logging
+import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from pathlib import Path
 from typing import Tuple
 
 import pandas as pd
@@ -752,13 +753,13 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
 
 
 # Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
-def get_csv_daterange(file: Path) -> DateTimeRange:
+def get_csv_daterange(file: str) -> DateTimeRange:
     """
     Reads a CSV file, assumes the first column contains date information, and calculates
     the minimum and maximum dates to construct a date range.
 
     Args:
-        file (Path): The file path to the CSV file.
+        file (str): The file path to the CSV file.
 
     Returns:
         DateTimeRange: The calculated date range based on the first column's min and max dates.
@@ -767,56 +768,66 @@ def get_csv_daterange(file: Path) -> DateTimeRange:
         CerfException: If the file does not exist or there is an error in reading the file.
     """
     try:
-        if not Path(file).exists():
+        if not os.path.exists(file):
             raise CerfException(f"File {file} does not exist")
+
         # Read the CSV file, assuming the first column contains date information
         df = pd.read_csv(file, delimiter=',', parse_dates=[0])
 
-        # Ensure the first column is datetime without timezone initially
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handles invalid dates gracefully
+        # Ensure the first column contains valid datetime values
+        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handle invalid dates gracefully
 
-        # Find the min and max date (without timezone info)
-        min_time = df.iloc[:, 0].min()
-        max_time = df.iloc[:, 0].max()
-
-        # Convert the min and max times to UTC after computation
-        min_time = min_time.replace(tzinfo=timezone.utc)
-        max_time = max_time.replace(tzinfo=timezone.utc)
+        # Compute the min and max dates and convert them to UTC
+        min_time = df.iloc[:, 0].min().replace(tzinfo=timezone.utc)
+        max_time = df.iloc[:, 0].max().replace(tzinfo=timezone.utc)
 
         return DateTimeRange(min_time, max_time)
     except Exception as e:
-        # This was happening in dev because people were uploading bogus files.  Shouldn't really happen in prod
+        # Just in case a file is totally unreadable
         raise CerfException(f'Error reading file {file}: {e}')
 
 
-def get_forcing_date_range(forcing_dir_path: Path) -> DateTimeRange | None:
+def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     """
-    Gets the encompassing date range for all CSV files in a specified directory.
+    Computes the encompassing date range for all valid CSV files in a given directory.
 
     Args:
-        forcing_dir_path (Path): The directory path containing forcing data files.
+        forcing_dir_path (str): The directory path containing forcing data files.
 
     Returns:
-        DateTimeRange | None: The combined date range from all files in the directory, or None if no files found.
+        DateTimeRange | None: The combined date range from all files in the directory, or None if no files are found.
     """
-    timerange = None
-    for file in Path(forcing_dir_path).iterdir():
-        if file.is_file():
-            new_range = get_csv_daterange(Path(forcing_dir_path) / file)
-            if timerange:
-                timerange = timerange.encompass(new_range)
-            else:
-                timerange = new_range
+    # Use pathlib only for globbing
+    from pathlib import Path
 
+    csv_files = [file for file in Path(forcing_dir_path).glob("*.csv") if file.is_file()]
+    if not csv_files:
+        return None
+
+    # Define a function to process individual files and calculate their date range
+    def process_file(file: str) -> DateTimeRange:
+        return get_csv_daterange(str(file))  # Convert Path to string
+
+    # Use ThreadPoolExecutor for parallel processing
+    with ThreadPoolExecutor() as executor:
+        ranges = list(executor.map(process_file, csv_files))
+
+    # Combine all individual ranges into a single encompassing range
+    timerange = None
+    for new_range in ranges:
+        if timerange:
+            timerange = timerange.encompass(new_range)
+        else:
+            timerange = new_range
     return timerange
 
 
-def get_observation_date_range(observational_filepath: Path) -> DateTimeRange:
+def get_observation_date_range(observational_filepath: str) -> DateTimeRange:
     """
-    Gets the date range for a single observational data file.
+    Calculates the date range for a single observational data file.
 
     Args:
-        observational_filepath (Path): The file path to the observational data file.
+        observational_filepath (str): The file path to the observational data file.
 
     Returns:
         DateTimeRange: The calculated date range based on the observational data file.
@@ -824,20 +835,29 @@ def get_observation_date_range(observational_filepath: Path) -> DateTimeRange:
     return get_csv_daterange(observational_filepath)
 
 
-def get_date_range_intersection(observational_file_path: Path, forcing_dir_path: Path) -> DateTimeRange | None:
+def get_date_range_intersection(observational_file_path: str, forcing_dir_path: str) -> DateTimeRange | None:
     """
     Calculates the intersection of date ranges between observational and forcing data.
 
     Args:
-        observational_file_path (Path): Path to the observational data file.
-        forcing_dir_path (Path): Directory path containing forcing data files.
+        observational_file_path (str): Path to the observational data file.
+        forcing_dir_path (str): Directory path containing forcing data files.
 
     Returns:
-        DateTimeRange | None: The intersection of date ranges if both ranges exist, or None.
+        DateTimeRange | None: The intersection of date ranges if both ranges exist, or None if there is no overlap.
     """
-    # Get the latest start date and the earliest end date for intersection
+    # Calculate the date range for the observational data
     obs_range = get_observation_date_range(observational_file_path)
     logger.debug(f'obs_range: {obs_range}')
+
+    # Calculate the date range for the forcing data
     forcing_range = get_forcing_date_range(forcing_dir_path)
     logger.debug(f'forcing_range: {forcing_range}')
-    return obs_range.intersection(forcing_range) if forcing_range and obs_range else None
+
+    # Compute the intersection of the two ranges
+    if obs_range and forcing_range:
+        start_time = max(obs_range.start_datetime, forcing_range.start_datetime)
+        end_time = min(obs_range.end_datetime, forcing_range.end_datetime)
+        if start_time <= end_time:
+            return DateTimeRange(start_time, end_time)
+    return None

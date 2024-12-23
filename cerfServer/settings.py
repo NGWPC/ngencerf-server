@@ -224,7 +224,7 @@ NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
-print(f"Logs can be found in {NGEN_LOGGING_DIR}")
+print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
 NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
@@ -279,7 +279,6 @@ SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 # -----------------------------
 # Logging
 # -----------------------------
-print(f"Logging files will be created at {BASE_DIR}")
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -382,5 +381,6 @@ LOGGING = {
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
+    print("Loaded local_settings.py successfully.")
 except ImportError as e:
-    print('local_settings.py not found:', e)
+    print('local_settings.py not found or could not be imported:', e)

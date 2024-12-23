@@ -1,5 +1,7 @@
+from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
+from typing import Tuple
 
 import fiona
 import geopandas as gpd
@@ -34,37 +36,31 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None
     plt.close()
 
 
-def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: list[str] | None = None) -> BytesIO:
+@lru_cache(maxsize=128)
+def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ...] | None = None) -> BytesIO:
     """
     Generates a PNG image from selected layers in a GeoPackage and returns it as a BytesIO object.
 
     :param gpkg_path: Path to the GeoPackage file.
-    :param layers_to_include: List of layer names to include in the plot. Defaults to a predefined set.
+    :param layers_to_include: Tuple of layer names to include in the plot. Defaults to a predefined set.
     :return: BytesIO object containing the generated PNG image.
     """
     if layers_to_include is None:
-        layers_to_include = ['nexus', 'flowpaths', 'flowlines']  # Default layers to include
+        layers_to_include = ('nexus', 'flowpaths', 'flowlines')  # Default layers to include
 
     # Initialize the plot
-    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=200)
 
     # Track which layers have been labeled
     labeled_layers = set()
 
     # Plot the divides layer (outline) if it exists
     if 'divides' in fiona.listlayers(gpkg_path):
-        with fiona.open(gpkg_path, layer='divides') as layer:
-            for feature in layer:
-                geom = shape(feature['geometry'])
-                label = 'divides' if 'divides' not in labeled_layers else None
-                if isinstance(geom, Polygon):
-                    x, y = geom.exterior.xy
-                    ax.plot(x, y, color='black', label=label)
-                elif isinstance(geom, MultiPolygon):
-                    for poly in geom.geoms:
-                        x, y = poly.exterior.xy
-                        ax.plot(x, y, color='black', label=label)
-                labeled_layers.add('divides')
+        divides_gdf = gpd.read_file(gpkg_path, layer='divides')
+        # Simplify geometries for performance improvement
+        divides_gdf['geometry'] = divides_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
+        divides_gdf.boundary.plot(ax=ax, color='black', label='divides' if 'divides' not in labeled_layers else None)
+        labeled_layers.add('divides')
 
     # Define a cycle of colors for the layers
     color_cycle = cycle(['blue', 'green', 'red', 'cyan', 'magenta'])
@@ -75,19 +71,12 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: list[str] | N
     # Plot each requested layer if it exists
     for layer, color in zip(layers_to_include, color_cycle):
         if layer in available_layers:
-            with fiona.open(gpkg_path, layer=layer) as lyr:
-                for feature in lyr:
-                    geom = shape(feature['geometry'])
-                    label = layer if layer not in labeled_layers else None
-                    if geom.is_valid and geom.geom_type in ['LineString', 'MultiLineString']:
-                        if isinstance(geom, MultiLineString):
-                            for line in geom.geoms:
-                                x, y = line.xy
-                                ax.plot(x, y, label=label, color=color)
-                        else:
-                            x, y = geom.xy
-                            ax.plot(x, y, label=label, color=color)
-                    labeled_layers.add(layer)
+            layer_gdf = gpd.read_file(gpkg_path, layer=layer)
+            # Simplify geometries for performance improvement
+            layer_gdf['geometry'] = layer_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
+            # Plot the entire layer at once
+            layer_gdf.plot(ax=ax, color=color, label=layer if layer not in labeled_layers else None)
+            labeled_layers.add(layer)
 
     # Add a legend explicitly
     handles, labels = ax.get_legend_handles_labels()

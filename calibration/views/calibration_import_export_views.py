@@ -2,7 +2,6 @@ import base64
 import json
 import logging
 import os
-import traceback
 from typing import Tuple
 
 from django.db import transaction
