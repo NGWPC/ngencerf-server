@@ -11,6 +11,7 @@ from django.db import transaction
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
@@ -198,11 +199,17 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}")
+            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}"
+        )
 
-    stdout_File = get_calibration_stdout_file(calibration_run)
+    stdout_file = get_calibration_stdout_file(calibration_run)
 
-    execute_job(calibration_run, {'input_file': input_file}, stdout_File)
+    execute_job(
+        calibration_run,
+        {'input_file': input_file},
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
+    )
 
 
 def run_validation_job(validation_run: ValidationRun) -> None:
@@ -228,14 +235,21 @@ def run_validation_job(validation_run: ValidationRun) -> None:
 
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
+            f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, "
+            f"user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}"
+        )
 
     cmd_line_args = {'input_file': input_file}
     if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
         # For running local, we need to leave these out
         cmd_line_args['worker_name'] = validation_run.worker_name
         cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
-    execute_job(validation_run, cmd_line_args, stdout_file)
+    execute_job(
+        validation_run,
+        cmd_line_args,
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.VALIDATION, False)
+    )
 
 
 def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastForcingDownloadRun) -> None:
@@ -255,14 +269,17 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
-    execute_job(forecast_forcing_download_run,
-                {
-                    'cycle_name': cycle_name,
-                    'gpkg_file': gpkg_file,
-                    'config_file': config_file,
-                    'forcing_file': forcing_file
-                },
-                stdout_file, simulate=False)
+    execute_job(
+        forecast_forcing_download_run,
+        {
+            'cycle_name': cycle_name,
+            'gpkg_file': gpkg_file,
+            'config_file': config_file,
+            'forcing_file': forcing_file
+        },
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST_FORCING_DOWNLOAD, False)
+    )
 
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
@@ -279,13 +296,16 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     output_dir = os.path.basename(get_forecast_dir(forecast_run))
     stdout_file = get_forecast_stdout_file(forecast_run)
 
-    execute_job(forecast_run,
-                {
-                    'forcing_file': forcing_file,
-                    'validation_best_input': validation_best_input,
-                    'output_dir': output_dir
-                },
-                stdout_file)
+    execute_job(
+        forecast_run,
+        {
+            'forcing_file': forcing_file,
+            'validation_best_input': validation_best_input,
+            'output_dir': output_dir
+        },
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST, False)
+    )
 
 
 def submit_job(run: BaseRun, config_file=None) -> Response | None:

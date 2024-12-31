@@ -17,7 +17,7 @@ from enum import StrEnum, auto
 
 from dotenv import load_dotenv
 
-from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum
+from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
@@ -186,10 +186,11 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Enterprise Data
 # -----------------------------
 ENTERPRISE_DATA_VERSION = "2.2"
-ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = (True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}')
-ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = (True, 'hydrofabric/modules/parameters/')
-ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
-ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
+ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = [True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}']
+ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameters/']
+ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
+ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
+
 
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
@@ -255,6 +256,17 @@ NGEN_FORCING_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT
 NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
 NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
 FORECAST_FORCING_SCRIPT = os.path.join(NGEN_FORCING_REPO_ROOT, 'docker', 'run-ngen-forcing.sh')
+
+# -----------------------------
+# Job Simulation Flags for use with NGEN_ENVIRONMENT=LOCAL or DOCKER
+# -----------------------------
+SIMULATE_FLAGS = {
+    JobType.CALIBRATION: False,
+    JobType.VALIDATION: False,
+    JobType.FORECAST: False,
+    JobType.FORECAST_FORCING_DOWNLOAD: False,
+}
+
 
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),

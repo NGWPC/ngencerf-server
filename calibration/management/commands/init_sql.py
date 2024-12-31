@@ -5,7 +5,8 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
 
-from calibration.enums import DataTypeEnum, JobType
+from calibration.enums import DataTypeEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
     GeopackageSource, ForecastCycle
 from calibration.models.forcing_source import ForcingSource

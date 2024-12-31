@@ -10,7 +10,8 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, JobType
+from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
+from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \

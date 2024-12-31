@@ -287,7 +287,6 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     jobs = get_jobs(request.user, run_status=[StatusEnum.DONE])
 
     response = {'jobs': jobs}
-    print('jobs', jobs)
 
     response_validator, error_response = validate_response(GetCalibrationJobsResponseSerializer, response, fields_to_truncate=['jobs'], max_length=10)
     if error_response:

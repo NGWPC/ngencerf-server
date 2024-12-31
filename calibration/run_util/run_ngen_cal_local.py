@@ -2,6 +2,7 @@ import functools
 import logging
 import os
 import subprocess
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Callable, List
 
@@ -149,7 +150,7 @@ run_forecast_forcing_download_job_callback_local = functools.partial(
 )
 
 
-def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None], simulate:bool=False) -> None:
+def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None], simulate: bool = False) -> None:
     """
     Start a new process to execute the job and register it in the system.
 
@@ -167,7 +168,11 @@ def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future
 
     if simulate:
         logger.info(f"Simulating job execution for: {job_description}")
-        future = pool.submit(lambda: 0)  # Simulate successful execution (return code 0)
+        # Simulate a 10-second execution delay
+        future = pool.submit(lambda: (
+            time.sleep(10),  # Simulate a delay
+            0  # Simulate a successful exit code
+        )[1])
         future.add_done_callback(callback_function)
         return
 
