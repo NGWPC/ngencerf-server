@@ -170,12 +170,13 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             elif build:
                 # For non-uploaded data, subset the forcing data by time range
                 source_dir = run.forcing_eds_dir_path
-                subset_directory_by_time_range(
-                    source_dir,
-                    get_forcing_dir_for_job(run),
-                    DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                  max(run.calibration_end_period, run.validation_end_period))
-                )
+                if source_dir:
+                    subset_directory_by_time_range(
+                        source_dir,
+                        get_forcing_dir_for_job(run),
+                        DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                      max(run.calibration_end_period, run.validation_end_period))
+                    )
 
         datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -196,12 +197,13 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             elif build:
                 # For non-uploaded data, subset the observational data by time range
                 source_file = run.observational_eds_file_path
-                subset_by_time_range(
-                    source_file,
-                    get_observational_file_for_job(run),
-                    DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                  max(run.calibration_end_period, run.validation_end_period))
-                )
+                if source_file:
+                    subset_by_time_range(
+                        source_file,
+                        get_observational_file_for_job(run),
+                        DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                      max(run.calibration_end_period, run.validation_end_period))
+                    )
 
         datafile['obs_dir'] = get_observational_dir_for_job(run)
 

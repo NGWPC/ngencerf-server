@@ -28,7 +28,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -208,10 +208,11 @@ def get_status(request: Request) -> Response:
         if messages:
             response['errors'] = messages
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response)
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'], max_length=10)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_status() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_status() - {truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10)}')
+
     return Response(response_validator.data)
 
 
