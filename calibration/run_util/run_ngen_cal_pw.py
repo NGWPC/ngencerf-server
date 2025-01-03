@@ -14,7 +14,8 @@ from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
-from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
+from calibration.util.calibration_validators import SlurmSubmitCalibrationOrValidationJobResponse, GenericMessageResponseSerializer, \
+    SlurmSubmitForecastForcingDownloadJobResponse
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_forecast_forcing_download_file, get_geopackage_dir_for_job
 from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description, validate_response_data
@@ -55,6 +56,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         'auth_token': (None, generate_custom_token(owner, token_slurm_scope))
     }
 
+    slurmResponseValidator = None
     if isinstance(run, ValidationRun):
         payload.update({
             'validation_run_id': (None, run.id),
@@ -64,12 +66,14 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'worker_name': (None, arguments.get('worker_name')),
             'iteration': (None, arguments.get('iteration_num'))
         })
+        slurmResponseValidator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, CalibrationRun):
         payload.update({
             'calibration_run_id': (None, run.id),
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
         })
+        slurmResponseValidator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, ForecastForcingDownloadRun):
         payload.update({
             'forecast_forcing_download_run_id': (None, run.id),
@@ -79,6 +83,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'forcing_file': (None, get_forecast_forcing_download_file(run.forecast_run)),
             'stdout_file': (None, stdout_file),
         })
+        slurmResponseValidator = SlurmSubmitForecastForcingDownloadJobResponse
     elif isinstance(run, ForecastRun):
         payload.update({
             'forecast_run_id': (None, run.id),
@@ -87,6 +92,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'forcing_file': (None, get_forecast_forcing_download_file(run)),
             'forecast_dir': (None, arguments['output_dir'])
         })
+        slurmResponseValidator = SlurmSubmitForecastForcingDownloadJobResponse
 
     logger.info(f'Slurm submit-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)
@@ -94,7 +100,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
 
     logger.info(f'Response from Slurm for submit job: {response.json()}')
     slurm_response = validate_response_data(
-        SlurmSubmitJobResponse,
+        slurmResponseValidator,
         response.json(),
         'Submit job response data from Slurm is not in the expected format',
     )
