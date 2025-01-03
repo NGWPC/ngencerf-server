@@ -293,7 +293,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     """
     forcing_file = get_forecast_forcing_download_file(forecast_run)
     validation_best_input = get_validation_best_input_file(forecast_run.calibration_run)
-    output_dir = os.path.basename(get_forecast_dir(forecast_run))
+    forecast_dir = os.path.basename(get_forecast_dir(forecast_run))
     stdout_file = get_forecast_stdout_file(forecast_run)
 
     execute_job(
@@ -301,7 +301,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
         {
             'forcing_file': forcing_file,
             'validation_best_input': validation_best_input,
-            'output_dir': output_dir
+            'forecast_dir': forecast_dir
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST, False)

@@ -196,6 +196,8 @@ def create_and_run_forecast(request: Request) -> Response:
         'message': f'Forcing download job for Forecast Job {forecast_run.id} created and submitted for Calibration Job {calibration_run.id}',
         'calibration_run_id': calibration_run.id,
         'forecast_run_id': forecast_run.id,
+        'forecast_status': forecast_run.status.name,
+        'forecast_forcing_download_status': forecast_run.forcing_download_run.status.name,
         'submit_date': forecast_run.forcing_download_run.submit_date
     }
 

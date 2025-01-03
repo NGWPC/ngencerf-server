@@ -547,6 +547,8 @@ class CreateAndRunForecastResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forecast_run_id = serializers.IntegerField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
+    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    forecast_forcing_download_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
 # Geopackage from Data Services
@@ -837,7 +839,7 @@ class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
+class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDownloadRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 

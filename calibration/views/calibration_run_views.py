@@ -684,53 +684,6 @@ def validation_job_slurm_callback(request: Request) -> Response:
 
 
 @extend_schema(
-    request=ForecastJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a forecast job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(token_slurm_scope)
-def forecast_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a forecast job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    data = request.data
-    logger.debug(f'forecast_job_slurm_callback() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    forecast_run_id = validator.get('forecast_run_id')
-    job_status = validator.get('job_status')
-
-    forecast_run, error_return = get_forecast_run(forecast_run_id, None, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_job_callback_pw(forecast_run, slurm_status)
-
-    logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
-
-
-@extend_schema(
     request=ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
     responses={
         202: None,
@@ -773,6 +726,53 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    request=ForecastJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a forecast job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def forecast_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a forecast job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    data = request.data
+    logger.debug(f'forecast_job_slurm_callback() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_run_id = validator.get('forecast_run_id')
+    job_status = validator.get('job_status')
+
+    forecast_run, error_return = get_forecast_run(forecast_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum(job_status)
+    run_forecast_job_callback_pw(forecast_run, slurm_status)
+
+    logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -880,7 +880,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     subset_df = df.loc[
         (df['dateTime'] >= date_time_range.start_datetime) &
         (df['dateTime'] <= date_time_range.end_datetime)
-    ].copy()  # Explicitly create a copy
+        ].copy()  # Explicitly create a copy
 
     # Convert timezone-aware datetime column to naive timestamps
     subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
