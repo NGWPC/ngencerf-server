@@ -350,7 +350,7 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
         # Handle failures by marking the job as FAILED
         run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
         logger.exception(f'Exception submitting {get_job_description(run)} - {str(e)}')
-        return None
+        raise # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
 
