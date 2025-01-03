@@ -42,73 +42,76 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     """
     if isinstance(run, CalibrationRun):
         url_endpoint = settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT
+        payload = {
+            'calibration_run_id': (None, run.id),
+            'input_file': (None, arguments['input_file']),
+            'output_file': (None, stdout_file),
+        }
+        slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, ValidationRun):
         url_endpoint = settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT
-    elif isinstance(run, ForecastRun):
-        url_endpoint = settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT
-    elif isinstance(run, ForecastForcingDownloadRun):
-        url_endpoint = settings.SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT
-    else:
-        raise ValueError(f"Unsupported run type: {type(run).__name__}")
-
-    url = urljoin(settings.SLURM_URL, url_endpoint)
-    payload = {
-        'auth_token': (None, generate_custom_token(owner, token_slurm_scope))
-    }
-
-    slurmResponseValidator = None
-    if isinstance(run, ValidationRun):
-        payload.update({
+        payload = {
             'validation_run_id': (None, run.id),
             'validation_type': (None, run.validation_type),
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
             'worker_name': (None, arguments.get('worker_name')),
             'iteration': (None, arguments.get('iteration_num'))
-        })
-        slurmResponseValidator = SlurmSubmitCalibrationOrValidationJobResponse
-    elif isinstance(run, CalibrationRun):
-        payload.update({
-            'calibration_run_id': (None, run.id),
-            'input_file': (None, arguments['input_file']),
-            'output_file': (None, stdout_file),
-        })
-        slurmResponseValidator = SlurmSubmitCalibrationOrValidationJobResponse
+        }
+        slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, ForecastForcingDownloadRun):
-        payload.update({
+        url_endpoint = settings.SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT
+        payload = {
             'forecast_forcing_download_run_id': (None, run.id),
             'gpkg_file': (None, os.path.basename(get_single_file(get_geopackage_dir_for_job(run.forecast_run.calibration_run)))),
             'cycle_name': (None, arguments['cycle_name']),
             'config_file': (None, arguments['config_file']),
             'forcing_file': (None, get_forecast_forcing_download_file(run.forecast_run)),
             'stdout_file': (None, stdout_file),
-        })
-        slurmResponseValidator = SlurmSubmitForecastForcingDownloadJobResponse
+        }
+        slurm_response_validator = SlurmSubmitForecastForcingDownloadJobResponse
     elif isinstance(run, ForecastRun):
-        payload.update({
+        url_endpoint = settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT
+        payload = {
             'forecast_run_id': (None, run.id),
             'input_file': (None, arguments['input_file']),
             'stdout_file': (None, stdout_file),
             'forcing_file': (None, get_forecast_forcing_download_file(run)),
             'forecast_dir': (None, arguments['output_dir'])
-        })
-        slurmResponseValidator = SlurmSubmitForecastForcingDownloadJobResponse
+        }
+        slurm_response_validator = SlurmSubmitForecastForcingDownloadJobResponse
+    else:
+        raise ValueError(
+            f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun."
+        )
 
-    logger.info(f'Slurm submit-job payload to {url}: {payload}')
+    # Common payload preparation
+    payload['auth_token'] = (None, generate_custom_token(owner, token_slurm_scope))
+    url = urljoin(settings.SLURM_URL, url_endpoint)
+
+    logger.info(f"Submitting Slurm job to {url} with payload: {payload}")
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 
-    logger.info(f'Response from Slurm for submit job: {response.json()}')
+    logger.info(f"Slurm response for submit job: {response.json()}")
     slurm_response = validate_response_data(
-        slurmResponseValidator,
+        slurm_response_validator,
         response.json(),
         'Submit job response data from Slurm is not in the expected format',
     )
 
+    # Dynamically update fields
+    update_fields = ['slurm_job_id']
     run.slurm_job_id = slurm_response.get('slurm_job_id')
-    run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
-    run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
-    run.save(update_fields=['slurm_job_id', 'ngen_commit_hash', 'ngen_cal_commit_hash'])
+
+    if hasattr(run, 'ngen_commit_hash'):
+        run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
+        update_fields.append('ngen_commit_hash')
+    if hasattr(run, 'ngen_cal_commit_hash'):
+        run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
+        update_fields.append('ngen_cal_commit_hash')
+
+    run.save(update_fields=update_fields)
     logger.info(f"{get_job_description(run)} submitted successfully! Slurm id: {run.slurm_job_id}")
 
 
