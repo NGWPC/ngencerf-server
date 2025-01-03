@@ -308,7 +308,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
-def submit_job(run: BaseRun, config_file=None) -> Response | None:
+def submit_job(run: BaseRun, config_file=None) -> None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -324,9 +324,7 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
     """
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
-        response = prepare_calibration_job(run, config_file)
-        if response is not None:
-            return response  # Return the error response early
+        prepare_calibration_job(run, config_file)
 
     try:
         with transaction.atomic():
@@ -350,7 +348,7 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
         # Handle failures by marking the job as FAILED
         run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
         logger.exception(f'Exception submitting {get_job_description(run)} - {str(e)}')
-        raise # Re-raise the exception
+        raise  # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
 
@@ -378,8 +376,8 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
         create_input(config_file)
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
-        logger.exception(f'Exception from create_input - {str(e)}')
-        return ResponseError(f'Exception from create_input - {str(e)}')
+        logger.exception(f'Exception during create_input - {str(e)}')
+        raise CerfException(f'Exception during create_input - {str(e)}') from e
 
     logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
     return None
