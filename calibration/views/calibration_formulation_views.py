@@ -163,55 +163,53 @@ def save_formulation_tab(request) -> Response:
     # Initialize the eds_errors list
     eds_errors = []
 
-    if new_module_names:
-        # Retrieve current module names for the CalibrationRun
-        existing_module_names = set(
-            CalibrationFormulation.objects.filter(calibration_run=run).values_list('module__name', flat=True)
-        )
+    # Fetch all formulations and determine changes
+    all_formulations_qs = CalibrationFormulation.objects.filter(
+        calibration_run=run, module__name__in=new_module_names
+    )
+    existing_module_names = set(all_formulations_qs.values_list('module__name', flat=True))
+    # Determine which modules to delete and add
+    to_be_added = new_module_names - existing_module_names
+    to_be_unused = existing_module_names - new_module_names
 
-        with transaction.atomic():
-            # Only proceed if there are changes in module names
-            if new_module_names != existing_module_names:
-                # Determine which modules to delete and add
-                to_be_unused = existing_module_names - new_module_names
-                to_be_added = new_module_names - existing_module_names
+    with transaction.atomic():
+        # Delete unused formulations
+        if to_be_unused:
+            logger.info(f"Deleting unused modules: {to_be_unused}")
+            delete_unused_formulations(to_be_unused, run)
 
-                # Delete unused formulations
-                if to_be_unused:
-                    delete_unused_formulations(to_be_unused, run)
+        # Add new formulations
+        for module_name in to_be_added:
+            module_instance = get_cached_module_by_name(module_name)
+            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
-                # Only if there are any new ones
-                if to_be_added:
-                    # Add new formulations
-                    for module_name in to_be_added:
-                        module_instance = get_cached_module_by_name(module_name)
-                        CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
+        # Identify formulations without any calibration parameters, in case there was an error retriving them
+        formulations_without_params_qs = all_formulations_qs.filter(calibrationparameter__isnull=True)
 
-                    # Fetch the newly added formulations as a QuerySet
-                    new_formulations_qs = CalibrationFormulation.objects.filter(
-                        calibration_run=run, module__name__in=to_be_added
-                    )
+        required_formulations_qs = all_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs
 
-                    # Call Data Services with the new formulations
-                    if new_formulations_qs.exists() and run.gage:
-                        try:
-                            get_module_metadata_from_data_services(run, new_formulations_qs)
-                        except DataServicesException as e:
-                            logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
-                            eds_errors.append({
-                                'name': 'parameters',
-                                'message': str(e),
-                                'status_code': e.status_code if e.status_code else None
-                            })
+        # Retrieve metadata for required formulations
+        if required_formulations_qs.exists() and run.gage:
+            logger.info(f"Fetching metadata for modules: {required_formulations_qs}")
+            try:
+                get_module_metadata_from_data_services(run, required_formulations_qs)
+            except DataServicesException as e:
+                logger.exception("Error retrieving module parameter data from Data Services")
+                eds_errors.append({
+                    'name': 'parameters',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
 
-            # Delete existing Sloth params for this run and re-add them
-            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+        # Delete existing Sloth params for this run and re-add them
+        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
 
-            error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
-            if error_message:
-                return ResponseError(error_message)
+        error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
+        if error_message:
+            logger.error(f"Error adding Sloth parameters: {error_message}")
+            return ResponseError(error_message)
 
-            run.save()
+        run.save()
 
     ngen_cal_input.ready_to_run(run)
 
@@ -221,7 +219,7 @@ def save_formulation_tab(request) -> Response:
         'status': run.status.name,
         'nwm_warning': nwm_warning
     }
-    if formulation_warning is not None:
+    if formulation_warning:
         response['formulation_warning'] = formulation_warning
     if eds_errors:
         response['eds_errors'] = eds_errors
@@ -368,15 +366,6 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
         return formulation_validation_json, nwm_warning
     else:
         return None, nwm_warning
-
-
-def modules_without_parameters(modules_in_use: QuerySet[CalibrationFormulation]) -> QuerySet[CalibrationFormulation]:
-    """Return formulations without any associated calibration parameters."""
-
-    # Annotate each formulation with the count of related calibration parameters
-    modules_with_parameter_count = modules_in_use.annotate(parameter_count=Count('calibrationparameter'))
-    # Filter out any formulations that have at least one calibration parameter
-    return modules_with_parameter_count.filter(parameter_count=0)
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:

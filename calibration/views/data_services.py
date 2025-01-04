@@ -214,8 +214,7 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
                 ModuleOutputVariable.objects.update_or_create(
                     name=o['variable'],
                     calibration_formulation=calibration_formulation,
-                    # TODO Fix this.  Description is required
-                    defaults={'description': o['description'] if o['description'] else 'placeholder description'}
+                    defaults={'description': o['description']}
                 )
             # Save parameters
             parameters = module['calibrate_parameters']
