@@ -12,7 +12,7 @@ from calibration.models import ForecastRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
     GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
-from calibration.util.ngen_locations import get_output_forecast_run_dir, get_forecast_dir
+from calibration.util.ngen_locations import get_forecast_dir
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, truncate_large_fields
 
