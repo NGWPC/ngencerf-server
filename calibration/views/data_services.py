@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from urllib.parse import urljoin
 
 import requests
@@ -35,19 +36,24 @@ def fetch_from_data_services(method, url, headers=None, payload=None):
     :return: The response JSON data
     :raises: DataServiceException for any HTTP or connection-related errors
     """
-    # response = None
     status_code = None
     response_text = None
     logger.info(f'Sending request to {url}')
     if payload:
         logger.info(f"Data Services payload: {payload}")
     try:
+        start_time = time.time()  # Record the start time
+
         if method == 'GET':
             response = requests.get(url, headers=headers)
         elif method == 'POST':
             response = requests.post(url, headers=headers, json=payload)
         else:
             raise DataServicesException(f"Unsupported HTTP method: {method}")
+
+        elapsed_time = time.time() - start_time  # Calculate the elapsed time
+        minutes, seconds = divmod(elapsed_time, 60)  # Convert to minutes and seconds
+        logger.info(f"Request to {url} took {int(minutes)}:{int(seconds):02} (minutes:seconds).")
 
         # Capture status code and response content before raising an exception
         status_code = response.status_code
