@@ -28,7 +28,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
+    get_forecast_forcing_download_run
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -718,7 +719,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
     job_status = validator.get('job_status')
 
-    forecast_forcing_download_run, error_return = get_forecast_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
+    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
