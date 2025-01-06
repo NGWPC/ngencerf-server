@@ -15,7 +15,7 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.util.calibration_validators import SlurmSubmitCalibrationOrValidationJobResponse, GenericMessageResponseSerializer, \
-    SlurmSubmitForecastForcingDownloadJobResponse
+    SlurmSubmitForecastForcingDownloadJobResponse, SlurmSubmitForecastJobResponse
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_forecast_forcing_download_file, get_geopackage_dir_for_job
 from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description, validate_response_data
@@ -74,12 +74,12 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         url_endpoint = settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT
         payload = {
             'forecast_run_id': (None, run.id),
-            'input_file': (None, arguments['input_file']),
+            'input_file': (None, arguments['validation_best_input']),
             'stdout_file': (None, stdout_file),
             'forcing_file': (None, get_forecast_forcing_download_file(run)),
-            'forecast_dir': (None, arguments['output_dir'])
+            'forecast_dir': (None, arguments['forecast_dir'])
         }
-        slurm_response_validator = SlurmSubmitForecastForcingDownloadJobResponse
+        slurm_response_validator = SlurmSubmitForecastJobResponse
     else:
         raise ValueError(
             f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun."
@@ -93,7 +93,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 
-    logger.info(f"Slurm response for submit job: {response.json()}")
+    logger.info(f"Slurm response for {url_endpoint}: {response.json()}")
     slurm_response = validate_response_data(
         slurm_response_validator,
         response.json(),
