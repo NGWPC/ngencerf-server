@@ -245,7 +245,7 @@ def save_gage_tab(request: Request):
                 try:
                     get_geopackage_from_data_services(run)
                 except DataServicesException as e:
-                    logger.error(f"Error retrieving geopackage data from Data Services: {traceback.format_exc()}")
+                    logger.exception("Error retrieving geopackage data from Data Services")
                     eds_errors.append({
                         'name': 'geopackage',
                         'message': str(e),
@@ -268,7 +268,7 @@ def save_gage_tab(request: Request):
                 try:
                     get_observational_data_from_data_services(run)
                 except DataServicesException as e:
-                    logger.error(f"Error retrieving observational data from Data Services: {traceback.format_exc()}")
+                    logger.exception("Error retrieving observational data from Data Services")
                     eds_errors.append({
                         'name': 'observational',
                         'message': str(e),
@@ -289,7 +289,7 @@ def save_gage_tab(request: Request):
                 try:
                     get_forcing_data_from_data_services(run)
                 except DataServicesException as e:
-                    logger.error(f"Error retrieving forcing data from Data Services: {traceback.format_exc()}")
+                    logger.exception("Error retrieving forcing data from Data Services")
                     eds_errors.append({
                         'name': 'forcing',
                         'message': str(e),
@@ -388,7 +388,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict:
             try:
                 get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)
             except DataServicesException as e:
-                logger.error(f"Error retrieving module parameter data from Data Services: {traceback.format_exc()}")
+                logger.exception("Error retrieving module parameter data from Data Services")
                 return {
                     'name': 'parameters',
                     'message': str(e),
