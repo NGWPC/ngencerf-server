@@ -14,13 +14,14 @@ from django.utils.timezone import now
 
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
-    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
+    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
 from calibration.util.caching import get_metrics_lookup
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
-    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename
+    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename, \
+    get_forecast_forcing_download_performance_file, get_forecast_performance_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,29 @@ def read_calibration_output(calibration_run: CalibrationRun) -> None:
         process_iterations_for_all_workers(calibration_run)
 
         calibration_run.save(update_fields=['run_start', 'performance_metrics', 'realization_file_path'])
+
+    logger.info(f"End of processing output for {job_description}")
+
+
+def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun):
+    job_description = get_job_description(run)
+
+    logger.info(f"Processing output for {job_description}")
+    with transaction.atomic():
+        performance_metrics_file = get_forecast_forcing_download_performance_file(run.forecast_run) if (isinstance(run, ForecastForcingDownloadRun)) else get_forecast_performance_file(run)
+        logger.info(f'Performance metrics file {performance_metrics_file}')
+        performance_metrics = parse_performance_metrics(performance_metrics_file)
+
+        # Use a reserved_time of 0 if performance_metrics is None
+        reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
+        run.run_start = run.submit_date + reserved_time
+
+        if not performance_metrics:
+            # Fallback to calculate elapsed_time manually
+            elapsed_time = now() - run.run_start
+            performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
+
+        run.performance_metrics = performance_metrics
 
     logger.info(f"End of processing output for {job_description}")
 

@@ -23,7 +23,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
 from calibration.views import ngen_cal_input
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
-from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output
+from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, process_forecast_output
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -469,17 +469,6 @@ def finalize_validation_after_callback(run: ValidationRun) -> None:
     process_validation_output_and_maybe_create_best(run)  # Process the validation results and handle best-run logic.
 
 
-def finalize_forecast_after_callback(run: ForecastRun) -> None:
-    """
-    Finalizes a forecast job after it has completed.
-
-    :param run: The ForecastRun object representing the forecast job.
-    - Marks the forecast job as DONE in the database, indicating successful completion.
-    - Currently, this function does not involve additional processing beyond marking the status.
-    """
-    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-
-
 def finalize_forecast_forcing_download_after_callback(run: ForecastForcingDownloadRun) -> None:
     """
     Finalizes a forecast job after it has completed.
@@ -488,7 +477,21 @@ def finalize_forecast_forcing_download_after_callback(run: ForecastForcingDownlo
     - Marks the forecast job as DONE in the database, indicating successful completion.
     - Currently, this function does not involve additional processing beyond marking the status.
     """
-    # Process output of forcing download
+    process_forecast_output(run)
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
     # submit the forecast job with the forcing data
     submit_job(run.forecast_run)
+
+
+def finalize_forecast_after_callback(run: ForecastRun) -> None:
+    """
+    Finalizes a forecast job after it has completed.
+
+    :param run: The ForecastRun object representing the forecast job.
+    - Marks the forecast job as DONE in the database, indicating successful completion.
+    - Currently, this function does not involve additional processing beyond marking the status.
+    """
+    process_forecast_output(run)
+    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+
+

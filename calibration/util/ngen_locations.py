@@ -272,12 +272,20 @@ def get_forecast_forcing_cycle_config_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'{forecast_run.cycle.internal_name}_config.yaml')
 
 
+def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_forcing_download_stdout.log')
+
+
 def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
 
 
-def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'forecast_forcing_download_stdout.log')
+def get_forecast_forcing_download_performance_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_forcing_download_performance.log')
+
+
+def get_forecast_performance_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_performance.log')
 
 
 def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
