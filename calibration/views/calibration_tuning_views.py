@@ -765,17 +765,27 @@ def get_csv_daterange(file: str) -> DateTimeRange:
         DateTimeRange: The calculated date range based on the first column's min and max dates.
 
     Raises:
-        CerfException: If the file does not exist or there is an error in reading the file.
+        CerfException: If the file contains invalid rows or no valid datetime values.
     """
     try:
         if not os.path.exists(file):
             raise CerfException(f"File {file} does not exist")
 
         # Read the CSV file, assuming the first column contains date information
-        df = pd.read_csv(file, delimiter=',', parse_dates=[0])
+        df = pd.read_csv(file, delimiter=',', parse_dates=[0], infer_datetime_format=True)
 
         # Ensure the first column contains valid datetime values
         df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handle invalid dates gracefully
+
+        # Log rows with invalid datetime values
+        invalid_rows = df[df.iloc[:, 0].isna()]
+        if not invalid_rows.empty:
+            invalid_rows_display = invalid_rows.copy()
+            invalid_rows_display.index = invalid_rows_display.index + 1  # Convert to 1-based indexing
+            logger.error(f"Invalid date entries found in {file}:\n{invalid_rows_display}")
+
+            # Raise an exception with details
+            raise CerfException(f"Invalid datetime values found in the following rows: {list(invalid_rows_display.index)}")
 
         # Compute the min and max dates and convert them to UTC
         min_time = df.iloc[:, 0].min().replace(tzinfo=timezone.utc)
@@ -783,14 +793,14 @@ def get_csv_daterange(file: str) -> DateTimeRange:
 
         return DateTimeRange(min_time, max_time)
     except Exception as e:
-        # Just in case a file is totally unreadable
-        raise CerfException(f'Error reading file {file}: {e}')
+        logger.error(f"Error while processing file {file}: {e}")
+        raise CerfException(f"Error reading file {file}: {e}")
 
 
 def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     """
     Computes the encompassing date range for all valid CSV files in a given directory.
-
+f
     Args:
         forcing_dir_path (str): The directory path containing forcing data files.
 
