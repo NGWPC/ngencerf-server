@@ -3,7 +3,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Tuple
+from typing import Tuple, Literal
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -14,7 +14,8 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum, JobType
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
@@ -374,7 +375,7 @@ def validate_simulation_within_range(
         data_end: datetime,
         simulation_start: datetime,
         simulation_end: datetime,
-        job_type: JobType
+        job_type: Literal[JobType.CALIBRATION, JobType.VALIDATION]
 ) -> str | None:
     """
     Validates that the specified simulation period is within the provided data range.

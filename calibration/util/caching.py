@@ -4,7 +4,8 @@ from typing import Dict, List
 from django.core.cache import cache
 from django.db.models import Prefetch
 
-from calibration.enums import PlotDefinitionsEnum, JobType
+from calibration.enums import PlotDefinitionsEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, CalibrationRun, ValidationRun
 
 

@@ -11,6 +11,7 @@ from django.db import transaction
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
@@ -18,10 +19,11 @@ from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_file, \
-    get_forecast_dir
+    get_forecast_dir, get_forecast_forcing_config_file
 from calibration.views import ngen_cal_input
+from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
-from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output
+from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, process_forecast_output
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -133,7 +135,7 @@ def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
         )
 
 
-def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, simulate:bool=False) -> None:
+def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, simulate: bool = False) -> None:
     """
     Execute a job based on the configured NGEN environment.
 
@@ -197,11 +199,17 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
     input_file = get_calibration_input_file(calibration_run)
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}")
+            f"Input file '{input_file}' does not exist for Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}"
+        )
 
-    stdout_File = get_calibration_stdout_file(calibration_run)
+    stdout_file = get_calibration_stdout_file(calibration_run)
 
-    execute_job(calibration_run, {'input_file': input_file}, stdout_File)
+    execute_job(
+        calibration_run,
+        {'input_file': input_file},
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
+    )
 
 
 def run_validation_job(validation_run: ValidationRun) -> None:
@@ -227,14 +235,21 @@ def run_validation_job(validation_run: ValidationRun) -> None:
 
     if not os.path.exists(input_file):
         raise CerfException(
-            f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}")
+            f"Input file '{input_file}' does not exist for Validation Job {validation_run.id}, "
+            f"user: {validation_run.calibration_run.owner.username}, type: {validation_run.validation_type}"
+        )
 
     cmd_line_args = {'input_file': input_file}
     if validation_run.validation_type == ValidationType.VALID_ITERATION.value:
         # For running local, we need to leave these out
         cmd_line_args['worker_name'] = validation_run.worker_name
         cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
-    execute_job(validation_run, cmd_line_args, stdout_file)
+    execute_job(
+        validation_run,
+        cmd_line_args,
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.VALIDATION, False)
+    )
 
 
 def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastForcingDownloadRun) -> None:
@@ -246,22 +261,25 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
 
     :param forecast_forcing_download_run: The ForecastForcingDownloadRun object representing the job.
     """
-    # TODO Build config here
-    gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
+    build_forecast_forcing_download_config(forecast_forcing_download_run)
+
+    gpkg_file = os.path.basename(get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run)))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
-    config_file = 'config'
+    config_file = get_forecast_forcing_config_file(forecast_forcing_download_run.forecast_run)
     forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
-    execute_job(forecast_forcing_download_run,
-                {
-                    'gpkg_file': gpkg_file,
-                    'cycle_name': cycle_name,
-                    'config_file': config_file,
-                    'forcing_file': forcing_file,
-                    'stdout_file': get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
-                },
-                stdout_file, simulate=True)
+    execute_job(
+        forecast_forcing_download_run,
+        {
+            'cycle_name': cycle_name,
+            'gpkg_file': gpkg_file,
+            'config_file': config_file,
+            'forcing_file': forcing_file
+        },
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST_FORCING_DOWNLOAD, False)
+    )
 
 
 def run_forecast_job(forecast_run: ForecastRun) -> None:
@@ -275,13 +293,22 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     """
     forcing_file = get_forecast_forcing_download_file(forecast_run)
     validation_best_input = get_validation_best_input_file(forecast_run.calibration_run)
-    output_dir = os.path.basename(get_forecast_dir(forecast_run))
+    forecast_dir = os.path.basename(get_forecast_dir(forecast_run))
     stdout_file = get_forecast_stdout_file(forecast_run)
 
-    execute_job(forecast_run, {'forcing_file': forcing_file, 'validation_best_input': validation_best_input, 'output_dir': output_dir}, stdout_file)
+    execute_job(
+        forecast_run,
+        {
+            'forcing_file': forcing_file,
+            'validation_best_input': validation_best_input,
+            'forecast_dir': forecast_dir
+        },
+        stdout_file,
+        simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST, False)
+    )
 
 
-def submit_job(run: BaseRun, config_file=None) -> Response | None:
+def submit_job(run: BaseRun, config_file=None) -> None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -297,9 +324,7 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
     """
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
-        response = prepare_calibration_job(run, config_file)
-        if response is not None:
-            return response  # Return the error response early
+        prepare_calibration_job(run, config_file)
 
     try:
         with transaction.atomic():
@@ -323,7 +348,7 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
         # Handle failures by marking the job as FAILED
         run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
         logger.exception(f'Exception submitting {get_job_description(run)} - {str(e)}')
-        return None
+        raise  # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
 
@@ -351,8 +376,8 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
         create_input(config_file)
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
-        logger.exception(f'Exception from create_input - {str(e)}')
-        return ResponseError(f'Exception from create_input - {str(e)}')
+        logger.exception(f'Exception during create_input - {str(e)}')
+        raise CerfException(f'Exception during create_input - {str(e)}') from e
 
     logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
     return None
@@ -444,17 +469,6 @@ def finalize_validation_after_callback(run: ValidationRun) -> None:
     process_validation_output_and_maybe_create_best(run)  # Process the validation results and handle best-run logic.
 
 
-def finalize_forecast_after_callback(run: ForecastRun) -> None:
-    """
-    Finalizes a forecast job after it has completed.
-
-    :param run: The ForecastRun object representing the forecast job.
-    - Marks the forecast job as DONE in the database, indicating successful completion.
-    - Currently, this function does not involve additional processing beyond marking the status.
-    """
-    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-
-
 def finalize_forecast_forcing_download_after_callback(run: ForecastForcingDownloadRun) -> None:
     """
     Finalizes a forecast job after it has completed.
@@ -463,7 +477,21 @@ def finalize_forecast_forcing_download_after_callback(run: ForecastForcingDownlo
     - Marks the forecast job as DONE in the database, indicating successful completion.
     - Currently, this function does not involve additional processing beyond marking the status.
     """
-    # Process output of forcing download
+    process_forecast_output(run)
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
     # submit the forecast job with the forcing data
     submit_job(run.forecast_run)
+
+
+def finalize_forecast_after_callback(run: ForecastRun) -> None:
+    """
+    Finalizes a forecast job after it has completed.
+
+    :param run: The ForecastRun object representing the forecast job.
+    - Marks the forecast job as DONE in the database, indicating successful completion.
+    - Currently, this function does not involve additional processing beyond marking the status.
+    """
+    process_forecast_output(run)
+    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+
+

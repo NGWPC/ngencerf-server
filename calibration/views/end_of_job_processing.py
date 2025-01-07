@@ -14,13 +14,15 @@ from django.utils.timezone import now
 
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
-    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
+    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
+from calibration.models.base_run import BaseRun
 from calibration.util.caching import get_metrics_lookup
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
-    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename
+    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename, \
+    get_forecast_forcing_download_performance_file, get_forecast_performance_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -55,33 +57,13 @@ def read_validation_output(validation_run: ValidationRun) -> None:
         )
         validation_run.validation_worker_name = matching_worker
 
-        # Determine the metrics file path based on validation type
-        if validation_type == ValidationType.VALID_ITERATION:
-            metrics_file = get_validation_performance_file(
-                validation_run.calibration_run,
-                validation_run.worker_name,
-                validation_run.iteration_num
-            )
-        else:
-            metrics_file = get_validation_special_performance_file(
-                validation_run.calibration_run,
-                validation_type
-            )
+        metrics_file = (
+            get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
+            if validation_type == ValidationType.VALID_ITERATION
+            else get_validation_special_performance_file(validation_run.calibration_run, validation_type)
+        )
 
-        # Parse performance metrics and determine run_start
-        performance_metrics = parse_performance_metrics(metrics_file)
-
-        # Use a reserved_time of 0 if performance_metrics is None
-        reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
-        validation_run.run_start = validation_run.submit_date + reserved_time
-
-        if not performance_metrics:
-            # Fallback to calculate elapsed_time manually
-            elapsed_time = now() - validation_run.run_start
-            performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
-
-        # Update validation run fields
-        validation_run.performance_metrics = performance_metrics
+        create_performance_metrics(validation_run, metrics_file)
         validation_run.save(update_fields=['performance_metrics', 'run_start', 'validation_worker_name'])
 
         process_validation_for_validation_run(validation_run)
@@ -101,18 +83,8 @@ def read_calibration_output(calibration_run: CalibrationRun) -> None:
     logger.info(f"Processing output for {job_description}")
 
     with transaction.atomic():
-        performance_metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
-
-        # Use a reserved_time of 0 if performance_metrics is None
-        reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
-        calibration_run.run_start = calibration_run.submit_date + reserved_time
-
-        if not performance_metrics:
-            # Fallback to calculate elapsed_time manually
-            elapsed_time = now() - calibration_run.run_start
-            performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
-
-        calibration_run.performance_metrics = performance_metrics
+        metrics_file = get_calibration_performance_file(calibration_run)
+        create_performance_metrics(calibration_run, metrics_file)
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
             raise CerfException(f"End of job processing has already been completed for {job_description}")
@@ -127,6 +99,46 @@ def read_calibration_output(calibration_run: CalibrationRun) -> None:
         calibration_run.save(update_fields=['run_start', 'performance_metrics', 'realization_file_path'])
 
     logger.info(f"End of processing output for {job_description}")
+
+
+def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun) -> None:
+    job_description = get_job_description(run)
+
+    logger.info(f"Processing output for {job_description}")
+    with transaction.atomic():
+        metrics_file = (
+            get_forecast_forcing_download_performance_file(run.forecast_run)
+            if isinstance(run, ForecastForcingDownloadRun)
+            else get_forecast_performance_file(run)
+        )
+
+        logger.info(f'Performance metrics file {metrics_file}')
+        create_performance_metrics(run, metrics_file)
+
+    logger.info(f"End of processing output for {job_description}")
+
+
+def create_performance_metrics(run: BaseRun, performance_metrics_file: str) -> None:
+
+    """
+    Parses performance metrics from a file and updates the run with the metrics.
+
+    :param run: The run instance (CalibrationRun, ValidationRun, or similar).
+    :param performance_metrics_file: Path to the performance metrics file.
+    :return: None
+    """
+    performance_metrics = parse_performance_metrics(performance_metrics_file)
+
+    # Use a reserved_time of 0 if performance_metrics is None
+    reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
+    run.run_start = run.submit_date + reserved_time
+
+    if not performance_metrics:
+        # Fallback to calculate elapsed_time manually
+        elapsed_time = now() - run.run_start
+        performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
+
+    run.performance_metrics = performance_metrics
 
 
 def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file: str, expected_run_type: str) -> None:
@@ -380,7 +392,7 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
                                         iteration: Iteration,
                                         metrics_row: dict[str, float | None],
                                         metrics_to_create: list[IterationMetric],
-                                        metrics_lookup: dict[str, Any]):
+                                        metrics_lookup: dict[str, Any])-> None:
     """
     Process a single row from the metrics file and create IterationMetric objects.
 

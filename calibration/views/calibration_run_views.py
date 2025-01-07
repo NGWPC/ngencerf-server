@@ -14,7 +14,8 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, JobType
+from calibration.enums import StatusEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import Iteration, ValidationRun, ForecastRun, Status
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
@@ -27,7 +28,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
+    get_forecast_forcing_download_run
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -207,10 +209,11 @@ def get_status(request: Request) -> Response:
         if messages:
             response['errors'] = messages
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response)
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'], max_length=10)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_status() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_status() - {truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10)}')
+
     return Response(response_validator.data)
 
 
@@ -682,6 +685,53 @@ def validation_job_slurm_callback(request: Request) -> Response:
 
 
 @extend_schema(
+    request=ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a forecast forcing download job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a forecast forcing download job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    data = request.data
+    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
+    job_status = validator.get('job_status')
+
+    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum(job_status)
+    run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
+
+    logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
     request=ForecastJobSlurmCallbackRequestSerializer,
     responses={
         202: None,
@@ -724,53 +774,6 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     run_forecast_job_callback_pw(forecast_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
-
-
-@extend_schema(
-    request=ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
-    responses={
-        202: None,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Callback for Slurm to call when a forecast forcing download job ends"
-)
-@api_view(['POST'])
-@handle_exceptions
-@auth_scope_required(token_slurm_scope)
-def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
-    """
-    Handles a callback from Slurm to update the status of a forecast forcing download job.
-
-    :param request: HTTP request containing Slurm job details and status.
-    :return: HTTP 202 response indicating the callback was processed.
-    """
-    data = request.data
-    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
-    job_status = validator.get('job_status')
-
-    forecast_forcing_download_run, error_return = get_forecast_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
-
-    logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -878,7 +881,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     subset_df = df.loc[
         (df['dateTime'] >= date_time_range.start_datetime) &
         (df['dateTime'] <= date_time_range.end_datetime)
-    ].copy()  # Explicitly create a copy
+        ].copy()  # Explicitly create a copy
 
     # Convert timezone-aware datetime column to naive timestamps
     subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)

@@ -191,12 +191,6 @@ class ValidationType(AbstractEnum):
     VALID_ITERATION = 'valid_iteration'
 
 
-class JobType(AbstractEnum):
-    CALIBRATION = 'calibration'
-    VALIDATION = 'validation'
-    FORECAST = 'forecast'
-
-
 class LogCategory(AbstractEnum):
     CALIBRATION = 'calibration'
     VALIDATION = 'validation'

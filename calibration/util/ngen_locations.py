@@ -1,5 +1,6 @@
 import logging
 import os
+import tempfile
 from typing import Literal
 
 from django.conf import settings
@@ -29,6 +30,22 @@ files = [
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
     SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so')
 ]
+
+forecast_forcing_scripts = [
+    FORCING_MESH_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'ESMF_Mesh_Domain_Configuration_Production',
+                                             'NextGen_hyfab_to_ESMF_Mesh.py'),
+    FORCING_EXTRACTION_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'Forcing_Extraction_Scripts'),
+    FORCING_BMI_SCRIPT_PATH := os.path.join(settings.NGEN_FORCING_REPO_ROOT, 'NextGen_Forcings_Engine_BMI', 'run_bmi_model.py')
+]
+
+forecast_forcing_work_directories = [
+    FORCING_RAW_INPUT := os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
+    FORCING_HRRR := os.path.join(FORCING_RAW_INPUT, 'HRRR'),
+    FORCING_RAP := os.path.join(FORCING_RAW_INPUT, 'RAP')
+]
+
+for f in forecast_forcing_work_directories:
+    os.makedirs(f, exist_ok=True)
 
 
 def check_files():
@@ -248,19 +265,37 @@ def get_forecast_dir(forecast_run: ForecastRun) -> str:
 
 
 def get_forecast_forcing_config_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_output_forecast_run_dir(forecast_run.calibration_run), f'forecast_forcing_config.yaml')
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_config.yaml')
 
 
-def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
+def get_forecast_forcing_cycle_config_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), f'{forecast_run.cycle.internal_name}_config.yaml')
 
 
 def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_forcing_download_stdout.log')
 
 
+def get_forecast_stdout_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_stdout.log')
+
+
+def get_forecast_forcing_download_performance_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_forcing_download_performance.log')
+
+
+def get_forecast_performance_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'forecast_performance.log')
+
+
 def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}.nc')
+
+
+def get_forecast_temp_dir(forecast_run: ForecastRun) -> str:
+    prefix = f'forcing_work_Calibration_{forecast_run.calibration_run.id}_Forecast_{forecast_run.id}_'
+    temp_dir = tempfile.mkdtemp(prefix=prefix)
+    return temp_dir
 
 
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:

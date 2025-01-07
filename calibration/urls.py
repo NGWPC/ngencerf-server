@@ -69,6 +69,8 @@ urlpatterns = [
     path('calibration/get_job_data_dir/', calibration_run_views.get_job_dir, name="getJobDir"),
     path('calibration/calibration_job_slurm_callback/', calibration_run_views.calibration_job_slurm_callback, name="calibrationJobSlurmCallback"),
     path('calibration/validation_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
+    path('calibration/forecast_forcing_download_job_slurm_callback/', calibration_run_views.forecast_forcing_download_job_slurm_callback, name="forecastForcingDownloadJobSlurmCallback"),
+    path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
 
     ##################################
     # Evaluation

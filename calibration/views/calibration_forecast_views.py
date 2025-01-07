@@ -1,4 +1,5 @@
 import logging
+import shutil
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -11,6 +12,7 @@ from calibration.models import ForecastRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
     GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
+from calibration.util.ngen_locations import get_forecast_dir
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, truncate_large_fields
 
@@ -96,7 +98,8 @@ def get_forecast_jobs(request: Request) -> Response:
 
     forecast_jobs = list(ForecastRun.objects
                          .filter(calibration_run__owner=request.user)
-                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name', 'forcing_download_run__status__name'))
+                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name',
+                                 'forcing_download_run__status__name'))
     for f in forecast_jobs:
         f['forecast_run_id'] = f.pop('id')
         f['cycle'] = f.pop('cycle__name')
@@ -105,11 +108,13 @@ def get_forecast_jobs(request: Request) -> Response:
         f['forcing_download_status'] = f.pop('forcing_download_run__status__name')
 
     response = {'forecast_jobs': forecast_jobs}
-    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response, fields_to_truncate=['forecast_jobs'], max_length=10)
+    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response, fields_to_truncate=['forecast_jobs'],
+                                                           max_length=10)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10)}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_validation_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10)}')
     return Response(response_validator.data)
 
 
@@ -213,8 +218,8 @@ def delete_forecast_job(request: Request) -> Response:
     with transaction.atomic():
         # Delete the Forcing download Run  and that will automatically delete the Forecast Run
         run.forcing_download_run.delete()
-
-        # TODO Need to delete the downloaded data
+        logger.info(f"Deleting directory {get_forecast_dir(run)}")
+        shutil.rmtree(get_forecast_dir(run), ignore_errors=True)
 
     response = {'message': f'Forecast Job {run.id} and associated records have been deleted', 'forecast_run_id': run_id}
 
@@ -224,3 +229,5 @@ def delete_forecast_job(request: Request) -> Response:
     logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {response_validator.data}')
 
     return Response(response_validator.data)
+
+

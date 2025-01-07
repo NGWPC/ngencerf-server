@@ -2,10 +2,11 @@ import base64
 import inspect
 import json
 import logging
+import os
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, Dict, List, Any
+from typing import Type, Tuple, List, Any
 
 import numpy as np
 from django.conf import settings
@@ -23,7 +24,8 @@ from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCy
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
-from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
+from calibration.util.calibration_validators import ErrorResponseSerializer
+from calibration.util.ngen_locations import get_forecast_dir
 
 logger = logging.getLogger(__name__)
 
@@ -33,32 +35,31 @@ User = get_user_model()
 
 
 def get_run_instance(
-        model: Type[CalibrationRun] | Type[ValidationRun] | Type[ForecastRun],
+        model: Type[BaseRun],
         run_id: int,
         user: User | None,
         run_status: List[StatusEnum] | None = None,
         owner_field: str = 'owner',
-        additional_filters: Dict[str, bool] | None = None
-) -> Tuple[CalibrationRun | ValidationRun | ForecastRun | None, Response | None]:
+        is_deleted_field: str = 'is_deleted'
+) -> Tuple[BaseRun | None, Response | None]:
     """
-    Retrieve an instance of a CalibrationRun, ValidationRun, or ForecastRun by its ID,
-    optionally filtering by owner, status, or additional conditions.
+    Retrieve an instance of a BaseRun-derived model by its ID,
+    optionally filtering by owner, status, and the 'is_deleted' flag.
 
-    :param model: The model class to query (CalibrationRun, ValidationRun, or ForecastRun).
+    :param model: The BaseRun-derived model class to query.
     :param run_id: The ID of the run to retrieve.
     :param user: The user requesting the run. If None, no filtering by owner is done.
     :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
     :param owner_field: The field used to filter by owner (default is 'owner').
-    :param additional_filters: Any additional filters to apply to the queryset.
+    :param is_deleted_field: The field path for the 'is_deleted' flag (default is 'is_deleted').
     :return: A tuple containing the run instance (or None if not found) and an optional Response with an error.
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
     allowed_statuses: List[Status] = [status_enum.db_instance for status_enum in run_status]
 
-    query: QuerySet = model.objects.filter(id=run_id)
-    if additional_filters:
-        query = query.filter(**additional_filters)
+    # Add is_deleted=False to the query
+    query: QuerySet = model.objects.filter(id=run_id, **{is_deleted_field: False})
 
     if user:
         query = query.filter(**{f"{owner_field}": user})
@@ -69,7 +70,8 @@ def get_run_instance(
         user_info = f' or is not owned by {user.email}' if user else ''
         return None, Response(
             {'error': f'{model.__name__} {run_id} does not exist{user_info}'},
-            status=status.HTTP_400_BAD_REQUEST)
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     # Check if the status of the run is in the allowed statuses
     if run.status not in allowed_statuses:
@@ -78,7 +80,8 @@ def get_run_instance(
             {'error': (f'{model.__name__} {run_id} is not in an allowed status '
                        f'({join_with_or(allowed_status_names)}). '
                        f'Current status: {run.status.name}')},
-            status=status.HTTP_400_BAD_REQUEST)
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     return run, None
 
@@ -96,7 +99,7 @@ def get_calibration_run(
     :param run_status: A list of allowed statuses for the CalibrationRun.
     :return: A tuple containing the CalibrationRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', {'is_deleted': False})
+    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_deleted')
 
 
 def get_validation_run(
@@ -112,7 +115,7 @@ def get_validation_run(
     :param run_status: A list of allowed statuses for the ValidationRun.
     :return: A tuple containing the ValidationRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', {'calibration_run__is_deleted': False})
+    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
 
 
 def get_forecast_run(
@@ -128,7 +131,7 @@ def get_forecast_run(
     :param run_status: A list of allowed statuses for the ForecastRun.
     :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', {'calibration_run__is_deleted': False})
+    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
 
 
 def get_forecast_forcing_download_run(
@@ -142,10 +145,9 @@ def get_forecast_forcing_download_run(
     :param forecast_forcing_download_run_id: The ID of the ForecastForcingDownloadRun to retrieve.
     :param user: The user requesting the ForecastForcingDownloadRun. If None, no owner filtering is applied.
     :param run_status: A list of allowed statuses for the ForecastRun.
-    :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
+    :return: A tuple containing the ForecastForcingDownloadRUn instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(ForecastForcingDownloadRun, forecast_forcing_download_run_id, user, run_status, 'forecast_run__calibration_run__owner',
-                            {'calibration_run__is_deleted': False})
+    return get_run_instance(ForecastForcingDownloadRun, forecast_forcing_download_run_id, user, run_status, 'forecast_run__calibration_run__owner', 'forecast_run__calibration_run__is_deleted')
 
 
 def join_with_or(items):
@@ -272,6 +274,7 @@ def create_forecast_run_internal(
                                               calibration_run=calibration_run,
                                               cycle=cycle,
                                               forcing_download_run=forcing_download_run)
+    os.makedirs(get_forecast_dir(forecast_run))
     logger.info(f"Creating Forecast Job {forecast_run.id} for Calibration Job {calibration_run.id}")
 
     return forecast_run

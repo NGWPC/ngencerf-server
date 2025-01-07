@@ -6,7 +6,6 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName
-from cerfServer.local_settings import ALLOWED_HOSTS
 
 
 class BaseSerializer(serializers.Serializer):
@@ -547,6 +546,8 @@ class CreateAndRunForecastResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forecast_run_id = serializers.IntegerField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=False)
+    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    forecast_forcing_download_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
 # Geopackage from Data Services
@@ -837,7 +838,7 @@ class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
+class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDownloadRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
@@ -1065,7 +1066,19 @@ class GetLogsResponseSerializer(GenericMessageResponseSerializer):
 ##################################
 # Slurm
 ##################################
-class SlurmSubmitJobResponse(BaseSerializer):
+class SlurmSubmitCalibrationOrValidationJobResponse(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
     ngen_cal_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+
+
+class SlurmSubmitForecastForcingDownloadJobResponse(BaseSerializer):
+    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
+    ngen_forcing_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+
+
+class SlurmSubmitForecastJobResponse(BaseSerializer):
+    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
+    ngen_forecast_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+
