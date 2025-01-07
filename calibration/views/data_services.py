@@ -25,22 +25,23 @@ default_headers = {
 }
 
 
-def fetch_from_data_services(method, url, headers=None, payload=None):
+def fetch_from_data_services(method: str, url: str, headers: dict = None, payload: dict = None) -> dict:
     """
     A generic function to handle HTTP requests to Data Services and handle exceptions.
 
     :param method: HTTP method (e.g., 'GET' or 'POST')
-    :param url: The full URL to send the request to
-    :param headers: Optional HTTP headers to include
-    :param payload: Optional JSON payload for POST requests
-    :return: The response JSON data
-    :raises: DataServiceException for any HTTP or connection-related errors
+    :param url: The full URL to send the request to.
+    :param headers: Optional HTTP headers to include.
+    :param payload: Optional JSON payload for POST requests.
+    :return: The response JSON data as a dictionary.
+    :raises: DataServicesException for any HTTP or connection-related errors.
     """
     status_code = None
     response_text = None
     logger.info(f'Sending request to {url}')
     if payload:
         logger.info(f"Data Services payload: {payload}")
+
     try:
         start_time = time.time()  # Record the start time
 
@@ -67,7 +68,17 @@ def fetch_from_data_services(method, url, headers=None, payload=None):
             raise DataServicesException(f"Call to {url} returned HTML. Response text: {response_text}", status_code)
 
         response.raise_for_status()  # Raise HTTPError for bad responses
-        return response.json()
+
+        # Parse and validate the response JSON
+        response_data = response.json()
+
+        # Ensure the response is a dictionary
+        if not isinstance(response_data, dict):
+            raise DataServicesException(
+                f"Unexpected response format: Expected a dictionary but got {type(response_data).__name__}. Response: {response_data}"
+            )
+
+        return response_data
 
     except requests.exceptions.HTTPError as e:
         message = f"Call to {url} failed with {status_code}. Response text: {response_text if response_text else 'No response received'}"
@@ -80,6 +91,11 @@ def fetch_from_data_services(method, url, headers=None, payload=None):
         logger.error(message)
         raise DataServicesException(message) from e
 
+    except ValueError as e:
+        # Handle invalid JSON responses
+        logger.error(f"Invalid JSON response from {url}: {response_text}")
+        raise DataServicesException("Invalid JSON received from Data Services") from e
+
 
 class DataServicesException(Exception):
     def __init__(self, message, status_code=None):
@@ -91,11 +107,12 @@ def get_geopackage_from_data_services(run: CalibrationRun):
     if run.gage:
         if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
             logger.info('Getting geopackage from Data Services')
-            url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                                                               source=run.gage.agency,
-                                                                                                               domain=run.gage.domain.name,
-                                                                                                               version=settings.ENTERPRISE_DATA_VERSION
-                                                                                                               ))
+            url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[1].format(
+                gage_id=run.gage.gage_id,
+                source=run.gage.agency,
+                domain=run.gage.domain.name,
+                version=settings.ENTERPRISE_DATA_VERSION
+            ))
             geopackage_json = fetch_from_data_services('GET', url, headers=default_headers)
         else:
             logger.info('Getting dummy geopackage data')
@@ -221,7 +238,7 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
                     name=o['variable'],
                     calibration_formulation=calibration_formulation,
                     # TODO Fix this.  Description is required
-                    defaults = {'description': o['description'] if o['description'] else 'placeholder description'}
+                    defaults={'description': o['description'] if o['description'] else 'placeholder description'}
                 )
             # Save parameters
             parameters = module['calibrate_parameters']
