@@ -252,8 +252,8 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
                     defaults={'data_type': p['data_type'],
                               'description': p['description'],
                               'initial_value': str_to_float(p['initial_value']),
-                              'minimum': str_to_float(p['minimum']),
-                              'maximum': str_to_float(p['maximum']),
+                              'minimum': str_to_float(p['min']),
+                              'maximum': str_to_float(p['max']),
                               'units': p['units']
                               }
                 )
