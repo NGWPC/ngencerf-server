@@ -13,6 +13,7 @@ django_dbconn_retry~=0.1.7
 djoser~=2.3.1
 djangorestframework-simplejwt~=5.3.1
 pyjwt~=2.10.0
+PyYAML~=6.0.2
 django_dbconn_retry~=0.1.7
 drf_spectacular~=0.28.0
 django-cors-headers~=4.6.0
@@ -23,6 +24,3 @@ numpy~=2.2.1
 
 # There is also a dependancy on git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput"
 # That dependancy is installed separately in runCerf.sh in order to ensure that we get the latest code
-
-
-

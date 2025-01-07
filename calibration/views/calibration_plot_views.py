@@ -4,13 +4,13 @@ from typing import Any
 
 import pandas as pd
 from django.core.cache import cache
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiParameter
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, JobType
+from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
+from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \
@@ -121,62 +121,7 @@ def png_to_base64_url(png):
 
 
 @extend_schema(
-    # drf-spectacular doesn't have a way to infer the parameters from GetPlotRequestSerializer
-    parameters=[
-        OpenApiParameter(
-            name="calibration_run_id",
-            type=OpenApiTypes.INT,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            description="The ID of the calibration run"
-        ),
-        OpenApiParameter(
-            name="validation_run_id",
-            type=OpenApiTypes.INT,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            description="The ID of the validation run"
-        ),
-        OpenApiParameter(
-            name="plot_name",
-            type=OpenApiTypes.STR,
-            location=OpenApiParameter.QUERY,
-            required=True,
-            description="The name of the plot to retrieve"
-        ),
-        OpenApiParameter(
-            name="include_data",
-            type=OpenApiTypes.BOOL,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            default=False,
-            description="Whether to include plot data in the response"
-        ),
-        OpenApiParameter(
-            name="force_include_plot",
-            type=OpenApiTypes.BOOL,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            default=False,
-            description="Whether to force inclusion of the plot URL"
-        ),
-        OpenApiParameter(
-            name="start",
-            type=OpenApiTypes.INT,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            default=0,
-            description="The starting index for pagination (0-based)"
-        ),
-        OpenApiParameter(
-            name="limit",
-            type=OpenApiTypes.INT,
-            location=OpenApiParameter.QUERY,
-            required=False,
-            default=100,
-            description="The maximum number of items to retrieve per page"
-        ),
-    ],
+    request=GetPlotRequestSerializer,
     responses={
         200: GetPlotResponseSerializer,
         400: OpenApiResponse(
@@ -190,7 +135,7 @@ def png_to_base64_url(png):
     },
     description="Return a base64 URL for a plot image and the associated data"
 )
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @handle_exceptions
 def get_plot(request: Request) -> Response:
     """
@@ -205,7 +150,7 @@ def get_plot(request: Request) -> Response:
     Returns:
         Response: A JSON response with plot details, or an error if the plot is not found.
     """
-    data = request.query_params
+    data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_plot() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(GetPlotRequestSerializer, data)
@@ -333,11 +278,12 @@ def get_plot(request: Request) -> Response:
 
 def determine_plot_location(run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any]) -> str:
     """
-    Determines the location of the plot based on the plot definition's location attribute.
+    Determines the file location of the plot based on the plot definition's attributes.
 
-    :param run: The run object, either a calibration or validation run.
-    :param plot_definition: The plot definition dictionary containing location details.
-    :return: The determined plot location as a string path.
+    :param run: The run object, which could be either a calibration or validation run.
+    :param plot_definition: Dictionary containing the plot's attributes, such as its location type.
+    :return: The file path where the plot is expected to be located.
+    :raises CerfException: If the plot's location type is unknown or the required directory cannot be found.
     """
     calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
     match plot_definition['location']:
@@ -367,7 +313,7 @@ def determine_plot_location(run: CalibrationRun | ValidationRun, plot_definition
 
 def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any], start: int, limit: int) -> list[dict[str, Any]]:
     """
-    Retrieves data for a specific plot based on its definition, using chunked file reading where applicable.
+    Retrieves data for a specific plot based on its definition, using database-level pagination where applicable.
 
     :param run: The run object, either a calibration or validation run.
     :param plot_definition: Dictionary containing plot specifications.
@@ -381,13 +327,17 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
 
     match plot_enum:
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
+            # Retrieve iteration data for the calibration run with pagination applied at the database level
             return [
-                {'iteration': iteration.iteration_num,
-                 'objective_function_value': iteration.objective_function_value}
-                for iteration in get_iterations_for_calibration_job(calibration_run)
-            ][start:start + limit]
+                {
+                    'iteration': iteration.iteration_num,
+                    'objective_function_value': iteration.objective_function_value
+                }
+                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+            ]
 
         case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION | PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
+            # Merge multiple hydrograph-related files and paginate the result
             worker_dir = worker_dir or find_worker_with_non_empty_plot_iteration(calibration_run)
             file_paths = [
                 get_observational_file_for_job(calibration_run),  # Observation
@@ -399,33 +349,35 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
+            # Retrieve metric data for each iteration and apply pagination at the database level
             return [
                 {
                     'iteration': iteration.iteration_num,
                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run)
-            ][start:start + limit]
+                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+            ]
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
+            # Retrieve parameter evolution data for each iteration with pagination
             return [
                 {
                     'iteration': iteration.iteration_num,
-                    'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
-                                   iteration.iterationparameter_set.all()]
+                    'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in iteration.iterationparameter_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run)
-            ][start:start + limit]
+                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+            ]
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
+            # Retrieve metrics and objective function values for each iteration with pagination
             return [
                 {
                     'iteration': iteration.iteration_num,
                     'objective_function_value': iteration.objective_function_value,
                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run)
-            ][start:start + limit]
+                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+            ]
 
         case PlotDefinitionsEnum.STREAM_FLOW_PRECIPITATION:
             # Requires calculation, so we won't return data
@@ -436,6 +388,7 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return []
 
         case PlotDefinitionsEnum.COST_HISTORY:
+            # Read cost history data from a file and paginate the result
             cost_history_file = get_cost_hist_file(calibration_run)
             if not os.path.exists(cost_history_file):
                 logger.error(f"File not found: {cost_history_file}")
@@ -443,6 +396,7 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return read_file_in_chunks(cost_history_file, start, limit)
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
+            # Combine multiple metrics files and apply pagination
             files = [
                 get_validation_metrics_valid_control_file(calibration_run),
                 get_validation_metrics_valid_best_file(calibration_run),
@@ -452,7 +406,7 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 files.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
             plot_data = []
 
-            # Read each file as a DataFrame, apply type inference, and convert to dict
+            # Read each file as a DataFrame, infer types, and convert to dictionary format
             for file_path in files:
                 if os.path.exists(file_path):
                     df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
@@ -465,7 +419,7 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return []
 
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
-            # Define files and column names for HYDROGRAPH_VALIDATION
+            # Merge hydrograph validation files and paginate the result
             file_paths = [
                 get_observational_file_for_job(calibration_run),  # Observation
                 os.path.join(NWM_RETROSPECTIVE_DIR, f'{calibration_run.gage.gage_id}.csv'),  # NWM Retro
@@ -482,26 +436,29 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             # Requires calculation, so we won't return data
             return []
 
-    logger.error(f"Data handler not found for '{plot_enum}'")
-    return []  # Return an empty list or raise an exception if no match is found
+        case _:
+            logger.error(f"Data handler not found for '{plot_enum}'")
+            return []  # Return an empty list if no match is found
 
 
 def load_and_merge_hydrograph_files_with_pagination(
-    file_paths: list[str], column_names: list[str], start: int, limit: int
+        file_paths: list[str], column_names: list[str], start: int, limit: int
 ) -> list[dict[str, Any]]:
     """
-    Loads CSV files in chunks, merges them on the 'time' column, and returns paginated results.
+    Loads multiple hydrograph-related CSV files, merges them on the 'time' column, and returns paginated results.
 
-    :param file_paths: List of file paths to load.
-    :param column_names: List of new column names for each file's value column.
-    :param start: The starting index for pagination.
-    :param limit: The maximum number of items to retrieve.
-    :return: Paginated merged data as a list of dictionaries.
+    :param file_paths: List of file paths to the hydrograph-related data files.
+    :param column_names: Column names to rename the value columns in each file for clarity in the merged result.
+    :param start: Starting index for pagination (0-based).
+    :param limit: Maximum number of rows to return in the result.
+    :return: A paginated list of merged data entries, or an empty list if no data is found.
+    :raises CerfException: If file processing fails or merging encounters an error.
     """
     dataframes = []
     try:
         for file_path, col_name in zip(file_paths, column_names):
             if os.path.exists(file_path):
+                # Read and prepare each file as a DataFrame
                 df = read_and_prepare_hydrograph_files(file_path)
                 dataframes.append(df.rename(columns={"value": col_name}))
 
@@ -509,10 +466,12 @@ def load_and_merge_hydrograph_files_with_pagination(
             logger.error("No data to merge; all files were missing or empty.")
             return []
 
+        # Merge DataFrames on the 'time' column
         merged_df = dataframes[0]
         for df in dataframes[1:]:
             merged_df = merged_df.merge(df, on="time", how="inner")
 
+        # Format the 'time' column for output
         merged_df['time'] = merged_df['time'].apply(format_datetime)
 
         return merged_df.iloc[start:start + limit].to_dict(orient="records")
@@ -521,40 +480,31 @@ def load_and_merge_hydrograph_files_with_pagination(
         raise CerfException(f"Failed to process hydrograph files: {e}")
 
 
-def read_file_in_chunks(file_path: str, start: int, limit: int, chunksize: int = 1000) -> list[dict[str, Any]]:
+def read_file_in_chunks(file_path: str, start: int, limit: int) -> list[dict[str, Any]]:
     """
-    Reads a CSV file in chunks and retrieves a specific slice of rows for pagination.
+    Reads a file line-by-line and retrieves a specific slice of rows for pagination.
 
-    :param file_path: Path to the CSV file.
-    :param start: The starting index for pagination.
-    :param limit: The maximum number of items to retrieve.
-    :param chunksize: Number of rows to read per chunk.
-    :return: List of rows as dictionaries.
+    :param file_path: Path to the file to be read.
+    :param start: Starting index for pagination (0-based).
+    :param limit: Maximum number of rows to retrieve.
+    :return: A list of dictionaries containing line numbers and content as-is.
+    :raises CerfException: If the file cannot be read due to an error.
     """
-    rows = []
-    end = start + limit
-
+    paginated_lines = []
     try:
-        for chunk_idx, chunk in enumerate(pd.read_csv(file_path, chunksize=chunksize)):
-            chunk_start = chunk_idx * chunksize
-            chunk_end = chunk_start + len(chunk)
-
-            # Skip chunks before the start index
-            if chunk_end <= start:
-                continue
-
-            # Add rows from the current chunk if they fall within the range
-            rows_to_add = chunk.iloc[max(0, start - chunk_start):max(0, end - chunk_start)]
-            rows.extend(rows_to_add.to_dict(orient='records'))
-
-            # Stop reading if we have enough rows
-            if len(rows) >= limit:
-                break
+        with open(file_path, 'r') as file:
+            for current_line_number, line in enumerate(file):
+                # Include lines within the specified range
+                if start <= current_line_number < start + limit:
+                    paginated_lines.append({'line_number': current_line_number, 'content': line})
+                # Stop reading once the range is exceeded
+                if current_line_number >= start + limit:
+                    break
     except Exception as e:
-        logger.error(f"Error reading file in chunks: {e}")
+        # Log and raise an exception if reading fails
+        logger.error(f"Error reading file: {e}")
         raise CerfException(f"Failed to read file: {file_path}")
-
-    return rows[:limit]
+    return paginated_lines
 
 
 def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
@@ -581,23 +531,25 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     return found_worker_dir
 
 
-# Helper function to read and prepare each CSV file
 def read_and_prepare_hydrograph_files(file_path: str, time_col: str = 'time', value_col: str = 'value') -> pd.DataFrame:
     """
-    Reads a CSV file, renames columns to 'time' and 'value', converts 'time' to datetime, and removes rows with invalid 'time'.
+    Reads a hydrograph-related CSV file, formats columns, and filters out invalid data.
 
-    :param file_path: Path to the CSV file
-    :param time_col: Column name for time (default is 'time')
-    :param value_col: Column name for values (default is 'value')
-    :return: DataFrame with 'time' and renamed 'value' column
+    :param file_path: Path to the CSV file containing hydrograph data.
+    :param time_col: Name of the time column in the resulting DataFrame (default: 'time').
+    :param value_col: Name of the value column in the resulting DataFrame (default: 'value').
+    :return: A DataFrame containing valid time and value data.
+    :raises FileNotFoundError: If the specified file does not exist.
     """
     if not os.path.exists(file_path):
         logger.error(f"File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
 
+    # Read the CSV file and rename columns
     df = pd.read_csv(file_path)
     datetime_column, value_column = df.columns[:2]
     df = df.rename(columns={datetime_column: time_col, value_column: value_col})
+
+    # Convert the time column to datetime format and drop invalid rows
     df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
     return df.dropna(subset=[time_col])
-

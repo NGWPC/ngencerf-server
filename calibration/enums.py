@@ -191,10 +191,18 @@ class ValidationType(AbstractEnum):
     VALID_ITERATION = 'valid_iteration'
 
 
-class JobType(AbstractEnum):
+class LogCategory(AbstractEnum):
     CALIBRATION = 'calibration'
     VALIDATION = 'validation'
     FORECAST = 'forecast'
+    GLOBAL = 'global'
+
+
+class LogName(AbstractEnum):
+    NGEN_STDOUT = 'ngen stdout'
+    NGEN_CAL_STDOUT = 'ngen-cal stdout'
+    FORECAST_STDOUT = 'forecast stdout'
+    NGEN = 'ngen'
 
 
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics

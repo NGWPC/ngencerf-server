@@ -15,3 +15,10 @@ class NgenEnvironmentEnum(StrEnum):
     LOCAL = "LOCAL"
     PARALLEL_WORKS = "PARALLEL_WORKS"
     DOCKER = "DOCKER"
+
+
+class JobType(StrEnum):
+    CALIBRATION = 'calibration'
+    VALIDATION = 'validation'
+    FORECAST = 'forecast'
+    FORECAST_FORCING_DOWNLOAD = 'forecast_forcing_download'

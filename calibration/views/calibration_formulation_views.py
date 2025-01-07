@@ -1,8 +1,6 @@
 import logging
-import traceback
 
 from django.db import transaction
-from django.db.models import QuerySet, Count
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -164,10 +162,10 @@ def save_formulation_tab(request) -> Response:
     eds_errors = []
 
     # Fetch all formulations and determine changes
-    all_formulations_qs = CalibrationFormulation.objects.filter(
-        calibration_run=run, module__name__in=new_module_names
+    existing_formulations_qs = CalibrationFormulation.objects.filter(
+        calibration_run=run
     )
-    existing_module_names = set(all_formulations_qs.values_list('module__name', flat=True))
+    existing_module_names = set(existing_formulations_qs.values_list('module__name', flat=True))
     # Determine which modules to delete and add
     to_be_added = new_module_names - existing_module_names
     to_be_unused = existing_module_names - new_module_names
@@ -184,9 +182,9 @@ def save_formulation_tab(request) -> Response:
             CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
         # Identify formulations without any calibration parameters, in case there was an error retriving them
-        formulations_without_params_qs = all_formulations_qs.filter(calibrationparameter__isnull=True)
+        formulations_without_params_qs = existing_formulations_qs.filter(calibrationparameter__isnull=True)
 
-        required_formulations_qs = all_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs
+        required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs
 
         # Retrieve metadata for required formulations
         if required_formulations_qs.exists() and run.gage:
