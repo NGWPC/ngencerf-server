@@ -506,7 +506,7 @@ def validate_response_data(serializer_class: Type[BaseSerializer], data: dict, e
     if not validator.is_valid():
         logger.error(f"Response data: {data}")
         raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
-    return validator.validated_data
+    return validator.data
 
 
 class CerfException(Exception):

@@ -330,9 +330,9 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
             must_have_modules = conditions.get("must_have", [])
             # Check if any of the required modules are present
             if not any(module in module_names for module in must_have_modules):
-                messages.append(
-                    f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
-                )
+                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
+                logger.warning(msg)
+                messages.append(msg)
                 formulation_validation_json['excluded_modules'].append(
                     {'module_name': excluded_module, 'must_have': must_have_modules}
                 )
@@ -344,7 +344,9 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
 
         # Validate the count against allowed_counts
         if count not in allowed_counts:
-            messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
+            msg = f"{group_name} group must have {allowed_counts} modules, but it has {count}"
+            logger.warning(msg)
+            messages.append(msg)
             formulation_validation_json['group_requirements'].append(
                 {'group_name': group_name, 'required_count': allowed_counts, 'has_count': count}
             )
