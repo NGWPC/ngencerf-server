@@ -320,8 +320,8 @@ class ModuleParametersSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, allow_blank=False)
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    maximum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    min = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    max = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     initial_value = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
