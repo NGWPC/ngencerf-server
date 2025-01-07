@@ -15,13 +15,14 @@ from calibration.models import CalibrationOptimizationInput, CalibrationStopCrit
 from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.file_util import get_single_file, copy_file_to_directory
 from calibration.util.geopkg import get_catchments_from_gpkg
-from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, NOAH_PARAMETER_DIR, \
+from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
+from cerfServer.settings import NGEN_MODULE_PARAMETERS
 
 logger = logging.getLogger(__name__)
 
@@ -103,17 +104,17 @@ config_template = {
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
 
-        # Not sure what these 2 are for
-        "ueb_lib": "",
-        "ueb_parameter_dir": "",
-
         # Static file
-        "noah_parameter_dir": NOAH_PARAMETER_DIR,
-        # Parquet file - base on domain
+        "noah_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'noah-owp-modular'),
+        "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
+
+         # Parquet file - base on domain
         "attributes_file": "",
+        
         # Parameter file, dynamically built based on user input
         "calib_parameter_file": "",
         "sloth_parameter_file": "",
+
         "lasam_soil_parameter_file": "",
         "lasam_soil_class_file": "",
         "ngen_exe_file": NGEN_EXE,
@@ -126,7 +127,8 @@ config_template = {
         "lasam_lib": LASAM_LIB,
         "pet_lib": PET_LIB,
         "snow-17_lib": SNOW17_LIB,
-        "sac-sma_lib": SAC_LIB
+        "sac-sma_lib": SAC_LIB,
+        "ueb_lib": UEB_LIB
     }
 }
 
