@@ -5,7 +5,8 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName
+from cerfServer.local_settings import ALLOWED_HOSTS
 
 
 class BaseSerializer(serializers.Serializer):
@@ -1026,16 +1027,39 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
-class GetLogsValidations(BaseSerializer):
-    validation_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    validation_type = serializers.CharField(required=True)
-    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField(allow_blank=True))), required=True, allow_empty=True)
+class GetLogRequestSerializer(ValidationRunSerializer):
+    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
+    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
+    start = serializers.IntegerField(required=False, default=0, min_value=0)
+    limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 
-class GetLogsResponseSerializer(GenericResponseSerializer):
-    validations = GetLogsValidations(many=True, required=True)
-    logs = serializers.ListField(child=serializers.DictField(child=serializers.ListField(child=serializers.CharField(allow_blank=True))), required=False, allow_empty=True)
+class LogCategoryDictField(serializers.DictField):
+    def __init__(self, **kwargs):
+        # Define the child as a ListField for log names
+        super().__init__(**kwargs)
+        self.child = serializers.ListField(
+            child=serializers.CharField(), required=False
+        )
+        # Attach the enum validator for dictionary keys
+        self.key_validator = enum_validator(LogCategory)
+
+    def to_internal_value(self, data):
+        # Validate all keys using the enum_validator
+        for key in data.keys():
+            if not isinstance(key, str):
+                raise serializers.ValidationError(f"Invalid key type: {type(key)}. Expected string.")
+            self.key_validator(key)  # Validate the key as a string
+        return super().to_internal_value(data)
+
+
+class GetLogNamesResponseSerializer(BaseSerializer):
+    log_names = serializers.ListSerializer(child=LogCategoryDictField(), required=True)
+
+
+class GetLogsResponseSerializer(GenericMessageResponseSerializer):
+    log_data = serializers.ListSerializer(child=serializers.CharField(), required=True, allow_null=False)
+    pagination_metadata = PaginationMetadataSerializer(required=False)
 
 
 ##################################
