@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
-    # TODO Need to delete this directory
-    # NOAH_PARAMETER_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'bmi_config', 'Noah-OWP'),
     PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet')
 ]
 
