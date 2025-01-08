@@ -103,13 +103,27 @@ that is dependent on `s3fs`.  All that matters is that the bucket is mounted as 
 
 
 # Static Files
-There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
+There are some static files that are required for Ngen to run.  They should be in a directory under the data directory at `/ngencerf/data` called `ngen-static-files`.  
 
-The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
+The data for the `ngen-static-files` directory is in 2 locations.  Copy everything from  `s3://ngwpc-dev/ngen-static-files/` to
 `/ngencerf/data/ngen-static-files`
 ```
 aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
 ```
+
+In addition, copy the directory `module_parameter_files` and all its contents from https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal/-/tree/development/module_parameter_files
+
+When done, your `ngen-static-files` directory should look something like this
+
+
+ngen-static-files/
+├── module_parameter_files
+│  ├── lasam
+│  ├── noah-owp-modular
+│  └── ueb
+├── nwm_retrospective
+└── parquet
+
 
 
 # Initial Set-up of database
