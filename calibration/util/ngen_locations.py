@@ -56,11 +56,11 @@ def check_files():
             if not os.path.isfile(file):
                 logger.warning(f'{file} does not exist')
 
-        for directory in static_dirs:
-            if not os.path.isdir(directory):
-                logger.warning(f'{directory} does not exist')
-            elif not os.listdir(directory):
-                logger.warning(f'{directory} is empty')
+    for directory in static_dirs:
+        if not os.path.isdir(directory):
+            logger.warning(f'{directory} does not exist')
+        elif not os.listdir(directory):
+            logger.warning(f'{directory} is empty')
 
 
 # Construct the directory where the Input/Output is
