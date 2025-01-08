@@ -29,7 +29,7 @@ files = [
     PET_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'evapotranspiration', 'evapotranspiration', 'cmake_build', 'libpetbmi.so'),
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
     SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so'),
-    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb_bmi', 'cmake_build', 'src', 'libbmiuebcxx.so')
+    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb-bmi', 'cmake_build', 'src', 'libbmiuebcxx.so')
 ]
 
 forecast_forcing_scripts = [

@@ -16,6 +16,8 @@
     "geopackage_eds_file_path": null,
     "modules": [
         "UEB",
+        "Noah-OWP-Modular",
+        "CFE-X",
         "T-Route"
     ],
     "formulation_name": "my-cfe-noah",
