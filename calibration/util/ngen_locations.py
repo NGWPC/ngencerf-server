@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 
 static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
-    NOAH_PARAMETER_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'bmi_config', 'Noah-OWP'),
     PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet')
 ]
 
@@ -28,7 +27,8 @@ files = [
     LASAM_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'LASAM', 'cmake_build', 'liblasambmi.so'),
     PET_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'evapotranspiration', 'evapotranspiration', 'cmake_build', 'libpetbmi.so'),
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
-    SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so')
+    SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so'),
+    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb_bmi', 'cmake_build', 'src', 'libbmiuebcxx.so')
 ]
 
 forecast_forcing_scripts = [
