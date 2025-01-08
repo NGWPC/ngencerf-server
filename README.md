@@ -111,7 +111,8 @@ The data for the `ngen-static-files` directory is in 2 locations.  Copy everythi
 aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
 ```
 
-In addition, copy the directory `module_parameter_files` and all its contents from https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal/-/tree/development/module_parameter_files
+In addition, copy the directory `module_parameter_files` and all its contents from 
+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal/-/tree/development/module_parameter_files to the `/ngencerf/data/ngen-static-files` directory
 
 When done, your `ngen-static-files` directory should look something like this
 
