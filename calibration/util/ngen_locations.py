@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
-    PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet')
+    PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet'),
+    NGEN_MODULE_PARAMETERS := os.path.join(settings.NGEN_STATIC_DIR, 'module_parameter_files')
 ]
 
 files = [
@@ -28,7 +29,7 @@ files = [
     PET_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'evapotranspiration', 'evapotranspiration', 'cmake_build', 'libpetbmi.so'),
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
     SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so'),
-    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb_bmi', 'cmake_build', 'src', 'libbmiuebcxx.so')
+    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb-bmi', 'cmake_build', 'src', 'libbmiuebcxx.so')
 ]
 
 forecast_forcing_scripts = [
@@ -55,11 +56,11 @@ def check_files():
             if not os.path.isfile(file):
                 logger.warning(f'{file} does not exist')
 
-        for directory in static_dirs:
-            if not os.path.isdir(directory):
-                logger.warning(f'{directory} does not exist')
-            elif not os.listdir(directory):
-                logger.warning(f'{directory} is empty')
+    for directory in static_dirs:
+        if not os.path.isdir(directory):
+            logger.warning(f'{directory} does not exist')
+        elif not os.listdir(directory):
+            logger.warning(f'{directory} is empty')
 
 
 # Construct the directory where the Input/Output is
