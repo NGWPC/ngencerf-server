@@ -1,6 +1,5 @@
 import base64
 import inspect
-import json
 import logging
 import os
 from datetime import timedelta, datetime
@@ -24,7 +23,7 @@ from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCy
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
-from calibration.util.calibration_validators import ErrorResponseSerializer
+from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
 from calibration.util.ngen_locations import get_forecast_dir
 
 logger = logging.getLogger(__name__)
