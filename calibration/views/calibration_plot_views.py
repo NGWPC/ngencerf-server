@@ -228,18 +228,21 @@ def get_plot(request: Request) -> Response:
     plot_data = None
     pagination_metadata = None
     if include_data:
-        plot_data = get_plot_data(run, plot_definition, start, limit)
-        if not plot_data:
-            logger.warning(f"Data not available for {plot_name}")
-        else:
-            # Apply replace_nan_with_none to the retrieved data
+        # Retrieve data and total_count from get_plot_data
+        plot_result = get_plot_data(run, plot_definition, start, limit)
+        plot_data = plot_result.get('data', [])
+        total_count = plot_result['total_count']
+        # Apply replace_nan_with_none to the retrieved data
+        if plot_data:
             plot_data = replace_nan_with_none(plot_data)
+        else:
+            logger.warning(f"Data not available for {plot_name}")
 
-            pagination_metadata = {
-                'start': start,
-                'limit': limit,
-                'count': len(plot_data),
-            }
+        pagination_metadata = {
+            'start': start,
+            'limit': limit,
+            'count': total_count
+        }
 
     response = {
         'calibration_run_id': calibration_run.id,
@@ -311,15 +314,15 @@ def determine_plot_location(run: CalibrationRun | ValidationRun, plot_definition
             raise CerfException(f"Unknown location '{plot_definition['location']}' in PlotDefinitions")
 
 
-def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any], start: int, limit: int) -> list[dict[str, Any]]:
+def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str, Any], start: int, limit: int) -> dict[str, Any]:
     """
-    Retrieves data for a specific plot based on its definition, using database-level pagination where applicable.
+    Retrieves data for a specific plot based on its definition and includes the total count of rows.
 
     :param run: The run object, either a calibration or validation run.
     :param plot_definition: Dictionary containing plot specifications.
     :param start: The starting index for pagination.
     :param limit: The maximum number of items to retrieve.
-    :return: List of data entries or an empty list if no data is available.
+    :return: A dictionary containing 'data' and 'total_count'.
     """
     calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
     plot_enum = PlotDefinitionsEnum(plot_definition['name'])
@@ -327,14 +330,16 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
 
     match plot_enum:
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
-            # Retrieve iteration data for the calibration run with pagination applied at the database level
-            return [
+            iterations = get_iterations_for_calibration_job(calibration_run)
+            total_count = len(iterations)
+            data = [
                 {
                     'iteration': iteration.iteration_num,
                     'objective_function_value': iteration.objective_function_value
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+                for iteration in iterations[start:start + limit]
             ]
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION | PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
             # Merge multiple hydrograph-related files and paginate the result
@@ -346,46 +351,54 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 get_output_best_iteration_file(calibration_run, worker_dir)  # Best Iteration
             ]
             column_names = ["Observation", "Control Run", "Last Run", "Best Run"]
-            return load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
+            total_count = count_rows_in_merged_files(file_paths)
+            data = load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
-            # Retrieve metric data for each iteration and apply pagination at the database level
-            return [
+            iterations = get_iterations_for_calibration_job(calibration_run)
+            total_count = len(iterations)
+            data = [
                 {
                     'iteration': iteration.iteration_num,
                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+                for iteration in iterations[start:start + limit]
             ]
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
-            # Retrieve parameter evolution data for each iteration with pagination
-            return [
+            iterations = get_iterations_for_calibration_job(calibration_run)
+            total_count = len(iterations)
+            data = [
                 {
                     'iteration': iteration.iteration_num,
                     'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in iteration.iterationparameter_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+                for iteration in iterations[start:start + limit]
             ]
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
-            # Retrieve metrics and objective function values for each iteration with pagination
-            return [
+            iterations = get_iterations_for_calibration_job(calibration_run)
+            total_count = len(iterations)
+            data = [
                 {
                     'iteration': iteration.iteration_num,
                     'objective_function_value': iteration.objective_function_value,
                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
                 }
-                for iteration in get_iterations_for_calibration_job(calibration_run, start=start, limit=limit)
+                for iteration in iterations[start:start + limit]
             ]
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.STREAM_FLOW_PRECIPITATION:
             # Requires calculation, so we won't return data
-            return []
+            return {'data': [], 'total_count': 0}
 
         case PlotDefinitionsEnum.FLOW_DURATION_CURVES:
             # Requires calculation, so we won't return data
-            return []
+            return {'data': [], 'total_count': 0}
 
         case PlotDefinitionsEnum.COST_HISTORY:
             # Read cost history data from a file and paginate the result
@@ -393,7 +406,9 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             if not os.path.exists(cost_history_file):
                 logger.error(f"File not found: {cost_history_file}")
                 raise FileNotFoundError(f"File not found: {cost_history_file}")
-            return read_file_in_chunks(cost_history_file, start, limit)
+            total_count = count_rows_in_file(cost_history_file)
+            data = read_file_in_chunks(cost_history_file, start, limit)
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
             # Combine multiple metrics files and apply pagination
@@ -404,19 +419,18 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             ]
             if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
                 files.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
-            plot_data = []
-
-            # Read each file as a DataFrame, infer types, and convert to dictionary format
+            total_count = count_rows_in_merged_files(files)
+            data = []
             for file_path in files:
                 if os.path.exists(file_path):
-                    df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
-                    plot_data.extend(df.to_dict(orient="records"))
-
-            return plot_data[start:start + limit]
+                    df = pd.read_csv(file_path, dtype=None)
+                    data.extend(df.to_dict(orient="records"))
+            data = data[start:start + limit]
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.FLOW_DURATION_CURVES_VALIDATION:
             # Requires calculation, so we won't return data
-            return []
+            return {'data': [], 'total_count': 0}
 
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
             # Merge hydrograph validation files and paginate the result
@@ -426,19 +440,22 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 get_output_valid_control_file(calibration_run),  # Valid Control
                 get_output_valid_best_file(calibration_run)  # Valid Best
             ]
+            print('file paths', file_paths)
             column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
             if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
                 file_paths.append(get_output_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
                 column_names.append(run.worker_name)
-            return load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
+            total_count = count_rows_in_merged_files(file_paths)
+            data = load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
+            return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:
             # Requires calculation, so we won't return data
-            return []
+            return {'data': [], 'total_count': 0}
 
         case _:
             logger.error(f"Data handler not found for '{plot_enum}'")
-            return []  # Return an empty list if no match is found
+            return {'data': [], 'total_count': 0}
 
 
 def load_and_merge_hydrograph_files_with_pagination(
@@ -553,3 +570,48 @@ def read_and_prepare_hydrograph_files(file_path: str, time_col: str = 'time', va
     # Convert the time column to datetime format and drop invalid rows
     df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
     return df.dropna(subset=[time_col])
+
+
+def count_rows_in_file(file_path: str) -> int:
+    """
+    Counts the number of rows in a CSV file.
+
+    :param file_path: Path to the file.
+    :return: Total number of rows in the file.
+    """
+    try:
+        with open(file_path, 'r') as file:
+            return sum(1 for _ in file) - 1  # Subtract 1 to account for the header
+    except Exception as e:
+        logger.error(f"Error counting rows in file {file_path}: {e}")
+        raise CerfException(f"Failed to count rows in file: {file_path}")
+
+
+def count_rows_in_merged_files(file_paths: list[str]) -> int:
+    """
+    Counts the total number of rows in the merged result of multiple CSV files.
+
+    :param file_paths: List of file paths to merge.
+    :return: Total number of rows in the merged dataset.
+    """
+    try:
+        dataframes = []
+        for file_path in file_paths:
+            if os.path.exists(file_path):
+                df = read_and_prepare_hydrograph_files(file_path)
+                dataframes.append(df)
+
+        if not dataframes:
+            logger.error("No data to merge; all files were missing or empty.")
+            return 0
+
+        # Merge DataFrames on the 'time' column
+        merged_df = dataframes[0]
+        for df in dataframes[1:]:
+            merged_df = merged_df.merge(df, on="time", how="inner", suffixes=('', '_dup'))
+
+        return len(merged_df)
+    except Exception as e:
+        logger.error(f"Error counting rows in merged files: {e}")
+        raise CerfException(f"Failed to count rows in merged files")
+
