@@ -60,6 +60,12 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
         status_code = response.status_code
         response_text = response.text
 
+        # Log the response for debugging in case of errors
+        if 400 <= status_code < 500:
+            logger.error(f"Client error while accessing {url}: {status_code} - {response_text}")
+        elif 500 <= status_code:
+            logger.error(f"Server error while accessing {url}: {status_code} - {response_text}")
+
         # Check if the response is HTML (indicating an error page)
         content_type = response.headers.get('Content-Type', '')
         if 'text/html' in content_type:
