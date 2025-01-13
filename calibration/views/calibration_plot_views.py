@@ -491,19 +491,24 @@ def load_and_merge_hydrograph_files_with_pagination_and_count(
     """
     logger.info(f'Merging files: {file_paths}')
     try:
+        # Step 1: Merge all the provided files into a single DataFrame
         merged_df = load_files_and_merge(file_paths, column_names, key_col=key_col)
+
+        # Step 2: Calculate the total number of rows in the merged DataFrame
         total_count = len(merged_df)
 
-        # Paginate results
+        # Step 3: Extract a paginated subset of the merged DataFrame
         paginated_data = merged_df.iloc[start:start + limit].to_dict(orient="records")
 
-        # Convert Timestamp objects to strings
+        # Step 4: Convert all Timestamp objects in the key column to ISO 8601 strings
         for row in paginated_data:
             if key_col in row and isinstance(row[key_col], pd.Timestamp):
                 row[key_col] = row[key_col].isoformat()
 
+        # Return the paginated data and total row count
         return paginated_data, total_count
     except Exception as e:
+        # Log the error and raise a custom exception if any issues occur during processing
         logger.error(f"Error processing hydrograph files: {e}")
         raise CerfException(f"Failed to process hydrograph files: {e}")
 
@@ -515,29 +520,48 @@ def load_files_and_merge(file_paths: list[str], column_names: list[str], key_col
     :param file_paths: List of file paths to load.
     :param column_names: List of names for value columns in the merged DataFrame.
     :param key_col: The key column to merge on (default: "time").
-    :return: Merged DataFrame containing data from all input files.
-    :raises ValueError: If no valid files are found or no common key column exists for merging.
+    :return: Merged DataFrame containing data from all files.
+    :raises CerfException: If no valid files are found or if merging fails.
     """
-    dataframes = []
-    for file_path, col_name in zip(file_paths, column_names):
-        if os.path.exists(file_path):
-            try:
-                # Map columns to standardized names for value
-                column_mapping = {"q_cms": col_name, "sim_flow": col_name}
-                df = read_and_prepare_hydrograph_files(file_path, column_mapping)
-                dataframes.append(df)
-            except Exception as e:
-                logger.error(f"Error processing file {file_path}: {e}")
+    dataframes = []  # List to store individual DataFrames from each file
 
+    # Step 1: Read and prepare each file as a DataFrame
+    for file_path, col_name in zip(file_paths, column_names):
+        try:
+            if os.path.exists(file_path):
+                # Use read_and_prepare_hydrograph_files to standardize columns and clean data
+                df = read_and_prepare_hydrograph_files(file_path, {"value": col_name})
+                dataframes.append(df)
+            else:
+                # Log a warning for missing files
+                logger.warning(f"File not found: {file_path}")
+        except ValueError as ve:
+            # Handle files with missing key columns
+            logger.error(f"Skipping file {file_path} due to error: {ve}")
+
+    # Step 2: Handle the case where no valid files were processed
     if not dataframes:
         logger.error("No valid files found to merge.")
-        return pd.DataFrame(columns=[key_col] + column_names)
+        raise CerfException("No valid files found to merge.")
 
-    merged_df = dataframes[0]
+    # Step 3: Merge all DataFrames on the key column
+    merged_df = dataframes[0]  # Start with the first DataFrame
     for df in dataframes[1:]:
-        merged_df = merged_df.merge(df, on=key_col, how="inner")
+        try:
+            # Perform an inner merge to include only rows with matching key column values
+            merged_df = merged_df.merge(df, on=key_col, how="inner")
+        except Exception as e:
+            # Log and raise an error if merging fails
+            logger.error(f"Error merging DataFrames: {e}")
+            raise CerfException(f"Error merging DataFrames: {e}")
 
-    logger.debug(f"Merged DataFrame columns: {merged_df.columns.tolist()}, Shape: {merged_df.shape}")
+    # Step 4: Check for empty merged DataFrame
+    if merged_df.empty:
+        logger.warning("Merged DataFrame is empty after merging. Check key column values.")
+
+    # Step 5: Log the final structure of the merged DataFrame for debugging
+    logger.debug(f"Merged DataFrame columns: {merged_df.columns.tolist()}, shape: {merged_df.shape}")
+
     return merged_df
 
 
@@ -552,33 +576,40 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     :raises ValueError: If no timestamp column is found in the file.
     :raises FileNotFoundError: If the file does not exist.
     """
+    # Step 1: Check if the file exists
     if not os.path.exists(file_path):
         logger.error(f"File not found: {file_path}")
         raise FileNotFoundError(f"File not found: {file_path}")
 
-    # Read the CSV file into a DataFrame
+    # Step 2: Read the CSV file into a DataFrame
     df = pd.read_csv(file_path)
+    logger.debug(f"Loaded file: {file_path}, Columns: {df.columns.tolist()}, Shape: {df.shape}")
 
-    # Dynamically detect timestamp column
+    # Step 3: Detect the timestamp column dynamically
     timestamp_col = next(
         (col for col in df.columns if col.lower() in ["datetime", "time", "date", "timestamp"]),
         None
     )
     if not timestamp_col:
+        logger.error(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
         raise ValueError(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
 
-    # Rename detected timestamp column to a standard name
+    # Step 4: Rename the detected timestamp column to a standard name
     df = df.rename(columns={timestamp_col: "time"})
 
-    # Ensure the time column exists and is in datetime format
+    # Step 5: Convert the "time" column to datetime format and drop invalid rows
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    invalid_rows = df[df["time"].isna()]
+    if not invalid_rows.empty:
+        logger.warning(f"Invalid timestamps found in file {file_path}:\n{invalid_rows}")
     df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
 
-    # Rename value columns based on the provided mapping
+    # Step 6: Rename value columns based on the provided mapping
     df = df.rename(columns=column_mapping)
 
-    # Log the processed DataFrame
-    logger.debug(f"Processed file: {file_path}, Columns: {df.columns.tolist()}, Shape: {df.shape}")
+    # Step 7: Log the final DataFrame structure
+    logger.debug(f"Processed file: {file_path}, Final Columns: {df.columns.tolist()}, Final Shape: {df.shape}")
+
     return df
 
 
