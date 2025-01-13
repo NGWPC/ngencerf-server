@@ -133,34 +133,22 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def get_iterations_for_calibration_job(
-        calibration_run: CalibrationRun,
-        start: int | None = None,
-        limit: int | None = None
-) -> QuerySet[Iteration]:
+def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> QuerySet[Iteration]:
     """
-    Fetches iterations for the given calibration run with optional pagination.
+    Fetches iterations for the given calibration run.
 
-    - Supports optional start and limit for paginated queries.
     - Prefetches related parameters and metrics for optimized retrieval.
 
     :param calibration_run: The CalibrationRun instance to fetch iterations for.
-    :param start: Starting index for pagination (optional).
-    :param limit: Number of items to retrieve (optional).
     :return: QuerySet of Iteration objects associated with the calibration run.
     """
-    queryset = (
+    return (
         Iteration.objects.filter(calibration_run=calibration_run)
         .select_related('calibration_run')
         .prefetch_related('iterationparameter_set__calibration_parameter',
                           'iterationmetric_set')
         .order_by('worker_name', 'iteration_num')
     )
-
-    if start is not None and limit is not None:
-        queryset = queryset[start:start + limit]
-
-    return queryset
 
 
 @extend_schema(

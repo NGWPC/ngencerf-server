@@ -22,7 +22,7 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
     get_validation_metrics_valid_iteration_file, get_output_valid_iteration_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError, truncate_large_fields, format_datetime, get_validation_run, get_job_description, \
+    png_str_to_base64_url, ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
     get_forecast_run, replace_nan_with_none
 from calibration.views.end_of_job_processing import process_worker_dirs
 
@@ -351,8 +351,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 get_output_best_iteration_file(calibration_run, worker_dir)  # Best Iteration
             ]
             column_names = ["Observation", "Control Run", "Last Run", "Best Run"]
-            total_count = count_rows_in_merged_files(file_paths)
-            data = load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
+            # Get paginated data and total count
+            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
@@ -373,7 +373,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             data = [
                 {
                     'iteration': iteration.iteration_num,
-                    'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in iteration.iterationparameter_set.all()]
+                    'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
+                                   iteration.iterationparameter_set.all()]
                 }
                 for iteration in iterations[start:start + limit]
             ]
@@ -406,26 +407,33 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             if not os.path.exists(cost_history_file):
                 logger.error(f"File not found: {cost_history_file}")
                 raise FileNotFoundError(f"File not found: {cost_history_file}")
-            total_count = count_rows_in_file(cost_history_file)
-            data = read_file_in_chunks(cost_history_file, start, limit)
+            data, total_count = count_and_read_file_in_chunks(cost_history_file, start, limit)
+
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
-            # Combine multiple metrics files and apply pagination
-            files = [
+            # Files being read:
+            # 1. Validation metrics for the "Valid Control" run
+            # 2. Validation metrics for the "Valid Best" run
+            # 3. NWM retrospective validation metrics
+            # 4. (Optional) Validation metrics for a specific iteration if this is a ValidationRun of type "VALID_ITERATION"
+
+            file_paths = [
                 get_validation_metrics_valid_control_file(calibration_run),
                 get_validation_metrics_valid_best_file(calibration_run),
                 get_validation_metrics_nwm_retrospective_file(calibration_run)
             ]
             if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
-                files.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
-            total_count = count_rows_in_merged_files(files)
-            data = []
-            for file_path in files:
-                if os.path.exists(file_path):
-                    df = pd.read_csv(file_path, dtype=None)
-                    data.extend(df.to_dict(orient="records"))
-            data = data[start:start + limit]
+                # Add metrics file for the specific iteration
+                file_paths.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
+
+            # Column names to use for the respective files
+            column_names = ["Valid Control", "Valid Best", "NWM Retrospective"]
+            if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
+                column_names.append("Valid Iteration")
+
+            # Combine and paginate data from the metrics files
+            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.FLOW_DURATION_CURVES_VALIDATION:
@@ -433,20 +441,30 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return {'data': [], 'total_count': 0}
 
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
-            # Merge hydrograph validation files and paginate the result
+            # Files being read:
+            # 1. Observational data file
+            # 2. NWM retrospective data file
+            # 3. Valid Control hydrograph data file
+            # 4. Valid Best hydrograph data file
+            # 5. (Optional) Hydrograph data file for a specific iteration if this is a ValidationRun of type "VALID_ITERATION"
+
             file_paths = [
                 get_observational_file_for_job(calibration_run),  # Observation
                 os.path.join(NWM_RETROSPECTIVE_DIR, f'{calibration_run.gage.gage_id}.csv'),  # NWM Retro
                 get_output_valid_control_file(calibration_run),  # Valid Control
                 get_output_valid_best_file(calibration_run)  # Valid Best
             ]
-            print('file paths', file_paths)
+            if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
+                # Add hydrograph data for the specific iteration
+                file_paths.append(get_output_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
+
+            # Column names for clarity in the merged data
             column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
             if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
-                file_paths.append(get_output_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
                 column_names.append(run.worker_name)
-            total_count = count_rows_in_merged_files(file_paths)
-            data = load_and_merge_hydrograph_files_with_pagination(file_paths, column_names, start, limit)
+
+            # Combine and paginate data from the hydrograph files
+            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:
@@ -458,70 +476,145 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
             return {'data': [], 'total_count': 0}
 
 
-def load_and_merge_hydrograph_files_with_pagination(
-        file_paths: list[str], column_names: list[str], start: int, limit: int
-) -> list[dict[str, Any]]:
+def load_and_merge_hydrograph_files_with_pagination_and_count(
+        file_paths: list[str], column_names: list[str], start: int, limit: int, key_col: str = "time"
+) -> tuple[list[dict[str, Any]], int]:
     """
-    Loads multiple hydrograph-related CSV files, merges them on the 'time' column, and returns paginated results.
+    Loads multiple hydrograph-related CSV files, merges them, and returns paginated results.
 
     :param file_paths: List of file paths to the hydrograph-related data files.
-    :param column_names: Column names to rename the value columns in each file for clarity in the merged result.
+    :param column_names: Column names to rename the value columns for clarity.
     :param start: Starting index for pagination (0-based).
-    :param limit: Maximum number of rows to return in the result.
-    :return: A paginated list of merged data entries, or an empty list if no data is found.
-    :raises CerfException: If file processing fails or merging encounters an error.
+    :param limit: Maximum number of rows to return.
+    :param key_col: The key column to merge on (default: "time").
+    :return: A tuple containing paginated data and the total row count.
     """
-    dataframes = []
+    logger.info(f'Merging files: {file_paths}')
     try:
-        for file_path, col_name in zip(file_paths, column_names):
-            if os.path.exists(file_path):
-                # Read and prepare each file as a DataFrame
-                df = read_and_prepare_hydrograph_files(file_path)
-                dataframes.append(df.rename(columns={"value": col_name}))
+        merged_df = load_files_and_merge(file_paths, column_names, key_col=key_col)
+        total_count = len(merged_df)
 
-        if not dataframes:
-            logger.error("No data to merge; all files were missing or empty.")
-            return []
+        # Paginate results
+        paginated_data = merged_df.iloc[start:start + limit].to_dict(orient="records")
 
-        # Merge DataFrames on the 'time' column
-        merged_df = dataframes[0]
-        for df in dataframes[1:]:
-            merged_df = merged_df.merge(df, on="time", how="inner")
+        # Convert Timestamp objects to strings
+        for row in paginated_data:
+            if key_col in row and isinstance(row[key_col], pd.Timestamp):
+                row[key_col] = row[key_col].isoformat()
 
-        # Format the 'time' column for output
-        merged_df['time'] = merged_df['time'].apply(format_datetime)
-
-        return merged_df.iloc[start:start + limit].to_dict(orient="records")
+        return paginated_data, total_count
     except Exception as e:
         logger.error(f"Error processing hydrograph files: {e}")
         raise CerfException(f"Failed to process hydrograph files: {e}")
 
 
-def read_file_in_chunks(file_path: str, start: int, limit: int) -> list[dict[str, Any]]:
+def load_files_and_merge(file_paths: list[str], column_names: list[str], key_col: str = "time") -> pd.DataFrame:
     """
-    Reads a file line-by-line and retrieves a specific slice of rows for pagination.
+    Reads and merges multiple files into a single DataFrame using a common key column.
+
+    :param file_paths: List of file paths to load.
+    :param column_names: List of names for value columns in the merged DataFrame.
+    :param key_col: The key column to merge on (default: "time").
+    :return: Merged DataFrame containing data from all input files.
+    :raises ValueError: If no valid files are found or no common key column exists for merging.
+    """
+    dataframes = []
+    for file_path, col_name in zip(file_paths, column_names):
+        if os.path.exists(file_path):
+            try:
+                # Map columns to standardized names for value
+                column_mapping = {"q_cms": col_name, "sim_flow": col_name}
+                df = read_and_prepare_hydrograph_files(file_path, column_mapping)
+                dataframes.append(df)
+            except Exception as e:
+                logger.error(f"Error processing file {file_path}: {e}")
+
+    if not dataframes:
+        logger.error("No valid files found to merge.")
+        return pd.DataFrame(columns=[key_col] + column_names)
+
+    merged_df = dataframes[0]
+    for df in dataframes[1:]:
+        merged_df = merged_df.merge(df, on=key_col, how="inner")
+
+    logger.debug(f"Merged DataFrame columns: {merged_df.columns.tolist()}, Shape: {merged_df.shape}")
+    return merged_df
+
+
+def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, str]) -> pd.DataFrame:
+    """
+    Reads a hydrograph-related CSV file, dynamically identifies columns for time and values,
+    formats data, and filters out invalid rows.
+
+    :param file_path: Path to the CSV file.
+    :param column_mapping: A dictionary mapping existing column names to standardized column names.
+    :return: A DataFrame containing valid data, formatted for merging.
+    :raises ValueError: If no timestamp column is found in the file.
+    :raises FileNotFoundError: If the file does not exist.
+    """
+    if not os.path.exists(file_path):
+        logger.error(f"File not found: {file_path}")
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Read the CSV file into a DataFrame
+    df = pd.read_csv(file_path)
+
+    # Dynamically detect timestamp column
+    timestamp_col = next(
+        (col for col in df.columns if col.lower() in ["datetime", "time", "date", "timestamp"]),
+        None
+    )
+    if not timestamp_col:
+        raise ValueError(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
+
+    # Rename detected timestamp column to a standard name
+    df = df.rename(columns={timestamp_col: "time"})
+
+    # Ensure the time column exists and is in datetime format
+    df["time"] = pd.to_datetime(df["time"], errors="coerce")
+    df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
+
+    # Rename value columns based on the provided mapping
+    df = df.rename(columns=column_mapping)
+
+    # Log the processed DataFrame
+    logger.debug(f"Processed file: {file_path}, Columns: {df.columns.tolist()}, Shape: {df.shape}")
+    return df
+
+
+def count_and_read_file_in_chunks(
+        file_path: str, start: int, limit: int
+) -> tuple[list[dict[str, Any]], int]:
+    """
+    Counts the total number of rows (excluding the header) in a file and retrieves a specific slice of rows in a single pass.
 
     :param file_path: Path to the file to be read.
-    :param start: Starting index for pagination (0-based).
+    :param start: Starting index for pagination (0-based, excluding the header).
     :param limit: Maximum number of rows to retrieve.
-    :return: A list of dictionaries containing line numbers and content as-is.
+    :return: A tuple containing the paginated rows and total row count (excluding the header).
     :raises CerfException: If the file cannot be read due to an error.
     """
+    total_count = 0
     paginated_lines = []
+
     try:
         with open(file_path, 'r') as file:
+            # Read the header row
+            header = next(file, None)
+            if header is None:
+                raise CerfException(f"File is empty or missing header: {file_path}")
+
             for current_line_number, line in enumerate(file):
-                # Include lines within the specified range
+                total_count += 1
+                # Adjust the line numbers to exclude the header
                 if start <= current_line_number < start + limit:
-                    paginated_lines.append({'line_number': current_line_number, 'content': line})
-                # Stop reading once the range is exceeded
-                if current_line_number >= start + limit:
-                    break
+                    paginated_lines.append({'line_number': current_line_number + 1, 'content': line})
     except Exception as e:
         # Log and raise an exception if reading fails
         logger.error(f"Error reading file: {e}")
         raise CerfException(f"Failed to read file: {file_path}")
-    return paginated_lines
+
+    return paginated_lines, total_count
 
 
 def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
@@ -546,72 +639,3 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     process_worker_dirs(calibration_run, check_worker)
 
     return found_worker_dir
-
-
-def read_and_prepare_hydrograph_files(file_path: str, time_col: str = 'time', value_col: str = 'value') -> pd.DataFrame:
-    """
-    Reads a hydrograph-related CSV file, formats columns, and filters out invalid data.
-
-    :param file_path: Path to the CSV file containing hydrograph data.
-    :param time_col: Name of the time column in the resulting DataFrame (default: 'time').
-    :param value_col: Name of the value column in the resulting DataFrame (default: 'value').
-    :return: A DataFrame containing valid time and value data.
-    :raises FileNotFoundError: If the specified file does not exist.
-    """
-    if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    # Read the CSV file and rename columns
-    df = pd.read_csv(file_path)
-    datetime_column, value_column = df.columns[:2]
-    df = df.rename(columns={datetime_column: time_col, value_column: value_col})
-
-    # Convert the time column to datetime format and drop invalid rows
-    df[time_col] = pd.to_datetime(df[time_col], errors='coerce')
-    return df.dropna(subset=[time_col])
-
-
-def count_rows_in_file(file_path: str) -> int:
-    """
-    Counts the number of rows in a CSV file.
-
-    :param file_path: Path to the file.
-    :return: Total number of rows in the file.
-    """
-    try:
-        with open(file_path, 'r') as file:
-            return sum(1 for _ in file) - 1  # Subtract 1 to account for the header
-    except Exception as e:
-        logger.error(f"Error counting rows in file {file_path}: {e}")
-        raise CerfException(f"Failed to count rows in file: {file_path}")
-
-
-def count_rows_in_merged_files(file_paths: list[str]) -> int:
-    """
-    Counts the total number of rows in the merged result of multiple CSV files.
-
-    :param file_paths: List of file paths to merge.
-    :return: Total number of rows in the merged dataset.
-    """
-    try:
-        dataframes = []
-        for file_path in file_paths:
-            if os.path.exists(file_path):
-                df = read_and_prepare_hydrograph_files(file_path)
-                dataframes.append(df)
-
-        if not dataframes:
-            logger.error("No data to merge; all files were missing or empty.")
-            return 0
-
-        # Merge DataFrames on the 'time' column
-        merged_df = dataframes[0]
-        for df in dataframes[1:]:
-            merged_df = merged_df.merge(df, on="time", how="inner", suffixes=('', '_dup'))
-
-        return len(merged_df)
-    except Exception as e:
-        logger.error(f"Error counting rows in merged files: {e}")
-        raise CerfException(f"Failed to count rows in merged files")
-

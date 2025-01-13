@@ -772,11 +772,11 @@ def get_csv_daterange(file: str) -> DateTimeRange:
         if not os.path.exists(file):
             raise CerfException(f"File {file} does not exist")
 
-        # Read the CSV file, assuming the first column contains date information
-        df = pd.read_csv(file, delimiter=',', parse_dates=[0], infer_datetime_format=True)
+        # Read the CSV file
+        df = pd.read_csv(file, delimiter=',', engine='python')
 
-        # Ensure the first column contains valid datetime values
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')  # Handle invalid dates gracefully
+        # Convert the first column to datetime explicitly
+        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')
 
         # Log rows with invalid datetime values
         invalid_rows = df[df.iloc[:, 0].isna()]
