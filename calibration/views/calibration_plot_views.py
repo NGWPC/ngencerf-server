@@ -587,7 +587,7 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
 
     # Step 3: Detect the timestamp column dynamically
     timestamp_col = next(
-        (col for col in df.columns if col.lower() in ["datetime", "time", "date", "timestamp"]),
+        (col for col in df.columns if col.lower() in ["datetime", "time", "date", "timestamp", "value_date"]),
         None
     )
     if not timestamp_col:
