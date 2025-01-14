@@ -394,12 +394,13 @@ def export_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict:
+def load_calibration_run_data(run: CalibrationRun, export: bool = False, include_gpkg_map: bool = False) -> dict:
     """
     Loads calibration run data for export or display.
 
     :param run: CalibrationRun instance for which data is being loaded.
     :param export: Flag to specify if data is being exported.
+    :param include_gpkg_map: Flag to specify if data the gpkg map should be generated.
     :return: Dictionary containing calibration run data.
     """
     calibration_run_data = {}
@@ -466,14 +467,15 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False) -> dict
         } if run.gage else None
         calibration_run_data['status'] = run.status.name
 
-        # For the UI, we don't need the Geopackage file, but rather, the full map
-        # TODO This should be the map file, which might need to be regenerated
-        geopackage_path = get_single_file(
-            get_geopackage_dir_for_job(run)) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_eds_file_path
-        if geopackage_path and os.path.exists(geopackage_path):
-            geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
-            base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
-            calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
+        if include_gpkg_map:
+            # For the UI, we don't need the Geopackage file, but rather, the full map
+            # TODO This should be the map file, which might need to be regenerated
+            geopackage_path = get_single_file(
+                get_geopackage_dir_for_job(run)) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_eds_file_path
+            if geopackage_path and os.path.exists(geopackage_path):
+                geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
+                base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
+                calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
 
         # Have files been uploaded or made available?
         calibration_run_data['external_data_status'] = get_data_files_status(run)

@@ -7,7 +7,6 @@ import fiona
 import geopandas as gpd
 import matplotlib
 import matplotlib.pyplot as plt
-from shapely.geometry import shape, Polygon, MultiPolygon, MultiLineString
 
 # See https://stackoverflow.com/questions/27147300/matplotlib-tcl-asyncdelete-async-handler-deleted-by-the-wrong-thread
 matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)

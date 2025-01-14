@@ -63,7 +63,7 @@ run_manage_command() {
     # Temporarily disable redirection
     exec >/dev/tty 2>/dev/tty
 
-    python3 manage.py $command
+    python3 manage.py "$command"
 
     # Restore redirection
     exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1

@@ -107,9 +107,9 @@ config_template = {
         "noah_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'noah-owp-modular'),
         "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
 
-         # Parquet file - base on domain
+        # Parquet file - base on domain
         "attributes_file": "",
-        
+
         # Parameter file, dynamically built based on user input
         "calib_parameter_file": "",
         "sloth_parameter_file": "",
