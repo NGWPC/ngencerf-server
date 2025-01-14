@@ -337,6 +337,10 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 # Landing page
 ##################################
 
+class ValidationStatusSerializer(ValidationRunSerializer):
+    validation_type = serializers.CharField(required=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
 
 class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
@@ -350,6 +354,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
+    validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):

@@ -204,7 +204,7 @@ def get_validation_jobs(request: Request) -> Response:
         return error_return
 
     # Retrieve validation jobs using internal helper
-    validation_jobs = get_validation_jobs_internal(calibration_run_id, return_ids_only=False)
+    validation_jobs = get_validation_jobs_internal(calibration_run_id)
 
     response = {'validation_jobs': validation_jobs}
     response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
