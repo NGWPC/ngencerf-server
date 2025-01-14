@@ -34,6 +34,7 @@ if [ "${CERF_VENV}" != "Docker" ]; then
 
        # Install all requirements
        echo "Installing requirements.txt"
+       pip install --upgrade pip
        pip install -r requirements.txt
        echo
 
