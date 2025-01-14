@@ -370,6 +370,10 @@ class ValidationJobsParameter(BaseSerializer):
     value = serializers.FloatField(required=True, allow_null=False)
 
 
+class LoadCalibrationJobSerializer(CalibrationRunSerializer):
+    include_gpkg_map = serializers.BooleanField(required=False, default=True)
+
+
 class FooterResponseSerializer(BaseSerializer):
     version = serializers.CharField(required=True)
     date = serializers.CharField(required=True)

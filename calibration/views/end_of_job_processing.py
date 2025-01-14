@@ -119,7 +119,6 @@ def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun) -> No
 
 
 def create_performance_metrics(run: BaseRun, performance_metrics_file: str) -> None:
-
     """
     Parses performance metrics from a file and updates the run with the metrics.
 
@@ -392,7 +391,7 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
                                         iteration: Iteration,
                                         metrics_row: dict[str, float | None],
                                         metrics_to_create: list[IterationMetric],
-                                        metrics_lookup: dict[str, Any])-> None:
+                                        metrics_lookup: dict[str, Any]) -> None:
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
@@ -614,7 +613,7 @@ def parse_size_to_kb(size_str: str | None) -> float | None:
         elif size_str.endswith('M'):
             return float(size_str[:-1]) * 1024
         elif size_str.endswith('G'):
-            return float(size_str[:-1]) * 1024**2
+            return float(size_str[:-1]) * 1024 ** 2
         else:
             # Assume no unit means it's already in KB
             return float(size_str)

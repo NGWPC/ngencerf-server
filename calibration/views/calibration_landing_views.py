@@ -22,7 +22,8 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
-    GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer
+    GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
+    LoadCalibrationJobSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
@@ -486,7 +487,7 @@ def get_footer(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=LoadCalibrationJobSerializer,
     responses={
         200: LoadCalibrationRunResponseSerializer,
         400: OpenApiResponse(
@@ -512,18 +513,19 @@ def load_calibration_run(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'load_calibration_run() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(LoadCalibrationJobSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    include_gpkg_map = validator.get('include_gpkg_map')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
 
     if error_return:
         return error_return
 
-    calibration_run_data = load_calibration_run_data(run, export=False)
+    calibration_run_data = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
 
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
                                                            fields_to_truncate=['geopackage_image_url'])
