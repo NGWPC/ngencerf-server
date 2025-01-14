@@ -417,13 +417,18 @@ def get_validation_jobs_internal(
 
     :param calibration_run_id: ID of the calibration run to fetch validation jobs for.
     :param detail_level: Determines the level of detail in the response:
-        - 'ids': Returns only validation job IDs.
-        - 'status': Returns validation_run_id, validation_type, and status.
+        - 'ids': Returns only validation job IDs excluding VALID_CONTROL.
+        - 'status': Returns validation_run_id, validation_type, and status, including VALID_CONTROL.
         - 'detailed': Returns full validation job details including parameters.
     :return: A list of validation job IDs, status summaries, or detailed dicts.
     """
-    # Filter out validation jobs of type VALID_CONTROL
-    validation_filter_condition = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
+    # Filter validation jobs based on the detail level
+    if detail_level == 'ids':
+        # Exclude VALID_CONTROL for 'ids' detail level
+        validation_filter_condition = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
+    else:
+        # No filtering for other detail levels
+        validation_filter_condition = Q()
 
     # Query for validation jobs associated with the given calibration run
     validation_jobs_query = ValidationRun.objects.filter(
@@ -435,7 +440,7 @@ def get_validation_jobs_internal(
         return list(validation_jobs_query.values_list('id', flat=True))
 
     if detail_level == 'status':
-        # Return a simplified list of validation job details (ID, type, and status)
+        # Include all validation types for status-level detail
         return [
             {
                 "validation_run_id": job.id,
