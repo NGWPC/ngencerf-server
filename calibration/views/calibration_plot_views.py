@@ -427,18 +427,23 @@ def get_plot_data(run: CalibrationRun | ValidationRun, plot_definition: dict[str
                 # Add metrics file for the specific iteration
                 file_paths.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
 
-            # Column names to use for the respective files
-            column_names = ["Valid Control", "Valid Best", "NWM Retrospective"]
-            if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
-                column_names.append("Valid Iteration")
+            combined_data = []
+            total_count = 0  # Total number of rows across all files
 
-            # Combine and paginate data from the metrics files
-            data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
-            return {'data': data, 'total_count': total_count}
+            # Step 1: Read each file, allowing pandas to infer types
+            for file_path in file_paths:
+                if os.path.exists(file_path):
+                    df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
+                    total_count += len(df)  # Update total_count with the number of rows in the file
+                    combined_data.extend(df.to_dict(orient="records"))  # Append the file's records to the combined data
+                else:
+                    logger.warning(f"File not found: {file_path}")
 
-        case PlotDefinitionsEnum.FLOW_DURATION_CURVES_VALIDATION:
-            # Requires calculation, so we won't return data
-            return {'data': [], 'total_count': 0}
+            # Step 2: Apply pagination to the combined data
+            paginated_data = combined_data[start:start + limit]
+
+            # Step 3: Return the paginated plot data and the total row count
+            return {'data': paginated_data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
             # Files being read:
@@ -529,6 +534,7 @@ def load_files_and_merge(file_paths: list[str], column_names: list[str], key_col
     for file_path, col_name in zip(file_paths, column_names):
         try:
             if os.path.exists(file_path):
+                logger.info(f"Reading file: {file_path}")
                 # Use read_and_prepare_hydrograph_files to standardize columns and clean data
                 df = read_and_prepare_hydrograph_files(file_path, {"value": col_name})
                 dataframes.append(df)
@@ -574,40 +580,35 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     :param column_mapping: A dictionary mapping existing column names to standardized column names.
     :return: A DataFrame containing valid data, formatted for merging.
     :raises ValueError: If no timestamp column is found in the file.
-    :raises FileNotFoundError: If the file does not exist.
     """
-    # Step 1: Check if the file exists
-    if not os.path.exists(file_path):
-        logger.error(f"File not found: {file_path}")
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    # Step 2: Read the CSV file into a DataFrame
+    # Step 1: Read the CSV file into a DataFrame
     df = pd.read_csv(file_path)
     logger.debug(f"Loaded file: {file_path}, Columns: {df.columns.tolist()}, Shape: {df.shape}")
 
-    # Step 3: Detect the timestamp column dynamically
+    # Step 2: Detect the timestamp column dynamically
     timestamp_col = next(
         (col for col in df.columns if col.lower() in ["datetime", "time", "date", "timestamp", "value_date"]),
         None
     )
     if not timestamp_col:
-        logger.error(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
+        # This is not an error, unless the file is expected to have timestamp information and does not
+        logger.info(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
         raise ValueError(f"No timestamp column found in file {file_path}. Columns: {df.columns.tolist()}")
 
-    # Step 4: Rename the detected timestamp column to a standard name
+    # Step 3: Rename the detected timestamp column to a standard name
     df = df.rename(columns={timestamp_col: "time"})
 
-    # Step 5: Convert the "time" column to datetime format and drop invalid rows
+    # Step 4: Convert the "time" column to datetime format and drop invalid rows
     df["time"] = pd.to_datetime(df["time"], errors="coerce")
     invalid_rows = df[df["time"].isna()]
     if not invalid_rows.empty:
         logger.warning(f"Invalid timestamps found in file {file_path}:\n{invalid_rows}")
     df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
 
-    # Step 6: Rename value columns based on the provided mapping
+    # Step 5: Rename value columns based on the provided mapping
     df = df.rename(columns=column_mapping)
 
-    # Step 7: Log the final DataFrame structure
+    # Step 6: Log the final DataFrame structure
     logger.debug(f"Processed file: {file_path}, Final Columns: {df.columns.tolist()}, Final Shape: {df.shape}")
 
     return df
