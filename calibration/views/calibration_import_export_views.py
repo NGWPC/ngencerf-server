@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from typing import Tuple
+import time
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -400,12 +401,17 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     :param run: CalibrationRun instance for which data is being loaded.
     :param export: Flag to specify if data is being exported.
-    :param include_gpkg_map: Flag to specify if data the gpkg map should be generated.
+    :param include_gpkg_map: Flag to specify if the Geopackage map should be generated.
     :return: Dictionary containing calibration run data.
     """
+    start_time = time.time()
+    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id}")
+
     calibration_run_data = {}
 
+    logger.info("Retrieving time range")
     # Retrieve the time range for the run and serialize
+    time_range_start = time.time()
     time_range = get_time_range(run)
     # Since we're not using a serializer for metadata, we need to serialize the datetime objects manually
     serialized_time_range = {}
@@ -414,9 +420,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             serialized_time_range['start_time'] = time_range['start_time'].isoformat()
         if time_range.get('end_time'):
             serialized_time_range['end_time'] = time_range['end_time'].isoformat()
+    logger.info(f"Time range retrieval completed in {time.time() - time_range_start:.2f}s")
+
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     if export:
+        export_start = time.time()
         metadata = {
             'source_calibration_run_id': run.id,
             'source_status': run.status.name,
@@ -453,13 +462,16 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['forcing_eds_dir_path'] = run.forcing_eds_dir_path
         calibration_run_data['observational_eds_file_path'] = run.observational_eds_file_path
         calibration_run_data['geopackage_eds_file_path'] = run.geopackage_eds_file_path
+        logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
     else:
         # Basic information for UI display, not intended for import/export
+        ui_display_start = time.time()
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['submit_date'] = run.submit_date
         calibration_run_data['time_range'] = time_range
         calibration_run_data['gage'] = {
-            'gage_id': run.gage.gage_id, 'agency': run.gage.agency,
+            'gage_id': run.gage.gage_id,
+            'agency': run.gage.agency,
             'station_name': run.gage.station_name,
             'latitude': run.gage.latitude,
             'longitude': run.gage.longitude,
@@ -468,6 +480,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['status'] = run.status.name
 
         if include_gpkg_map:
+            gpkg_map_start = time.time()
             # For the UI, we don't need the Geopackage file, but rather, the full map
             # TODO This should be the map file, which might need to be regenerated
             geopackage_path = get_single_file(
@@ -476,23 +489,34 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
+            logger.info(f"Geopackage map generation completed in {time.time() - gpkg_map_start:.2f}s")
 
         # Have files been uploaded or made available?
+        data_files_status_start = time.time()
         calibration_run_data['external_data_status'] = get_data_files_status(run)
+        logger.info(f"Data Files status completed in {time.time() - data_files_status_start:.2f}s")
+
         calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
+        logger.info(f"UI display data preparation completed in {time.time() - ui_display_start:.2f}s")
 
     #############################
     # Gage
     #############################
+    logger.info("Processing gage data")
+    gage_start = time.time()
     calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
 
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
 
     calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
+    logger.info(f"Gage data processed in {time.time() - gage_start:.2f}s")
 
     #############################
     # Formulation
     #############################
+    logger.info("Processing formulation data")
+    formulation_start = time.time()
+
     calibration_run_data['formulation_name'] = run.user_formulation_name
 
     modules = set(
@@ -511,10 +535,14 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['use_sloth'] = run.use_sloth
     if run.use_sloth:
         calibration_run_data['sloth_parameters'] = get_sloth_parameters(run)
+    logger.info(f"Formulation data processed in {time.time() - formulation_start:.2f}s")
 
     #############################
     # Tuning
     #############################
+    logger.info("Processing turning data")
+    tuning_start = time.time()
+
     calibration_run_data['automatic_validation'] = run.automatic_validation
 
     calibration_times, validation_times = get_times(run)
@@ -525,10 +553,14 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         'module': run.module_output_variable.calibration_formulation.module.name,
         'name': run.module_output_variable.name
     } if run.module_output_variable else {}
+    logger.info(f"Tuning data processed in {time.time() - tuning_start:.2f}s")
 
     #############################
     # Optimization
     #############################
+    logger.info("Processing optimization data")
+    optimization_start = time.time()
+
     calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
     calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
     calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold
@@ -540,12 +572,14 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     # Get stop criteria
     calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    stop_criteria = calibration_stop_criteria.value if calibration_stop_criteria else None
-    calibration_run_data['stop_criteria'] = stop_criteria
+    calibration_run_data['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
+    logger.info(f"Optimization data processed in {time.time() - optimization_start:.2f}s")
 
     # Additional data for running or completed jobs
     if not export and run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.DONE.db_instance]:
         # Other stuff we need for Running/Done jobs
         pass
 
+
+    logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data

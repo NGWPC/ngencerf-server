@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import shutil
-import traceback
 
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
