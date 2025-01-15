@@ -269,22 +269,22 @@ formulation_validations = {
         ],
         "group_requirements": {
             "Glacier": {
-                "allowed_counts": [0]  # Change back to [0, 1], once Topoflow is allowed
+                "expected_counts": [0]  # Change back to [0, 1], once Topoflow is allowed
             },
             "Snowmelt": {
-                "allowed_counts": [0, 1]
+                "expected_counts": [0, 1]
             },
             "Evapotranspiration": {
-                "allowed_counts": [1]
+                "expected_counts": [1]
             },
             "Rainfall Runoff": {
-                "allowed_counts": [1]
+                "expected_counts": [1]
             },
             "Soil Moisture": {
-                "allowed_counts": [0, 2]
+                "expected_counts": [0, 2]
             },
             "Routing": {
-                "allowed_counts": [1]
+                "expected_counts": [1]
             }
         },
         "module_exclusions": {
@@ -339,16 +339,16 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
 
     # Validate group requirements
     for group_name, group_rules in formulation_validations['formulation_rules']['group_requirements'].items():
-        allowed_counts = group_rules.get('allowed_counts')
-        count = group_counts.get(group_name, 0)
+        expected_counts = group_rules.get('expected_counts')
+        print('expected_counts', expected_counts)        count = group_counts.get(group_name, 0)
 
-        # Validate the count against allowed_counts
-        if count not in allowed_counts:
-            msg = f"{group_name} group must have {allowed_counts} modules, but it has {count}"
+        # Validate the count against expected_counts
+        if count not in expected_counts:
+            msg = f"{group_name} group is expected to have {expected_counts} modules, but it has {count}"
             logger.warning(msg)
             messages.append(msg)
             formulation_validation_json['group_requirements'].append(
-                {'group_name': group_name, 'required_count': allowed_counts, 'has_count': count}
+                {'group_name': group_name, 'expected_counts': expected_counts, 'has_count': count}
             )
 
     nwm_warning = False
