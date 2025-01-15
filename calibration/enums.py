@@ -216,3 +216,9 @@ class JobGenesis(AbstractEnum):
     CLONE = 'clone'
     IMPORT = 'import'
     GUI = 'gui'
+
+
+class GetValidationJobsScope(AbstractEnum):
+    IDS = 'ids'
+    STATUS = 'status'
+    DETAILS = 'details'

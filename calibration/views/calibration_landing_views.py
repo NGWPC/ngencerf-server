@@ -15,7 +15,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GetValidationJobsScope
 from calibration.models import CalibrationRun, ValidationRun, IterationParameter
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
@@ -329,7 +329,7 @@ def get_calibration_jobs(request):
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, run_status=list(StatusEnum), include_validation_data='status')
+    jobs = get_jobs(request.user, run_status=list(StatusEnum), include_validation_data=GetValidationJobsScope.STATUS)
 
     response = {'jobs': jobs}
 
@@ -345,7 +345,7 @@ def get_calibration_jobs(request):
 def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
-        include_validation_data: str = None
+        include_validation_data: GetValidationJobsScope = None
 ) -> list[dict[str, Any]]:
     """
     Retrieves calibration jobs for the given user with optional status filtering and validation data inclusion.
@@ -389,19 +389,19 @@ def get_jobs(
         }
 
         # Include validation IDs and count if requested
-        if include_validation_data == 'ids':
+        if include_validation_data == GetValidationJobsScope.IDS:
             validation_ids = get_validation_jobs_internal(
                 calibration_run_id=result['calibration_run_id'],
-                detail_level='ids'
+                detail_level=include_validation_data
             )
             result['validation_run_ids'] = validation_ids
             result['validation_runs'] = len(validation_ids)
 
         # Include detailed validation status if requested
-        elif include_validation_data == 'status':
+        elif include_validation_data == GetValidationJobsScope.STATUS:
             result['validations'] = get_validation_jobs_internal(
                 calibration_run_id=result['calibration_run_id'],
-                detail_level='status'
+                detail_level=include_validation_data
             )
 
         results.append(result)
@@ -411,7 +411,7 @@ def get_jobs(
 
 def get_validation_jobs_internal(
         calibration_run_id: int,
-        detail_level: str = 'ids'
+        detail_level: GetValidationJobsScope = GetValidationJobsScope.IDS,
 ) -> list[dict[str, Any]] | list[int]:
     """
     Retrieves validation jobs for a specific calibration job.
@@ -424,7 +424,7 @@ def get_validation_jobs_internal(
     :return: A list of validation job IDs, status summaries, or detailed dicts.
     """
     # Filter validation jobs based on the detail level
-    if detail_level in ['ids', 'detailed']:
+    if detail_level in [GetValidationJobsScope.IDS, GetValidationJobsScope.DETAILS]:
         # Exclude VALID_CONTROL for 'ids' detail level
         validation_filter_condition = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
     else:
@@ -436,11 +436,11 @@ def get_validation_jobs_internal(
         calibration_run_id=calibration_run_id
     ).filter(validation_filter_condition)
 
-    if detail_level == 'ids':
+    if detail_level == GetValidationJobsScope.IDS:
         # Return a list of validation job IDs
         return list(validation_jobs_query.values_list('id', flat=True))
 
-    if detail_level == 'status':
+    if detail_level == GetValidationJobsScope.STATUS:
         # Include all validation types for status-level detail
         return [
             {
@@ -451,7 +451,7 @@ def get_validation_jobs_internal(
             for job in validation_jobs_query
         ]
 
-    if detail_level == 'detailed':
+    if detail_level == GetValidationJobsScope.DETAILS:
         # Return a detailed list of validation job information, including parameters
         return [
             {
