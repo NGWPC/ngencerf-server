@@ -424,7 +424,7 @@ def get_validation_jobs_internal(
     :return: A list of validation job IDs, status summaries, or detailed dicts.
     """
     # Filter validation jobs based on the detail level
-    if detail_level == 'ids':
+    if detail_level in ['ids', 'detailed']:
         # Exclude VALID_CONTROL for 'ids' detail level
         validation_filter_condition = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
     else:
