@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
+from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName, GetValidationJobsScope
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
@@ -204,7 +204,7 @@ def get_validation_jobs(request: Request) -> Response:
         return error_return
 
     # Retrieve validation jobs using internal helper
-    validation_jobs = get_validation_jobs_internal(calibration_run_id, detail_level='detailed')
+    validation_jobs = get_validation_jobs_internal(calibration_run_id, detail_level=GetValidationJobsScope.DETAILS)
 
     response = {'validation_jobs': validation_jobs}
     response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
