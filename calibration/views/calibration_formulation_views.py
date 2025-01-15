@@ -340,7 +340,7 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
     # Validate group requirements
     for group_name, group_rules in formulation_validations['formulation_rules']['group_requirements'].items():
         expected_counts = group_rules.get('expected_counts')
-        print('expected_counts', expected_counts)        count = group_counts.get(group_name, 0)
+        count = group_counts.get(group_name, 0)
 
         # Validate the count against expected_counts
         if count not in expected_counts:
