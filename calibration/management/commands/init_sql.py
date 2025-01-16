@@ -97,7 +97,7 @@ class Command(BaseCommand):
                   {"name": "CFE-X",
                    "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
                    "groups": ["Rainfall Runoff"]},
-                  {"name": "PET", "description": "description", "groups": ["Evapotranspiration"]},
+                  {"name": "PET", "description": "description", "groups": ["Evapotranspiration"], "is_active": False},
                   {"name": "TopModel",
                    "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
                    "groups": ["Rainfall Runoff"]},
