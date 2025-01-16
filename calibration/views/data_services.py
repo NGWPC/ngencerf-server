@@ -11,8 +11,7 @@ from django.db.models import QuerySet
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
-from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, \
-    S3DirectoryValidator
+from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, S3DirectoryValidator
 from calibration.util.file_util import copy_directory
 from calibration.util.ngen_locations import get_bmi_config_dir_for_module
 from calibration.views.common import validate_response_data
@@ -27,10 +26,10 @@ default_headers = {
 
 def fetch_from_data_services(method: str, url: str, headers: dict = None, payload: dict = None) -> dict:
     """
-    A generic function to handle HTTP requests to Data Services and handle exceptions.
+    Sends an HTTP request to Data Services and processes the response.
 
     :param method: HTTP method (e.g., 'GET' or 'POST')
-    :param url: The full URL to send the request to.
+    :param url: The full URL of the Data Services endpoint.
     :param headers: Optional HTTP headers to include.
     :param payload: Optional JSON payload for POST requests.
     :return: The response JSON data as a dictionary.
@@ -43,8 +42,9 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
         logger.info(f"Data Services payload: {payload}")
 
     try:
-        start_time = time.time()  # Record the start time
+        start_time = time.time()  # Record the start time for performance tracking
 
+        # Send the appropriate HTTP request based on the method
         if method == 'GET':
             response = requests.get(url, headers=headers)
         elif method == 'POST':
@@ -52,7 +52,8 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
         else:
             raise DataServicesException(f"Unsupported HTTP method: {method}")
 
-        elapsed_time = time.time() - start_time  # Calculate the elapsed time
+        # Log the time taken for the request
+        elapsed_time = time.time() - start_time
         minutes, seconds = divmod(elapsed_time, 60)  # Convert to minutes and seconds
         logger.info(f"Request to {url} took {int(minutes)}:{int(seconds):02} (minutes:seconds).")
 
@@ -60,13 +61,13 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
         status_code = response.status_code
         response_text = response.text
 
-        # Log the response for debugging in case of errors
+        # Handle potential errors based on the status code
         if 400 <= status_code < 500:
             logger.error(f"Client error while accessing {url}: {status_code} - {response_text}")
         elif 500 <= status_code:
             logger.error(f"Server error while accessing {url}: {status_code} - {response_text[:1000] + '... (truncated)'}")
 
-        # Check if the response is HTML (indicating an error page)
+        # Check if the response is HTML instead of JSON (indicating an error page)
         content_type = response.headers.get('Content-Type', '')
         if 'text/html' in content_type:
             msg = f"Call to {url} returned HTML error from Data Services"
@@ -75,7 +76,7 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
 
         response.raise_for_status()  # Raise HTTPError for bad responses
 
-        # Parse and validate the response JSON
+        # Parse the response JSON and validate its format
         response_data = response.json()
 
         # Ensure the response is a dictionary
@@ -104,12 +105,21 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
 
 
 class DataServicesException(Exception):
+    """
+    Custom exception for errors related to Data Services.
+    """
+
     def __init__(self, message, status_code=None):
         super().__init__(message)
         self.status_code = status_code
 
 
 def get_geopackage_from_data_services(run: CalibrationRun):
+    """
+    Retrieves GeoPackage data from Data Services and updates the CalibrationRun instance.
+
+    :param run: A CalibrationRun object with associated gage information.
+    """
     if run.gage:
         if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
             logger.info('Getting geopackage from Data Services')
@@ -132,12 +142,18 @@ def get_geopackage_from_data_services(run: CalibrationRun):
 
 
 def get_observational_data_from_data_services(run: CalibrationRun):
+    """
+    Retrieves observational data from Data Services and updates the CalibrationRun instance.
+
+    :param run: A CalibrationRun object with associated gage information.
+    """
     if settings.ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT[0]:
         logger.info('Getting observational data from Data Services')
         url = urljoin(settings.ENTERPRISE_DATA_URL,
-                      settings.ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id,
-                                                                                   agency=run.gage.agency,
-                                                                                   domain=run.gage.domain.name))
+                      settings.ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT[1].format(
+                          gage_id=run.gage.gage_id,
+                          agency=run.gage.agency,
+                          domain=run.gage.domain.name))
         observational_json = fetch_from_data_services('GET', url, headers=default_headers)
     else:
         logger.info('Getting dummy observational data')
@@ -168,6 +184,11 @@ def clear_times(run: CalibrationRun):
 
 
 def get_forcing_data_from_data_services(run: CalibrationRun):
+    """
+    Retrieves forcing data from Data Services and updates the CalibrationRun instance.
+
+    :param run: A CalibrationRun object with associated gage information.
+    """
     if settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[0]:
         logger.info('Getting forcing data from Data Services')
         url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
@@ -175,8 +196,6 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
     else:
         get_forcing_data_from_s3(run)
         return
-        # logger.info('Getting dummy forcing data')
-        # forcing_json = data_services_test_data.forcing_sample_data
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Data Services is not in the expected format')
 
@@ -188,6 +207,12 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
 
 
 def get_forcing_data_from_s3(run: CalibrationRun):
+    """
+    Attempts to retrieve forcing data from local S3 directories.
+
+    :param run: A CalibrationRun object with associated gage information.
+    :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
+    """
     for s3_uri in settings.FORCING_DATA_DIRS:
         dir_path = convert_s3_uri_to_fs(s3_uri)
         gage_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
@@ -198,97 +223,116 @@ def get_forcing_data_from_s3(run: CalibrationRun):
             logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
             return
         else:
-            logger.info(f"Forcing directory doesn't exist {gage_dir}")
+            logger.info(f"Forcing directory doesn't exist for {gage_dir}")
 
     raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 
 
 def get_module_metadata_from_data_services(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation],
                                            gage_changed: bool = False):
+    """
+    Retrieves module metadata from Data Services and updates the database with module parameters and output variables.
+
+    :param run: A CalibrationRun object with associated gage information.
+    :param calibration_formulations: QuerySet of CalibrationFormulations for the run.
+    :param gage_changed: Boolean indicating whether the gage has changed:
+                         - If False: Indicates the modules have changed.
+                         - If True: Indicates the gage has changed, and we want to retain the min/max values
+                           for existing parameters while updating their initial values.
+    :raises DataServicesException: If required module metadata is missing.
+    """
     gage = run.gage
-    # gage_changed = False means that the modules changed.  If true, then the gage changed and we want to retain min/max
 
-    my_module_names = list(calibration_formulations.values_list('module__name', flat=True))
+    # Collect module names from calibration formulations
+    my_module_names_set = list(calibration_formulations.values_list('module__name', flat=True))
 
+    # Fetch module metadata from Data Services or use test data
     if settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT[0]:
-        logger.info('Getting module metadata from Data Services')
+        logger.info('Fetching module metadata from Data Services')
         url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT[1])
 
-        module_json = fetch_from_data_services('POST', url, headers=default_headers,
-                                               payload={'modules': my_module_names,
-                                                        'gage_id': gage.gage_id,
-                                                        'domain': gage.domain.name,
-                                                        'source': gage.agency,
-                                                        'version': settings.ENTERPRISE_DATA_VERSION})
+        module_json = fetch_from_data_services(
+            'POST',
+            url,
+            headers=default_headers,
+            payload={'modules': my_module_names_set,
+                     'gage_id': gage.gage_id,
+                     'domain': gage.domain.name,
+                     'source': gage.agency,
+                     'version': settings.ENTERPRISE_DATA_VERSION})
     else:
-        logger.info('Getting dummy module metadata')
+        logger.info('Using dummy module metadata')
         module_json = data_services_test_data.eds_module_metadata_real_data
 
-    module_metadata = validate_response_data(ModuleDataListSerializer, module_json,
-                                             'Module metadata from Data Services is not in the expected format')
+    module_metadata = validate_response_data(
+        ModuleDataListSerializer, module_json,
+        'Module metadata from Data Services is not in the expected format')
 
     fix_module_metadata(module_metadata)
 
+    # Extract module names from the response for comparison
     eds_module_names = set([module['module_name'] for module in module_metadata['modules']])
+    my_module_names_set = set(my_module_names_set)
 
-    my_module_names = set(my_module_names)
-    missing_names = my_module_names - eds_module_names
+    # Determine discrepancies between requested and returned modules
+    missing_names = my_module_names_set - eds_module_names
+    extra_names = eds_module_names - my_module_names_set
 
-    extra_names = eds_module_names - my_module_names
-
-    # Save the output variables and parameters for each module
+    # Save module parameters and output variables to the database
     with transaction.atomic():
         for module in module_metadata.get('modules'):
-            if module['module_name'] in extra_names:
+            module_name = module['module_name']
+
+            if module_name in extra_names:
                 # Ignore any extra names that Data Services sent us
-                logger.warning(f'Ignore extra module from Data Services - {module["module_name"]}')
+                logger.warning(f'Ignoring extra module from Data Services - {module["module_name"]}')
                 continue
 
+            # Fetch the corresponding module instance
             module_instance = get_cached_module_by_name(module['module_name'])
-
-            # Get the modules object from our list
             calibration_formulation = calibration_formulations.get(module=module_instance)
 
-            # Copy bmi-config to our directory
+            # Copy the BMI configuration file to the appropriate directory
             bmi_config = convert_s3_uri_to_fs(module['parameter_file']['uri'])
-            copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module['module_name']))
+            copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module_name))
 
-            # Save output variables
-            outputs = module['output_variables']
-            o: dict
-            for o in outputs:
+            # Save output variables for the module
+            output: dict
+            for output in module['output_variables']:
                 ModuleOutputVariable.objects.update_or_create(
-                    name=o['variable'],
+                    name=output['variable'],
                     calibration_formulation=calibration_formulation,
                     # TODO Fix this.  Description is required
-                    defaults={'description': o['description'] if o['description'] else 'placeholder description'}
+                    defaults={'description': output['description'] if output['description'] else 'placeholder description'}
                 )
-            # Save parameters
-            parameters = module['calibrate_parameters']
-            for p in parameters:
+            # Save or update parameters for the module
+            for param in module['calibrate_parameters']:
                 # Data Services gives us initial_value, min and max as Strings because sometimes crap appears in them.
 
                 # Using get_or_create because we don't want to override any values the user has already entered
                 calibration_parameter, created = CalibrationParameter.objects.get_or_create(
-                    name=p['name'],
+                    name=param['name'],
                     calibration_formulation=calibration_formulation,
-                    defaults={'data_type': p['data_type'],
-                              'description': p['description'],
-                              'initial_value': str_to_float(p['initial_value']),
-                              'minimum': str_to_float(p['min']),
-                              'maximum': str_to_float(p['max']),
-                              'units': p['units']
+                    defaults={'data_type': param['data_type'],
+                              'description': param['description'],
+                              'initial_value': str_to_float(param['initial_value']),
+                              'minimum': str_to_float(param['min']),
+                              'maximum': str_to_float(param['max']),
+                              'units': param['units']
                               }
                 )
+
+                # Update initial value if the gage changed and the parameter already exists
                 if gage_changed and not created:
                     logger.info(
-                        f"Changing initial value for parameter {p['name']} for module {calibration_formulation.module.name}")
+                        f"Updating initial value for parameter {param['name']} for module {calibration_formulation.module.name}")
                     # We want to over-write the initial_value from Data Services
-                    calibration_parameter.initial_value = str_to_float(p['initial_value'])
+                    calibration_parameter.initial_value = str_to_float(param['initial_value'])
                     calibration_parameter.save(update_fields=['initial_value'])
 
+    # Raise an exception if any requested modules are missing in the response
     if missing_names:
-        raise DataServicesException(f'Response from Data Services is missing entries for {missing_names}')
+        raise DataServicesException(f'Response from Data Services is missing entries for: {missing_names}')
 
     return
 
@@ -317,7 +361,7 @@ translation_map = {
     ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
     ("Noah-OWP-Modular", "CWPVT"): "CWP",
     ("Noah-OWP-Modular", "SATDK"): "DKSAT",
-    
+
     ("LASAM", "theta_e"): "smcmax",
     ("LASAM", "theta_r"): "smcmin",
     ("LASAM", "n"): "van_genuchten_n ",
@@ -339,6 +383,22 @@ translation_map = {
 
 
 def fix_module_metadata(metadata):
+    """
+    Translates parameter names in module metadata based on a translation map.
+
+    :param metadata: Dictionary containing module metadata.
+                     Example structure:
+                     {
+                         "modules": [
+                             {
+                                 "name": "module_name",
+                                 "calibrate_parameters": [
+                                     {"name": "full_param_name", "value": 123}
+                                 ]
+                             }
+                         ]
+                     }
+    """
     for module in metadata["modules"]:
         module_name = module["name"]  # Extract the module name
         for param in module["calibrate_parameters"]:
@@ -351,6 +411,12 @@ def fix_module_metadata(metadata):
 
 
 def str_to_float(value):
+    """
+    Converts a value to a float, returning None if conversion fails.
+
+    :param value: The value to convert.
+    :return: The converted float or None if the value is invalid.
+    """
     if value is None:
         return None
     try:
