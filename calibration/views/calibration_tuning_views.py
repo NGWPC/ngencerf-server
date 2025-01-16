@@ -1,6 +1,7 @@
 import io
 import logging
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
 from typing import Tuple, Literal
@@ -141,6 +142,10 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     """
     Determines the date range intersection between observational and forcing data, updating the run if changed.
     """
+    if run.time_range_start and run.time_range_end:
+        logger.info("Time range is already set")
+        return {}
+
     observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
@@ -151,14 +156,15 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
 
     # If both paths are available, calculate intersection and update run
     if observation_path and forcing_path:
+        daterange_intersection_start = time.time()
         daterange = get_date_range_intersection(observation_path, forcing_path)
+        logger.info(f"Date range intersection completed in {time.time() - daterange_intersection_start:.2f}s")
+
         logger.debug(f'New date range: {daterange}')
         if daterange:
-            # Only update if it has changed
-            if run.time_range_start != daterange.start_datetime or run.time_range_end != daterange.end_datetime:
-                run.time_range_start = daterange.start_datetime
-                run.time_range_end = daterange.end_datetime
-                run.save(update_fields=['time_range_start', 'time_range_end'])
+            run.time_range_start = daterange.start_datetime
+            run.time_range_end = daterange.end_datetime
+            run.save(update_fields=['time_range_start', 'time_range_end'])
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
     else:
         # We don't have the data,

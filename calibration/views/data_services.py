@@ -149,6 +149,9 @@ def get_observational_data_from_data_services(run: CalibrationRun):
     s3_uri = observational_data.get('uri')
 
     run.observational_eds_file_path = convert_s3_uri_to_fs(s3_uri)
+    # Invalidate the dates, since we'll have to compute the intersection again
+    run.time_range_start = None
+    run.time_range_end = None
     logger.info(f'Setting run.observational_eds_file_path to {run.observational_eds_file_path}')
 
 
@@ -168,6 +171,9 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
     s3_uri = forcing_data.get('uri')
 
     run.forcing_eds_dir_path = convert_s3_uri_to_fs(s3_uri)
+    # Invalidate the dates, since we'll have to compute the intersection again
+    run.time_range_start = None
+    run.time_range_end = None
     logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
 
 
@@ -178,6 +184,9 @@ def get_forcing_data_from_s3(run: CalibrationRun):
         if os.path.isdir(gage_dir):
             logger.info(f"Found forcing directory {gage_dir}")
             run.forcing_eds_dir_path = gage_dir
+            # Invalidate the dates, since we'll have to compute the intersection again
+            run.time_range_start = None
+            run.time_range_end = None
             logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
             return
         else:
