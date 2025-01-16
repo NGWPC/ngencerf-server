@@ -294,25 +294,60 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
 
 
 translation_map = {
-    "soil_params.b": "b",
-    "soil_params.satdk": "satdk",
-    "soil_params.satpsi": "satpsi",
-    "soil_params.slop": "slope",
-    "soil_params.smcmax": "smcmax",
-    "CWPVT": "CWP",
-    "K_lf": "Klf",
-    "K_nash": "Kn"
+    ("CFE-S", "soil_params.smcmax"): "maxsmc",
+    ("CFE-S", "soil_params.satdk"): "satdk",
+    ("CFE-S", "soil_params.slop"): "slope",
+    ("CFE-S", "soil_params.b"): "b",
+    ("CFE-S", "K_lf"): "Klf",
+    ("CFE-S", "K_nash"): "Kn",
+    ("CFE-S", "soil_params.expon"): "expon",
+    ("CFE-S", "soil_params.satpsi"): "satpsi",
+    ("CFE-S", "soil_params.wlt"): "wltsmc",
+
+    ("CFE-X", "soil_params.smcmax"): "maxsmc",
+    ("CFE-X", "soil_params.satdk"): "satdk",
+    ("CFE-X", "soil_params.slop"): "slope",
+    ("CFE-X", "soil_params.b"): "b",
+    ("CFE-X", "K_lf"): "Klf",
+    ("CFE-X", "K_nash"): "Kn",
+    ("CFE-X", "soil_params.expon"): "expon",
+    ("CFE-X", "soil_params.satpsi"): "satpsi",
+    ("CFE-X", "soil_params.wlt"): "wltsmc",
+
+    ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
+    ("Noah-OWP-Modular", "CWPVT"): "CWP",
+    ("Noah-OWP-Modular", "SATDK"): "DKSAT",
+    
+    ("LASAM", "theta_e"): "smcmax",
+    ("LASAM", "theta_r"): "smcmin",
+    ("LASAM", "n"): "van_genuchten_n ",
+    ("LASAM", "alpha"): "van_genuchten_alpha ",
+    ("LASAM", "Ks"): "hydraulic_conductivity ",
+    ("LASAM", "field_capacity_psi"): "field_capacity ",
+    ("LASAM", "m??"): "ponded_depth_max ",
+
+    ("SFT", "soil_params.smcmax"): "smcmax",
+    ("SFT", "soil_params.b"): "b",
+    ("SFT", "soil_params.satpsi"): "satpsi",
+    ("SFT", "soil_params.quartz"): "quartz",
+    ("SFT", "soil_temperature", "soil_temperature_profile"): "quartz",
+
+    ("SMP", "soil_params.smcmax"): "smcmax",
+    ("SMP", "soil_params.b"): "b",
+    ("SMP", "soil_params.satpsi"): "satpsi",
 }
 
 
 def fix_module_metadata(metadata):
-    # Apply translations
-    for module in metadata['modules']:
+    for module in metadata["modules"]:
+        module_name = module["name"]  # Extract the module name
         for param in module["calibrate_parameters"]:
-            old_name = param["name"]
-            # Check if the old_name needs translation
-            if old_name in translation_map:
-                param["name"] = translation_map[old_name]
+            param_name = param["name"]  # Extract the parameter name
+            key = (module_name, param_name)  # Create a tuple key
+            # Check if the key exists in the translation_map
+            if key in translation_map:
+                logger.info(f"Translating {key} to {translation_map[key]}")
+                param["name"] = translation_map[key]
 
 
 def str_to_float(value):
