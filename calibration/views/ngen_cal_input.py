@@ -225,7 +225,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
-            if datafile['hydrofab_file']:
+            if datafile['hydrofab_file'] and os.path.exists(datafile['hydrofab_file']):
                 logger.info(f"Catchments from {datafile['hydrofab_file']} file are {get_catchments_from_gpkg(datafile['hydrofab_file'])}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
