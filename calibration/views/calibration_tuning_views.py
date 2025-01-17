@@ -73,7 +73,6 @@ def load_tuning_tab(request: Request) -> Response:
     time_range = get_time_range(run)
     calibration_times, validation_times = get_times(run)
 
-
     formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
         'calibrationparameter_set', 'output_variables'
     )
@@ -150,33 +149,36 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     """
     Determines the date range intersection between observational and forcing data, updating the run if changed.
     """
+    print('get_time_range', run.time_range_start, run.time_range_end)
     if run.time_range_start and run.time_range_end:
         logger.info("Time range is already set")
-        return {}
+        return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
-    observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
+    observation_path = get_valid_path(run.observational_source,
+                                      run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
                                       lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_eds_dir_path,
+    forcing_path = get_valid_path(run.forcing_source,
+                                  run.forcing_eds_dir_path,
                                   ForcingSourceEnum.UPLOAD,
                                   lambda: get_forcing_dir_for_job(run))
 
-    # If both paths are available, calculate intersection and update run
-    if observation_path and forcing_path:
-        daterange_intersection_start = time.time()
-        daterange = get_date_range_intersection(observation_path, forcing_path)
-        logger.info(f"Date range intersection completed in {time.time() - daterange_intersection_start:.2f}s")
-
-        logger.debug(f'New date range: {daterange}')
-        if daterange:
-            run.time_range_start = daterange.start_datetime
-            run.time_range_end = daterange.end_datetime
-            run.save(update_fields=['time_range_start', 'time_range_end'])
-        return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
-    else:
-        # We don't have the data,
+    if not observation_path or not forcing_path:
         return {}
+
+    # If both paths are available, calculate intersection and update run
+    daterange_intersection_start = time.time()
+    daterange = get_date_range_intersection(observation_path, forcing_path)
+    logger.info(f"Date range intersection completed in {time.time() - daterange_intersection_start:.2f}s")
+
+    if daterange:
+        run.time_range_start = daterange.start_datetime
+        run.time_range_end = daterange.end_datetime
+        run.save(update_fields=['time_range_start', 'time_range_end'])
+
+    return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
+
 
 
 def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datetime]]:
