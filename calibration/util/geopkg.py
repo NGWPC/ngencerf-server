@@ -2,6 +2,7 @@ from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
 from typing import Tuple
+import os
 
 import fiona
 import geopandas as gpd
@@ -19,7 +20,11 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None
     :param gpkg_path: Path to the GeoPackage file.
     :param png_path: Path where the generated PNG file will be saved.
     :param layer: Name of the layer to visualize, or None to visualize all layers.
+    :raises FileNotFoundError: If the GeoPackage file does not exist.
     """
+    if not os.path.exists(gpkg_path):
+        raise FileNotFoundError(f"GeoPackage file not found: {gpkg_path}")
+
     # Read the GeoPackage file
     gdf = gpd.read_file(gpkg_path, layer=layer) if layer else gpd.read_file(gpkg_path)
 
@@ -43,7 +48,11 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ..
     :param gpkg_path: Path to the GeoPackage file.
     :param layers_to_include: Tuple of layer names to include in the plot. Defaults to a predefined set.
     :return: BytesIO object containing the generated PNG image.
+    :raises FileNotFoundError: If the GeoPackage file does not exist.
     """
+    if not os.path.exists(gpkg_path):
+        raise FileNotFoundError(f"GeoPackage file not found: {gpkg_path}")
+
     if layers_to_include is None:
         layers_to_include = ('nexus', 'flowpaths', 'flowlines')  # Default layers to include
 
@@ -103,23 +112,22 @@ def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> lis
     :param gpkg_path: Path to the GeoPackage file.
     :param layer_name: Name of the layer containing catchments. Defaults to 'divides'.
     :return: List of catchment identifiers (e.g., 'divide_id').
+    :raises FileNotFoundError: If the GeoPackage file does not exist.
     :raises ValueError: If the specified layer or the 'divide_id' column is missing.
     """
-    if gpkg_path:
-        # List all layers to verify the catchments layer exists
-        available_layers = fiona.listlayers(gpkg_path)
-        if layer_name not in available_layers:
-            raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
+    if not os.path.exists(gpkg_path):
+        raise FileNotFoundError(f"GeoPackage file not found: {gpkg_path}")
 
-        # Read the catchments layer
-        gdf = gpd.read_file(gpkg_path, layer=layer_name)
+    # List all layers to verify the catchments layer exists
+    available_layers = fiona.listlayers(gpkg_path)
+    if layer_name not in available_layers:
+        raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
 
-        # Extract the 'divide_id' column
-        if 'divide_id' in gdf.columns:
-            catchments = gdf['divide_id'].tolist()
-        else:
-            raise ValueError("The 'divide_id' column was not found in the layer.")
+    # Read the catchments layer
+    gdf = gpd.read_file(gpkg_path, layer=layer_name)
 
-        return catchments
+    # Extract the 'divide_id' column
+    if 'divide_id' in gdf.columns:
+        return gdf['divide_id'].tolist()
     else:
-        return []
+        raise ValueError("The 'divide_id' column was not found in the layer.")

@@ -397,23 +397,28 @@ def export_job(request: Request) -> Response:
 
 def load_calibration_run_data(run: CalibrationRun, export: bool = False, include_gpkg_map: bool = False) -> dict:
     """
-    Loads calibration run data for export or display.
+    Loads calibration run data for export or UI display.
 
     :param run: CalibrationRun instance for which data is being loaded.
-    :param export: Flag to specify if data is being exported.
-    :param include_gpkg_map: Flag to specify if the Geopackage map should be generated.
-    :return: Dictionary containing calibration run data.
+    :param export: If True, formats the data for export, including all necessary paths for job re-import.
+                   If False, formats the data for UI display with only essential details.
+    :param include_gpkg_map: If True and export is False, generates a base64-encoded Geopackage map for display.
+                             Ignored when export is True.
+    :return: Dictionary containing the calibration run data.
     """
     start_time = time.time()
     logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id}")
 
     calibration_run_data = {}
 
+    #############################
+    # Time Range
+    #############################
     logger.info("Retrieving time range")
-    # Retrieve the time range for the run and serialize
     time_range_start = time.time()
     time_range = get_time_range(run)
-    # Since we're not using a serializer for metadata, we need to serialize the datetime objects manually
+
+    # Manually serialize datetime objects since we're not using a serializer for metadata
     serialized_time_range = {}
     if time_range:
         if time_range.get('start_time'):
@@ -424,6 +429,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
+    #############################
+    # Export Mode
+    #############################
     if export:
         export_start = time.time()
         metadata = {
@@ -437,7 +445,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
-        # calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
 
         # There fields are exported so we can import them later
@@ -463,12 +470,17 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['observational_eds_file_path'] = run.observational_eds_file_path
         calibration_run_data['geopackage_eds_file_path'] = run.geopackage_eds_file_path
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
+
+    #############################
+    # UI Display Mode (Non-Export)
+    #############################
     else:
-        # Basic information for UI display, not intended for import/export
         ui_display_start = time.time()
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['submit_date'] = run.submit_date
         calibration_run_data['time_range'] = time_range
+
+        # Gage information
         calibration_run_data['gage'] = {
             'gage_id': run.gage.gage_id,
             'agency': run.gage.agency,
@@ -479,6 +491,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         } if run.gage else None
         calibration_run_data['status'] = run.status.name
 
+        # Generate Geopackage map if requested
         if include_gpkg_map:
             gpkg_map_start = time.time()
             # For the UI, we don't need the Geopackage file, but rather, the full map
@@ -491,7 +504,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
             logger.info(f"Geopackage map generation completed in {time.time() - gpkg_map_start:.2f}s")
 
-        # Have files been uploaded or made available?
+        # Determine external data status (whether required files are available)
         data_files_status_start = time.time()
         calibration_run_data['external_data_status'] = get_data_files_status(run)
         logger.info(f"Data Files status completed in {time.time() - data_files_status_start:.2f}s")
@@ -500,25 +513,24 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         logger.info(f"UI display data preparation completed in {time.time() - ui_display_start:.2f}s")
 
     #############################
-    # Gage
+    # Gage Data
     #############################
     logger.info("Processing gage data")
     gage_start = time.time()
     calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
-
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
-
     calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
     logger.info(f"Gage data processed in {time.time() - gage_start:.2f}s")
 
     #############################
-    # Formulation
+    # Formulation Data
     #############################
     logger.info("Processing formulation data")
     formulation_start = time.time()
 
     calibration_run_data['formulation_name'] = run.user_formulation_name
 
+    # Extract module names
     modules = set(
         CalibrationFormulation.objects
         .filter(calibration_run=run)
@@ -526,19 +538,22 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     )
 
     calibration_run_data['modules'] = modules
+
+    # Validation warnings
     formulation_warning, nwm_warning = validate_formulation(modules)
     if not export:
         calibration_run_data['nwm_warning'] = nwm_warning
-    if formulation_warning is not None and not export:
+    if formulation_warning and not export:
         calibration_run_data['formulation_warning'] = formulation_warning
 
+    # Handle SLOTH parameters
     calibration_run_data['use_sloth'] = run.use_sloth
     if run.use_sloth:
         calibration_run_data['sloth_parameters'] = get_sloth_parameters(run)
     logger.info(f"Formulation data processed in {time.time() - formulation_start:.2f}s")
 
     #############################
-    # Tuning
+    # Tuning Data
     #############################
     logger.info("Processing turning data")
     tuning_start = time.time()
@@ -556,7 +571,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info(f"Tuning data processed in {time.time() - tuning_start:.2f}s")
 
     #############################
-    # Optimization
+    # Optimization Data
     #############################
     logger.info("Processing optimization data")
     optimization_start = time.time()
@@ -564,22 +579,18 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['objective_function'] = run.objective_function.name if run.objective_function else None
     calibration_run_data['streamflow_threshold'] = run.streamflow_threshold
     calibration_run_data['peak_flow_threshold'] = run.peak_flow_threshold
+
+    # Fetch optimization details
     optimization, optimization_inputs = get_user_optimization(run)
     calibration_run_data['optimization'] = optimization
     calibration_run_data['optimization_inputs'] = optimization_inputs
     calibration_run_data['save_plot_iteration_frequency'] = run.save_plot_iteration_frequency
     calibration_run_data['save_output_iteration'] = run.save_output_iteration
 
-    # Get stop criteria
+    # Stop criteria
     calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
     calibration_run_data['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
     logger.info(f"Optimization data processed in {time.time() - optimization_start:.2f}s")
-
-    # Additional data for running or completed jobs
-    if not export and run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.DONE.db_instance]:
-        # Other stuff we need for Running/Done jobs
-        pass
-
 
     logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data

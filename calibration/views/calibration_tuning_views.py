@@ -69,8 +69,11 @@ def load_tuning_tab(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Retrieve the time range and modules for the run
+    # Retrieve the time ranges
     time_range = get_time_range(run)
+    calibration_times, validation_times = get_times(run)
+
+
     formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
         'calibrationparameter_set', 'output_variables'
     )
@@ -80,7 +83,12 @@ def load_tuning_tab(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_list, 'time_range': time_range}
+    response = {'calibration_run_id': run.id, 'status': run.status.name,
+                'modules': module_list,
+                'time_range': time_range,
+                'calibration_times': calibration_times,
+                'validation_times': validation_times
+                }
 
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:

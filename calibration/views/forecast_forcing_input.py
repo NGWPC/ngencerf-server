@@ -1,3 +1,4 @@
+import logging
 import os
 
 import yaml
@@ -9,11 +10,13 @@ from calibration.util.ngen_locations import FORCING_MESH_SCRIPT_PATH, get_geopac
     get_forecast_forcing_cycle_config_file, FORCING_HRRR, get_forecast_forcing_config_file, FORCING_EXTRACTION_SCRIPT_PATH, \
     get_forecast_temp_dir
 
+logger = logging.getLogger(__name__)
+
 
 # Custom Dumper to control formatting
 class CustomDumper(yaml.Dumper):
-    def increase_indent(self, flow=False, indentless=False):
-        return super(CustomDumper, self).increase_indent(flow, False)
+    def increase_indent(self, flow=False, indentless_sequence=False):
+        return super(CustomDumper, self).increase_indent(flow, indentless_sequence)
 
 
 # Formatter for lists to ensure they are rendered in flow style (inline)
@@ -59,7 +62,7 @@ def build_forecast_forcing_download_config(run: ForecastForcingDownloadRun):
     if function_name in globals():
         globals()[function_name](run)
     else:
-        print(f"No function defined with name: {function_name}")
+        logger.info(f"No function defined with name: {function_name}")
 
 
 def build_short_range_config(run: ForecastForcingDownloadRun):

@@ -26,7 +26,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path
 from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
-    get_forcing_data_from_data_services, DataServicesException, get_module_metadata_from_data_services
+    get_forcing_data_from_data_services, DataServicesException, get_module_metadata_from_data_services, clear_times
 
 logger = logging.getLogger(__name__)
 
@@ -451,9 +451,7 @@ def upload_observational_data(request: Request) -> Response:
     logger.info(f"Saving user-uploaded observational file to {os.path.join(fs.location, user_observational_file.name)}")
     fs.save(user_observational_file.name, user_observational_file)
 
-    # Invalidate the dates, since we'll have to compute the intersection again
-    run.time_range_start = None
-    run.time_range_end = None
+    clear_times(run)
 
     with transaction.atomic():
         run.save()
@@ -534,9 +532,7 @@ def upload_forcing_data(request: Request) -> Response:
         else:
             logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
 
-    # Invalidate the dates, since we'll have to compute the intersection again
-    run.time_range_start = None
-    run.time_range_end = None
+    clear_times(run)
 
     if number_of_files == 0:
         return ResponseError(f'No valid forcing files found')

@@ -713,6 +713,8 @@ class LoadTuningResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
     time_range = TimeRangeSerializerAllowEmpty(required=True)
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
+    validation_times = ValidationTimeControls(required=False, allow_empty=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
