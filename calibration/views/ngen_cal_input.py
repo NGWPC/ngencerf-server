@@ -222,7 +222,10 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
             else:
                 if run.geopackage_eds_file_path:
                     # For data from Data Services copy to job-specific location
-                    copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                    try:
+                        copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                    except FileNotFoundError:
+                        run.geopackage_eds_file_path = None
                     datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
             if datafile['hydrofab_file'] and os.path.exists(datafile['hydrofab_file']):
