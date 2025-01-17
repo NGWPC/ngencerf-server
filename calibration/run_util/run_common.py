@@ -308,7 +308,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
-def submit_job(run: BaseRun, config_file=None) -> None:
+def submit_job(run: BaseRun, config_file=None) -> Response | None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -324,7 +324,9 @@ def submit_job(run: BaseRun, config_file=None) -> None:
     """
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
-        prepare_calibration_job(run, config_file)
+        response = prepare_calibration_job(run, config_file)
+        if response:
+            return response
 
     try:
         with transaction.atomic():
