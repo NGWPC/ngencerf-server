@@ -64,14 +64,14 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
         if 400 <= status_code < 500:
             logger.error(f"Client error while accessing {url}: {status_code} - {response_text}")
         elif 500 <= status_code:
-            logger.error(f"Server error while accessing {url}: {status_code} - {response_text}")
+            logger.error(f"Server error while accessing {url}: {status_code} - {response_text[:1000] + '... (truncated)'}")
 
         # Check if the response is HTML (indicating an error page)
         content_type = response.headers.get('Content-Type', '')
         if 'text/html' in content_type:
-            logger.warning(f"Received HTML response from {url} - truncating output")
-            response_text = response_text[:500] + '... (truncated)'
-            raise DataServicesException(f"Call to {url} returned HTML. Response text: {response_text}", status_code)
+            msg = f"Call to {url} returned HTML error from Data Services"
+            logger.error(msg)
+            raise DataServicesException(msg, status_code)
 
         response.raise_for_status()  # Raise HTTPError for bad responses
 
