@@ -302,9 +302,9 @@ class Command(BaseCommand):
                   {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
                   {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
                   {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
-                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True},
-                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve"},
-                  {"name": "NSEWt", "description": "Weighted NSE and NSELog"},
+                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True, "is_active": False},
+                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve", "is_active": False},
+                  {"name": "NSEWt", "description": "Weighted NSE and NSELog", "is_active": False},
                   ]
 
         for v in values:

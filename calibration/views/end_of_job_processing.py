@@ -292,6 +292,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
     # Get the cached metrics once for this batch of processing
+    # TODO Should change this to use AbstractEnum
     metrics_lookup = get_metrics_lookup()
 
     # Get the worker's path

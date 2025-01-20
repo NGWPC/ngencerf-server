@@ -85,7 +85,7 @@ def get_metrics_with_fields():
     """
     Retrieve active metrics with specified fields from cache or database if not cached.
 
-    :return: A list of dictionaries for active metrics, each containing 'name', 'description', 'is_active', 'categorical', and 'event_based' fields.
+    :return: A list of dictionaries for active metrics, each containing 'name', 'description',  'categorical', and 'event_based' fields.
     """
     metrics = cache.get(METRICS_WITH_FIELDS_KEY)
 
@@ -93,7 +93,7 @@ def get_metrics_with_fields():
     if metrics is None:
         # Fetch metrics from the database if not cached
         metrics = list(Metric.objects.filter(is_active=True).values(
-            'name', 'description', 'is_active', 'categorical', 'event_based'
+            'name', 'description','categorical', 'event_based'
         ))
         cache.set(METRICS_WITH_FIELDS_KEY, metrics, timeout=None)
     return metrics
