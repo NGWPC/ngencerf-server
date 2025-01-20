@@ -179,7 +179,6 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
 
-
 def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datetime]]:
     """
     Retrieves calibration and validation times if available, otherwise returns empty dictionaries.

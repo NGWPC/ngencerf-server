@@ -2,7 +2,8 @@ from typing import Dict, Any, Type
 
 from django.core.cache import cache
 
-from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition, ForecastCycle
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition, ForecastCycle, \
+    Metric
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -108,6 +109,16 @@ class DomainEnum(AbstractEnum):
     @classmethod
     def get_model(cls) -> Type[Domain]:
         return Domain
+
+
+class MetricEnum(AbstractEnum):
+    """
+    Metric Enum with database synchronization
+    """
+
+    @classmethod
+    def get_model(cls) -> Type[Metric]:
+        return Metric
 
 
 class OptimizationEnum(AbstractEnum):

@@ -7,9 +7,9 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import OptimizationEnum, StatusEnum
+from calibration.enums import OptimizationEnum, StatusEnum, MetricEnum
 from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
-from calibration.util.caching import get_metrics_with_fields, get_metrics_lookup, get_cached_optimization_inputs
+from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
@@ -62,7 +62,7 @@ def load_optimization_tab(request) -> Response:
     if error_return:
         return error_return
 
-    metrics = get_metrics_with_fields()
+    metrics = MetricEnum.get_active_choices_with_fields(fields=['name', 'description', 'categorical', 'event_based'])
 
     optimization_list = get_static_optimizations()
 
@@ -210,7 +210,8 @@ def save_optimization_tab(request) -> Response:
         return Response(response_validator.data)
 
 
-def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: List[Dict[str, Any]]) -> Tuple[Optimization | None, str | None]:
+def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: List[Dict[str, Any]]) \
+        -> Tuple[Optimization | None, str | None]:
     """
     Validates and assigns optimization inputs to a calibration run.
 
@@ -272,7 +273,8 @@ def validate_optimizations(run: CalibrationRun, optimization_name: str, optimiza
     return optimization, None
 
 
-def validate_objective_function(run: CalibrationRun, objective_function_name: str, streamflow_threshold: float, peak_flow_threshold: float) -> str | None:
+def validate_objective_function(run: CalibrationRun, objective_function_name: str, streamflow_threshold: float,
+                                peak_flow_threshold: float) -> str | None:
     """
     Validates and assigns the objective function to a calibration run.
 
@@ -283,11 +285,9 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
     :return: Error message if validation fails, otherwise None.
     """
     if objective_function_name:
-        # Retrieve the cached metrics
-        metrics_cache = get_metrics_lookup()
 
         # Fetch the metric from cache, ensuring it is active
-        objective_function = metrics_cache.get(objective_function_name.lower())
+        objective_function = MetricEnum.get_instance(objective_function_name.lower())
 
         if not objective_function or not objective_function.is_active:
             return f"Invalid metric specified for objective function - '{objective_function_name}'"
