@@ -368,13 +368,12 @@ translation_map = {
     ("LASAM", "alpha"): "van_genuchten_alpha ",
     ("LASAM", "Ks"): "hydraulic_conductivity ",
     ("LASAM", "field_capacity_psi"): "field_capacity ",
-    ("LASAM", "m??"): "ponded_depth_max ",
 
     ("SFT", "soil_params.smcmax"): "smcmax",
     ("SFT", "soil_params.b"): "b",
     ("SFT", "soil_params.satpsi"): "satpsi",
     ("SFT", "soil_params.quartz"): "quartz",
-    ("SFT", "soil_temperature", "soil_temperature_profile"): "quartz",
+    ("SFT", "soil_temperature"): "soil_temperature_profile",
 
     ("SMP", "soil_params.smcmax"): "smcmax",
     ("SMP", "soil_params.b"): "b",
