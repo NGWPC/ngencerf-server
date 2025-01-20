@@ -365,9 +365,9 @@ translation_map = {
     ("LASAM", "theta_e"): "smcmax",
     ("LASAM", "theta_r"): "smcmin",
     ("LASAM", "n"): "van_genuchten_n ",
-    ("LASAM", "alpha"): "van_genuchten_alpha ",
-    ("LASAM", "Ks"): "hydraulic_conductivity ",
-    ("LASAM", "field_capacity_psi"): "field_capacity ",
+    ("LASAM", "alpha"): "van_genuchten_alpha",
+    ("LASAM", "Ks"): "hydraulic_conductivity",
+    ("LASAM", "field_capacity_psi"): "field_capacity",
 
     ("SFT", "soil_params.smcmax"): "smcmax",
     ("SFT", "soil_params.b"): "b",
@@ -399,7 +399,7 @@ def fix_module_metadata(metadata):
                      }
     """
     for module in metadata["modules"]:
-        module_name = module["name"]  # Extract the module name
+        module_name = module["module_name"]  # Extract the module name
         for param in module["calibrate_parameters"]:
             param_name = param["name"]  # Extract the parameter name
             key = (module_name, param_name)  # Create a tuple key
