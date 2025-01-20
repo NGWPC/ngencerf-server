@@ -302,9 +302,9 @@ class Command(BaseCommand):
                   {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
                   {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
                   {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
-                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True, "is_active": False},
-                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve", "is_active": False},
-                  {"name": "NSEWt", "description": "Weighted NSE and NSELog", "is_active": False},
+                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True, "objective_function": False},
+                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve", "objective_function": False},
+                  {"name": "NSEWt", "description": "Weighted NSE and NSELog", "objective_function": False},
                   ]
 
         for v in values:
@@ -312,6 +312,7 @@ class Command(BaseCommand):
                                                                       "description": v['description'],
                                                                       "categorical": v.get('categorical', False),
                                                                       "event_based": v.get('event_based', False),
+                                                                      "objective_function": v.get('objective_function', True),
                                                                       "created_by": self.user})
 
     def define_status(self):
