@@ -160,7 +160,8 @@ class AbstractEnum(Generic[T], Enum):
         # Retrieve the instance by lowercase name or raise an error if not found
         instance = items_lower.get(name)
         if instance is None:
-            # Raise an error if the value isn't found in the cache
+            # Raise an error if the value isn't found in the cache.
+            # We would also get this error if we applied a filter (such as is_active=True)
             raise ValueError(f"No matching database entry for value '{name}' in {cls.__name__}.")
 
         return instance

@@ -286,10 +286,10 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
     """
     if objective_function_name:
 
-        # Fetch the metric from cache, ensuring it is active
-        objective_function = MetricEnum.get_instance(objective_function_name.lower())
-
-        if not objective_function or not objective_function.is_active:
+        # Fetch the metric from cache
+        try:
+            objective_function = MetricEnum.get_instance(objective_function_name.lower())
+        except ValueError:
             return f"Invalid metric specified for objective function - '{objective_function_name}'"
 
         run.objective_function = objective_function

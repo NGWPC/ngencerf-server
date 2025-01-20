@@ -120,6 +120,11 @@ class MetricEnum(AbstractEnum):
     def get_model(cls) -> Type[Metric]:
         return Metric
 
+    @classmethod
+    def get_filter(cls) -> Dict[str, Any]:
+        # Apply the filter to return only active elements
+        return {'is_active': True}
+
 
 class OptimizationEnum(AbstractEnum):
     """
