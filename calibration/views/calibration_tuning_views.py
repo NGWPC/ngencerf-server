@@ -149,7 +149,6 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     """
     Determines the date range intersection between observational and forcing data, updating the run if changed.
     """
-    print('get_time_range', run.time_range_start, run.time_range_end)
     if run.time_range_start and run.time_range_end:
         logger.info("Time range is already set")
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}

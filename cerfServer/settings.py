@@ -308,7 +308,7 @@ LOGGING = {
     },
     'formatters': {
         'prod_format': {
-            'format': '{asctime}.{msecs:03.0f} NGEN_CAL {levelname:8s} {message}',
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {message}',
             'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },

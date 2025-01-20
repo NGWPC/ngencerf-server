@@ -254,7 +254,9 @@ def run_calibration(request: Request) -> Response:
     if error_return:
         return error_return
 
-    submit_job(run)
+    error_response = submit_job(run)
+    if error_response:
+        return error_response
 
     response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
                 'status': run.status.name, 'submit_date': run.submit_date}
