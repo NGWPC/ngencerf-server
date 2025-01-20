@@ -6,7 +6,7 @@ from django.db.models import Prefetch
 
 from calibration.enums import PlotDefinitionsEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Module, Gage, Metric, OptimizationInput, ModuleGroup, CalibrationRun, ValidationRun
+from calibration.models import Module, Gage, OptimizationInput, ModuleGroup, CalibrationRun, ValidationRun
 
 
 def get_cached_module_by_name(module_name: str) -> Module | None:
@@ -59,44 +59,6 @@ def get_gage_by_id(gage_id: str):
         gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'nwm_v3_calibration']}
 
     return gage
-
-
-METRICS_LOOKUP_KEY = 'metrics_cache'
-
-
-def get_metrics_lookup() -> dict:
-    """
-    Retrieve the Metric objects from cache or database if not cached.
-
-    :return: A dictionary where keys are metric names (lowercased) and values are Metric objects.
-    """
-    metrics_lookup = cache.get(METRICS_LOOKUP_KEY)
-    if not metrics_lookup:
-        # Fetch from the database and cache the results
-        metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
-        cache.set(METRICS_LOOKUP_KEY, metrics_lookup, None)  # Cache indefinitely
-    return metrics_lookup
-
-
-METRICS_WITH_FIELDS_KEY = 'active_metrics'
-
-
-def get_metrics_with_fields():
-    """
-    Retrieve active metrics with specified fields from cache or database if not cached.
-
-    :return: A list of dictionaries for active metrics, each containing 'name', 'description', 'is_active', 'categorical', and 'event_based' fields.
-    """
-    metrics = cache.get(METRICS_WITH_FIELDS_KEY)
-
-    # Refresh cache if metrics are not found
-    if metrics is None:
-        # Fetch metrics from the database if not cached
-        metrics = list(Metric.objects.filter(is_active=True).values(
-            'name', 'description', 'is_active', 'categorical', 'event_based'
-        ))
-        cache.set(METRICS_WITH_FIELDS_KEY, metrics, timeout=None)
-    return metrics
 
 
 def get_cached_optimization_inputs(optimization_name: str) -> List[Dict[str, str | int | float]]:

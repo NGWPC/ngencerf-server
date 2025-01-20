@@ -6,17 +6,16 @@ from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
-from typing import Dict, Any, Callable
+from typing import Dict, Callable
 
 import pandas as pd
 from django.db import transaction
 from django.utils.timezone import now
 
-from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
+from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
 from calibration.models.base_run import BaseRun
-from calibration.util.caching import get_metrics_lookup
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_params_iteration_file, get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
@@ -161,9 +160,6 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
     # Read the metrics file using pandas
     metrics_df = pd.read_csv(metrics_file)
 
-    # Prefetch metrics for quick lookup
-    metrics_lookup = get_metrics_lookup()
-
     metrics_to_create = []  # List to accumulate metrics to be created
 
     # Determine the type of metric to create
@@ -185,9 +181,9 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
         # For each metric in the row, create or update the relevant Metric model
         for metric_name, value in metrics_row.items():
             # Perform case-insensitive lookup for the metric
-            metric = metrics_lookup.get(metric_name.lower())
+            metric = MetricEnum.get_instance(metric_name)
             if not metric:
-                raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database for run {run.id}")
+                raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
             metric_value = float(value) if value else float('nan')
 
@@ -291,9 +287,6 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     """
     logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
-    # Get the cached metrics once for this batch of processing
-    metrics_lookup = get_metrics_lookup()
-
     # Get the worker's path
     worker_path = get_calibration_worker_path(calibration_run, worker_name)
     if not os.path.isdir(worker_path):
@@ -354,7 +347,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} for CalibrationRun {calibration_run.id}")
 
         # Process metrics and parameters for this iteration
-        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create, metrics_lookup)
+        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create)
         process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker)
 
     # Bulk create IterationMetric and IterationParameter objects in chunks
@@ -390,8 +383,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
                                         iteration: Iteration,
                                         metrics_row: dict[str, float | None],
-                                        metrics_to_create: list[IterationMetric],
-                                        metrics_lookup: dict[str, Any]) -> None:
+                                        metrics_to_create: list[IterationMetric]) -> None:
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
@@ -399,7 +391,6 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
     :param iteration: The Iteration object for the current iteration.
     :param metrics_row: The row of metrics data from the file.
     :param metrics_to_create: The list to accumulate created IterationMetric objects.
-    :param metrics_lookup: Cache to avoid repeated lookups of Metrics
     """
     job_description = get_job_description(calibration_run)
 
@@ -408,7 +399,8 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
 
     for metric_name, value in metrics_row.items():
         # Perform case-insensitive lookup for the metric
-        metric = metrics_lookup.get(metric_name.lower())
+        metric = MetricEnum.get_instance(metric_name.lower())
+
         if not metric:
             raise CerfException(f"Could not find metric '{metric_name}'")
 
