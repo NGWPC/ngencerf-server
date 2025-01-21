@@ -62,7 +62,7 @@ def load_optimization_tab(request) -> Response:
     if error_return:
         return error_return
 
-    metrics = MetricEnum.get_active_choices_with_fields(fields=['name', 'description', 'categorical', 'event_based'])
+    metrics = MetricEnum.get_choices_with_fields(fields=['name', 'description', 'categorical', 'event_based'], extra_filter={'objective_function': True})
 
     optimization_list = get_static_optimizations()
 
@@ -108,7 +108,7 @@ def get_static_optimizations() -> List[Dict[str, Any]]:
 
     :return: A list of optimizations with related input fields.
     """
-    optimization_list = OptimizationEnum.get_active_choices_with_fields(
+    optimization_list = OptimizationEnum.get_choices_with_fields(
         fields=['name', 'description', 'is_active']
     )
 
@@ -291,6 +291,8 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
             objective_function = MetricEnum.get_instance(objective_function_name.lower())
         except ValueError:
             return f"Invalid metric specified for objective function - '{objective_function_name}'"
+        if not objective_function.objective_function:
+            return f"{objective_function_name} cannot be used as an objective function"
 
         run.objective_function = objective_function
 
