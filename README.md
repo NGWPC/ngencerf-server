@@ -295,14 +295,14 @@ Follow these steps to pull the latest docker containers.
    docker login registry.sh.nextgenwaterprediction.com
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest ngen-fcst
-   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-lumped-forcing:latest && docker image tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-lumped-forcing:latest ngen-forcing
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-bmi-forcing:latest && docker image tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-bmi-forcing:latest ngen-bmi-forcing
    ```
 
    **Note:** If you are developing and have updates to the repos that you want to include, use one of the following from the appropriate repo directory:
    ```
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-fcst . 
-   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-forcing . 
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-bmi-forcing . 
    ```
  
 3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
