@@ -15,17 +15,17 @@
     "geopackage_source": "Data Services",
     "geopackage_eds_file_path": null,
     "modules": [
-        "UEB",
+        "Snow-17",
         "Noah-OWP-Modular",
-        "CFE-S",
+        "CFE-X",
         "T-Route"
     ],
     "formulation_name": "my-cfe-noah",
     "use_sloth": false,
     "automatic_validation": true,
     "output_variable_to_calibrate": {
-        "name": "atff",
-        "module": "UEB"
+        "name": "sneqv",
+        "module": "Snow-17"
     },
     "calibration_times": {
         "calibration_start_time": "2014-10-01T00:00:00Z",
@@ -43,11 +43,11 @@
     "peak_flow_threshold": 2.0,
     "parameters": [
         {
-            "name": "df",
+            "name": "mfmax",
             "minimum": 1.234e-07,
             "maximum": 1.2545678912345,
             "initial_value": 1.24,
-            "module": "UEB"
+            "module": "Snow-17"
         }
 
 

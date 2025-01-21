@@ -344,7 +344,6 @@ translation_map = {
     ("CFE-S", "soil_params.b"): "b",
     ("CFE-S", "K_lf"): "Klf",
     ("CFE-S", "K_nash"): "Kn",
-    ("CFE-S", "soil_params.expon"): "expon",
     ("CFE-S", "soil_params.satpsi"): "satpsi",
     ("CFE-S", "soil_params.wlt"): "wltsmc",
 
@@ -354,7 +353,6 @@ translation_map = {
     ("CFE-X", "soil_params.b"): "b",
     ("CFE-X", "K_lf"): "Klf",
     ("CFE-X", "K_nash"): "Kn",
-    ("CFE-X", "soil_params.expon"): "expon",
     ("CFE-X", "soil_params.satpsi"): "satpsi",
     ("CFE-X", "soil_params.wlt"): "wltsmc",
 

@@ -101,9 +101,10 @@ def import_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[CalibrationRun | None, dict | None, ResponseError]:
+def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[
+    CalibrationRun | None, dict | None, ResponseError]:
     """
-    Imports calibration run data and creates a new CalibrationRun instance if successful.
+    Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
     :param request: Django HTTP request with user details.
     :param calibration_run_data: Dictionary with calibration run data.
@@ -127,24 +128,14 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             except Gage.DoesNotExist:
                 return None, None, ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
-        # Set forcing source and path
-        forcing_source_name = calibration_run_data.get('forcing_source')
-        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
-        run.forcing_eds_dir_path = calibration_run_data.get('forcing_eds_dir_path')
-
-        # Set observational source and path
-        observational_source_name = calibration_run_data.get('observational_source')
-        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
-        run.observational_eds_file_path = calibration_run_data.get('observational_eds_file_path')
-
-        # Set geopackage source and path
+        # Note that for EDS, only the paths are copied.  The files will be copied to the job-specific directory in ready_to_run
+        #############################
+        # Geopackage Handling
+        #############################
         geopackage_source_name = calibration_run_data.get('geopackage_source')
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
         run.geopackage_eds_file_path = calibration_run_data.get('geopackage_eds_file_path')
 
-        #############################
-        # Geopackage Handling
-        #############################
         if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
             geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
             if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
@@ -169,6 +160,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         # Forcing Data Handling
         #############################
+        forcing_source_name = calibration_run_data.get('forcing_source')
+        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
+        run.forcing_eds_dir_path = calibration_run_data.get('forcing_eds_dir_path')
+
         if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
@@ -193,6 +188,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         # Observational Data Handling
         #############################
+        observational_source_name = calibration_run_data.get('observational_source')
+        run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
+        run.observational_eds_file_path = calibration_run_data.get('observational_eds_file_path')
+
         if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
@@ -397,7 +396,7 @@ def export_job(request: Request) -> Response:
 
 def load_calibration_run_data(run: CalibrationRun, export: bool = False, include_gpkg_map: bool = False) -> dict:
     """
-    Loads calibration run data for export or UI display.
+    Loads calibration run data for export, cloning or UI display.
 
     :param run: CalibrationRun instance for which data is being loaded.
     :param export: If True, formats the data for export, including all necessary paths for job re-import.
@@ -430,7 +429,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
     #############################
-    # Export Mode
+    # Export or Clone Mode
     #############################
     if export:
         export_start = time.time()
@@ -466,9 +465,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
             user_uploaded_forcing_dir) else None
 
-        calibration_run_data['forcing_eds_dir_path'] = run.forcing_eds_dir_path
-        calibration_run_data['observational_eds_file_path'] = run.observational_eds_file_path
-        calibration_run_data['geopackage_eds_file_path'] = run.geopackage_eds_file_path
+        calibration_run_data['forcing_eds_dir_path'] = run.forcing_eds_dir_path if run.forcing_eds_dir_path and os.path.exists(
+            run.forcing_eds_dir_path) else None
+        calibration_run_data['observational_eds_file_path'] = run.observational_eds_file_path if run.observational_eds_file_path and os.path.exists(
+            run.observational_eds_file_path) else None
+        calibration_run_data['geopackage_eds_file_path'] = run.geopackage_eds_file_path if run.geopackage_eds_file_path and os.path.exists(
+            run.geopackage_eds_file_path) else None
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
     #############################
