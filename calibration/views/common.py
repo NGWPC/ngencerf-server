@@ -1,5 +1,6 @@
 import base64
 import inspect
+import json
 import logging
 import os
 from datetime import timedelta, datetime
@@ -502,9 +503,14 @@ def validate_response_data(serializer_class: Type[BaseSerializer], data: dict, e
     :return: Validated data if validation succeeds.
     :raises CerfException: If validation fails.
     """
+    try:
+        formatted_data = json.dumps(data)  # Attempt JSON formatting
+    except (TypeError, ValueError):
+        formatted_data = str(data)  # Fallback to string representation
+
     validator = serializer_class(data=data)
     if not validator.is_valid():
-        logger.error(f"Response data: {data}")
+        logger.error(f"Response data: {formatted_data}")
         raise CerfException(f'{error_message} - Validated by {validator.__class__.__name__} -- {validator.errors}')
     return validator.data
 
