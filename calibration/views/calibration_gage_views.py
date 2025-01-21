@@ -80,10 +80,10 @@ def load_gage_tab(request: Request) -> Response:
         return error_return
 
     # Retrieve active source and domain options
-    forcing_source_values = ForcingSourceEnum.get_active_choices_with_fields(fields=['name', 'description'])
-    observational_source_values = ObservationalSourceEnum.get_active_choices_with_fields(fields=['name', 'description'])
-    geopackage_source_values = GeopackageSourceEnum.get_active_choices_with_fields(fields=['name', 'description'])
-    domain_values = DomainEnum.get_active_choices_with_fields(fields=['name', 'description'])
+    forcing_source_values = ForcingSourceEnum.get_choices_with_fields(fields=['name', 'description'])
+    observational_source_values = ObservationalSourceEnum.get_choices_with_fields(fields=['name', 'description'])
+    geopackage_source_values = GeopackageSourceEnum.get_choices_with_fields(fields=['name', 'description'])
+    domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'description'])
 
     # Retrieve cached gages with necessary fields
     gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibration': gage.get('nwm_v3_calibration'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')}

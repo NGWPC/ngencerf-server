@@ -187,12 +187,13 @@ class AbstractEnum(Generic[T], Enum):
         return self.__class__.get_instance(self.value)
 
     @classmethod
-    def get_active_choices_with_fields(cls, fields: List[str] = None) -> List[Dict[str, Any]]:
+    def get_choices_with_fields(cls, fields: List[str] = None, extra_filter: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         Returns a list of items from the database, including only the specified fields in each item
         (defaults to 'name' and 'description'). This method is useful for front-end selections.
 
-        :param fields: A list of fields to include for each item (e.g., ['name', 'description'])
+        :param fields: A list of fields to include for each item (e.g., ['name', 'description']).
+        :param extra_filter: A dictionary of additional filters to apply temporarily.
         :return: A list of dictionaries, where each dictionary contains the requested fields
                  for an item (e.g., [{'name': 'Running', 'description': '...'}])
         """
@@ -202,8 +203,12 @@ class AbstractEnum(Generic[T], Enum):
 
         items = cls._get_cached_items() or {}
 
+        if extra_filter:
+            # Apply extra filtering dynamically
+            items = {k: v for k, v in items.items() if all(getattr(v, key, None) == value for key, value in extra_filter.items())}
+
         # Return each item as a dictionary of the specified fields
         return [
-            {field: getattr(item, field) for field in fields}
-            for item in items.values()
+            {field: getattr(item, field, None)
+            for field in fields} for item in items.values()
         ]
