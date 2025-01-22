@@ -13,6 +13,16 @@ import matplotlib.pyplot as plt
 matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)
 
 
+def check_file_accessible(file_path: str) -> None:
+    """Checks if a file exists and is accessible."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"GeoPackage file not found: {file_path}")
+    if not os.path.isfile(file_path):
+        raise IsADirectoryError(f"Expected a file but found a directory: {file_path}")
+    if not os.access(file_path, os.R_OK):
+        raise PermissionError(f"Permission denied: {file_path}")
+
+
 def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None:
     """
     Generates a PNG image from a specific layer in a GeoPackage.
@@ -22,11 +32,12 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None
     :param layer: Name of the layer to visualize, or None to visualize all layers.
     :raises FileNotFoundError: If the GeoPackage file does not exist.
     """
-    if not os.path.exists(gpkg_path):
-        raise FileNotFoundError(f"GeoPackage file not found: {gpkg_path}")
+    check_file_accessible(gpkg_path)
 
-    # Read the GeoPackage file
-    gdf = gpd.read_file(gpkg_path, layer=layer) if layer else gpd.read_file(gpkg_path)
+    try:
+        gdf = gpd.read_file(gpkg_path, layer=layer) if layer else gpd.read_file(gpkg_path)
+    except Exception as e:
+        raise RuntimeError(f"Failed to read GeoPackage: {gpkg_path}. Error: {e}")
 
     # Plot the GeoDataFrame
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -50,8 +61,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ..
     :return: BytesIO object containing the generated PNG image.
     :raises FileNotFoundError: If the GeoPackage file does not exist.
     """
-    if not os.path.exists(gpkg_path):
-        raise FileNotFoundError(f"GeoPackage file not found: {gpkg_path}")
+    check_file_accessible(gpkg_path)
 
     if layers_to_include is None:
         layers_to_include = ('nexus', 'flowpaths', 'flowlines')  # Default layers to include
@@ -62,29 +72,37 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ..
     # Track which layers have been labeled
     labeled_layers = set()
 
+    try:
+        available_layers = fiona.listlayers(gpkg_path)
+    except Exception as e:
+        raise RuntimeError(f"Failed to retrieve layers from GeoPackage: {gpkg_path}. Error: {e}")
+
     # Plot the divides layer (outline) if it exists
-    if 'divides' in fiona.listlayers(gpkg_path):
-        divides_gdf = gpd.read_file(gpkg_path, layer='divides')
-        # Simplify geometries for performance improvement
-        divides_gdf['geometry'] = divides_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
-        divides_gdf.boundary.plot(ax=ax, color='black', label='divides' if 'divides' not in labeled_layers else None)
-        labeled_layers.add('divides')
+    if 'divides' in available_layers:
+        try:
+            divides_gdf = gpd.read_file(gpkg_path, layer='divides')
+            # Simplify geometries for performance improvement
+            divides_gdf['geometry'] = divides_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
+            divides_gdf.boundary.plot(ax=ax, color='black', label='divides' if 'divides' not in labeled_layers else None)
+            labeled_layers.add('divides')
+        except Exception as e:
+            raise RuntimeError(f"Failed to read 'divides' layer from {gpkg_path}. Error: {e}")
 
     # Define a cycle of colors for the layers
     color_cycle = cycle(['blue', 'green', 'red', 'cyan', 'magenta'])
 
-    # Get available layers from the GeoPackage
-    available_layers = fiona.listlayers(gpkg_path)
-
     # Plot each requested layer if it exists
     for layer, color in zip(layers_to_include, color_cycle):
         if layer in available_layers:
-            layer_gdf = gpd.read_file(gpkg_path, layer=layer)
-            # Simplify geometries for performance improvement
-            layer_gdf['geometry'] = layer_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
-            # Plot the entire layer at once
-            layer_gdf.plot(ax=ax, color=color, label=layer if layer not in labeled_layers else None)
-            labeled_layers.add(layer)
+            try:
+                layer_gdf = gpd.read_file(gpkg_path, layer=layer)
+                # Simplify geometries for performance improvement
+                layer_gdf['geometry'] = layer_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
+                # Plot the entire layer at once
+                layer_gdf.plot(ax=ax, color=color, label=layer if layer not in labeled_layers else None)
+                labeled_layers.add(layer)
+            except Exception as e:
+                raise RuntimeError(f"Failed to read '{layer}' layer from {gpkg_path}. Error: {e}")
 
     # Add a legend explicitly
     handles, labels = ax.get_legend_handles_labels()
@@ -115,16 +133,22 @@ def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> lis
     :raises FileNotFoundError: If the GeoPackage file does not exist.
     :raises ValueError: If the specified layer or the 'divide_id' column is missing.
     """
-    if not os.path.exists(gpkg_path):
-        raise FileNotFoundError(f"GeoPackage file not found: {gpkg_path}")
+    check_file_accessible(gpkg_path)
 
     # List all layers to verify the catchments layer exists
-    available_layers = fiona.listlayers(gpkg_path)
+    try:
+        available_layers = fiona.listlayers(gpkg_path)
+    except Exception as e:
+        raise RuntimeError(f"Failed to retrieve layers from GeoPackage: {gpkg_path}. Error: {e}")
+
     if layer_name not in available_layers:
         raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
 
     # Read the catchments layer
-    gdf = gpd.read_file(gpkg_path, layer=layer_name)
+    try:
+        gdf = gpd.read_file(gpkg_path, layer=layer_name)
+    except Exception as e:
+        raise RuntimeError(f"Failed to read '{layer_name}' layer from {gpkg_path}. Error: {e}")
 
     # Extract the 'divide_id' column
     if 'divide_id' in gdf.columns:

@@ -105,14 +105,14 @@ def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun) -> No
 
     logger.info(f"Processing output for {job_description}")
     with transaction.atomic():
-        metrics_file = (
+        performance_metrics_file = (
             get_forecast_forcing_download_performance_file(run.forecast_run)
             if isinstance(run, ForecastForcingDownloadRun)
             else get_forecast_performance_file(run)
         )
 
-        logger.info(f'Performance metrics file {metrics_file}')
-        create_performance_metrics(run, metrics_file)
+        logger.info(f'Performance metrics file {performance_metrics_file}')
+        create_performance_metrics(run, performance_metrics_file)
 
     logger.info(f"End of processing output for {job_description}")
 
