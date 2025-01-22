@@ -134,7 +134,11 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         geopackage_source_name = calibration_run_data.get('geopackage_source')
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
-        run.geopackage_eds_file_path = calibration_run_data.get('geopackage_eds_file_path')
+
+        geopackage_eds_file_path = calibration_run_data.get('geopackage_eds_file_path')
+        run.geopackage_eds_file_path = (
+            geopackage_eds_file_path if geopackage_eds_file_path and os.path.exists(geopackage_eds_file_path) else None
+        )
 
         if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
             geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
@@ -162,7 +166,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         forcing_source_name = calibration_run_data.get('forcing_source')
         run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
-        run.forcing_eds_dir_path = calibration_run_data.get('forcing_eds_dir_path')
+
+        forcing_eds_dir_path = calibration_run_data.get('forcing_eds_dir_path')
+        if forcing_eds_dir_path and os.path.isdir(forcing_eds_dir_path) and any(os.scandir(forcing_eds_dir_path)):
+            run.forcing_eds_dir_path = forcing_eds_dir_path
+        else:
+            run.forcing_eds_dir_path = None
 
         if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
@@ -190,7 +199,11 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         observational_source_name = calibration_run_data.get('observational_source')
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
-        run.observational_eds_file_path = calibration_run_data.get('observational_eds_file_path')
+
+        observational_eds_file_path = calibration_run_data.get('observational_eds_file_path')
+        run.observational_eds_file_path = (
+            observational_eds_file_path if observational_eds_file_path and os.path.exists(observational_eds_file_path) else None
+        )
 
         if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
@@ -261,6 +274,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     'message': str(e),
                     'status_code': e.status_code if e.status_code else None
                 })
+
+        # TODO We should check if observation, forcing and geopackage data exists and if not, then get it
 
         #############################
         # Tuning
