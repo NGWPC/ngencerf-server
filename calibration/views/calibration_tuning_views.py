@@ -767,46 +767,39 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
         )
 
 
-# Reads a CSV file and gets the date field from the first column. Then computes the min/max to construct a date range
 def get_csv_daterange(file: str) -> DateTimeRange:
     """
-    Reads a CSV file, assumes the first column contains date information, and calculates
-    the minimum and maximum dates to construct a date range.
+    Reads a CSV file that is assumed to be sorted by date/time and efficiently determines
+    the min and max date values from the first column.
 
-    Args:
-        file (str): The file path to the CSV file.
-
-    Returns:
-        DateTimeRange: The calculated date range based on the first column's min and max dates.
-
-    Raises:
-        CerfException: If the file contains invalid rows or no valid datetime values.
+    :param file: The file path to the CSV file.
+    :return: DateTimeRange representing the min and max datetime values from the file.
+    :raises CerfException: If the file does not exist, contains invalid datetime values, or encounters a read error.
     """
     try:
         if not os.path.exists(file):
             raise CerfException(f"File {file} does not exist")
 
-        # Read the CSV file
-        df = pd.read_csv(file, delimiter=',', engine='python')
+        # Read only the first row to get the min date
+        first_row = pd.read_csv(file, delimiter=',', nrows=1, engine='python')
+        first_time = pd.to_datetime(first_row.iloc[0, 0], errors='coerce')
 
-        # Convert the first column to datetime explicitly
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')
+        # Read only the last line efficiently using seek()
+        with open(file, 'rb') as f:
+            f.seek(-2, os.SEEK_END)  # Move to the end of the file
+            while f.read(1) != b'\n':  # Move backwards until a newline is found
+                f.seek(-2, os.SEEK_CUR)
+            last_line = f.readline().decode('utf-8').strip()
 
-        # Log rows with invalid datetime values
-        invalid_rows = df[df.iloc[:, 0].isna()]
-        if not invalid_rows.empty:
-            invalid_rows_display = invalid_rows.copy()
-            invalid_rows_display.index = invalid_rows_display.index + 1  # Convert to 1-based indexing
-            logger.error(f"Invalid date entries found in {file}:\n{invalid_rows_display}")
+        # Extract the last timestamp from the last line (assuming CSV format)
+        last_time = pd.to_datetime(last_line.split(',')[0], errors='coerce')
 
-            # Raise an exception with details
-            raise CerfException(f"Invalid datetime values found in the following rows: {list(invalid_rows_display.index)}")
+        if pd.isna(first_time) or pd.isna(last_time):
+            raise CerfException(f"Invalid datetime values found in {file}")
 
-        # Compute the min and max dates and convert them to UTC
-        min_time = df.iloc[:, 0].min().replace(tzinfo=timezone.utc)
-        max_time = df.iloc[:, 0].max().replace(tzinfo=timezone.utc)
+        # Ensure timestamps are UTC
+        return DateTimeRange(first_time.replace(tzinfo=timezone.utc), last_time.replace(tzinfo=timezone.utc))
 
-        return DateTimeRange(min_time, max_time)
     except Exception as e:
         logger.error(f"Error while processing file {file}: {e}")
         raise CerfException(f"Error reading file {file}: {e}")
@@ -815,12 +808,9 @@ def get_csv_daterange(file: str) -> DateTimeRange:
 def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     """
     Computes the encompassing date range for all valid CSV files in a given directory.
-f
-    Args:
-        forcing_dir_path (str): The directory path containing forcing data files.
 
-    Returns:
-        DateTimeRange | None: The combined date range from all files in the directory, or None if no files are found.
+    :param forcing_dir_path: The directory path containing forcing data files.
+    :return: DateTimeRange representing the combined date range from all files in the directory, or None if no files are found.
     """
     # Use pathlib only for globbing
     from pathlib import Path
@@ -851,11 +841,8 @@ def get_observation_date_range(observational_filepath: str) -> DateTimeRange:
     """
     Calculates the date range for a single observational data file.
 
-    Args:
-        observational_filepath (str): The file path to the observational data file.
-
-    Returns:
-        DateTimeRange: The calculated date range based on the observational data file.
+    :param observational_filepath: The file path to the observational data file.
+    :return: DateTimeRange representing the date range based on the observational data file.
     """
     return get_csv_daterange(observational_filepath)
 
@@ -864,12 +851,9 @@ def get_date_range_intersection(observational_file_path: str, forcing_dir_path: 
     """
     Calculates the intersection of date ranges between observational and forcing data.
 
-    Args:
-        observational_file_path (str): Path to the observational data file.
-        forcing_dir_path (str): Directory path containing forcing data files.
-
-    Returns:
-        DateTimeRange | None: The intersection of date ranges if both ranges exist, or None if there is no overlap.
+    :param observational_file_path: Path to the observational data file.
+    :param forcing_dir_path: Directory path containing forcing data files.
+    :return: DateTimeRange representing the intersection of date ranges if both ranges exist, or None if there is no overlap.
     """
     # Calculate the date range for the observational data
     obs_range = get_observation_date_range(observational_file_path)
