@@ -54,8 +54,10 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
 @handle_exceptions
 def load_tuning_tab(request: Request) -> Response:
     """
-    Loads tuning tab data for a calibration run, including time ranges, modules, and formulations.
-    Handles both GET and POST requests.
+    API endpoint to load tuning tab data for a calibration run.
+
+    :param request: Django HTTP request, containing parameters in the body for POST or query params for GET.
+    :return: Response containing the tuning tab data, including time ranges, modules, and formulations.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'load_tuning_tab() request from {request.user.email} - {data}')
@@ -99,14 +101,20 @@ def load_tuning_tab(request: Request) -> Response:
 
 def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation]) -> bool:
     """
-    Checks if any calibration parameters were selected by the user for tuning across all modules that are part of the job
+    Determines if any calibration parameters were selected by the user for tuning.
+
+    :param modules: QuerySet of CalibrationFormulation objects associated with the calibration run.
+    :return: True if any parameters were selected for tuning, otherwise False.
     """
     return modules.filter(calibrationparameter__user_selected_for_tuning=True).exists()
 
 
 def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
     """
-    Retrieves the parameters and output variables for each module in the specified calibration formulation.
+    Retrieves the calibration parameters and output variables for each module in the specified calibration formulation.
+
+    :param modules: QuerySet of CalibrationFormulation objects.
+    :return: List of dictionaries, each containing module name, parameters, and output variables.
     """
     module_list = []
 
@@ -130,7 +138,10 @@ def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation
 
 def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | float]]:
     """
-    Prepares calibration parameters for export by gathering only user-selected parameters.
+    Prepares calibration parameters for export by collecting only user-selected parameters.
+
+    :param modules: QuerySet of CalibrationFormulation instances associated with a calibration run.
+    :return: List of dictionaries containing selected parameter details, including module name.
     """
     parameter_list = []
     for m in modules:
@@ -147,7 +158,10 @@ def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]) -> list
 
 def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     """
-    Determines the date range intersection between observational and forcing data, updating the run if changed.
+    Determines the date range intersection between observational and forcing data and updates the run if necessary.
+
+    :param run: CalibrationRun instance.
+    :return: Dictionary containing the start and end times of the intersection.
     """
     if run.time_range_start and run.time_range_end:
         logger.info("Time range is already set")
@@ -181,11 +195,17 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
 
 def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datetime]]:
     """
-    Retrieves calibration and validation times if available, otherwise returns empty dictionaries.
+    Retrieves calibration and validation time periods for a given calibration run.
+
+    :param run: The CalibrationRun instance containing time period information.
+    :return: A tuple containing two dictionaries:
+             - The first dictionary holds calibration time periods.
+             - The second dictionary holds validation time periods (if automatic validation is enabled).
     """
     calibration_times = {}
     validation_times = {}
-    # These are all or nothing.  So if this first one exists, we'll assume they all do
+
+    # If calibration times exist, assume all related fields are present
     if run.calibration_start_period:
         calibration_times = {
             'simulation_start_time': run.calibration_start_period,
@@ -193,6 +213,8 @@ def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datet
             'calibration_start_time': run.calibration_eval_start_period,
             'calibration_end_time': run.calibration_eval_end_period
         }
+
+    # If automatic validation is enabled and validation times exist, populate validation times
     if run.automatic_validation and run.validation_start_period:
         validation_times = {
             'simulation_start_time': run.validation_start_period,
@@ -392,17 +414,14 @@ def validate_simulation_within_range(
         job_type: Literal[JobType.CALIBRATION, JobType.VALIDATION]
 ) -> str | None:
     """
-    Validates that the specified simulation period is within the provided data range.
+    Validates that the simulation period falls within the available data range.
 
-    Parameters:
-        data_start (datetime): The start date of the data range.
-        data_end (datetime): The end date of the data range.
-        simulation_start (datetime): The start date of the simulation period.
-        simulation_end (datetime): The end date of the simulation period.
-        job_type (enum): A label indicating whether it's for calibration or validation, used in the error message.
-
-    Returns:
-        str | None: An error message if the simulation period is out of range; otherwise, None.
+    :param data_start: The start date of the available data range.
+    :param data_end: The end date of the available data range.
+    :param simulation_start: The start date of the simulation period.
+    :param simulation_end: The end date of the simulation period.
+    :param job_type: Specifies whether this is a calibration or validation job (used in the error message).
+    :return: An error message if the simulation period is out of bounds; otherwise, None.
     """
     if simulation_start < data_start or simulation_end > data_end:
         return (
@@ -420,13 +439,10 @@ def validate_time_range_against_data(
     """
     Ensures that calibration and validation times fall within the observational and forcing data range of the run.
 
-    Parameters:
-        run (CalibrationRun): The calibration run being validated.
-        calibration_times (dict[str, datetime] | None): Dictionary with calibration start and end times.
-        validation_times (dict[str, datetime] | None): Dictionary with validation start and end times.
-
-    Returns:
-        str | None: An error message if any time range is out of bounds; otherwise, None.
+    :param run: CalibrationRun instance.
+    :param calibration_times: Dictionary containing calibration start and end times.
+    :param validation_times: Dictionary containing validation start and end times.
+    :return: Error message if validation fails; otherwise, None.
     """
     if not (run.time_range_start and run.time_range_end):
         return None
@@ -454,16 +470,15 @@ def validate_time_range_against_data(
 
 def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime], validation_times: dict[str, datetime]) -> list[str]:
     """
-    Validates that time ranges fall within allowable ranges and saves times if valid.
+    Validates calibration and validation time ranges, ensuring they fall within the allowable data range.
+    If valid, updates the `CalibrationRun` instance with the provided times.
 
-    Parameters:
-        run (CalibrationRun): The calibration run object.
-        calibration_times (dict[str, datetime]): Dictionary of calibration time periods.
-        validation_times (dict[str, datetime]): Dictionary of validation time periods.
-
-    Returns:
-        list[str] | None: A list of error messages if any validation checks fail; otherwise, None.
+    :param run: The calibration run being validated and updated.
+    :param calibration_times: Dictionary containing calibration start, end, and evaluation periods.
+    :param validation_times: Dictionary containing validation start, end, and evaluation periods.
+    :return: A list of error messages if validation fails; otherwise, an empty list.
     """
+
     messages = []
 
     # Validation against forcing and observational data intersection
@@ -584,15 +599,12 @@ def get_full_evaluation_date_range_from_ranges(
         validation_evaluation_range: Tuple[datetime, datetime]
 ) -> Tuple[datetime, datetime]:
     """
-    Determines the full evaluation date range by finding the minimum start time and maximum end time
+    Determines the full evaluation date range by identifying the earliest start time and latest end time
     across both calibration and validation evaluation ranges.
 
-    Parameters:
-        calibration_evaluation_range (Tuple[datetime, datetime]): Calibration evaluation start and end times.
-        validation_evaluation_range (Tuple[datetime, datetime]): Validation evaluation start and end times.
-
-    Returns:
-        Tuple[datetime, datetime]: Start and end times for the full evaluation range.
+    :param calibration_evaluation_range: Tuple containing calibration evaluation start and end times.
+    :param validation_evaluation_range: Tuple containing validation evaluation start and end times.
+    :return: A tuple containing the start and end times of the full evaluation range.
     """
     start_date = min(calibration_evaluation_range[0], validation_evaluation_range[0])
     end_date = max(calibration_evaluation_range[1], validation_evaluation_range[1])
@@ -606,32 +618,34 @@ def get_full_evaluation_date_range(
         validation_evaluation_end_time: datetime
 ) -> Tuple[datetime, datetime]:
     """
-    Calculates the full evaluation date range by taking the minimum start time and maximum end time
-    from both calibration and validation periods.
+    Calculates the overall evaluation date range by taking the earliest start time and latest end time
+    from both calibration and validation evaluation periods.
 
-    Parameters:
-        calibration_evaluation_start_time (datetime): Start time of the calibration evaluation period.
-        calibration_evaluation_end_time (datetime): End time of the calibration evaluation period.
-        validation_evaluation_start_time (datetime): Start time of the validation evaluation period.
-        validation_evaluation_end_time (datetime): End time of the validation evaluation period.
-
-    Returns:
-        Tuple[datetime, datetime]: Combined start and end times for the entire evaluation range.
+    :param calibration_evaluation_start_time: Start time of the calibration evaluation period.
+    :param calibration_evaluation_end_time: End time of the calibration evaluation period.
+    :param validation_evaluation_start_time: Start time of the validation evaluation period.
+    :param validation_evaluation_end_time: End time of the validation evaluation period.
+    :return: A tuple containing the start and end times of the combined evaluation period.
     """
     start_date = min(calibration_evaluation_start_time, validation_evaluation_start_time)
     end_date = max(calibration_evaluation_end_time, validation_evaluation_end_time)
-
     return start_date, end_date
 
 
-# TODO Do woe need allow_empty?
 def validate_time_range(
         start_time: datetime | None,
         end_time: datetime | None,
         field_name: str
 ) -> tuple[str | None, tuple[datetime | None, datetime | None] | None]:
     """
-    Validates a given time range, requiring both start and end times to be provided.
+    Validates a given time range, ensuring that both start and end times are provided and that the start time
+    is not later than the end time.
+
+    :param start_time: The start time of the range.
+    :param end_time: The end time of the range.
+    :param field_name: The name of the field being validated, used in error messages.
+    :return: A tuple where the first element is an error message (or None if valid),
+             and the second element is a tuple of valid start and end times (or None if invalid).
     """
     if start_time is None or end_time is None:
         return f'{field_name.capitalize()} requires both start and end times', None
@@ -683,7 +697,12 @@ def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | fl
 
 def save_output_variable(run: CalibrationRun, output_variable_to_calibrate: dict[str, str]) -> str | None:
     """
-    Saves the output variable to calibrate for the calibration run if it is valid.
+    Saves the specified output variable to be used for calibration in the calibration run.
+
+    :param run: The calibration run being updated.
+    :param output_variable_to_calibrate: A dictionary containing the module name and
+                                         the name of the output variable to be calibrated.
+    :return: An error message if the module or output variable is invalid, otherwise None.
     """
     if output_variable_to_calibrate:
         # Retrieve the cached module by name
@@ -716,55 +735,58 @@ def save_output_variable(run: CalibrationRun, output_variable_to_calibrate: dict
 
 def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]], allow_nulls: bool = False) -> None:
     """
-    Saves or updates calibration parameters for a run.
+    Saves or updates calibration parameters for a given calibration run.
 
-    This function takes user-specified parameters and overrides the default values from Data Services.
-    - If `allow_nulls` is False (the default), user-provided values will always override the Data Services defaults,
-      regardless of whether any values are missing in the user input.
-    - If `allow_nulls` is True, user-provided values will override the Data Services defaults only if they are not None.
-      In this case, any missing values will retain their defaults from Data Services.
+    :param run: The calibration run being updated.
+    :param parameters: A list of dictionaries containing parameter details.
+    :param allow_nulls: Determines how missing values are handled:
+        - If `allow_nulls` is False (default), user-provided values override the Data Services defaults,
+          even if some values are missing.
+        - If `allow_nulls` is True, user-provided values override the defaults only if they are not None,
+          allowing missing values to retain their defaults.
     """
+    if not parameters:
+        return
 
-    if parameters:
-        parameters_to_update = []
+    parameters_to_update = []
 
-        # Fetch all CalibrationParameters for the given calibration run in one query
-        existing_parameters = CalibrationParameter.objects.filter(
-            calibration_formulation__calibration_run=run
-        ).select_related('calibration_formulation__module')
+    # Fetch all CalibrationParameters for the given calibration run in one query
+    existing_parameters = CalibrationParameter.objects.filter(
+        calibration_formulation__calibration_run=run
+    ).select_related('calibration_formulation__module')
 
-        # Create a lookup dictionary for existing parameters by module name and parameter name
-        parameter_lookup = {
-            (param.calibration_formulation.module.name, param.name): param
-            for param in existing_parameters
-        }
+    # Create a lookup dictionary for existing parameters by module name and parameter name
+    parameter_lookup = {
+        (param.calibration_formulation.module.name, param.name): param
+        for param in existing_parameters
+    }
 
-        # Update the parameters based on the input
-        for p in parameters:
-            calibration_param = parameter_lookup[(p['module'], p['name'])]
+    # Update the parameters based on the input
+    for p in parameters:
+        calibration_param = parameter_lookup[(p['module'], p['name'])]
 
-            # Override Data Services values conditionally based on `allow_nulls`
-            # If `allow_nulls` is True, update only if user input is not None
-            if allow_nulls:
-                if p.get('minimum') is not None:
-                    calibration_param.minimum = p.get('minimum')
-                if p.get('maximum') is not None:
-                    calibration_param.maximum = p.get('maximum')
-                if p.get('initial_value') is not None:
-                    calibration_param.initial_value = p.get('initial_value')
-            else:
-                # Always override with user input if `allow_nulls` is False
+        # Override Data Services values conditionally based on `allow_nulls`
+        # If `allow_nulls` is True, update only if user input is not None
+        if allow_nulls:
+            if p.get('minimum') is not None:
                 calibration_param.minimum = p.get('minimum')
+            if p.get('maximum') is not None:
                 calibration_param.maximum = p.get('maximum')
+            if p.get('initial_value') is not None:
                 calibration_param.initial_value = p.get('initial_value')
+        else:
+            # Always override with user input if `allow_nulls` is False
+            calibration_param.minimum = p.get('minimum')
+            calibration_param.maximum = p.get('maximum')
+            calibration_param.initial_value = p.get('initial_value')
 
-            calibration_param.user_selected_for_tuning = True
-            parameters_to_update.append(calibration_param)
+        calibration_param.user_selected_for_tuning = True
+        parameters_to_update.append(calibration_param)
 
-        # Use bulk_update to update all parameters at once
-        CalibrationParameter.objects.bulk_update(
-            parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning']
-        )
+    # Use bulk_update to update all parameters at once
+    CalibrationParameter.objects.bulk_update(
+        parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning']
+    )
 
 
 def get_csv_daterange(file: str) -> DateTimeRange:
