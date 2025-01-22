@@ -297,38 +297,44 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
             copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module_name))
 
             # Save output variables for the module
-            output: dict
-            for output in module['output_variables']:
-                ModuleOutputVariable.objects.update_or_create(
-                    name=output['variable'],
-                    calibration_formulation=calibration_formulation,
-                    # TODO Fix this.  Description is required
-                    defaults={'description': output['description'] if output['description'] else 'placeholder description'}
-                )
+            if not module['output_variables']:
+                logger.warning(f"Module '{module_name}' has no output variables.")
+            else:
+                for output in module['output_variables']:
+                    ModuleOutputVariable.objects.update_or_create(
+                        name=output['variable'],
+                        calibration_formulation=calibration_formulation,
+                        # TODO Fix this.  Description is required
+                        defaults={'description': output['description'] if output['description'] else 'placeholder description'}
+                    )
+
             # Save or update parameters for the module
-            for param in module['calibrate_parameters']:
-                # Data Services gives us initial_value, min and max as Strings because sometimes crap appears in them.
+            if not module['calibrate_parameters']:
+                logger.warning(f"Module '{module_name}' has no calibratable parameters.")
+            else:
+                for param in module['calibrate_parameters']:
+                    # Data Services gives us initial_value, min and max as Strings because sometimes crap appears.
 
-                # Using get_or_create because we don't want to override any values the user has already entered
-                calibration_parameter, created = CalibrationParameter.objects.get_or_create(
-                    name=param['name'],
-                    calibration_formulation=calibration_formulation,
-                    defaults={'data_type': param['data_type'],
-                              'description': param['description'],
-                              'initial_value': str_to_float(param['initial_value']),
-                              'minimum': str_to_float(param['min']),
-                              'maximum': str_to_float(param['max']),
-                              'units': param['units']
-                              }
-                )
+                    # Using get_or_create because we don't want to override any values the user has already entered
+                    calibration_parameter, created = CalibrationParameter.objects.get_or_create(
+                        name=param['name'],
+                        calibration_formulation=calibration_formulation,
+                        defaults={'data_type': param['data_type'],
+                                  'description': param['description'],
+                                  'initial_value': str_to_float(param['initial_value']),
+                                  'minimum': str_to_float(param['min']),
+                                  'maximum': str_to_float(param['max']),
+                                  'units': param['units']
+                                  }
+                    )
 
-                # Update initial value if the gage changed and the parameter already exists
-                if gage_changed and not created:
-                    logger.info(
-                        f"Updating initial value for parameter {param['name']} for module {calibration_formulation.module.name}")
-                    # We want to over-write the initial_value from Data Services
-                    calibration_parameter.initial_value = str_to_float(param['initial_value'])
-                    calibration_parameter.save(update_fields=['initial_value'])
+                    # Update initial value if the gage changed and the parameter already exists
+                    if gage_changed and not created:
+                        logger.info(
+                            f"Updating initial value for parameter {param['name']} for module {calibration_formulation.module.name}")
+                        # We want to overwrite the initial_value from Data Services
+                        calibration_parameter.initial_value = str_to_float(param['initial_value'])
+                        calibration_parameter.save(update_fields=['initial_value'])
 
     # Raise an exception if any requested modules are missing in the response
     if missing_names:
