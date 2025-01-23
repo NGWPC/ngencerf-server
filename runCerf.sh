@@ -57,40 +57,38 @@ fi
 
 # Function to run Django management commands without logging redirection
 run_manage_command() {
-    local command="$1"
-    echo
-    echo "Running $command"
+    echo "Running $*"
     # Temporarily disable redirection
     exec >/dev/tty 2>/dev/tty
 
-    python3 manage.py "$command"
+    python3 manage.py "$@"
 
     # Restore redirection
     exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
 }
 
 # Run management commands with proper logging
-run_manage_command "migrate"
+run_manage_command migrate
 
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
 if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
     echo
     echo "Loading ngenCERF static data"
 
-    run_manage_command "createsuperuser_docker --noinput --password admin --email admin@nextgenwaterprediction.com"
+    run_manage_command createsuperuser_docker --noinput --password admin --email admin@nextgenwaterprediction.com
     echo
-    run_manage_command "init_sql"
+    run_manage_command init_sql
     echo
-    run_manage_command "init_gages"
+    run_manage_command init_gages
 
     touch "${CERF_LOAD_STATIC_DATA}"
 else
     # Run this every time, since sometimes there are updates and it is very quick
-    run_manage_command "init_sql"
+    run_manage_command init_sql
 fi
 
 echo
-run_manage_command "pre_start"
+run_manage_command pre_start
 
 echo
 echo "Starting server"
