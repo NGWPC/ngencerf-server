@@ -210,5 +210,5 @@ class AbstractEnum(Generic[T], Enum):
         # Return each item as a dictionary of the specified fields
         return [
             {field: getattr(item, field, None)
-            for field in fields} for item in items.values()
+             for field in fields} for item in items.values()
         ]

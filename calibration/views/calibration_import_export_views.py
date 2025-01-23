@@ -101,8 +101,8 @@ def import_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) -> Tuple[
-    CalibrationRun | None, dict | None, ResponseError]:
+def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) \
+        -> Tuple[CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
