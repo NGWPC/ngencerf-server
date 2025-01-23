@@ -138,6 +138,8 @@ def get_geopackage_from_data_services(run: CalibrationRun):
 
         s3_uri = eds_data.get('uri')
         run.geopackage_eds_file_path = convert_s3_uri_to_fs(s3_uri)
+        if run.geopackage_eds_file_path and not os.path.exists(run.geopackage_eds_file_path):
+            logger.error(f"Geopackage from Data Services, {run.geopackage_eds_file_path} does not exist")
         logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')
 
 
@@ -165,6 +167,8 @@ def get_observational_data_from_data_services(run: CalibrationRun):
     s3_uri = observational_data.get('uri')
 
     run.observational_eds_file_path = convert_s3_uri_to_fs(s3_uri)
+    if run.observational_eds_file_path and not os.path.exists(run.observational_eds_file_path):
+        logger.error(f"Observational file from Data Services, {run.observational_eds_file_path} does not exist")
     clear_times(run)
     logger.info(f'Setting run.observational_eds_file_path to {run.observational_eds_file_path}')
 

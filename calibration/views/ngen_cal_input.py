@@ -106,6 +106,7 @@ config_template = {
         # Static file
         "noah_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'noah-owp-modular'),
         "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
+        "lasam_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lasam'),
 
         # Parquet file - base on domain
         "attributes_file": "",
@@ -114,8 +115,6 @@ config_template = {
         "calib_parameter_file": "",
         "sloth_parameter_file": "",
 
-        "lasam_soil_parameter_file": "",
-        "lasam_soil_class_file": "",
         "ngen_exe_file": NGEN_EXE,
         "cfe_lib": CFE_LIB,
         "sloth_lib": SLOTH_LIB,
