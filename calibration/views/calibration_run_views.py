@@ -845,12 +845,45 @@ def subset_directory_by_time_range(input_directory, output_directory, date_time_
     logger.info(f'Done subsetting directory {input_directory}')
 
 
+def get_performance_chunksize(file_path):
+    """
+    Dynamically determines an optimal chunksize for high-performance processing
+    using a **single row** to estimate memory size sine all rows are substantially the same size
+
+    :param file_path: Path to the input CSV file.
+    :return: Optimal chunksize for pandas.read_csv()
+    """
+    file_size = os.path.getsize(file_path)  # Get file size in bytes
+
+    # Read one row (excluding header) to estimate row size
+    sample_df = pd.read_csv(file_path, nrows=2)  # Read first two rows (header + 1 row)
+    row_size = sample_df.iloc[1:].memory_usage(deep=True).sum()  # Size of first data row (ignore header)
+
+    # Estimate total rows in the file
+    estimated_rows = file_size / row_size
+
+    # Adjust chunk fraction based on file size
+    if file_size < 50_000_000:  # <50MB
+        target_fraction = 0.05  # 5%
+    elif file_size < 200_000_000:  # 50MB-200MB
+        target_fraction = 0.03  # 3%
+    else:
+        target_fraction = 0.01  # 1% (limit memory impact for huge files)
+
+    # Set chunksize as 5-10% of total estimated rows
+    optimal_chunksize = int(estimated_rows * target_fraction)
+
+    # Ensure reasonable limits (between 10k - 100k)
+    return max(10_000, min(optimal_chunksize, 100_000))
+
+
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
     """
     Reads a CSV file, filters rows based on a time range, and writes the filtered data
     to an output file with the original column names and timezone-naive datetime values.
 
     Optimized to take advantage of sorted data for faster processing.
+    Chunksize is optimized for **performance**, reducing disk I/O overhead.
 
     :param input_file: Path to the input CSV file.
     :param output_file: Path to the output CSV file.
@@ -859,10 +892,12 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range}')
     file_basename = os.path.basename(input_file)  # Extract just the filename
 
+    # Dynamically determine the best chunksize for performance
+    chunk_size = get_performance_chunksize(input_file)
+    logger.info(f"Using optimized chunksize={chunk_size} for {file_basename}")
+
     # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-    chunk_size = 40000  # Process file in chunks for better efficiency
     start_line = 1  # Track the first row of each chunk (excluding header)
 
     # DateTimeRange arguments are already in UTC, so use them as-is
@@ -926,7 +961,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             # Rename datetime column back to its original name
             subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
 
-            # Write the filtered data to the output CSV file
+            # Write filtered data to output CSV
             subset_df.to_csv(out_file, mode='a', index=False, header=write_header)
             write_header = False  # Ensure subsequent writes do not include headers
 
