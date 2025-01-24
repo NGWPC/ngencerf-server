@@ -1,5 +1,8 @@
+import concurrent.futures
 import logging
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -821,28 +824,46 @@ def get_slurm_token(request: Request) -> Response:
     return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
 
 
-def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
+def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange, max_workers=4):
     """
     Subsets the files in a directory based on a provided time range and saves the filtered
-    files into an output directory.
+    files into an output directory. Uses parallel processing to handle multiple files at once.
 
     :param input_directory: Path to the input directory.
     :param output_directory: Path to the output directory.
     :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    :param max_workers: Maximum number of parallel workers (default is 4 to balance S3FS I/O and system resources).
+    - S3FS benefits from parallel reads, but excessive threads can cause API throttling or network congestion.
+    - 4 workers provide a good balance between concurrency and avoiding excessive I/O wait.
+    - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
+    - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
     """
-    logger.info(f'Subsetting directory {input_directory}')
+    start_time = time.time()
+    logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers}')
 
-    if not os.path.isdir(output_directory):
-        os.makedirs(output_directory, exist_ok=True)
+    if not os.path.isdir(input_directory):
+        raise ValueError(f"Input path '{input_directory}' is not a directory.")
 
-    for filename in os.listdir(input_directory):
-        input_file_path = os.path.join(input_directory, filename)
-        output_file_path = os.path.join(output_directory, filename)
+    os.makedirs(output_directory, exist_ok=True)
 
-        if os.path.isfile(input_file_path):  # Ensure it's a file
-            subset_by_time_range(input_file_path, output_file_path, date_time_range)
+    files_to_process = [
+        (os.path.join(input_directory, filename), os.path.join(output_directory, filename))
+        for filename in os.listdir(input_directory)
+        if os.path.isfile(os.path.join(input_directory, filename))
+    ]
 
-    logger.info(f'Done subsetting directory {input_directory}')
+    logger.info(f"Found {len(files_to_process)} files to process in {input_directory}")
+
+    def process_file(input_output_tuple):
+        input_file, output_file = input_output_tuple
+        subset_by_time_range(input_file, output_file, date_time_range)
+
+    # Use ThreadPoolExecutor for I/O-bound tasks (like S3FS-based file reads/writes)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(process_file, files_to_process)
+
+    elapsed_time = time.time() - start_time
+    logger.info(f"Finished subsetting directory {input_directory} in {elapsed_time:.2f} seconds")
 
 
 def get_performance_chunksize(file_path):
