@@ -736,6 +736,7 @@ def save_output_variable(run: CalibrationRun, output_variable_to_calibrate: dict
 def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]], allow_nulls: bool = False) -> None:
     """
     Saves or updates calibration parameters for a given calibration run.
+    Turns off user_selected_for_tuning for parameters not in the new list.
 
     :param run: The calibration run being updated.
     :param parameters: A list of dictionaries containing parameter details.
@@ -746,14 +747,20 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
           allowing missing values to retain their defaults.
     """
     if not parameters:
+        # If no parameters are provided, turn off all user_selected_for_tuning flags
+        CalibrationParameter.objects.filter(
+            calibration_formulation__calibration_run=run,
+            user_selected_for_tuning=True
+        ).update(user_selected_for_tuning=False)
         return
 
     parameters_to_update = []
+    selected_for_tuning = set((p['module'], p['name']) for p in parameters)
 
     # Fetch all CalibrationParameters for the given calibration run in one query
-    existing_parameters = CalibrationParameter.objects.filter(
+    existing_parameters = list(CalibrationParameter.objects.filter(
         calibration_formulation__calibration_run=run
-    ).select_related('calibration_formulation__module')
+    ).select_related('calibration_formulation__module'))
 
     # Create a lookup dictionary for existing parameters by module name and parameter name
     parameter_lookup = {
@@ -763,30 +770,51 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
 
     # Update the parameters based on the input
     for p in parameters:
-        calibration_param = parameter_lookup[(p['module'], p['name'])]
+        key = (p['module'], p['name'])
+        if key in parameter_lookup:
+            calibration_param = parameter_lookup[key]
 
-        # Override Data Services values conditionally based on `allow_nulls`
-        # If `allow_nulls` is True, update only if user input is not None
-        if allow_nulls:
-            if p.get('minimum') is not None:
-                calibration_param.minimum = p.get('minimum')
-            if p.get('maximum') is not None:
-                calibration_param.maximum = p.get('maximum')
-            if p.get('initial_value') is not None:
-                calibration_param.initial_value = p.get('initial_value')
-        else:
-            # Always override with user input if `allow_nulls` is False
-            calibration_param.minimum = p.get('minimum')
-            calibration_param.maximum = p.get('maximum')
-            calibration_param.initial_value = p.get('initial_value')
+            # Override Data Services values conditionally based on `allow_nulls`
+            # If `allow_nulls` is True, update only if user input is not None
+            min_value = p.get('minimum')
+            max_value = p.get('maximum')
+            init_value = p.get('initial_value')
 
-        calibration_param.user_selected_for_tuning = True
-        parameters_to_update.append(calibration_param)
+            if allow_nulls:
+                if min_value is not None:
+                    calibration_param.minimum = min_value
+                if max_value is not None:
+                    calibration_param.maximum = max_value
+                if init_value is not None:
+                    calibration_param.initial_value = init_value
+            else:
+                # Always override with user input if `allow_nulls` is False
+                calibration_param.minimum = min_value
+                calibration_param.maximum = max_value
+                calibration_param.initial_value = init_value
 
-    # Use bulk_update to update all parameters at once
-    CalibrationParameter.objects.bulk_update(
-        parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning']
-    )
+            calibration_param.user_selected_for_tuning = True
+            parameters_to_update.append(calibration_param)
+
+    # Collect parameters that need to have user_selected_for_tuning turned off
+    parameters_to_unselect = [
+        param for param in existing_parameters
+        if (param.calibration_formulation.module.name, param.name) not in selected_for_tuning
+           and param.user_selected_for_tuning
+    ]
+
+    # Use bulk_update to update selected parameters
+    if parameters_to_update:
+        CalibrationParameter.objects.bulk_update(
+            parameters_to_update, ['minimum', 'maximum', 'initial_value', 'user_selected_for_tuning']
+        )
+
+    # Turn off user_selected_for_tuning for parameters not in the new list
+    # Use bulk_update to turn off user_selected_for_tuning for unselected parameters
+    if parameters_to_unselect:
+        for param in parameters_to_unselect:
+            param.user_selected_for_tuning = False
+        CalibrationParameter.objects.bulk_update(parameters_to_unselect, ['user_selected_for_tuning'])
 
 
 def get_csv_daterange(file: str) -> DateTimeRange:
