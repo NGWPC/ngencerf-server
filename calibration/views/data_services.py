@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
+from calibration.enums import JobGenesis
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
@@ -175,16 +176,18 @@ def get_observational_data_from_data_services(run: CalibrationRun):
 
 def clear_times(run: CalibrationRun):
     # Invalidate the dates, since we'll have to compute the intersection again
-    run.time_range_start = None
-    run.time_range_end = None
-    run.calibration_start_period = None
-    run.calibration_end_period = None
-    run.validation_start_period = None
-    run.validation_end_period = None
-    run.calibration_eval_start_period = None
-    run.calibration_eval_end_period = None
-    run.validation_eval_start_period = None
-    run.validation_eval_end_period = None
+    # Only do this when running through the GUI.  If CLI, we assume the user knows what he is doing
+    if run.job_genesis == JobGenesis.GUI.value:
+        run.time_range_start = None
+        run.time_range_end = None
+        run.calibration_start_period = None
+        run.calibration_end_period = None
+        run.validation_start_period = None
+        run.validation_end_period = None
+        run.calibration_eval_start_period = None
+        run.calibration_eval_end_period = None
+        run.validation_eval_start_period = None
+        run.validation_eval_end_period = None
 
 
 def get_forcing_data_from_data_services(run: CalibrationRun):
