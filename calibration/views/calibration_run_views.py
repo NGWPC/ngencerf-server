@@ -850,44 +850,87 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     Reads a CSV file, filters rows based on a time range, and writes the filtered data
     to an output file with the original column names and timezone-naive datetime values.
 
+    Optimized to take advantage of sorted data for faster processing.
+
     :param input_file: Path to the input CSV file.
     :param output_file: Path to the output CSV file.
     :param date_time_range: DateTimeRange object specifying the time range for filtering.
     """
     logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range}')
+    file_basename = os.path.basename(input_file)  # Extract just the filename
 
     # Ensure the output directory exists
-    output_dir = os.path.dirname(output_file)
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
 
-    # Read the CSV into a DataFrame, parsing dates in the first column
-    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0])
+    chunk_size = 40000  # Process file in chunks for better efficiency
+    start_line = 1  # Track the first row of each chunk (excluding header)
 
-    # Get the original first column name
-    original_time_column = df.columns[0]
+    # DateTimeRange arguments are already in UTC, so use them as-is
+    start_datetime = pd.Timestamp(date_time_range.start_datetime)
+    end_datetime = pd.Timestamp(date_time_range.end_datetime)
 
-    # Dynamically rename the first column to a consistent name
-    df.rename(columns={original_time_column: 'dateTime'}, inplace=True)
+    with open(output_file, 'w') as out_file:
+        write_header = True  # Ensure the header is written only once
 
-    # Localize datetime column to UTC to make it timezone-aware for comparison
-    df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
+        # Read the first chunk to detect the datetime column name
+        first_chunk = pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size)
+        for chunk in first_chunk:
+            original_time_column = chunk.columns[0]  # Get the first column name dynamically
+            break  # Exit after getting the column name
 
-    # Log the original start and end ranges in the file
-    original_start = df['dateTime'].min()
-    original_end = df['dateTime'].max()
-    logger.info(f'File {input_file} original date range: {original_start} - {original_end}')
+        # Read the CSV in chunks, parsing dates in the detected first column
+        for chunk in pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size):
+            end_line = start_line + len(chunk) - 1  # Compute last row index for this chunk
 
-    # Efficiently filter rows using DataFrame.loc and create a copy to avoid warnings
-    subset_df = df.loc[
-        (df['dateTime'] >= date_time_range.start_datetime) &
-        (df['dateTime'] <= date_time_range.end_datetime)
-        ].copy()  # Explicitly create a copy
+            # Rename the first column to a consistent name
+            if original_time_column in chunk.columns:
+                chunk.rename(columns={original_time_column: 'dateTime'}, inplace=True)
+            else:
+                logger.error(f"Expected datetime column '{original_time_column}' not found in {file_basename}")
+                raise KeyError(f"Expected datetime column '{original_time_column}' not found in {file_basename}")
 
-    # Convert timezone-aware datetime column to naive timestamps
-    subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
+            # Convert to datetime and explicitly assume timestamps are in UTC
+            chunk['dateTime'] = pd.to_datetime(chunk['dateTime'], errors='coerce')
 
-    # Rename the datetime column back to its original name
-    subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
+            # Validate datetime values before localizing
+            if chunk['dateTime'].isna().any():
+                logger.error(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line})")
+                raise ValueError(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line})")
 
-    # Write the filtered DataFrame to the output CSV file
-    subset_df.to_csv(output_file, index=False)
+            # Now localize to UTC
+            chunk['dateTime'] = chunk['dateTime'].dt.tz_localize('UTC')
+
+            # Log the original start and end ranges in this chunk, including line numbers
+            chunk_start = chunk['dateTime'].min()
+            chunk_end = chunk['dateTime'].max()
+            logger.info(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
+
+            # Skip chunks that are entirely before the time range
+            if chunk_end < start_datetime:
+                start_line += chunk_size  # Update row counter
+                continue  # No relevant data in this chunk
+
+            # Stop processing early if chunks exceed the time range
+            if chunk_start > end_datetime:
+                break  # Since files are sorted, no need to read further
+
+            # Filter the data within the time range
+            subset_df = chunk.loc[
+                (chunk['dateTime'] >= start_datetime) &
+                (chunk['dateTime'] <= end_datetime)
+            ].copy()  # Explicitly create a copy
+
+            # Convert back to naive timestamps for output (to match original format)
+            subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
+
+            # Rename datetime column back to its original name
+            subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
+
+            # Write the filtered data to the output CSV file
+            subset_df.to_csv(out_file, mode='a', index=False, header=write_header)
+            write_header = False  # Ensure subsequent writes do not include headers
+
+            # Update the starting line number for the next chunk
+            start_line = end_line + 1
+
+    logger.info(f'Finished subsetting file {input_file} to {output_file}')
