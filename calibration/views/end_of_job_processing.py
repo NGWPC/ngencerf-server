@@ -1,5 +1,6 @@
 import csv
 import logging
+import math
 import os
 import re
 from collections import deque
@@ -453,7 +454,7 @@ def process_params_row(calibration_run: CalibrationRun,
     # Check if the current params_row matches the global best parameters
     is_best_match = (
             len(params_row) == len(best_params_dict) and
-            all(param_name in best_params_dict and float(value) == best_params_dict[param_name]
+            all(param_name in best_params_dict and math.isclose(float(value), best_params_dict[param_name], rel_tol=1e-9, abs_tol=0.0)
                 for param_name, value in params_row.items())
     )
 
