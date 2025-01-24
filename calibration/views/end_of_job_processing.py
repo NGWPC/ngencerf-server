@@ -328,13 +328,17 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Ensure the metrics and parameters CSV files have the same number of rows
     if len(metrics_df) != len(params_df):
         raise CerfException(
-            f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}')
+            f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}'
+        )
 
     metrics_to_create = []  # List to accumulate metrics to be created
     params_to_create = []  # List to accumulate parameters to be created
 
     # Update the output variables for the worker's iterations
     update_output_variables(metrics_iteration_file, calibration_run, worker_name)
+
+    # Track whether a best iteration was set
+    best_iteration_found = False
 
     # Loop over both metrics and parameters DataFrames row by row
     for _, (metrics_row, params_row) in enumerate(zip(metrics_df.iterrows(), params_df.iterrows())):
@@ -351,6 +355,10 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
         process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create)
         process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker)
 
+        # Check if this iteration was set as the best
+        if iteration.best_params:
+            best_iteration_found = True
+
     # Bulk create IterationMetric and IterationParameter objects in chunks
     if metrics_to_create:
         for i in range(0, len(metrics_to_create), BULK_CREATE_BATCH_SIZE):
@@ -359,6 +367,10 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     if params_to_create:
         for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
             IterationParameter.objects.bulk_create(params_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+
+    # Log a warning if no best iteration was found for the worker
+    if not best_iteration_found:
+        raise CerfException(f"No best iteration found for worker {worker_name} in CalibrationRun {calibration_run.id}")
 
     # Check if this worker has a non-empty Output_Iteration directory
     output_iter = os.path.join(worker_path, 'Output_Iteration')
@@ -372,11 +384,8 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
                     # Save the filename to the IterationResult for this iteration
                     iteration = iteration_dict.get(iteration_num)
                     if iteration:
-                        iteration_result = IterationResult.objects.create(
-                            iteration=iteration,
-                            filename=filename
-                        )
-                        logger.info(f"Saved output_iteration filename to {iteration_result} for CalibrationRun {calibration_run.id}")
+                        IterationResult.objects.create(iteration=iteration, filename=filename)
+                        logger.info(f"Saved output_iteration filename {filename} for CalibrationRun {calibration_run.id}")
                     break
 
 

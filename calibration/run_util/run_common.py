@@ -401,9 +401,17 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
 
     :param validation_run: The ValidationRun object representing the job run.
     """
-    # Process the validation output
-    read_validation_output(validation_run)
-    set_job_status(validation_run, StatusEnum.DONE)
+    job_description = get_job_description(validation_run)
+
+    try:
+        # Process the validation output
+        read_validation_output(validation_run)
+        set_job_status(validation_run, StatusEnum.DONE)
+    except Exception as e:
+        # Catch the exception and mark the job as FAILED
+        logger.exception(f"Error processing validation output for {job_description}: {str(e)}")
+        set_job_status(validation_run, StatusEnum.FAILED)
+        return  # Stop further processing if the job failed
 
     # If we just ran Validation Control, see if we want to run Validation Best
     if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
@@ -455,9 +463,24 @@ def finalize_calibration_after_callback(run: CalibrationRun) -> None:
     - Marks the calibration job as DONE in the database, indicating successful completion.
     - Creates and submits a validation control job to verify the calibration's results.
     """
-    read_calibration_output(run)  # Process and store the output of the calibration job.
-    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-    create_and_submit_validation_control(run)  # Trigger the creation of validation jobs.
+    job_description = get_job_description(run)
+
+    try:
+        # Process the calibration output
+        read_calibration_output(run)  # Process and store the output of the calibration job.
+        set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+    except Exception as e:
+        # Catch the exception and mark the job as FAILED
+        logger.exception(f"Error processing calibration output for {job_description}: {str(e)}")
+        set_job_status(run, StatusEnum.FAILED)
+        return  # Stop further processing if the job failed
+
+    # If processing succeeded, continue with the next step
+    try:
+        create_and_submit_validation_control(run)  # Trigger the creation of validation jobs.
+    except Exception as e:
+        logger.exception(f"Error creating and submitting validation control run for {job_description}: {str(e)}")
+        set_job_status(run, StatusEnum.FAILED)
 
 
 def finalize_validation_after_callback(run: ValidationRun) -> None:
