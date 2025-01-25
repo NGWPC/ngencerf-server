@@ -9,22 +9,38 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
+import codecs
 import os
 import re
 from datetime import timedelta
 from enum import StrEnum, auto
-from pathlib import Path
 
 from dotenv import load_dotenv
 
+from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
+
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+# Build paths inside the project like this: os.path.join(BASE_DIR, 'subdir').
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-dotenv_path = Path(__file__).parent / '.env'
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
+
+version_path = os.path.join(BASE_DIR, 'version.env')
+print(f'Loading values from {version_path}')
+load_dotenv(version_path)
+
+VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
+DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
+COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
+NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
+# dotenv doesn't handle Unicode escaping
+NGENCERF_VERSION = codecs.decode(NGENCERF_VERSION, "unicode_escape")
+NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
+
+CONTACT_EMAIL = 'support@ngencerf.com'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -33,7 +49,6 @@ load_dotenv(dotenv_path)
 SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY")
 
 # Application definition
-
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -51,7 +66,7 @@ INSTALLED_APPS = [
     'corsheaders',
 ]
 
-# Points to which token model should be used for authentication. In case if only stateless 
+# Points to which token model should be used for authentication. In case if only stateless
 # tokens (e.g. JWT) are used in project it should be set to None.
 TOKEN_MODEL = None
 
@@ -91,11 +106,10 @@ CORS_ALLOWED_ORIGINS = [
 
 ROOT_URLCONF = 'cerfServer.urls'
 
-# We should be able to get rid of this since we are not using templates
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -120,10 +134,9 @@ DJOSER = {
     "SET_PASSWORD_RETYPE": True,
     "UPDATE_LAST_LOGIN": True,
     "SERIALIZERS": {
-        "user_create": "calibration.user_serializers.CustomUserSerializer",
+        "user_create": "calibration.user_serializers.CustomUserCreateSerializer",
         "user": "calibration.user_serializers.CustomUserSerializer",
         "current_user": "calibration.user_serializers.CustomUserSerializer",
-
     },
 }
 
@@ -135,7 +148,7 @@ SIMPLE_JWT = {
     'UPDATE_LAST_LOGIN': True,
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
-    'TOKEN_OBTAIN_SERIALIZER': 'calibration.user_serializers.CustomTokenObtainPairSerializer',  # Update to your module path
+    'TOKEN_OBTAIN_SERIALIZER': 'calibration.user_serializers.CustomTokenObtainPairSerializer',
 }
 
 WSGI_APPLICATION = 'cerfServer.wsgi.application'
@@ -155,11 +168,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
-
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
@@ -173,16 +183,22 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # -----------------------------
-# Hydrofabric
+# Enterprise Data
 # -----------------------------
-HYDROFABRIC_GEOPACKAGE_ENDPOINT = (True, 'hydrofabric/2.1/geopackages?gage_id={gage_id}&source={source}&domain={domain}')
-HYDROFABRIC_MODULE_METADATA_ENDPOINT = (False, 'hydrofabric/2.1/modules/parameters/')
-HYDROFABRIC_OBSERVATION_DATA_ENDPOINT = (True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}')
-HYDROFABRIC_FORCING_DATA_ENDPOINT = (False, 'hydrofabric/2.1/forcing')
+ENTERPRISE_DATA_VERSION = "2.2"
+ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = [True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}']
+ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameters/']
+ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
+ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
 
-HYDROFABRIC_URL = os.getenv('HYDROFABRIC_URL', 'http://localhost:8001')
 
-S3_MOUNT_POINT = Path.home() / 's3'
+ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
+
+FORCING_DATA_DIRS = ['s3://ngwpc-forcing/aorc_2.2',
+                     's3://ngwpc-forcing/retrospective_2.2']
+
+# Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
+S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
 
 # -----------------------------
 # Ngen/Ngen-cal Locations
@@ -195,40 +211,70 @@ S3_MOUNT_POINT = Path.home() / 's3'
 # But these directories still need to be set to reflect the directory of the repos in the docker container.
 REPO_ROOT = '/ngen-app'
 # Directory that Ngen is cloned into
-NGEN_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen')
+NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 # directory that Ngen-cal is cloned into
-NGEN_CAL_REPO_ROOT = str(Path(REPO_ROOT) / 'ngen-cal')
+NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-fcst')
+NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 
 # This must match the data location in the ngen/ngen-cal docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
+NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 
-NGEN_LOGGING_DIR = Path(BASE_DIR) / 'logs'
-NGEN_LOGGING_DIR.mkdir(exist_ok=True)
+NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
+print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
+os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
-NGEN_STATIC_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-static-files'
+NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
+NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
+NGEN_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'forecast_forcing_work')
 
-NGEN_CAL_WORK_DIR = Path(NGEN_CAL_MOUNT_POINT) / 'ngen-cal-work'
+# -----------------------------
+# Forcing environments
+# -----------------------------
+FORCING_MESH_ENV = 'ngen_esmf_mesh_prod'
+FORCING_EXTRACT_ENV = 'forcing_extraction'
+FORCING_ENGINE_ENV = 'NextGen_Forcings_Engine'
+
 # Directory where all the output runs are stored
-NGEN_CAL_RUN_DIR = Path(NGEN_CAL_WORK_DIR) / 'run_calib'
+NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
 # Directory containing the ngen-cal virtual environment
-# This is used only if we are running ngen/ngen-cal locally (e.g, in AWS Workspace) and not in a separate container
-NGEN_CAL_VENV = str(Path(NGEN_CAL_WORK_DIR) / 'venv.cal')
+# This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
+NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
-
-class NgenEnvironmentEnum(StrEnum):
-    LOCAL = "LOCAL"
-    PARALLEL_WORKS = "PARALLEL_WORKS"
-    DOCKER = "DOCKER"
-
-
-DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:/{NGEN_CAL_MOUNT_POINT} ngen-cal'
+# Used when running in NGEN_ENVIRONMENT=DOCKER
+# This assumes that the docker containers have been appropriately tagged as ngen-cal, ngen-fcst or ngen-forcing
+NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-cal'
+NGEN_FORCING_DOCKER_CMD = f'docker run --entrypoint /ngen-app/bin/run-ngen-forcing.sh -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-bmi-forcing'
+NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
-RUN_NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
+FORECAST_FORCING_SCRIPT = os.path.join(NGEN_FORCING_REPO_ROOT, 'docker', 'run-ngen-forcing.sh')
+
+# -----------------------------
+# Job Simulation Flags for use with NGEN_ENVIRONMENT=LOCAL or DOCKER
+# -----------------------------
+SIMULATE_FLAGS = {
+    JobType.CALIBRATION: False,
+    JobType.VALIDATION: False,
+    JobType.FORECAST: False,
+    JobType.FORECAST_FORCING_DOWNLOAD: False,
+}
+
+
+RUNTIME_INFO = {
+    ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.VALIDATION_ITERATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
+    ScriptEnum.FORECAST_FORCING: (NGEN_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
+}
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
@@ -245,93 +291,107 @@ except KeyError:
 SLURM_URL = os.getenv("SLURM_URL")
 SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT = 'submit-calibration-job'
 SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT = 'submit-validation-job'
+SLURM_SUBMIT_FORECAST_JOB_ENDPOINT = 'submit-forecast-job'
+SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT = 'submit-forecast-forcing-download-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
 # -----------------------------
 # Logging
 # -----------------------------
-print(f"Logging files will be created at {BASE_DIR}")
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'root': {
-        'handlers': ['console', 'file'],
+        'handlers': ['console', 'file_dev'],
         'level': 'DEBUG'
     },
     'formatters': {
-        'verbose': {
-            'format': '{levelname} {asctime} {module} {funcName} {process:d} {thread:d} {message}',
+        'prod_format': {
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {message}',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
+            'style': '{',
+        },
+        'dev_format': {
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {process:d} {thread:d} {message}',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
         'simple': {
-            'format': '{levelname} {asctime} {module} {funcName} {message}',
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
+            'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
     },
     'handlers': {
-        'console': {
+        'console': {'level': 'DEBUG', 'class': 'logging.StreamHandler', 'formatter': 'simple'},
+        'file_dev': {
             'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple'
-        },
-        'file': {
-            'level': 'DEBUG',
-            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': Path(NGEN_LOGGING_DIR) / 'cerfServer.log',
-            'when': 'midnight',  # Rotate the file every day at midnight
+            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
+            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_dev.log'),
+            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
-            'formatter': 'verbose',
+            'formatter': 'dev_format',
             'encoding': 'utf-8',
-        }
+        },
+        'file_prod': {
+            'level': 'INFO',
+            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
+            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_prod.log'),
+            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
+            'interval': 1,  # Rotate every 1 day
+            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
+            'formatter': 'prod_format',
+            'encoding': 'utf-8',
+        },
     },
     'loggers': {
         'django.db.backends': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'djoser': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'rest_framework_simplejwt': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
 
         },
         'django.request': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'urllib3': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev', 'file_prod'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'cerfServer': {
-            'handlers': ['console', 'file'],
+            'handlers': ['console', 'file_dev'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
@@ -341,5 +401,6 @@ LOGGING = {
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
-except ImportError:
-    print('local_settings.py not found')
+    print("Loaded local_settings.py successfully.")
+except ImportError as e:
+    print('local_settings.py not found or could not be imported:', e)

@@ -1,3 +1,4 @@
+import logging
 import sys
 
 from django.contrib.auth import get_user_model
@@ -5,13 +6,16 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DataTypeEnum
+from calibration.enums_vanilla import JobType
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
-    GeopackageSource
+    GeopackageSource, ForecastCycle
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
@@ -33,15 +37,15 @@ class Command(BaseCommand):
         self.user = None  # Define the attribute here
 
     def handle(self, *args, **options):
-        self.stdout.write('Initializing static tables')
+        logger.info('Initializing static tables')
         try:
             # need to get a user that is guaranteed to be there, such as admin
             self.user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
-            self.stdout.write(self.style.ERROR('Admin user does not exist.'))
+            logger.error('Admin user does not exist.')
             sys.exit(1)
 
-        self.stdout.write(f"In init_sql: email: {self.user.email}")
+        logger.info(f"In init_sql: email: {self.user.email}")
 
         self.define_module_groups()
         self.define_modules()
@@ -50,6 +54,7 @@ class Command(BaseCommand):
         self.define_forcing_source()
         self.define_observational_source()
         self.define_geopackage_source()
+        self.define_forecast_cycle()
         self.define_optimization()
         self.define_metric()
         self.define_status()
@@ -77,7 +82,8 @@ class Command(BaseCommand):
 
         values = [{"name": "Topoflow",
                    "description": "description",
-                   "groups": ["Glacier"]},
+                   "groups": ["Glacier"],
+                   "is_active": False},
                   {"name": "Noah-OWP-Modular",
                    "description": "An extended, refactored version of the Noah-MP land surface model",
                    "groups": ["Snowmelt", "Evapotranspiration"]},
@@ -91,7 +97,7 @@ class Command(BaseCommand):
                   {"name": "CFE-X",
                    "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
                    "groups": ["Rainfall Runoff"]},
-                  {"name": "PET", "description": "description", "groups": ["Evapotranspiration"]},
+                  {"name": "PET", "description": "description", "groups": ["Evapotranspiration"], "is_active": False},
                   {"name": "TopModel",
                    "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
                    "groups": ["Rainfall Runoff"]},
@@ -169,8 +175,8 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             ForcingSource.objects.all().delete()
 
-        values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": False},
-                  {"name": "Upload", "description": "Uploaded by the user from a local file"},
+        values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": True},
+                  {"name": "User Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
         for v in values:
@@ -190,8 +196,8 @@ class Command(BaseCommand):
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Agency", "description": "From the owning agency", "is_active": True},
-                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
+                  {"name": "Data Services", "description": "NGWPC Enterprise Data Services", "is_active": True},
+                  {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:
@@ -204,8 +210,8 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             GeopackageSource.objects.all().delete()
 
-        values = [{"name": "EHS", "description": "Enterprise Hydrofabric Service", "is_active": True},
-                  {"name": "Upload", "description": "Upload by the user from a local file", "is_active": True},
+        values = [{"name": "Data Services", "description": "NGWPC Enterprise Data Services", "is_active": True},
+                  {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:
@@ -213,6 +219,28 @@ class Command(BaseCommand):
                                                       defaults={"is_active": v.get('is_active', True),
                                                                 "description": v['description'],
                                                                 "created_by": self.user})
+
+    def define_forecast_cycle(self):
+        if self.DELETE_FLAG:
+            ForecastCycle.objects.all().delete()
+
+        values = [
+            {"name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "3 hr",
+             "is_active": False},
+            {"name": "Short Range Forecast", "internal_name": "short_range", "data_sources": "HRRR, RAP", "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
+            {"name": "Extended AnA", "internal_name": "extended_ana", "data_sources": "RAP, HRRR, Stage IV", "time_range": "tbd", "is_active": False},
+            {"name": "Medium Range Forecast", "internal_name": "medium_range", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
+            {"name": "Long Range AnA", "internal_name": "long_range_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "tbd", "is_active": False},
+            {"name": "Long Range Forecast", "internal_name": "long_range", "data_sources": "long_range_forecast", "time_range": "tbd", "is_active": False},
+        ]
+
+        for v in values:
+            ForecastCycle.objects.update_or_create(name=v['name'],
+                                                   defaults={"is_active": v.get('is_active', True),
+                                                             "internal_name": v['internal_name'],
+                                                             "data_sources": v['data_sources'],
+                                                             "time_range": v['time_range'],
+                                                             "created_by": self.user})
 
     def define_optimization(self):
         if self.DELETE_FLAG:
@@ -240,14 +268,14 @@ class Command(BaseCommand):
                                                                           defaults={"is_active": v.get('is_active', True),
                                                                                     "description": v['description'],
                                                                                     "stop_criteria_name": "iterations",
-                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER,
+                                                                                    "stop_criteria_data_type": DataTypeEnum.INTEGER.value,
                                                                                     "created_by": self.user})
 
             for i in v['inputs']:
                 OptimizationInput.objects.update_or_create(name=i['name'], optimization=optimization,
                                                            defaults={"is_active": i.get('is_active', True),
                                                                      "description": i['description'],
-                                                                     "data_type": i['data_type'],
+                                                                     "data_type": i['data_type'].value,
                                                                      "default_value": i['default_value'],
                                                                      "min": i.get('min', None),
                                                                      "max": i.get('max', None),
@@ -274,9 +302,9 @@ class Command(BaseCommand):
                   {"name": "PKBIAS", "description": "Absolute Peak Flow Bias", "event_based": True},
                   {"name": "PKTE", "description": "Peak Flow Timing Error", "event_based": True},
                   {"name": "EVBIAS", "description": "Event Volume Bias", "event_based": True},
-                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True},
-                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve"},
-                  {"name": "NSEWt", "description": "Weighted NSE and NSELog"},
+                  {"name": "FBIAS", "description": "Frequency Bias", "categorical": True, "objective_function": False},
+                  {"name": "MSEG_FDC", "description": "Percent bias of middle flow segment of flow duration curve", "objective_function": False},
+                  {"name": "NSEWt", "description": "Weighted NSE and NSELog", "objective_function": False},
                   ]
 
         for v in values:
@@ -284,6 +312,7 @@ class Command(BaseCommand):
                                                                       "description": v['description'],
                                                                       "categorical": v.get('categorical', False),
                                                                       "event_based": v.get('event_based', False),
+                                                                      "objective_function": v.get('objective_function', True),
                                                                       "created_by": self.user})
 
     def define_status(self):
@@ -316,7 +345,7 @@ class Command(BaseCommand):
                 "description": "Time series plot comparing streamflow simulations from the control, the best iteration and the last iteration with the observed streamflow",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_hydrograph_iteration.png"
             },
             {
@@ -324,7 +353,7 @@ class Command(BaseCommand):
                 "description": "The evolution of objective function during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_objfun_iteration.png"
             },
             {
@@ -332,7 +361,7 @@ class Command(BaseCommand):
                 "description": "The evolution of objective function and all other metrics during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_metric_iteration.png"
             },
             {
@@ -340,7 +369,7 @@ class Command(BaseCommand):
                 "description": "The evolution of each calibration parameter during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_param_iteration.png"
             },
             {
@@ -348,7 +377,7 @@ class Command(BaseCommand):
                 "description": "Scatter plot of streamflow simulations from the control, the best iteration and the last iteration vs the observed streamflow",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png"
             },
             {
@@ -356,7 +385,7 @@ class Command(BaseCommand):
                 "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to examine tradeoffs between the objective function and other metrics)",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_metric_objfun.png"
             },
             {
@@ -364,7 +393,7 @@ class Command(BaseCommand):
                 "description": "Same as Hydrograph Evolution but with the precipitation time series added at the top using an inverted y-axis",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_streamflow_precip_iteration.png"
             },
             {
@@ -372,7 +401,7 @@ class Command(BaseCommand):
                 "description": "Comparison of the flow duration curves for the streamflow simulations from the control, the best iteration, the last iteration and the observed streamflow",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_fdc_iteration.png"
             },
             {
@@ -380,40 +409,47 @@ class Command(BaseCommand):
                 "description": "Comparison of the best global, local and best cost values at each iteration",
                 "location": "output_calibration",
                 "valid_optimizations": "[\"GWO\", \"PSO\"]",
-                "validation": False,
+                "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_cost_hist.png"
             },
             {
                 "name": "Bar Chart Metrics",
                 "description": "Bar chart comparing metrics from best and control validation runs for each evaluation period of the best global, local and best cost values at each iteration",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
-                "validation": True,
+                "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_barplot_metrics_valid_run.png"
             },
             {
                 "name": "Flow Duration Curves Validation",
                 "description": "Plot of flow duration curve comparing best and control validation runs with observation for each evaluation period",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
-                "validation": True,
+                "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_fdc_valid_run.png"
             },
             {
                 "name": "Hydrograph Validation",
                 "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
-                "location": "output_validation",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
-                "validation": True,
+                "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_hydrograph_valid_run.png"
             },
             {
                 "name": "Streamflow Validation Precipitation",
-                "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axi",
-                "location": "output_validation",
+                "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axis",
+                "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
-                "validation": True,
-                "filename_mask": "{gage_id}streamflow_precip_valid_run.png"
+                "job_type": JobType.VALIDATION.value,
+                "filename_mask": "{gage_id}_streamflow_precip_valid_run.png"
+            },
+            {
+                "name": "Forecast Hydrograph",
+                "description": "Time series of streamflow forecasts based on the calibrated formulation and parameters",
+                "location": "forecast_output",
+                "job_type": JobType.FORECAST.value,
+                "filename_mask": "{gage_id}_hydrograph.png"
             }
         ]
 
@@ -421,7 +457,7 @@ class Command(BaseCommand):
             PlotDefinition.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
                                                                               "description": v['description'],
                                                                               "location": v['location'],
-                                                                              "valid_optimizations": v['valid_optimizations'],
-                                                                              "validation": v['validation'],
+                                                                              "valid_optimizations": v.get('valid_optimizations'),
+                                                                              "job_type": v['job_type'],
                                                                               "filename_mask": v['filename_mask'],
                                                                               "created_by": self.user})

@@ -1,16 +1,23 @@
 import logging
+import os
 
-import numpy as np
-from django.db.models import F
+from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, ValidationMetricPeriod
-from calibration.models import Iteration, IterationParameter, NWMRetrospectiveMetrics, ValidationRun
+from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName, GetValidationJobsScope
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
-    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, PerformanceMetricsResponseSerializer
-from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, ResponseError
+    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
+    GetLogNamesResponseSerializer, GetLogRequestSerializer
+from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
+    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename
+from calibration.views.calibration_landing_views import get_validation_jobs_internal
+from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
+    replace_nan_with_none, get_validation_run, CerfException
+from calibration.views.end_of_job_processing import process_worker_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +35,22 @@ logger = logging.getLogger(__name__)
             description="Internal server error"
         )
     },
-    description="Return metrics and parameters by iteration"
+    description="Retrieve metrics and parameters by iteration for a specific calibration run"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_calibration_data_by_iteration(request):
-    data = request.data
+def get_calibration_data_by_iteration(request: Request) -> Response:
+    """
+    Retrieves calibration data by iteration for a specific calibration run.
+
+    - Handles user authentication and validation.
+    - Fetches retrospective metrics and iteration data.
+    - Constructs a response containing iterations, parameters, metrics, and validation information.
+
+    :param request: The HTTP request object containing calibration run data.
+    :return: JSON response with calibration data or error information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_calibration_data_by_iteration() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
@@ -46,84 +63,92 @@ def get_calibration_data_by_iteration(request):
     if error_return:
         return error_return
 
+    # Fetch retrospective metrics data associated with the calibration run
     nwm_retrospective_data = list(
         NWMRetrospectiveMetrics.objects
-        .filter(period=ValidationMetricPeriod.valid, calibration_run=run)
+        .filter(period=ValidationMetricPeriod.valid.value, calibration_run=run)
         .select_related('metric')
+        .only('metric__name', 'metric_value')
         .annotate(metric_name=F('metric__name'))
-        .values('metric_name', 'metric_value'))
-
-    # Fetch all iterations for the calibration run, along with related parameters and metrics
-    iterations = (
-        Iteration.objects
-        .filter(calibration_run_id=calibration_run_id)
-        .prefetch_related('iterationparameter_set', 'iterationmetric_set')  # prefetch related data for parameters and metrics
-        .order_by('worker_name', 'iteration_num')  # organize by worker name and iteration number
+        .values('metric_name', 'metric_value')
     )
 
+    retrospective_data = [{'name': 'NWM 3.0', 'data': nwm_retrospective_data}]
+
+    iterations = get_iterations_for_calibration_job(run)
+
+    # Prefetch validation runs for all iterations
+    validation_runs = ValidationRun.objects.filter(
+        iteration__in=iterations, status=StatusEnum.DONE.db_instance
+    ).select_related('calibration_run')
+
+    validation_runs_by_iteration = {vr.iteration_id: vr for vr in validation_runs}
+
+    # Construct iteration data with parameters, metrics, and validation reference
     iteration_data = []
     for iteration in iterations:
+        validation_run = validation_runs_by_iteration.get(iteration.id)
+
         iteration_element = {
             'iteration_num': iteration.iteration_num,
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
-            'calibration_output_variable_value': iteration.calibration_output_variable_value,
-            'parameters': [],
-            'metrics': []
+            'objective_function_value': iteration.objective_function_value,
+            'parameters': [
+                {'parameter_name': param.calibration_parameter.name, 'parameter_value': param.tuned_value}
+                for param in iteration.iterationparameter_set.all()
+            ],
+            'metrics': [
+                {'metric_name': metric.metric.name, 'metric_value': metric.metric_value}
+                for metric in iteration.iterationmetric_set.all()
+            ]
         }
-
-        # Get the parameters for the iteration
-        for parameter in iteration.iterationparameter_set.all():
-            iteration_element['parameters'].append({
-                'parameter_name': parameter.calibration_parameter.name,
-                'parameter_value': parameter.tuned_value
-            })
-
-        # Get the metrics for the iteration
-        for metric in iteration.iterationmetric_set.all():
-            iteration_element['metrics'].append({
-                'metric_name': metric.metric.name,
-                'metric_value': metric.metric_value
-            })
-
+        if validation_run:
+            iteration_element['validation_run_id'] = validation_run.id
         iteration_data.append(iteration_element)
 
-    response = {'message': f'Calibration Run {run.id}, data retrieved', 'iteration_data': iteration_data, 'nwm_retrospective_data': nwm_retrospective_data}
-    # NaN is not valid Json
+    response = {
+        'message': f'Calibration Job {run.id}, data retrieved',
+        'objective_function_metric': run.objective_function.name,
+        'iteration_data': iteration_data,
+        'retrospective_data': retrospective_data
+    }
+
+    # Replace NaN values with None for JSON compatibility
     response = replace_nan_with_none(response)
 
-    response_validator, error_response = validate_response(GetCalibrationDataByIterationResponseSerializer, response)
+    response_validator, error_response = validate_response(
+        GetCalibrationDataByIterationResponseSerializer,
+        response,
+        fields_to_truncate=['iteration_data'],
+        max_length=10
+    )
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {response_validator.data}')
+
+    logger.debug(
+        f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10)}')
+
     return Response(response_validator.data)
 
 
-def replace_nan_with_none(data):
+def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> QuerySet[Iteration]:
     """
-    Recursively traverses the input data and replaces any NaN values with None.
-    This ensures that the data is JSON-compliant by converting non-compliant
-    NaN values into nulls.
+    Fetches iterations for the given calibration run.
 
-    :param data: The input data, which can be a list, dictionary, or a single value.
-    :return: The sanitized data with NaN values replaced by None.
+    - Prefetches related parameters and metrics for optimized retrieval.
+
+    :param calibration_run: The CalibrationRun instance to fetch iterations for.
+    :return: QuerySet of Iteration objects associated with the calibration run.
     """
-
-    # If the data is a list, recursively process each item in the list
-    if isinstance(data, list):
-        return [replace_nan_with_none(item) for item in data]
-
-    # If the data is a dictionary, recursively process each key-value pair
-    elif isinstance(data, dict):
-        return {key: replace_nan_with_none(value) for key, value in data.items()}
-
-    # If the data is a float and it's NaN, replace it with None
-    elif isinstance(data, float) and np.isnan(data):
-        return None
-
-    # If the data is any other type (int, str, etc.), return it unchanged
-    return data
+    return (
+        Iteration.objects.filter(calibration_run=calibration_run)
+        .select_related('calibration_run')
+        .prefetch_related('iterationparameter_set__calibration_parameter',
+                          'iterationmetric_set')
+        .order_by('worker_name', 'iteration_num')
+    )
 
 
 @extend_schema(
@@ -139,14 +164,22 @@ def replace_nan_with_none(data):
             description="Internal server error"
         )
     },
-
-    description="Get validation jobs with starting parameter values"
+    description="Retrieve validation jobs along with their starting parameter values"
 )
-@api_view(['POST', 'GET'])
+@api_view(['GET', 'POST'])
 @handle_exceptions
-def get_validation_jobs(request):
-    data = request.data if request.method == 'POST' else request.query_params.dict()
+def get_validation_jobs(request: Request) -> Response:
+    """
+    Retrieves validation jobs for a specific calibration run along with initial parameter values.
 
+    - Handles user authentication and request validation.
+    - Fetches validation jobs linked to a calibration run.
+    - Constructs and validates the response with serialized data.
+
+    :param request: The HTTP request object containing calibration run data.
+    :return: JSON response containing validation jobs or error details.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_validation_jobs() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
@@ -154,40 +187,14 @@ def get_validation_jobs(request):
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
 
-    # Query all validation jobs for the calibration run, excluding VALID_CONTROL types
-    validation_jobs = ValidationRun.objects.filter(
-        calibration_run_id=calibration_run_id,
-        status__in=[StatusEnum.from_enum(StatusEnum.DONE), StatusEnum.from_enum(StatusEnum.RUNNING)]
-    ).exclude(
-        validation_type=ValidationType.VALID_CONTROL.value
-    )
+    # Retrieve validation jobs using internal helper
+    validation_jobs = get_validation_jobs_internal(calibration_run_id, detail_level=GetValidationJobsScope.DETAILS)
 
-    result = []
-    for validation_run in validation_jobs:
-        # Get all IterationParameters related to this validation run's Iteration
-        iteration_params = IterationParameter.objects.filter(iteration=validation_run.iteration)
-
-        # Create a list of parameters for this validation run
-        params_list = [
-            {'name': param['calibration_parameter__name'], 'value': param['tuned_value']}
-            for param in iteration_params.values('calibration_parameter__name', 'tuned_value')
-        ]
-
-        # Construct the object containing validation_run_id, run_date, and parameters list
-        result.append({
-            'validation_run_id': validation_run.id,
-            'run_date': validation_run.run_date,
-            'parameters': params_list,
-            'best': validation_run.validation_type == ValidationType.VALID_BEST.value
-        })
-
-    response = {'validation_jobs': result}
-
+    response = {'validation_jobs': validation_jobs}
     response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
     if error_response:
         return error_response
@@ -197,9 +204,9 @@ def get_validation_jobs(request):
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=ValidationRunSerializer,
     responses={
-        200: PerformanceMetricsResponseSerializer,
+        200: GetLogNamesResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -209,50 +216,270 @@ def get_validation_jobs(request):
             description="Internal server error"
         )
     },
-    description="Get performance metrics for a calibration run"
+    description="Retrieve available log names for a given validation run"
 )
-@api_view(['GET', 'POST'])
+@api_view(['POST', 'GET'])
 @handle_exceptions
-def get_performance_metrics(request):
-    data = request.data
-    logger.debug(f'get_performance_metrics() request from {request.user.email} - {data}')
+def get_log_names(request: Request) -> Response:
+    """
+    Retrieves a list of available log names for a specific validation run.
 
-    # validate request
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    - Handles request validation and user permissions.
+    - Returns logs categorized by their association (calibration, validation, global, or forecast).
+
+    :param request: The HTTP request object containing validation run ID.
+    :return: JSON response with log names or error details.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_log_names() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
         return error_return
 
-    # get performance metrics for calibration run with status DONE
-    calibration_run_id = validator.get('calibration_run_id')
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+    validation_run_id = validator.get('validation_run_id')
+
+    validation_run, error_return = get_validation_run(
+        validation_run_id,
+        request.user,
+        run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+    )
     if error_return:
         return error_return
 
-    performance_metrics = calibration_run.performance_metrics
-    if not performance_metrics:
-        error_message = f'Calibration Run {calibration_run_id} has no performance metrics'
-        logger.error(error_message)
-        return ResponseError(error_message)
-
-    performance_metrics_fields = [
-        "elapsed_time",
-        "num_cpus",
-        "cpu_time",
-        "max_rss",
-        "max_disk_read",
-        "max_disk_write",
-        "reserved_time"
+    # Define available log categories and names
+    log_names = [
+        {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
+        {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
+        {LogCategory.GLOBAL.value: ['ngen']},
     ]
+    # Include forecast logs if applicable
+    if ForecastRun.objects.filter(calibration_run=validation_run.calibration_run).exists():
+        log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
 
-    # construct response
-    response = {field: getattr(performance_metrics, field, None) for field in performance_metrics_fields}
-    response['message'] = f'Calibration Run {calibration_run_id}, performance metrics retrieved'
-    response['calibration_run_id'] = calibration_run.id
-    response['status'] = calibration_run.status.name
+    response = {'log_names': log_names}
 
-    # validate response
-    response_validator, error_response = validate_response(PerformanceMetricsResponseSerializer, response)
+    response_validator, error_response = validate_response(GetLogNamesResponseSerializer, response)
     if error_response:
         return error_response
 
+    logger.debug(f'Returning to {request.user.email} from get_log_names() - {response_validator.data}')
     return Response(response_validator.data)
+
+
+VALID_LOG_NAMES = {
+    LogCategory.CALIBRATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
+    LogCategory.VALIDATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
+    LogCategory.FORECAST: [LogName.FORECAST_STDOUT, LogName.NGEN_STDOUT],
+    LogCategory.GLOBAL: [LogName.NGEN]
+}
+
+
+def validate_log_name(log_category: LogCategory, log_name: LogName):
+    """
+    Validates whether the provided log name is valid for the given log category.
+
+    - Ensures the log name exists in the predefined valid logs for the category.
+
+    :param log_category: The category of the log (enum representation of LogCategory).
+    :param log_name: The log name to validate.
+    :raises ValueError: If the log name is not valid for the given category.
+    """
+    valid_logs = VALID_LOG_NAMES.get(log_category)
+
+    valid_log_values = [log.value for log in valid_logs]
+
+    if log_name not in valid_logs:
+        raise ValueError(f"Invalid log name '{log_name.value}' for category '{log_category.value}'. Valid options are: {valid_log_values}.")
+
+
+@extend_schema(
+    request=GetLogRequestSerializer,
+    responses={
+        200: GetLogsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Retrieve a specific log file with pagination support"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_log(request: Request) -> Response:
+    """
+    Retrieves a specific log file for a validation run and its associated calibration run.
+
+    - Supports pagination for large log files.
+    - Validates log category and log name.
+
+    :param request: The HTTP request object containing validation run and log information.
+    :return: JSON response with log file content or error details.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_log() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(GetLogRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+    log_category = LogCategory(validator.get('log_category'))
+    log_name = LogName(validator.get('log_name'))
+    start = validator.get('start')
+    limit = validator.get('limit')
+
+    # Validate log category and log name
+    try:
+        validate_log_name(log_category, log_name)
+    except ValueError as e:
+        raise CerfException(str(e))
+
+    validation_run, error_return = get_validation_run(
+        validation_run_id,
+        request.user,
+        run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+    )
+    if error_return:
+        return error_return
+
+    match log_category:
+        case LogCategory.CALIBRATION:
+            log_path = get_calibration_log(validation_run.calibration_run, log_name)
+        case LogCategory.VALIDATION:
+            log_path = get_validation_log(validation_run, log_name)
+        case LogCategory.GLOBAL:
+            log_path = get_global_log(validation_run, log_name)
+        case _:
+            raise CerfException(f"Unknown log category '{log_category.value}'")
+
+    # Check if the log file exists
+    if not os.path.exists(log_path):
+        raise CerfException(f"Log file not found: {log_path}")
+
+    # Count the total number of lines in the file for pagination metadata
+    total_lines = sum(1 for _ in open(log_path, 'r'))
+
+    # Read the requested lines from the log file with null replacement
+    paginated_lines = []
+    with open(log_path, 'r') as file:
+        for current_line_number, line in enumerate(file):
+            if start <= current_line_number < start + limit:
+                # Replace null characters in each line
+                paginated_lines.append(line.replace('\x00', ' '))
+            if current_line_number >= start + limit:
+                break
+
+    pagination_metadata = {
+        'start': start,
+        'limit': limit,
+        'count': total_lines
+    }
+
+    response = {
+        'message': f"{log_category.value.capitalize()} {log_name} log file retrieved",
+        'log_data': paginated_lines,
+        'pagination_metadata': pagination_metadata
+    }
+
+    response_validator, error_response = validate_response(GetLogsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user.email} from get_log() - {response_validator.data}')
+    return Response(response_validator.data)
+
+
+def get_calibration_log(calibration_run: CalibrationRun, log_name: LogName):
+    """
+    Retrieves the appropriate log file for a given calibration run.
+
+    - Determines the log file based on the specified log name.
+    - Supports logs like `ngen.stdout` and `ngen-cal.stdout`.
+
+    :param calibration_run: The CalibrationRun object for which the log is retrieved.
+    :param log_name: The LogName enum specifying the log type.
+    :return: The path to the log file.
+    """
+    if log_name == LogName.NGEN_STDOUT:
+        return find_ngen_stdout_log(calibration_run)
+    elif log_name == LogName.NGEN_CAL_STDOUT:
+        return get_calibration_stdout_file(calibration_run)
+
+
+def get_validation_log(validation_run: ValidationRun, log_name: LogName):
+    """
+    Fetches the appropriate log file for a specific validation run.
+
+    - Handles various validation types (best, control, iteration).
+    - Supports logs like `ngen.stdout` and `ngen-cal.stdout`.
+
+    :param validation_run: The ValidationRun object for which the log is retrieved.
+    :param log_name: The LogName enum specifying the log type.
+    :return: The path to the log file.
+    """
+    validation_type = validation_run.validation_type
+
+    if validation_type in {ValidationType.VALID_BEST.value, ValidationType.VALID_CONTROL.value}:
+        if log_name == LogName.NGEN_CAL_STDOUT:
+            return (
+                get_validation_best_stdout_file(validation_run.calibration_run)
+                if validation_type == ValidationType.VALID_BEST.value
+                else get_validation_control_stdout_file(validation_run.calibration_run)
+            )
+
+    elif validation_type == ValidationType.VALID_ITERATION.value:
+        if log_name == LogName.NGEN_CAL_STDOUT:
+            return get_validation_iteration_stdout_file(
+                validation_run.calibration_run,
+                validation_run.worker_name,
+                validation_run.iteration_num
+            )
+
+    if log_name == LogName.NGEN_STDOUT:
+        return find_ngen_stdout_log(validation_run)
+
+
+def get_global_log(validation_run: ValidationRun, log_name: LogName):
+    """
+    Retrieves the global log file, if applicable.
+
+    - Only supports `ngen` logs currently.
+
+    :param validation_run: The ValidationRun object associated with the log.
+    :param log_name: The LogName enum specifying the log type.
+    :return: The path to the global log file.
+    """
+    if log_name == LogName.NGEN:
+        return find_ngen_stdout_log(validation_run)
+
+
+def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
+    """
+    Searches for the `ngen.stdout` log file in worker directories of a given run.
+
+    - Iterates over worker directories using `process_worker_dirs`.
+    - Returns the path to the log file if found.
+
+    :param run: The CalibrationRun or ValidationRun object.
+    :return: The path of the `ngen.stdout` log file, or None if not found.
+    """
+    ngen_log_path = None
+
+    # Custom function to check worker directories for the ngen log file
+    def check_worker(worker_dir: str, run_object: CalibrationRun | ValidationRun):
+        nonlocal ngen_log_path
+        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
+
+        # Check if ngen stdout file exists in the current worker directory
+        if os.path.isfile(potential_log_path):
+            ngen_log_path = potential_log_path
+
+    # Call process_worker_dirs to iterate through the worker directories
+    process_worker_dirs(run, check_worker)
+
+    return ngen_log_path

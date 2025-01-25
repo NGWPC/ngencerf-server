@@ -21,5 +21,5 @@ class NWMRetrospectiveMetrics(BaseModel):
             f"NWMRetrospectiveMetrics: {self.id}, "
             f"Metric: {self.metric.name:10}, "
             f"Value: {self.metric_value}, "
-            f"Calibration Run: {self.calibration_run_id}"
+            f"Calibration Job: {self.calibration_run_id}"
         )

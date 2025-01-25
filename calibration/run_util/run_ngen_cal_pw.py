@@ -1,132 +1,194 @@
+import functools
 import logging
+import os
 from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
-from calibration.models import CalibrationRun, ValidationRun
-from calibration.run_util.run_common import set_job_status, create_and_submit_validation_control, process_validation_output_and_maybe_create_best
-from calibration.util.calibration_validators import SlurmSubmitJobResponse, GenericMessageResponseSerializer
-from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description
-from calibration.views.hydrofabric import validate_response_data
-from calibration.views.read_output import read_calibration_output
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models.base_run import BaseRun
+from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
+from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
+    finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
+from calibration.util.calibration_validators import SlurmSubmitCalibrationOrValidationJobResponse, GenericMessageResponseSerializer, \
+    SlurmSubmitForecastForcingDownloadJobResponse, SlurmSubmitForecastJobResponse
+from calibration.util.file_util import get_single_file
+from calibration.util.ngen_locations import get_forecast_forcing_download_file, get_geopackage_dir_for_job
+from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description, validate_response_data
 
 logger = logging.getLogger(__name__)
 
+User = get_user_model()  # Dynamically fetch the custom user model
 
-def submit_job_to_slurm(url_endpoint, run: CalibrationRun | ValidationRun, owner, input_file, output_file):
-    """
-    Submits a job to Slurm.
-    :param url_endpoint: Slurm URL endpoint for submission.
-    :param run: The CalibrationRun or ValidationRun object.
-    :param owner: The owner (User object) of the job, for generating the auth token.
-    :param input_file: Path to the input file.
-    :param output_file: Path to the output file.
-    """
-    url = urljoin(settings.SLURM_URL, url_endpoint)
-    payload = {
-        'input_file': (None, input_file),
-        'output_file': (None, output_file),
-        'auth_token': (None, generate_custom_token(owner, token_slurm_scope))
-    }
 
-    if isinstance(run, ValidationRun):
-        print('validation_type', run.validation_type)
-        payload.update({
+def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], stdout_file: str) -> None:
+    """
+    Submits a job to Slurm, determining the appropriate endpoint, payload, and handling HTTP responses.
+
+    This function determines the appropriate Slurm endpoint based on the job type,
+    constructs the payload with input arguments and authentication token,
+    and submits the job using an HTTP POST request.
+
+    :param run: The CalibrationRun, ValidationRun, ForecastRun, or ForecastForcingDownloadRun object.
+    :param owner: The owner (user instance) of the job, used to generate the auth token.
+    :param arguments: Dictionary containing command-line arguments for the job (e.g., 'input_file').
+    :param stdout_file: The path to the file where job output will be written.
+    :raises ValueError: If the run type is unsupported.
+    :raises SlurmJobException: If there is an HTTP error during the job submission.
+    """
+    if isinstance(run, CalibrationRun):
+        url_endpoint = settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT
+        payload = {
+            'calibration_run_id': (None, run.id),
+            'input_file': (None, arguments['input_file']),
+            'output_file': (None, stdout_file),
+        }
+        slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
+    elif isinstance(run, ValidationRun):
+        url_endpoint = settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT
+        payload = {
             'validation_run_id': (None, run.id),
             'validation_type': (None, run.validation_type),
-            'worker_name': (None, run.worker_name),
-            'iteration': (None, run.iteration_num)
-        })
+            'input_file': (None, arguments['input_file']),
+            'output_file': (None, stdout_file),
+            'worker_name': (None, arguments.get('worker_name')),
+            'iteration': (None, arguments.get('iteration_num'))
+        }
+        slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
+    elif isinstance(run, ForecastForcingDownloadRun):
+        url_endpoint = settings.SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT
+        payload = {
+            'forecast_forcing_download_run_id': (None, run.id),
+            'gpkg_file': (None, os.path.basename(get_single_file(get_geopackage_dir_for_job(run.forecast_run.calibration_run)))),
+            'cycle_name': (None, arguments['cycle_name']),
+            'config_file': (None, arguments['config_file']),
+            'forcing_file': (None, get_forecast_forcing_download_file(run.forecast_run)),
+            'stdout_file': (None, stdout_file),
+        }
+        slurm_response_validator = SlurmSubmitForecastForcingDownloadJobResponse
+    elif isinstance(run, ForecastRun):
+        url_endpoint = settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT
+        payload = {
+            'forecast_run_id': (None, run.id),
+            'input_file': (None, arguments['validation_best_input']),
+            'stdout_file': (None, stdout_file),
+            'forcing_file': (None, get_forecast_forcing_download_file(run)),
+            'forecast_dir': (None, arguments['forecast_dir'])
+        }
+        slurm_response_validator = SlurmSubmitForecastJobResponse
     else:
-        payload.update({'calibration_run_id': (None, run.id)})
+        raise ValueError(
+            f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun."
+        )
 
-    logger.info(f'slurm payload: {payload}')
+    # Common payload preparation
+    payload['auth_token'] = (None, generate_custom_token(owner, token_slurm_scope))
+    url = urljoin(settings.SLURM_URL, url_endpoint)
+
+    logger.info(f"Submitting Slurm job to {url} with payload: {payload}")
     response = requests.post(url, files=payload)
     handle_slurm_http_error(response, url, run.id)
 
-    logger.info(f'Response from Slurm for submit job: {response.json()}')
-    slurm_response = validate_response_data(SlurmSubmitJobResponse, response.json(),
-                                            'Submit job response data from Slurm is not in the expected format')
+    logger.info(f"Slurm response for {url_endpoint}: {response.json()}")
+    slurm_response = validate_response_data(
+        slurm_response_validator,
+        response.json(),
+        'Submit job response data from Slurm is not in the expected format',
+    )
 
+    # Dynamically update fields
+    update_fields = ['slurm_job_id']
     run.slurm_job_id = slurm_response.get('slurm_job_id')
-    run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
-    run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
-    run.save(update_fields=['slurm_job_id', 'ngen_commit_hash', 'ngen_cal_commit_hash'])
+
+    if hasattr(run, 'ngen_commit_hash'):
+        run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
+        update_fields.append('ngen_commit_hash')
+    if hasattr(run, 'ngen_cal_commit_hash'):
+        run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
+        update_fields.append('ngen_cal_commit_hash')
+
+    run.save(update_fields=update_fields)
     logger.info(f"{get_job_description(run)} submitted successfully! Slurm id: {run.slurm_job_id}")
 
 
-def run_calibration_job_parallel_works(calibration_run: CalibrationRun, owner, input_file, output_file):
-    submit_job_to_slurm(settings.SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT, calibration_run, owner, input_file, output_file)
-
-
-def run_validation_job_parallel_works(validation_run: ValidationRun, owner, input_file, output_file):
-    submit_job_to_slurm(settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT, validation_run, owner, input_file, output_file)
-
-
-def run_job_callback_common_pw(run: CalibrationRun | ValidationRun, slurm_status: SlurmStatusEnum) -> bool:
+def check_pw_status(run: BaseRun, slurm_status: SlurmStatusEnum) -> bool:
     """
-    Common logic for the callback function that gets executed when a Slurm job completes.
+    Checks the status of a job executed in a Parallel Works environment and updates its status accordingly.
 
-    :param run: The CalibrationRun or ValidationRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
-    :return: A boolean indicating whether the job completed successfully.
+    This function updates the job's status based on its Slurm completion status,
+    and determines whether the job was successful, cancelled, or failed.
+
+    :param run: The job object (CalibrationRun, ValidationRun, ForecastRun, etc.) being monitored.
+    :param slurm_status: The SlurmStatusEnum indicating the job's completion status.
+    :return: True if the job completed successfully, False otherwise.
     """
-    job_description = get_job_description(run)
-    logger.info(f'Job end callback received for {job_description} with status {slurm_status}')
-
     if slurm_status == SlurmStatusEnum.CANCELED:
-        logger.error(f'{job_description} was cancelled')
+        logger.error(f"{get_job_description(run)} was cancelled")
         set_job_status(run, StatusEnum.CANCELLED)
         return False
     elif slurm_status == SlurmStatusEnum.FAILED:
-        logger.error(f'{job_description} ending due to abnormal return code')
+        logger.error(f"{get_job_description(run)} ending due to abnormal return code {slurm_status}")
         set_job_status(run, StatusEnum.FAILED)
         return False
     return True
 
 
-def run_calibration_job_callback_slurm(calibration_run: CalibrationRun, slurm_status: SlurmStatusEnum) -> None:
+# Parallel Works callbacks
+# These callbacks are used to handle job completion events for Calibration, Validation, and Forecast jobs
+# in the Parallel Works (PW) environment. They wrap the `run_generic_job_callback` function,
+# providing environment-specific status checks (`check_pw_status`) and job-specific finalization functions.
+
+# Handles the completion of a calibration job in the PW environment.
+# - Uses `check_pw_status` to check the Slurm job's status (e.g., CANCELED or FAILED).
+# - Executes `finalize_calibration` to read job output, mark the job as DONE, and possibly create validation runs.
+run_calibration_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_calibration_after_callback
+)
+
+# Handles the completion of a validation job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_validation` to process validation results and potentially mark the best validation run.
+run_validation_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_validation_after_callback
+)
+
+# Handles the completion of a forecast job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_forecast_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_forecast_after_callback
+)
+
+# Handles the completion of a forecast job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_forecast_forcing_download_job_callback_pw = functools.partial(
+    run_generic_job_callback, job_callback_func=check_pw_status, finalize_func=finalize_forecast_forcing_download_after_callback
+)
+
+
+def cancel_slurm_job(run: BaseRun) -> bool:
     """
-    Callback function that gets executed when a calibration job completes via Slurm.
+    Cancel a running Slurm job by sending a cancellation request.
 
-    :param calibration_run: The CalibrationRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
+    This function constructs the payload with the Slurm job ID, sends an HTTP POST
+    request to the Slurm cancellation endpoint, and validates the response.
+
+    :param run: The CalibrationRun, ValidationRun, ForecastRun, etc. object to terminate.
+    :return: True if the job was successfully cancelled, False otherwise.
+    :raises requests.exceptions.HTTPError: If the cancellation request fails with an HTTP error.
     """
-    if run_job_callback_common_pw(calibration_run, slurm_status):
-        read_calibration_output(calibration_run)
-        set_job_status(calibration_run, StatusEnum.DONE)
-        # Always submit a control run
-        create_and_submit_validation_control(calibration_run)
-
-
-def run_validation_job_callback_slurm(validation_run: ValidationRun, slurm_status: SlurmStatusEnum) -> None:
-    """
-    Callback function that gets executed when a validation job completes via Slurm.
-
-    :param validation_run: The ValidationRun object representing the job run.
-    :param slurm_status: The status of the Slurm job process.
-    """
-    if run_job_callback_common_pw(validation_run, slurm_status):
-        process_validation_output_and_maybe_create_best(validation_run)
-
-
-def cancel_slurm_job(run: CalibrationRun | ValidationRun):
-    """
-     Terminates a job with the given calibration_run_id or validation_run_id by sending a request to slurm.
-     :param run: The CalibrationRun or ValidationRun to terminate.
-     """
     job_description = get_job_description(run)
     logger.info(f"Cancelling slurm job {run.slurm_job_id} for {job_description}")
 
     url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
-    payload = {
-        'slurm_job_id': (None, run.slurm_job_id)
-    }
+    payload = {'slurm_job_id': (None, run.slurm_job_id)}
 
-    logger.info(f'slurm cancel-job payload: {payload}')
+    logger.info(f'Slurm cancel-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)
     try:
         response.raise_for_status()
@@ -143,36 +205,42 @@ def cancel_slurm_job(run: CalibrationRun | ValidationRun):
                            'Cancel job response data from Slurm is not in the expected format')
 
     logger.info(f"{job_description} - {payload['slurm_job_id']} cancelled successfully")
-    if isinstance(run, CalibrationRun):
-        run_calibration_job_callback_slurm(run, SlurmStatusEnum.CANCELED)
-    else:
-        run_validation_job_callback_slurm(run, SlurmStatusEnum.CANCELED)
-
     return True
 
 
 class SlurmJobException(Exception):
-    def __init__(self, message, status_code=None):
+    """
+    Custom exception class for handling Slurm job-related errors.
+
+    This exception encapsulates HTTP-related issues or invalid responses
+    during Slurm job submissions or cancellations.
+
+    :param message: The error message describing the exception.
+    :param status_code: Optional HTTP status code associated with the error.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None):
         super().__init__(message)
         self.status_code = status_code
 
 
-def handle_slurm_http_error(response, url, job_id):
+def handle_slurm_http_error(response: requests.Response, url: str, job_id: int) -> None:
     """
     Handle HTTP errors for Slurm job submissions or cancellations, and log detailed error messages.
+
+    This function logs detailed error messages, validates response content,
+    and raises a custom exception for unsupported or invalid responses.
+
     :param response: The HTTP response object from the Slurm API call.
     :param url: The URL that was called.
     :param job_id: The calibration or validation run ID.
+   :raises SlurmJobException: If the response indicates an error or is in an unexpected format.
     """
     # Initialize variables to store status code and response text
-    status_code = None
-    response_text = None
+    status_code = response.status_code
+    response_text = response.text
 
     try:
-        # Capture status code and response text before raising an exception
-        status_code = response.status_code
-        response_text = response.text
-
         # Check if the response is HTML (likely an error page)
         content_type = response.headers.get('Content-Type', '')
         if 'text/html' in content_type:
@@ -184,14 +252,12 @@ def handle_slurm_http_error(response, url, job_id):
         response.raise_for_status()
 
     except requests.exceptions.HTTPError as e:
-        message = f"Call to {url} failed with {status_code}. Response text: {response_text if response_text else 'No response received'}"
+        message = f"Call to {url} failed with {status_code}. Response text: {response_text or 'No response received'}"
         logger.error(message)
-        print(f"HTTP Error {status_code}: {response_text if response_text else 'No response received'}")
         raise SlurmJobException(message, status_code) from e
 
     except requests.exceptions.RequestException as e:
         # Handle connection errors or timeouts
         message = f"Call to {url} for job {job_id} failed to connect or timed out."
         logger.error(message)
-        print(f"Request Error: {message}")
         raise SlurmJobException(message) from e

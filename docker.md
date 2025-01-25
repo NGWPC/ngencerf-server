@@ -31,6 +31,11 @@ $ tree
 └── ngencerf-server
 ```
 
+So that ngenCERF-server can find the data written by ngen-cal, you should update the value of the variable NGEN_CAL_DATA_PATH to point the fully-qualified path of your data directory:
+```
+NGEN_CAL_DATA_PATH=/home/<username>/data/ngen-cal-data/
+```
+
 ## Running ngenCERF-server
 
 It is recommended to use the [ngencerf-docker](https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngencerf-docker/) project to run the full ngenCERF application stack at once. However, if you would like to just run the back-end services in isolation, execute the following command:

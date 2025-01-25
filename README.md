@@ -42,6 +42,8 @@ sudo ln -s ~/ngwpc/data /ngencerf/data
 
 
 # Access to AWS
+This needs to be done if you are running on AWS Workspace
+
 Some endpoints require access to AWS and therefore you must update your credentials.
 The credentials only last a few hours, so be prepared to refresh them at least once a day.
 Follow instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/Accessing+S3+Bucket+Programmatically+or+through+AWS+CLI, 
@@ -96,19 +98,33 @@ $ ls ~/s3/ngwpc-dev
 
 **Note:** There are other tools that perform the same functionally as `s3fs`,  and 
 environments, such as Parallel Works 
-might have other ways of implementing this functionality.  There is nothing in the server code
-that is dependant on `s3fs`.  All that matters is that the bucket is mounted as a file space
-and that there is agreement between NgenCerf and Hydrofabric path.
+have other ways of implementing this functionality.  There is nothing in the server code
+that is dependent on `s3fs`.  All that matters is that the bucket is mounted as a file space.
 
 
 # Static Files
-There are some static files that are required for Ngen to run.  They should be in a directory under the mount point called `ngen-static-files`.  
+There are some static files that are required for Ngen to run.  They should be in a directory under the data directory at `/ngencerf/data` called `ngen-static-files`.  
 
-The data for the `ngen-static-files` directory is on S3 at `s3://ngwpc-dev/ngen-static-files/`.  This directory and all its contents should be copied to
+The data for the `ngen-static-files` directory is in 2 locations.  Copy everything from  `s3://ngwpc-dev/ngen-static-files/` to
 `/ngencerf/data/ngen-static-files`
 ```
 aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-static-files
 ```
+
+In addition, copy the directory `module_parameter_files` and all its contents from 
+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal/-/tree/development/module_parameter_files to the `/ngencerf/data/ngen-static-files` directory
+
+When done, your `ngen-static-files` directory should look something like this
+
+
+ngen-static-files/
+├── module_parameter_files
+│  ├── lasam
+│  ├── noah-owp-modular
+│  └── ueb
+├── nwm_retrospective
+└── parquet
+
 
 
 # Initial Set-up of database
@@ -125,7 +141,7 @@ systemctl status postgresql
 Change the password for the Admin user
 ```
 sudo -u postgres psql
-ALTER USER postgres PASSWORD 'password';
+ALTER USER postgres PASSWORD 'postgres';
 \q
 ```
 
@@ -148,7 +164,18 @@ These are the steps the `runCert` is performing.  You can skip them if you've su
 
 **Ensure that you are still in the `.venv-cerf` virtual environment**
 
-Run `pip install -r requirements.txt` to update any dependencies
+Run `pip install -r requirements.txt` to update any dependencies.
+
+The `createInput` dependency should be installed separately.  If this is the first time you're installing, then run 
+
+```
+pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+```
+If you are simply updating, enter
+```
+pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+
+```
 Run `manage.py migrate` to create all the tables
 ```
 source $cerfServer/.venv-cerf/bin/activate
@@ -187,16 +214,19 @@ where `public` is the name of your schema.
 
 
 # Running the server
-To run the server, use `runCerf.sh`
+To run the server, use `runCerf.sh`.  If you are running for the first time, or you have dropped all the tables in the table base, then included the `--load-static` option
+```
+./runCerf.sh [--load-static]
+```
 
-**Note:** If running locally (ngen and ngen-cal are being spawned as processes on the same machine), then it is import to run `pre_start.py` from `manage.py` before the
+**Note:** If running with NGEN_ENVIRONMENT=LOCAL or DOCKER, then it is import to run `pre_start.py` from `manage.py` before the
 server starts in order to clean up any Calibrations or Validations that were running at the time the server went down.
 This is not necessary when running on Parallel Works
 
 
 # User Authentication
 
-All endpoints require a user to be authenticated.  You can create a user through the front-end UI or use this curl command:
+All endpoints require a user to be authenticated.  You can create a user through the front-end UI, the command-line interface or use this curl command:
 
 You can use this `curl` command
 ```
@@ -207,6 +237,9 @@ curl --location 'localhost:8000/auth/users/' \
     "password": "<password>"
 }'
 ```
+
+To use the CLI, from the `cli` directory, enter
+`./ngencerf register`
 
 User creation only needs to be done once.
 
@@ -221,7 +254,7 @@ The `cli` directory contains an `ngencerf.sh` command line script which will all
 
 In the `import_test_data` directory, there are some sample import data files.  Set environment variables with your email and password (or put them in ~/.bashrc)
 ```
-$ export NGEN_USERNAME="your_email"
+$ export NGEN_EMAIL="your_email"
 $ export NGEN_PASSWORD="your_password"
 ```
 
@@ -236,8 +269,15 @@ See [NgenCERF Command Line Interface (CLI)](https://confluence.nextgenwaterpredi
 
 There are 3 environments that ngen/ngen-cerf can run in, defined by `settings.NGEN_ENVIRONMENT` in .env
 
-1. LOCAL - ngen and ngen-cal must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
+```
+NGEN_ENVIRONMENT = DOCKER
+```
+
+
+1. LOCAL - ngen and ngen-cal, as well as ngen-fcst and ngen-forcing, must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
 Create a symbolic link to match the specifying in settings.py.
+All the repos should be installed in the same directory.  It can be anything, but a symbolic link needs to be created to match the location in the Docker containers, 
+which is `/ngen-app`.
    ```
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
@@ -246,7 +286,7 @@ Create a symbolic link to match the specifying in settings.py.
 
 
 2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
-Follow these steps to pull the latest ngen-cal docker container.  This container includes both ngen and ngen-cal
+Follow these steps to pull the latest docker containers. 
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
    2. Follow the instructions here to 'Manage Docker as a non-root user': https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user
@@ -254,19 +294,19 @@ Follow these steps to pull the latest ngen-cal docker container.  This container
    ```
    docker login registry.sh.nextgenwaterprediction.com
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest ngen-fcst
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-bmi-forcing:latest && docker image tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-bmi-forcing:latest ngen-bmi-forcing
    ```
 
-   **Note:** If you are developing and have updates to ngen-cal that you want to include, use the following from the ngen-cal repo directory:
+   **Note:** If you are developing and have updates to the repos that you want to include, use one of the following from the appropriate repo directory:
    ```
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-fcst . 
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-bmi-forcing . 
    ```
  
-3. PARALLEL_WORKS - ngen and ngen-cal are installed in a docker container and spawning of ngen-cal process are done using Slurm
+3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
 
-The environment should be specified in the .env file.  The default is DOCKER
-```
-NGEN_ENVIRONMENT = DOCKER
-```
 
 
 # Directory structure
@@ -277,16 +317,16 @@ By convention with the Docker images, the mount point is at `/ngencerf/data`.   
 
 `ngen-cal-work/run_calib` contains the data for ngen and ngen-cal
 
-Files from Hydrofabric are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
+Files from Data Services are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing, observation or geopackage files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
 The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal.
 
-Prior to running the job, the Observation and Forcing files from Hydrofabric will be subsetted to conform to the time range of the job.
+Prior to running the job, the Observation and Forcing files from Data Services will be subsetted to conform to the time range of the job.
 These files will be placed in the instance specific directory, as described above.
-So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Hydrofabric or User upload
+So at run time, the Observation and Forcing data will be in the same location, regardless of whether it came from Data Services or User upload
 
 
 ```

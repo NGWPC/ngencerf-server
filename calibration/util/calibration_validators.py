@@ -1,4 +1,3 @@
-from datetimerange import DateTimeRange
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ErrorDetail
@@ -6,7 +5,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName
 
 
 class BaseSerializer(serializers.Serializer):
@@ -24,12 +23,24 @@ class BaseSerializer(serializers.Serializer):
 
 def enum_validator(enum_class):
     """
-    Should be used for enum class that extend AbstractEnum only
+    Validates if the value is a valid name or alias of the enum class, case-insensitively.
     """
 
     def validate_enum(value):
-        if value not in enum_class.get_names():
-            raise serializers.ValidationError(f"This field must be one of {enum_class.get_names()}")
+        # Convert input value to lowercase for case-insensitive comparison
+        original_value = value  # Store original value for error message
+        value = value.lower()
+
+        # Retrieve valid names, converting each to lowercase for case-insensitive comparison
+        if hasattr(enum_class, 'get_all_valid_names'):
+            # Enum with get_all_valid_names() method (typically from AbstractEnum)
+            valid_names = [name.lower() for name in enum_class.get_all_valid_names()]
+        else:
+            # Standard enum without aliases, using get_names() if available
+            valid_names = [name.lower() for name in enum_class.get_names()] if hasattr(enum_class, 'get_names') else []
+
+        if value not in valid_names:
+            raise serializers.ValidationError(f"Invalid value '{original_value}'. This field must be one of {valid_names}.")
 
     return validate_enum
 
@@ -39,18 +50,57 @@ def no_space_validator(value):
         raise serializers.ValidationError("This field must not contain spaces.")
 
 
+def greater_than_zero(value):
+    if value <= 0:
+        raise serializers.ValidationError("This field must be greater than 0.")
+
+
 class EmptySerializer(BaseSerializer):
     pass
+
+
+class GenericMessageResponseSerializer(BaseSerializer):
+    message = serializers.CharField(required=True)
+
+
+class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
+    message = serializers.CharField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+
+
+class GenericResponseSerializer(GenericMessageAndStatusResponseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+
+
+class GenericResponseSerializerWithValidation(GenericResponseSerializer):
+    validation_run_id = serializers.IntegerField(required=False)
 
 
 class CalibrationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class ForecastRunSerializer(BaseSerializer):
+    forecast_run_id = serializers.IntegerField(required=True)
+
+
+class ForecastForcingDownloadRunSerializer(BaseSerializer):
+    forecast_forcing_download_run_id = serializers.IntegerField(required=True)
+
+
+class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
+    forecast_run_id = serializers.IntegerField(required=True)
+
+
+class GetStatusRequestSerializer(CalibrationRunSerializer):
+    include_performance_metrics = serializers.BooleanField(required=False, default=False)
+
+
 class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
+# TDOO Do we still need this after we've fully implemented Forecast
 class CalibrationOrValidationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
     validation_run_id = serializers.IntegerField(required=False, allow_null=True)
@@ -68,8 +118,47 @@ class CalibrationOrValidationRunSerializer(BaseSerializer):
         return data
 
 
+class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False, allow_null=False)
+    validation_run_id = serializers.IntegerField(required=False, allow_null=False)
+    forecast_run_id = serializers.IntegerField(required=False, allow_null=False)
+
+    def validate(self, data):
+        """
+        Ensure that only one of calibration_run_id, validation_run_id, or forecast_run_id is specified.
+        """
+        calibration_run_id = data.get('calibration_run_id')
+        validation_run_id = data.get('validation_run_id')
+        forecast_run_id = data.get('forecast_run_id')
+
+        # Collect the IDs that are specified (non-null and non-zero values)
+        specified_ids = [
+            id_value
+            for id_value in [calibration_run_id, validation_run_id, forecast_run_id]
+            if id_value is not None
+        ]
+
+        # Check that exactly one ID is specified
+        if len(specified_ids) != 1:
+            raise serializers.ValidationError(
+                "You must specify exactly one of 'calibration_run_id', 'validation_run_id', or 'forecast_run_id'."
+            )
+
+        return data
+
+
+class CancelJobResponseSerializer(GenericMessageAndStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer):
+    def validate(self, data):
+        # Call the parent validate method to include its logic
+        return super().validate(data)
+
+
 class CreateValidationRequestSerializer(CalibrationRunSerializer):
     iteration_id = serializers.IntegerField(required=True)
+
+
+class CreateForecastRequestSerializer(CalibrationRunSerializer):
+    cycle_name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
 
 
 ##################################
@@ -86,28 +175,12 @@ class SlothParameters(BaseSerializer):
     maps_to_variable_name = serializers.CharField(required=True, allow_blank=False)
 
 
-class TimeRangeValidatorMixin:
-    # noinspection PyMethodMayBeStatic
-    def validate_time_range(self, start_time, end_time, field_name, allow_empty=False):
-        if allow_empty and (start_time is None or end_time is None):
-            return None
-
-        if start_time and end_time:
-            time_range = DateTimeRange(start_time, end_time)
-            if not time_range.is_valid_timerange():
-                raise serializers.ValidationError(f'{time_range} is not a valid time range for {field_name}')
-            return time_range
-
-        # If one of the fields is None but allow_empty is not True, raise an error
-        raise serializers.ValidationError(f'{field_name} requires both start and end times')
-
-
 class TimeRangeSerializerAllowEmpty(BaseSerializer):
     start_time = serializers.DateTimeField(required=False)
     end_time = serializers.DateTimeField(required=False)
 
 
-class CalibrationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
+class CalibrationTimeControls(BaseSerializer):
     calibration_start_time = serializers.DateTimeField()
     calibration_end_time = serializers.DateTimeField()
     simulation_start_time = serializers.DateTimeField()
@@ -129,30 +202,8 @@ class CalibrationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
             self.fields['simulation_start_time'].required = True
             self.fields['simulation_end_time'].required = True
 
-    def validate(self, data):
-        calibration_range = self.validate_time_range(
-            data.get('calibration_start_time'),
-            data.get('calibration_end_time'),
-            field_name="calibration",
-            allow_empty=self.allow_empty
-        )
-        simulation_range = self.validate_time_range(
-            data.get('simulation_start_time'),
-            data.get('simulation_end_time'),
-            field_name="simulation",
-            allow_empty=self.allow_empty
-        )
 
-        if calibration_range and simulation_range:
-            if calibration_range.start_datetime not in simulation_range or calibration_range.end_datetime not in simulation_range:
-                raise serializers.ValidationError({
-                    'calibration_range': f'Calibration range {calibration_range} must be contained within simulation range {simulation_range}'
-                })
-
-        return data
-
-
-class ValidationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
+class ValidationTimeControls(BaseSerializer):
     validation_start_time = serializers.DateTimeField()
     validation_end_time = serializers.DateTimeField()
     simulation_start_time = serializers.DateTimeField()
@@ -174,31 +225,9 @@ class ValidationTimeControls(BaseSerializer, TimeRangeValidatorMixin):
             self.fields['simulation_start_time'].required = True
             self.fields['simulation_end_time'].required = True
 
-    def validate(self, data):
-        validation_range = self.validate_time_range(
-            data.get('validation_start_time'),
-            data.get('validation_end_time'),
-            field_name="calibration",
-            allow_empty=self.allow_empty
-        )
-        simulation_range = self.validate_time_range(
-            data.get('simulation_start_time'),
-            data.get('simulation_end_time'),
-            field_name="simulation",
-            allow_empty=self.allow_empty
-        )
 
-        if validation_range and simulation_range:
-            if validation_range.start_datetime not in simulation_range or validation_range.end_datetime not in simulation_range:
-                raise serializers.ValidationError({
-                    'validation_range': f'Validation range {validation_range} must be contained within simulation range {simulation_range}'
-                })
-
-        return data
-
-
-# TODO See if we can eliminate 1 of these after Hydrofabric implementation
-# Used for the output from Hydrofabric
+# TODO See if we can eliminate 1 of these after Data Services implementation
+# Used for the output from Data Services
 class OutputVariableMetadataSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     description = serializers.CharField(required=True, allow_blank=False)
@@ -222,20 +251,34 @@ class OutputVariableSerializer(BaseSerializer):
 
 class SaveTuningParametersSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.FloatField(required=True)
-    maximum = serializers.FloatField(required=True)
-    initial_value = serializers.FloatField(required=True, allow_null=True)
+    minimum = serializers.FloatField(required=True, allow_null=False)
+    maximum = serializers.FloatField(required=True, allow_null=False)
+    initial_value = serializers.FloatField(required=True, allow_null=False)
     module = serializers.CharField(required=True, allow_blank=False)
 
+    def __init__(self, *args, allow_empty=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_empty = allow_empty
+
+        # Adjust field requirements based on allow_empty
+        if self.allow_empty:
+            for field in ['minimum', 'maximum', 'initial_value']:
+                self.fields[field].required, self.fields[field].allow_null = False, True
+
     def validate(self, data):
-        if data['minimum'] is not None and data['maximum'] is not None:
-            if data['minimum'] > data['maximum']:
+        # Only validate ranges if minimum, maximum, and initial_value are provided
+        min_val = data.get('minimum')
+        max_val = data.get('maximum')
+        initial = data.get('initial_value')
+
+        if min_val is not None and max_val is not None:
+            if min_val > max_val:
                 raise serializers.ValidationError(
-                    f"Minimum ({data['minimum']}) must be less than maximum ({data['maximum']}) for parameter {data['name']}"
+                    f"Minimum ({min_val}) must be less than maximum ({max_val}) for parameter {data['name']}"
                 )
-            if data['initial_value'] is not None and not (data['minimum'] <= data['initial_value'] <= data['maximum']):
+            if initial is not None and not (min_val <= initial <= max_val):
                 raise serializers.ValidationError(
-                    f"Value {data['initial_value']} must be between minimum ({data['minimum']:.10f}) and maximum ({data['maximum']:.10f}) for parameter {data['name']}"
+                    f"Value {initial} must be between minimum ({min_val:.10f}) and maximum ({max_val:.10f}) for parameter {data['name']}"
                 )
 
         return data
@@ -270,15 +313,15 @@ class GageSerializer(BaseSerializer):
 
 
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
-# Parameters from Hydrofabric
-# initial_value, min and max are strings, since Hydrofabric sometimes has some extra crap in there, like units
+# Parameters from Data Services
+# initial_value, min and max are strings, since Data Services sometimes has some extra crap in there, like units
 # We save them in the db as floats, so we'll have to sanitize them
 class ModuleParametersSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, allow_blank=False)
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
-    minimum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    maximum = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    min = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    max = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     initial_value = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
@@ -294,22 +337,29 @@ class ModuleMetadataStaticSerializer(BaseSerializer):
 # Landing page
 ##################################
 
+class ValidationStatusSerializer(ValidationRunSerializer):
+    validation_type = serializers.CharField(required=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
 
 class CalibrationJobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=True, allow_null=True)
+    job_genesis = serializers.CharField(required=True, validators=[enum_validator(JobGenesis)])
+    created_at = serializers.DateTimeField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
+    objective_function = serializers.CharField(required=False, allow_null=True)
+    optimization_algorithm = serializers.CharField(required=False, allow_null=True)
+    validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
-    gage_id = serializers.CharField(required=True, allow_null=True)
-    objective_function = serializers.CharField(required=False, allow_null=False)
-    optimization_algorithm = serializers.CharField(required=False, allow_null=False)
     validation_runs = serializers.IntegerField(required=False)
+    validation_run_ids = serializers.ListSerializer(child=serializers.IntegerField())
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
@@ -325,9 +375,17 @@ class ValidationJobsParameter(BaseSerializer):
     value = serializers.FloatField(required=True, allow_null=False)
 
 
+class LoadCalibrationJobSerializer(CalibrationRunSerializer):
+    include_gpkg_map = serializers.BooleanField(required=False, default=True)
+
+
 class FooterResponseSerializer(BaseSerializer):
     version = serializers.CharField(required=True)
+    date = serializers.CharField(required=True)
     contact_email = serializers.CharField(required=True)
+    commit_hash = serializers.CharField(required=True)
+    ngenCerf_version = serializers.CharField(required=True)
+    ngenCerf_date = serializers.CharField(required=True)
 
 
 def validate_automatic_validation(value):
@@ -338,7 +396,7 @@ def validate_automatic_validation(value):
 
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
@@ -359,19 +417,13 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
 
     objective_function = serializers.CharField(required=True, allow_null=True)
-    streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
-    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
+    streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     optimization = serializers.CharField(allow_blank=False, required=True, allow_null=True, validators=[enum_validator(OptimizationEnum)])
     optimization_inputs = OptimizationInputsSerializer(many=True, default=[])
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-
-
-class GenericResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
@@ -447,7 +499,7 @@ class SaveGageRequestSerializer(BaseSerializer):
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
-    hydrofabric_errors = serializers.JSONField(required=False)
+    eds_errors = serializers.JSONField(required=False)
 
 
 class DomainResponseSerializer(BaseSerializer):
@@ -459,8 +511,7 @@ class GagesSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
     nws_id = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-
-    nwm_v3_calibrated = serializers.BooleanField(required=True)
+    nwm_v3_calibration = serializers.BooleanField(required=True)
 
 
 class ForcingSourceSerializer(BaseSerializer):
@@ -490,22 +541,25 @@ class LoadGageResponseSerializer(BaseSerializer):
     domain_values = DomainResponseSerializer(many=True)
 
 
-class CreateCalibrationRunSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
+class CreateCalibrationRunResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class CreateValidationRunSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    calibration_run_id = serializers.IntegerField(required=True)
+class CreateAndRunValidationResponseSerializer(GenericResponseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
-class GenericMessageResponseSerializer(BaseSerializer):
+class CreateAndRunForecastResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
+    calibration_run_id = serializers.IntegerField(required=True)
+    forecast_run_id = serializers.IntegerField(required=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
+    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    forecast_forcing_download_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
-# Geopackage from Hydrofabric
+# Geopackage from Data Services
 class GeopackageSerializer(BaseSerializer):
     uri = serializers.CharField(required=True, allow_blank=False)
     creation_date = serializers.DateTimeField(required=True)
@@ -521,20 +575,33 @@ class PlotListStaticSerializer(BaseSerializer):
     # filename = serializers.CharField(required=True, allow_blank=False)
 
 
-class GetPLotNamesResponseSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
+class GetPLotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):
     plot_names = PlotListStaticSerializer(many=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
-class GetPlotRequestSerializer(CalibrationRunSerializer):
-    plot_name = serializers.CharField(required=True, allow_null=False)
+class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
+    plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
+    include_data = serializers.BooleanField(required=False, default=False)
+    force_include_plot = serializers.BooleanField(required=False, default=False)
+    start = serializers.IntegerField(required=False, default=0, min_value=0)
+    limit = serializers.IntegerField(required=False, default=100, min_value=1)
+
+
+class PaginationMetadataSerializer(BaseSerializer):
+    start = serializers.IntegerField(required=True)
+    limit = serializers.IntegerField(required=True)
+    count = serializers.IntegerField(required=True)
 
 
 class GetPlotResponseSerializer(CalibrationRunSerializer):
+    validation_run_id = serializers.IntegerField(required=False)
+    forecast_run_id = serializers.IntegerField(required=False)
     plot_name = serializers.CharField(required=True, allow_null=False)
-    plot_file_name = serializers.CharField(required=True, allow_null=False)
-    plot_url = serializers.CharField(required=True, allow_null=False)
+    plot_file_path = serializers.CharField(required=False, allow_null=False)
+    plot_url = serializers.CharField(required=False, allow_null=False)
+    plot_data = serializers.JSONField(required=False)
+    pagination_metadata = PaginationMetadataSerializer(required=False)
 
 
 ##################################
@@ -568,6 +635,7 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     nwm_warning = serializers.BooleanField(required=True)
     formulation_warning = serializers.JSONField(required=False)
+    eds_errors = serializers.JSONField(required=False)
 
 
 class ModuleStaticSerializer(BaseSerializer):
@@ -581,7 +649,6 @@ class LoadFormulationResponseSerializer(BaseSerializer):
     modules = ModuleStaticSerializer(many=True)
     module_groups = serializers.ListSerializer(child=serializers.CharField(required=True), required=True, allow_null=False, allow_empty=False)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 ##################################
@@ -613,24 +680,24 @@ class UserParameterFileUploadResponse(BaseSerializer):
     user_parameter_file = serializers.ListField(child=ParameterFileSerializer(), required=True)
 
 
-# Output variables from Hydrofabric
+# Output variables from Data Services
 class ModuleOutputVariablesSerializer(BaseSerializer):
     variable = serializers.CharField(required=True, allow_blank=False)
     # TODO This is required, cannot be null
     description = serializers.CharField(required=True, allow_blank=False, allow_null=True)
 
 
-# Module object from Hydrofabric containing module parameters and output variables
-class ModuleMetadataHydrofabricSerializer(BaseSerializer):
+# Module object from Data Services containing module parameters and output variables
+class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
     output_variables = ModuleOutputVariablesSerializer(many=True)
     parameter_file = S3FileValidator(required=True)
 
 
-# List of module objects from Hydrofabric containing module parameters and output variables
-class ModuleDataHydrofabricListSerializer(BaseSerializer):
-    modules = ModuleMetadataHydrofabricSerializer(many=True, min_length=1, required=True)
+# List of module objects from Data Services containing module parameters and output variables
+class ModuleDataListSerializer(BaseSerializer):
+    modules = ModuleMetadataSerializer(many=True, min_length=1, required=True)
 
 
 class SaveTuningRequestSerializer(BaseSerializer):
@@ -641,22 +708,14 @@ class SaveTuningRequestSerializer(BaseSerializer):
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
 
-    def validate(self, data):
-        if 'calibration_times' in data and 'validation_times' in data:
-            # Make sure there is no overlap between calibration times and validation times
-            calibration_range = DateTimeRange(data['calibration_times']['calibration_start_time'], data['calibration_times']['calibration_end_time'])
-            validation_range = DateTimeRange(data['validation_times']['validation_start_time'], data['validation_times']['validation_end_time'])
-            if calibration_range.is_intersection(validation_range):
-                raise serializers.ValidationError(f"Calibration range {calibration_range} cannot intersect validation range {validation_range}")
-        return data
-
 
 class LoadTuningResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     modules = ModuleMetadataStaticSerializer(many=True, required=False)
     time_range = TimeRangeSerializerAllowEmpty(required=True)
+    calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
+    validation_times = ValidationTimeControls(required=False, allow_empty=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    hydrofabric_errors = serializers.JSONField(required=False)
 
 
 ##################################
@@ -669,8 +728,8 @@ class SaveOptimizationRequestSerializer(BaseSerializer):
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, validators=[enum_validator(OptimizationEnum)])
     objective_function = serializers.CharField(allow_blank=False, required=False)
-    streamflow_threshold = serializers.FloatField(required=False)
-    peak_flow_threshold = serializers.FloatField(required=False)
+    streamflow_threshold = serializers.FloatField(required=False, validators=[greater_than_zero])
+    peak_flow_threshold = serializers.FloatField(required=False, validators=[greater_than_zero])
     stop_criteria = serializers.IntegerField(required=False, min_value=2)
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False)
     save_output_iteration = serializers.BooleanField(required=False)
@@ -694,7 +753,6 @@ class OptimizationInputsUserSerializer(serializers.Serializer):
 class MetricSerializer(serializers.Serializer):
     name = serializers.CharField()
     description = serializers.CharField()
-    is_active = serializers.BooleanField()
     categorical = serializers.BooleanField()
     event_based = serializers.BooleanField()
 
@@ -716,34 +774,66 @@ class LoadOptimizationResponseSerializer(serializers.Serializer):
 ##################################
 # Run Tab
 ##################################
-class GetStatusValidationsResponseSerializer(ValidationRunSerializer):
+
+class PerformanceMetricsSerializer(BaseSerializer):
+    elapsed_time = serializers.DurationField(required=True, allow_null=True)
+    num_cpus = serializers.IntegerField(required=True, allow_null=True)
+    cpu_time = serializers.DurationField(required=True, allow_null=True)
+    max_rss = serializers.CharField(required=True, allow_null=True)
+    max_disk_read = serializers.CharField(required=True, allow_null=True)
+    max_disk_write = serializers.CharField(required=True, allow_null=True)
+    reserved_time = serializers.DurationField(required=False, allow_null=True)
+    io_throughput = serializers.CharField(required=False, allow_null=True)
+
+
+class CommonStatusFieldsMixin(serializers.Serializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    submit_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_start = serializers.DateTimeField(required=False, allow_null=True)
+    run_end = serializers.DateTimeField(required=False, allow_null=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
+
+
+class GetStatusValidationsResponseSerializer(CommonStatusFieldsMixin, ValidationRunSerializer):
     validation_type = serializers.CharField(required=True)
+    iteration_num = serializers.IntegerField(allow_null=True)
 
 
-class IsReadyResponseSerializer(GenericResponseSerializer):
+class GetStatusForcingDownloadSerializer(BaseSerializer):
+    forcing_download_run_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(required=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
+
+
+class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer):
+    forcing_download = GetStatusForcingDownloadSerializer(required=False, allow_null=True)
+
+
+class GetStatusResponseSerializer(GenericResponseSerializer):
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
+    forecasts = GetStatusForecastsResponseSerializer(many=True)
+    submit_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_start = serializers.DateTimeField(required=False, allow_null=True)
+    run_end = serializers.DateTimeField(required=False, allow_null=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
 
 
 class ImportResponseSerializer(GenericResponseSerializer):
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
-    messages = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    messages = serializers.JSONField(required=False)
 
 
 class SubmitCalibrationJobResponseSerializer(GenericResponseSerializer):
-    run_date = serializers.DateTimeField(required=True, allow_null=False)
-
-
-class SubmitValidationJobResponseSerializer(BaseSerializer):
-    message = serializers.CharField(required=True)
-    validation_run_id = serializers.IntegerField(required=True)
-    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=False)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
 
 
 class GetIterationsResponseSerializer(GenericResponseSerializer):
-    iterations = serializers.IntegerField(required=True)
+    iteration = serializers.IntegerField(required=True, allow_null=True)
 
 
 class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
@@ -752,6 +842,46 @@ class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
 
 class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
+class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
+    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
+class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDownloadRunSerializer):
+    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
+class GetJobDirResponseSerializer(GenericResponseSerializer):
+    data_dir = serializers.CharField(required=True)
+
+
+##################################
+# Forecast Tab
+##################################
+class ForecastCycleSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
+    data_sources = serializers.CharField(required=False, allow_null=True)
+    time_range = serializers.CharField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(required=True)
+
+
+class LoadForecastTabResponseSerializer(BaseSerializer):
+    forecast_cycle_values = ForecastCycleSerializer(many=True)
+
+
+class ForecastJobsResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    forecast_run_id = serializers.IntegerField(required=True)
+    cycle = serializers.CharField(required=True)
+    gage_id = serializers.CharField(required=True)
+    forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    forcing_download_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
+
+
+class GetForecastJobsResponseSerializer(BaseSerializer):
+    forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
 
 
 ##################################
@@ -766,13 +896,13 @@ class ExportResponseSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_hydrofabric_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_eds_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_hydrofabric_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     geopackage_user_uploaded_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
@@ -782,8 +912,8 @@ class ExportResponseSerializer(BaseSerializer):
     output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
-    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
+    streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     parameters = SaveTuningParametersSerializer(many=True, required=True)
     objective_function = serializers.CharField(required=True, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, default={})
@@ -799,14 +929,14 @@ class ImportSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    forcing_hydrofabric_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    forcing_eds_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    observational_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    observational_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_hydrofabric_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    geopackage_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
@@ -816,9 +946,9 @@ class ImportSerializer(BaseSerializer):
     output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    streamflow_threshold = serializers.FloatField(required=False, allow_null=True)
-    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True)
-    parameters = SaveTuningParametersSerializer(many=True, required=False)
+    streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
+    parameters = serializers.ListSerializer(child=SaveTuningParametersSerializer(allow_empty=True), required=False)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_inputs = OptimizationInputsSerializer(many=True, required=False)
     optimization = serializers.CharField(allow_blank=False, required=False, allow_null=True, validators=[enum_validator(OptimizationEnum)])
@@ -875,21 +1005,31 @@ class MetricDataByIteration(BaseSerializer):
 class CalibrationDataByIteration(BaseSerializer):
     iteration_num = serializers.IntegerField(required=True, allow_null=False, min_value=0)
     iteration_id = serializers.IntegerField(required=True, allow_null=False)
+    validation_run_id = serializers.IntegerField(required=False)
     worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     best_params = serializers.BooleanField(required=True, allow_null=False)
-    calibration_output_variable_value = serializers.FloatField(required=True, allow_null=False)
+    objective_function_value = serializers.FloatField(required=True, allow_null=False)
     parameters = ParameterDataByIteration(many=True, required=True)
     metrics = MetricDataByIteration(many=True, required=True)
 
 
+class RetrospectiveData(BaseSerializer):
+    name = serializers.CharField(required=True)
+    data = MetricDataByIteration(many=True, required=True)
+
+
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
+    objective_function_metric = serializers.CharField(required=True)
     iteration_data = CalibrationDataByIteration(many=True, required=True)
-    nwm_retrospective_data = MetricDataByIteration(many=True, required=True)
+    retrospective_data = RetrospectiveData(many=True, required=True)
 
 
 class ValidationJobsResponseSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
-    run_date = serializers.DateTimeField(required=True, allow_null=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
+    validation_type = serializers.CharField(required=True)
+    iteration_num = serializers.IntegerField(required=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
     best = serializers.BooleanField(required=True)
 
@@ -898,20 +1038,57 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
-class PerformanceMetricsResponseSerializer(GenericResponseSerializer):
-    elapsed_time = serializers.DurationField(required=True)
-    num_cpus = serializers.IntegerField(required=True)
-    cpu_time = serializers.DurationField(required=True)
-    max_rss = serializers.CharField(max_length=50, required=True)
-    max_disk_read = serializers.CharField(max_length=50, required=True)
-    max_disk_write = serializers.CharField(max_length=50, required=True)
-    reserved_time = serializers.DurationField(required=False, allow_null=True)
+class GetLogRequestSerializer(ValidationRunSerializer):
+    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
+    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
+    start = serializers.IntegerField(required=False, default=0, min_value=0)
+    limit = serializers.IntegerField(required=False, default=100, min_value=1)
+
+
+class LogCategoryDictField(serializers.DictField):
+    def __init__(self, **kwargs):
+        # Define the child as a ListField for log names
+        super().__init__(**kwargs)
+        self.child = serializers.ListField(
+            child=serializers.CharField(), required=False
+        )
+        # Attach the enum validator for dictionary keys
+        self.key_validator = enum_validator(LogCategory)
+
+    def to_internal_value(self, data):
+        # Validate all keys using the enum_validator
+        for key in data.keys():
+            if not isinstance(key, str):
+                raise serializers.ValidationError(f"Invalid key type: {type(key)}. Expected string.")
+            self.key_validator(key)  # Validate the key as a string
+        return super().to_internal_value(data)
+
+
+class GetLogNamesResponseSerializer(BaseSerializer):
+    log_names = serializers.ListSerializer(child=LogCategoryDictField(), required=True)
+
+
+class GetLogsResponseSerializer(GenericMessageResponseSerializer):
+    log_data = serializers.ListSerializer(child=serializers.CharField(), required=True, allow_null=False)
+    pagination_metadata = PaginationMetadataSerializer(required=False)
 
 
 ##################################
 # Slurm
 ##################################
-class SlurmSubmitJobResponse(BaseSerializer):
+class SlurmSubmitCalibrationOrValidationJobResponse(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
     ngen_cal_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+
+
+class SlurmSubmitForecastForcingDownloadJobResponse(BaseSerializer):
+    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
+    ngen_forcing_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+
+
+class SlurmSubmitForecastJobResponse(BaseSerializer):
+    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
+    ngen_forecast_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+    ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
+

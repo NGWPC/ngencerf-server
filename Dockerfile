@@ -33,8 +33,10 @@ ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
 WORKDIR /ngencerf/ngencerf-server/
 COPY requirements.txt /ngencerf/ngencerf-server/
+ARG CREATE_INPUT_TAG
 RUN set -eux; \
     pip3 install -r requirements.txt; \
+    pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput" ; \
 # Lock numpy and netcdf4 versions so t-route doesn't break
     pip3 install "numpy==1.26.4" "pandas~=2.2.2" ; \
     pip3 cache purge ; \
@@ -45,11 +47,5 @@ COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
 COPY ./cerfServer/__.env-docker-dev /ngencerf/ngencerf-server/cerfServer/.env
 COPY ./cerfServer/__local_settings.py /ngencerf/ngencerf-server/cerfServer/local_settings.py
 
-RUN --mount=type=secret,id=aws_token \
-    set -eux; \
-    \
-    mkdir --parents ~/.aws/ ; \
-    cp /run/secrets/aws_token ~/.aws/credentials 
-
-ENTRYPOINT [ "/ngencerf/ngencerf-server/runCerf.sh" ] 
+ENTRYPOINT [ "/ngencerf/ngencerf-server/runCerf.sh" ]
 EXPOSE 8000

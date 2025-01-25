@@ -28,8 +28,6 @@ LOGGING['loggers']['calibration']['level'] = 'DEBUG'
 # Regular logging
 LOGGING['root']['level'] = 'INFO'
 
-VERSION = 0.0
-CONTACT_EMAIL = 'support@ngencerf.com'
 
 DATABASES = {
     'default': {

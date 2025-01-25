@@ -6,7 +6,7 @@ from calibration.models.base_model import BaseModel
 class Iteration(BaseModel):
     iteration_num = models.IntegerField(null=False)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.CASCADE)
-    calibration_output_variable_value = models.FloatField(null=True)
+    objective_function_value = models.FloatField(null=True)
     worker_name = models.TextField(null=False)
     worker_number = models.PositiveIntegerField(null=False)
     best_params = models.BooleanField(null=False, default=False)
@@ -16,6 +16,11 @@ class Iteration(BaseModel):
         constraints = [
             models.UniqueConstraint(fields=['iteration_num', 'worker_name', 'calibration_run'],
                                     name='iteration_iteration_num_worker_calibration_run__unique')
+        ]
+
+        indexes = [
+            models.Index(fields=['calibration_run'], name='iteration_calibration_run_idx'),
+            models.Index(fields=['worker_number'], name='iteration_worker_number_idx'),
         ]
 
     def __str__(self):

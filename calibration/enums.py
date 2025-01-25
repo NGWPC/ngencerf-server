@@ -1,13 +1,17 @@
-from enum import StrEnum, auto
-from typing import List, Dict, Any, Type
+from typing import Dict, Any, Type
 
 from django.core.cache import cache
 
-from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition
+from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition, ForecastCycle, \
+    Metric
 from calibration.util.AbstractEnum import AbstractEnum
 
 
 class StatusEnum(AbstractEnum):
+    """
+    Enum for different statuses with caching support for efficient retrieval.
+    """
+
     SAVED = 'Saved'
     READY = 'Ready'
     RUNNING = 'Running'
@@ -22,7 +26,16 @@ class StatusEnum(AbstractEnum):
 
 
 class ForcingSourceEnum(AbstractEnum):
-    UPLOAD = 'Upload'
+    """
+    Enum for Forcing Sources, with alias support for 'Upload' or 'User Upload' entries.
+    """
+    UPLOAD = 'User Upload'
+
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.UPLOAD: ['Upload', 'User Upload']
+        }
 
     @classmethod
     def get_model(cls) -> Type[ForcingSource]:
@@ -30,12 +43,21 @@ class ForcingSourceEnum(AbstractEnum):
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
-        # Apply the filter to only return active statuses
+        # Apply the filter to return only active elements
         return {'is_active': True}
 
 
 class ObservationalSourceEnum(AbstractEnum):
-    UPLOAD = 'Upload'
+    """
+    Enum for Observational Sources, with alias support for 'Upload' or 'User Upload' entries.
+    """
+    UPLOAD = 'User Upload'
+
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.UPLOAD: ['Upload', 'User Upload']
+        }
 
     @classmethod
     def get_model(cls) -> Type[ObservationalSource]:
@@ -43,12 +65,21 @@ class ObservationalSourceEnum(AbstractEnum):
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
-        # Apply the filter to only return active statuses
+        # Apply the filter to return only active elements
         return {'is_active': True}
 
 
 class GeopackageSourceEnum(AbstractEnum):
-    UPLOAD = 'Upload'
+    """
+    Enum for Geopackage Sources, with alias support for 'Upload' or 'User Upload' entries.
+    """
+    UPLOAD = 'User Upload'
+
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.UPLOAD: ['Upload', 'User Upload']
+        }
 
     @classmethod
     def get_model(cls) -> Type[GeopackageSource]:
@@ -56,17 +87,50 @@ class GeopackageSourceEnum(AbstractEnum):
 
     @classmethod
     def get_filter(cls) -> Dict[str, Any]:
-        # Apply the filter to only return active statuses
+        # Apply the filter to return only active elements
         return {'is_active': True}
 
 
+class ForecastCycleEnum(AbstractEnum):
+    """
+    Enum for Forecast Cycles,
+    """
+
+    @classmethod
+    def get_model(cls) -> Type[ForecastCycle]:
+        return ForecastCycle
+
+
 class DomainEnum(AbstractEnum):
+    """
+    Domain Enum with database synchronization.
+    """
+
     @classmethod
     def get_model(cls) -> Type[Domain]:
         return Domain
 
 
+class MetricEnum(AbstractEnum):
+    """
+    Metric Enum with database synchronization
+    """
+
+    @classmethod
+    def get_model(cls) -> Type[Metric]:
+        return Metric
+
+    @classmethod
+    def get_filter(cls) -> Dict[str, Any]:
+        # Apply the filter to return only active elements
+        return {'is_active': True}
+
+
 class OptimizationEnum(AbstractEnum):
+    """
+    Enum for Optimization types with prefetching for related inputs.
+    """
+
     DDS = 'DDS'
     GWO = 'GWO'
     PSO = 'PSO'
@@ -77,6 +141,7 @@ class OptimizationEnum(AbstractEnum):
 
     @classmethod
     def load_items(cls) -> None:
+        # Fetch optimization items with prefetching for 'inputs' relation
         model = cls.get_model()
         filter_criteria = cls.get_filter() or {}
 
@@ -89,71 +154,87 @@ class OptimizationEnum(AbstractEnum):
 
 
 class PlotDefinitionsEnum(AbstractEnum):
+    """
+    Enum for Plot Definitions.
+    """
+
+    HYDROGRAPH_EVOLUTION = 'Hydrograph evolution'
+    OBJECTIVE_FUNCTION_EVOLUTION = 'Objective Function evolution'
+    METRIC_EVOLUTION = 'Metric evolution'
+    PARAMETER_EVOLUTION = 'Parameter evolution'
+    SCATTERPLOT_STREAMFLOW = 'Scatterplot streamflow'
+    METRICS_VS_OBJECTIVE_FUNCTION = 'Metrics vs Objective Function'
+    STREAM_FLOW_PRECIPITATION = 'Stream Flow Precipitation'
+    FLOW_DURATION_CURVES = 'Flow Duration Curves'
+    COST_HISTORY = 'Cost History'
+    BAR_CHART_METRICS = 'Bar Chart Metrics'
+    FLOW_DURATION_CURVES_VALIDATION = 'Flow Duration Curves Validation'
+    HYDROGRAPH_VALIDATION = 'Hydrograph Validation'
+    STREAMFLOW_VALIDATION_PRECIPITATION = 'Streamflow Validation Precipitation'
+
     @classmethod
     def get_model(cls) -> Type[PlotDefinition]:
         return PlotDefinition
 
 
-class DataTypeEnum(StrEnum):
+# Below are simple enums without database synchronization or aliasing.
+
+class DataTypeEnum(AbstractEnum):
     DOUBLE = 'double'
     INTEGER = 'integer'
     BOOLEAN = 'boolean'
     STRING = 'string'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class SlurmStatusEnum(StrEnum):
+class SlurmStatusEnum(AbstractEnum):
     DONE = 'DONE'
     FAILED = 'FAILED'
     CANCELED = 'CANCELED'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class LocationEnum(StrEnum):
+class LocationEnum(AbstractEnum):
     NODE = 'node'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class UnitsEnum(StrEnum):
+class UnitsEnum(AbstractEnum):
     M = 'm'
     NONE = 'none'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
 
-
-class ValidationType(StrEnum):
+class ValidationType(AbstractEnum):
     VALID_BEST = 'valid_best'
     VALID_CONTROL = 'valid_control'
     VALID_ITERATION = 'valid_iteration'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
+
+class LogCategory(AbstractEnum):
+    CALIBRATION = 'calibration'
+    VALIDATION = 'validation'
+    FORECAST = 'forecast'
+    GLOBAL = 'global'
+
+
+class LogName(AbstractEnum):
+    NGEN_STDOUT = 'ngen stdout'
+    NGEN_CAL_STDOUT = 'ngen-cal stdout'
+    FORECAST_STDOUT = 'forecast stdout'
+    NGEN = 'ngen'
 
 
 # Used for both ValidationMetrics and NWMRetrospectiveMetrics
-class ValidationMetricPeriod(StrEnum):
-    calib = auto()
-    valid = auto()
-    full = auto()
+class ValidationMetricPeriod(AbstractEnum):
+    calib = 'calib'
+    valid = 'valid'
+    full = 'full'
 
-    @classmethod
-    def get_names(cls) -> List[str]:
-        # noinspection PyUnresolvedReferences
-        return [e.value for e in cls]
+
+class JobGenesis(AbstractEnum):
+    CLONE = 'clone'
+    IMPORT = 'import'
+    GUI = 'gui'
+
+
+class GetValidationJobsScope(AbstractEnum):
+    IDS = 'ids'
+    STATUS = 'status'
+    DETAILS = 'details'

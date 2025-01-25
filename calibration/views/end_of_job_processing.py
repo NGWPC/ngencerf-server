@@ -1,28 +1,28 @@
 import csv
 import logging
+import math
 import os
 import re
-import time
 from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
-from pathlib import Path
-from typing import Dict
+from typing import Dict, Callable
 
 import pandas as pd
-from django.core.cache import cache
 from django.db import transaction
+from django.utils.timezone import now
 
-from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType
-from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, Metric, ValidationRun, \
-    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult
-
-from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file_from_worker_dir, get_metrics_iteration_file, \
-    get_params_iteration_file, get_objective_log_best_file, get_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
+from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum
+from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
+    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
+from calibration.models.base_run import BaseRun
+from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
+    get_params_iteration_file, get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
-    get_validation_special_performance_file
+    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename, \
+    get_forecast_forcing_download_performance_file, get_forecast_performance_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -33,28 +33,45 @@ BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
-def read_validation_output(validation_run: ValidationRun):
+def read_validation_output(validation_run: ValidationRun) -> None:
+    """
+    Processes the output of a validation run by identifying the correct worker, retrieving performance metrics,
+    and updating the validation run's attributes.
+
+    :param validation_run: The ValidationRun instance.
+    """
     job_description = get_job_description(validation_run)
 
-    logger.info(f"Processing output for {job_description} ")
+    logger.info(f"Processing output for {job_description}")
 
-    with (transaction.atomic()):
-        if validation_run.validation_type == ValidationType.VALID_ITERATION:
-            metrics_file = get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
-        else:
-            metrics_file = get_validation_special_performance_file(validation_run.calibration_run, ValidationType(validation_run.validation_type))
+    with transaction.atomic():
+        # Convert validation_type to an instance of ValidationType
+        validation_type = ValidationType(validation_run.validation_type)
 
-        metrics = parse_performance_metrics(metrics_file)
-        validation_run.performance_metrics = metrics
-        validation_run.save(update_fields=['performance_metrics'])
+        # Identify the matching worker based on validation type
+        matching_worker = find_validation_worker_with_matching_log(
+            validation_run,
+            validation_type=validation_type,
+            worker_name=validation_run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
+            iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
+        )
+        validation_run.validation_worker_name = matching_worker
+
+        metrics_file = (
+            get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
+            if validation_type == ValidationType.VALID_ITERATION
+            else get_validation_special_performance_file(validation_run.calibration_run, validation_type)
+        )
+
+        create_performance_metrics(validation_run, metrics_file)
+        validation_run.save(update_fields=['performance_metrics', 'run_start', 'validation_worker_name'])
 
         process_validation_for_validation_run(validation_run)
 
     logger.info(f"End of processing output for {job_description}")
 
 
-# Function to read the output of a calibration run
-def read_calibration_output(calibration_run: CalibrationRun):
+def read_calibration_output(calibration_run: CalibrationRun) -> None:
     """
     Process the output of a CalibrationRun. This function handles reading and
     processing the worker directories and their iteration files.
@@ -66,8 +83,8 @@ def read_calibration_output(calibration_run: CalibrationRun):
     logger.info(f"Processing output for {job_description}")
 
     with transaction.atomic():
-        metrics = parse_performance_metrics(get_calibration_performance_file(calibration_run))
-        calibration_run.performance_metrics = metrics
+        metrics_file = get_calibration_performance_file(calibration_run)
+        create_performance_metrics(calibration_run, metrics_file)
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
             raise CerfException(f"End of job processing has already been completed for {job_description}")
@@ -79,9 +96,48 @@ def read_calibration_output(calibration_run: CalibrationRun):
         calibration_run.save()
         process_iterations_for_all_workers(calibration_run)
 
-        calibration_run.save()
+        calibration_run.save(update_fields=['run_start', 'performance_metrics', 'realization_file_path'])
 
     logger.info(f"End of processing output for {job_description}")
+
+
+def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun) -> None:
+    job_description = get_job_description(run)
+
+    logger.info(f"Processing output for {job_description}")
+    with transaction.atomic():
+        performance_metrics_file = (
+            get_forecast_forcing_download_performance_file(run.forecast_run)
+            if isinstance(run, ForecastForcingDownloadRun)
+            else get_forecast_performance_file(run)
+        )
+
+        create_performance_metrics(run, performance_metrics_file)
+        run.save()
+
+    logger.info(f"End of processing output for {job_description}")
+
+
+def create_performance_metrics(run: BaseRun, performance_metrics_file: str) -> None:
+    """
+    Parses performance metrics from a file and updates the run with the metrics.
+
+    :param run: The run instance (CalibrationRun, ValidationRun, or similar).
+    :param performance_metrics_file: Path to the performance metrics file.
+    :return: None
+    """
+    performance_metrics = parse_performance_metrics(performance_metrics_file)
+
+    # Use a reserved_time of 0 if performance_metrics is None
+    reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
+    run.run_start = run.submit_date + reserved_time
+
+    if not performance_metrics:
+        # Fallback to calculate elapsed_time manually
+        elapsed_time = now() - run.run_start
+        performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
+
+    run.performance_metrics = performance_metrics
 
 
 def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file: str, expected_run_type: str) -> None:
@@ -98,15 +154,12 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
     logger.info(f"Processing '{metrics_file} for {job_description}")
 
     # Check if the file exists
-    if not Path(metrics_file).is_file():
+    if not os.path.isfile(metrics_file):
         logger.error(f'{metrics_file} does not exist')
         return
 
     # Read the metrics file using pandas
     metrics_df = pd.read_csv(metrics_file)
-
-    # Prefetch metrics for quick lookup
-    metrics_lookup = get_cached_metrics()
 
     metrics_to_create = []  # List to accumulate metrics to be created
 
@@ -129,9 +182,9 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
         # For each metric in the row, create or update the relevant Metric model
         for metric_name, value in metrics_row.items():
             # Perform case-insensitive lookup for the metric
-            metric = metrics_lookup.get(metric_name.lower())
+            metric = MetricEnum.get_instance(metric_name)
             if not metric:
-                raise CerfException(f"Could not find metric '{metric_name}' from {metrics_file} in the database for run {run.id}")
+                raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
             metric_value = float(value) if value else float('nan')
 
@@ -203,7 +256,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
 
 
 # Function to process iterations for all workers in a run
-def process_iterations_for_all_workers(calibration_run: CalibrationRun):
+def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     """
     Process all Iteration objects for the workers of a given CalibrationRun.
     It uses prefetching to optimize database queries and processes the iterations
@@ -222,7 +275,7 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun):
 
 
 # Function to process iterations for a specific worker
-def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations):
+def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations: list[Iteration]) -> None:
     """
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
@@ -233,14 +286,11 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
                         Need to prefix with ngen_ and suffix with _worker.
     :param iterations: A list of Iteration objects for the worker.
     """
-    logger.info(f"Processing iterations for {worker_name} for Calibration Run {calibration_run.id}")
-
-    # Get the cached metrics once for this batch of processing
-    metrics_lookup = get_cached_metrics()
+    logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
     # Get the worker's path
-    worker_path = get_worker_path(calibration_run, worker_name)
-    if not Path(worker_path).is_dir():
+    worker_path = get_calibration_worker_path(calibration_run, worker_name)
+    if not os.path.isdir(worker_path):
         raise CerfException(f"{worker_path} does not exist or is not a directory for CalibrationRun {calibration_run.id}")
 
     # Get the necessary files for metrics, parameters, and best objective function log
@@ -250,15 +300,15 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     objective_log_best_file = get_objective_log_best_file(calibration_run, worker_name)
 
     # Check if the files exist
-    if not Path(metrics_iteration_file).is_file():
+    if not os.path.isfile(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
-    if not Path(params_iteration_file).is_file():
+    if not os.path.isfile(params_iteration_file):
         raise CerfException(f'{params_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
 
     # Check for the best iteration based on optimization type (DDS, GWO, PSO)
     best_iteration_for_worker = -1
-    if calibration_run.optimization.name == 'DDS':
-        if not Path(objective_log_best_file).is_file():
+    if calibration_run.optimization == OptimizationEnum.DDS.db_instance:
+        if not os.path.isfile(objective_log_best_file):
             raise CerfException(f'{objective_log_best_file} does not exist for CalibrationRun {calibration_run.id}')
         # Read the best iteration from the log
         last_line = read_last_line(objective_log_best_file)
@@ -278,7 +328,8 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Ensure the metrics and parameters CSV files have the same number of rows
     if len(metrics_df) != len(params_df):
         raise CerfException(
-            f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}')
+            f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}'
+        )
 
     metrics_to_create = []  # List to accumulate metrics to be created
     params_to_create = []  # List to accumulate parameters to be created
@@ -286,16 +337,27 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Update the output variables for the worker's iterations
     update_output_variables(metrics_iteration_file, calibration_run, worker_name)
 
+    # Track whether a best iteration was set
+    best_iteration_found = False
+
     # Loop over both metrics and parameters DataFrames row by row
     for _, (metrics_row, params_row) in enumerate(zip(metrics_df.iterrows(), params_df.iterrows())):
-        iteration_num = metrics_row[1]['iteration']
+        # Convert the pandas.Series objects to dictionaries
+        metrics_row_dict = metrics_row[1].to_dict()
+        params_row_dict = params_row[1].to_dict()
+
+        iteration_num = metrics_row_dict['iteration']
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} for CalibrationRun {calibration_run.id}")
 
         # Process metrics and parameters for this iteration
-        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row[1], metrics_to_create, metrics_lookup)
-        process_params_row(calibration_run, iteration, params_row[1], params_to_create, best_iteration_for_worker)
+        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create)
+        process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker)
+
+        # Check if this iteration was set as the best
+        if iteration.best_params:
+            best_iteration_found = True
 
     # Bulk create IterationMetric and IterationParameter objects in chunks
     if metrics_to_create:
@@ -305,6 +367,10 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     if params_to_create:
         for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
             IterationParameter.objects.bulk_create(params_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+
+    # Log a warning if no best iteration was found for the worker
+    if not best_iteration_found:
+        raise CerfException(f"No best iteration found for worker {worker_name} in CalibrationRun {calibration_run.id}")
 
     # Check if this worker has a non-empty Output_Iteration directory
     output_iter = os.path.join(worker_path, 'Output_Iteration')
@@ -318,16 +384,16 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
                     # Save the filename to the IterationResult for this iteration
                     iteration = iteration_dict.get(iteration_num)
                     if iteration:
-                        iteration_result = IterationResult.objects.create(
-                            iteration=iteration,
-                            filename=filename
-                        )
-                        logger.info(f"Saved output_iteration filename to {iteration_result} for CalibrationRun {calibration_run.id}")
+                        IterationResult.objects.create(iteration=iteration, filename=filename)
+                        logger.info(f"Saved output_iteration filename {filename} for CalibrationRun {calibration_run.id}")
                     break
 
 
 # Function to process a single metrics row
-def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iteration: Iteration, metrics_row, metrics_to_create, metrics_lookup):
+def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
+                                        iteration: Iteration,
+                                        metrics_row: dict[str, float | None],
+                                        metrics_to_create: list[IterationMetric]) -> None:
     """
     Process a single row from the metrics file and create IterationMetric objects.
 
@@ -335,7 +401,6 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iterati
     :param iteration: The Iteration object for the current iteration.
     :param metrics_row: The row of metrics data from the file.
     :param metrics_to_create: The list to accumulate created IterationMetric objects.
-    :param metrics_lookup: Cache to avoid repeated lookups of Metrics
     """
     job_description = get_job_description(calibration_run)
 
@@ -344,11 +409,14 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iterati
 
     for metric_name, value in metrics_row.items():
         # Perform case-insensitive lookup for the metric
-        metric = metrics_lookup.get(metric_name.lower())
+        metric = MetricEnum.get_instance(metric_name.lower())
+
         if not metric:
             raise CerfException(f"Could not find metric '{metric_name}'")
 
-        metric_value = float(value) if value else None
+        # Set metric_value to NaN if missing
+        metric_value = float(value) if value else float('nan')
+
         metric_obj = IterationMetric(
             iteration=iteration,
             metric=metric,
@@ -359,7 +427,11 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun, iterati
 
 
 # Function to process a single parameters row
-def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, params_row, params_to_create, best_iteration_for_worker):
+def process_params_row(calibration_run: CalibrationRun,
+                       iteration: Iteration,
+                       params_row: dict[str, float | None],
+                       params_to_create: list[IterationParameter],
+                       best_iteration_for_worker: int) -> None:
     """
     Process a single row from the parameters file and create IterationParameter objects.
     Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
@@ -377,9 +449,9 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
 
     # Initialize global_best_params_dict if not using DDS optimization
     best_params_dict: Dict[str, float] = {}
-    if calibration_run.optimization != OptimizationEnum.from_enum(OptimizationEnum.DDS):
+    if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
         global_best_params_file = get_global_best_params_file(calibration_run)
-        if not Path(global_best_params_file).is_file():
+        if not os.path.isfile(global_best_params_file):
             raise CerfException(f"{global_best_params_file} does not exist")
 
         # Read the global best parameters into a DataFrame
@@ -391,7 +463,7 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
     # Check if the current params_row matches the global best parameters
     is_best_match = (
             len(params_row) == len(best_params_dict) and
-            all(param_name in best_params_dict and float(value) == best_params_dict[param_name]
+            all(param_name in best_params_dict and math.isclose(float(value), best_params_dict[param_name], rel_tol=1e-9, abs_tol=0.0)
                 for param_name, value in params_row.items())
     )
 
@@ -425,7 +497,7 @@ def process_params_row(calibration_run: CalibrationRun, iteration: Iteration, pa
 
 
 # Function to update the output variables for the worker's iterations
-def update_output_variables(metrics_iteration_file, calibration_run: CalibrationRun, worker_name):
+def update_output_variables(metrics_iteration_file: str, calibration_run: CalibrationRun, worker_name: str) -> None:
     """
     Update the output variable values for each iteration in a worker's metrics file.
 
@@ -457,7 +529,7 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
 
         logger.debug(
             f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
-        iteration.calibration_output_variable_value = obj_fun_val
+        iteration.objective_function_value = obj_fun_val
 
         # Add the modified object to the list
         iterations_to_update.append(iteration)
@@ -466,11 +538,11 @@ def update_output_variables(metrics_iteration_file, calibration_run: Calibration
     if iterations_to_update:
         with transaction.atomic():  # Ensure atomicity of the bulk update
             for i in range(0, len(iterations_to_update), BULK_CREATE_BATCH_SIZE):
-                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['calibration_output_variable_value'])
+                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['objective_function_value'])
 
 
 # Function to read the last line of a file
-def read_last_line(filename):
+def read_last_line(filename: str) -> str:
     """
     Reads and returns the last line of a file.
 
@@ -481,57 +553,36 @@ def read_last_line(filename):
         return deque(file, maxlen=1).pop().decode().strip()
 
 
-# Function to process worker directories for a CalibrationRun
-def process_worker_dirs(calibration_run: CalibrationRun, worker_lambda):
+def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Callable[[str, CalibrationRun | ValidationRun], None]) -> None:
     """
-    Loops through directories matching the pattern "ngen_xxxxx_worker" and applies the worker_lambda function.
+    Generalized function to process worker directories for either a CalibrationRun or ValidationRun.
 
-    :param calibration_run: The CalibrationRun instance to process.
+    :param run: The CalibrationRun or ValidationRun instance to process.
     :param worker_lambda: A lambda function that processes each worker directory.
+    :raises CerfException: If the output directory is not found.
     """
-    output_calibration_run_dir = get_output_calibration_run_dir(calibration_run)
-    output_calibration_run_dir_path = Path(output_calibration_run_dir)
-    if not output_calibration_run_dir_path.exists():
-        raise CerfException(f"Cannot find expected data at {output_calibration_run_dir}")
-    for item in output_calibration_run_dir_path.iterdir():
+    if isinstance(run, CalibrationRun):
+        output_run_dir = get_output_calibration_run_dir(run)
+    elif isinstance(run, ValidationRun):
+        output_run_dir = get_output_validation_run_dir(run.calibration_run)
+    else:
+        raise ValueError(f"Invalid run object: {type(run).__name__}. Expected CalibrationRun or ValidationRun.")
+
+    if not os.path.exists(output_run_dir):
+        raise CerfException(f"Cannot find expected data at {output_run_dir}")
+
+    job_description = get_job_description(run)
+
+    for item in os.listdir(output_run_dir):
+        worker_dir = os.path.join(output_run_dir, item)
         # Check if the item is a directory and matches the pattern
-        if item.is_dir() and worker_directory_pattern.match(item.name):
-            worker_dir = output_calibration_run_dir_path / item
-            logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Processing worker directory: {worker_dir}')
-            worker_lambda(worker_dir, calibration_run)
-
-
-# Function to accumulate the total number of iterations across worker directories
-def accumulate_iterations(calibration_run: CalibrationRun):
-    """
-    Loops through worker directories, counts the iterations in each worker's metrics file,
-    and returns the total iterations across all workers.
-
-    :param calibration_run: The CalibrationRun instance to process.
-    :return: Total number of iterations across all worker directories.
-    """
-    total_iterations = 0  # Initialize the accumulator
-
-    # Define the lambda function to process each worker directory and count iterations
-    def count_iterations_for_worker(worker_dir, calibration_run: CalibrationRun):  # noqa : F811
-        nonlocal total_iterations
-        metrics_iteration_file = get_metrics_iteration_file_from_worker_dir(calibration_run, worker_dir)
-
-        if not Path(metrics_iteration_file).is_file():
-            logger.error(f'File {metrics_iteration_file} not found in {worker_dir}')
-        else:
-            # Count rows in the CSV file and add to total iterations
-            rows = count_rows_in_csv(metrics_iteration_file)
-            total_iterations += rows
-
-    # Call process_worker_dirs with the defined lambda function
-    process_worker_dirs(calibration_run, count_iterations_for_worker)
-
-    return total_iterations  # Return the accumulated total iterations
+        if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
+            logger.debug(f'{job_description} Processing worker directory: {worker_dir}')
+            worker_lambda(worker_dir, run)
 
 
 # Function to count the number of rows in a CSV file
-def count_rows_in_csv(file_path):
+def count_rows_in_csv(file_path: str) -> int:
     """
     Counts the number of rows in a CSV file, excluding the header.
 
@@ -543,47 +594,46 @@ def count_rows_in_csv(file_path):
         return sum(1 for _ in file) - 1
 
 
-def get_cached_metrics() -> dict:
-    """
-    Retrieve the Metric objects from cache or from the database if not cached.
-    :return: A dictionary of metric names (lowercased) mapped to Metric objects.
-    """
-    # Check if the cache already exists
-    metrics_lookup = cache.get('metrics_cache')
-    if not metrics_lookup:
-        # Fetch from the database and cache the results
-        metrics_lookup = {m.name.lower(): m for m in Metric.objects.all()}
-        cache.set('metrics_cache', metrics_lookup, None)  # Cache indefinitely
-    return metrics_lookup
-
-
-def parse_duration(duration_str):
+def parse_duration(duration_str: str) -> timedelta:
     """Converts a duration string (HH:MM:SS) into a timedelta object."""
     hours, minutes, seconds = map(int, duration_str.split(':'))
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
-def parse_performance_metrics(file_path):
+def parse_size_to_kb(size_str: str | None) -> float | None:
+    """
+    Converts a size string (e.g., '123K', '1.5M', '2G') to a float in kilobytes.
+    Returns None if the string is invalid or empty.
+    """
+    if not size_str:
+        return None
+
+    size_str = size_str.strip().upper()
+    try:
+        if size_str.endswith('K'):
+            return float(size_str[:-1])
+        elif size_str.endswith('M'):
+            return float(size_str[:-1]) * 1024
+        elif size_str.endswith('G'):
+            return float(size_str[:-1]) * 1024 ** 2
+        else:
+            # Assume no unit means it's already in KB
+            return float(size_str)
+    except ValueError:
+        return None
+
+
+def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
     """
     Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database.
     Logs a warning if any expected field is missing. Assumes MaxRSS, MaxDiskRead, and MaxDiskWrite are only on
     the .batch line, while Reserved is only on the non-batch line.
     """
-
-    # Slurm takes awhile to finish writing the performance metrics file, so wait awhile
-    time.sleep(30)   # Shouldn't really need to wait this long
-    # Check if file exists, retrying a few times
-    attempts = 1
-    for attempt in range(attempts):
-        if os.path.exists(file_path):
-            logger.info(f'Reading performance metrics from {file_path}')
-            break
-        else:
-            logger.warning(f'Attempt {attempt + 1}: Performance metrics file {file_path} not found, retrying...')
-            time.sleep(30)
+    if not os.path.exists(file_path):
+        logger.error(f'Performance metrics file {file_path} not found')
+        return None
     else:
-        logger.error(f'Performance metrics file {file_path} not found after {attempts} attempts')
-        return
+        logger.info(f'Reading performance metrics from {file_path}')
 
     reserved_time = None
     batch_metrics = None
@@ -607,9 +657,9 @@ def parse_performance_metrics(file_path):
                     'elapsed_time': parse_duration(row.get('Elapsed', '')) if row.get('Elapsed') else None,
                     'num_cpus': int(row.get('NCPUS', 0)) if row.get('NCPUS') else None,
                     'cpu_time': parse_duration(row.get('CPUTime', '')) if row.get('CPUTime') else None,
-                    'max_rss': row.get('MaxRSS', None),
-                    'max_disk_read': row.get('MaxDiskRead', None),
-                    'max_disk_write': row.get('MaxDiskWrite', None),
+                    'max_rss': parse_size_to_kb(row.get('MaxRSS', None)),
+                    'max_disk_read': parse_size_to_kb(row.get('MaxDiskRead', None)),
+                    'max_disk_write': parse_size_to_kb(row.get('MaxDiskWrite', None)),
                     'reserved_time': reserved_time  # This will be updated later if available
                 }
             else:
@@ -623,21 +673,62 @@ def parse_performance_metrics(file_path):
                 reserved_time = parse_duration(row.get('Reserved', '')) if row.get('Reserved') else None
 
     if batch_metrics:
-        # Now update the reserved_time for the batch metrics
+        # Update the reserved_time for the batch metrics
         batch_metrics['reserved_time'] = reserved_time
 
         # Create or update the PerformanceMetrics record
-        metrics = PerformanceMetrics.objects.create(
-            slurm_job_id=batch_metrics['slurm_job_id'],
-            elapsed_time=batch_metrics['elapsed_time'],
-            num_cpus=batch_metrics['num_cpus'],
-            cpu_time=batch_metrics['cpu_time'],
-            max_rss=batch_metrics['max_rss'],
-            max_disk_read=batch_metrics['max_disk_read'],
-            max_disk_write=batch_metrics['max_disk_write'],
-            reserved_time=batch_metrics['reserved_time']
-        )
-
+        metrics = PerformanceMetrics.objects.create(**batch_metrics)
         return metrics
 
     return None
+
+
+def find_validation_worker_with_matching_log(
+        validation_run: ValidationRun,
+        validation_type: ValidationType,
+        worker_name: str | None = None,
+        iteration_num: int | None = None
+) -> str | None:
+    """
+    Searches the worker directories of a validation run to locate the worker directory
+    containing the ngen stdout file. The matching criteria depend on the validation type:
+    - For VALID_ITERATION: Matches the worker name and iteration number in the log.
+    - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
+
+    :param validation_run: The validation run object to process.
+    :param validation_type: The type of validation (VALID_ITERATION, VALID_BEST, VALID_CONTROL).
+    :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
+    :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
+    :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
+    """
+    matching_worker_name = None
+
+    # Determine the expected first line of the log based on validation type
+    if validation_type == ValidationType.VALID_ITERATION:
+        if not worker_name or iteration_num is None:
+            raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
+        expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
+    elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
+        expected_first_line = f"Starting {validation_type.value.replace('_', ' ').capitalize()} Run"
+    else:
+        raise ValueError(f"Unsupported validation type: {validation_type}")
+
+    # Custom function to check worker directories for the ngen.log file
+    def check_worker(worker_dir: str, run: ValidationRun):
+        nonlocal matching_worker_name
+        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
+
+        # Check if ngen.log exists in the current worker directory
+        if os.path.isfile(potential_log_path):
+            # Read the first line of the file
+            with open(potential_log_path, 'r') as file:
+                first_line = file.readline().strip()
+
+            # Check if the first line matches the expected format
+            if first_line == expected_first_line:
+                matching_worker_name = os.path.basename(worker_dir)
+
+    # Call process_worker_dirs to iterate through the worker directories
+    process_worker_dirs(validation_run, check_worker)
+
+    return matching_worker_name

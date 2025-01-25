@@ -23,5 +23,7 @@ Thumbs_db
 data
 .aws_credentials
 .gitlab_token
+ngencerf_services.override.env
+postgres_db.override.env
 
 .load_static
