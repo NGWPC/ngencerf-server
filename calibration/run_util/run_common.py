@@ -263,7 +263,7 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     """
     build_forecast_forcing_download_config(forecast_forcing_download_run)
 
-    gpkg_file = os.path.basename(get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run)))
+    gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
     config_file = get_forecast_forcing_config_file(forecast_forcing_download_run.forecast_run)
     forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
@@ -518,5 +518,3 @@ def finalize_forecast_after_callback(run: ForecastRun) -> None:
     """
     process_forecast_output(run)
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-
-
