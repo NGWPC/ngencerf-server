@@ -6,7 +6,6 @@ from calibration.models.base_model import BaseModel
 class IterationParameter(BaseModel):
     iteration = models.ForeignKey('Iteration', null=False, on_delete=models.CASCADE, db_index=True)
     calibration_parameter = models.ForeignKey('CalibrationParameter', null=False, on_delete=models.CASCADE)
-    data_type = models.CharField(max_length=50, null=False)
     tuned_value = models.FloatField(null=False)
 
     class Meta:
@@ -18,4 +17,3 @@ class IterationParameter(BaseModel):
             f"calibration_parameter: ({self.calibration_parameter}), "
             f"tuned_value: {str(self.tuned_value)}, "
         )
-
