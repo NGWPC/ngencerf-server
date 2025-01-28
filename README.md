@@ -302,7 +302,7 @@ Follow these steps to pull the latest docker containers.
    ```
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
    GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-fcst . 
-   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-bmi-forcing . 
+   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing . 
    ```
  
 3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
