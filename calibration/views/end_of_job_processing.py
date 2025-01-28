@@ -362,11 +362,25 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Bulk create IterationMetric and IterationParameter objects in chunks
     if metrics_to_create:
         for i in range(0, len(metrics_to_create), BULK_CREATE_BATCH_SIZE):
-            IterationMetric.objects.bulk_create(metrics_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+            batch = metrics_to_create[i:i + BULK_CREATE_BATCH_SIZE]
+            try:
+                IterationMetric.objects.bulk_create(batch)
+            except Exception as e:
+                logger.error(f"Error inserting IterationMetric batch {i // BULK_CREATE_BATCH_SIZE + 1}: {e}")
+                for metric in batch:
+                    logger.error(f"Failed IterationMetric: Iteration {metric.iteration.iteration_num}, Metric {metric.metric}, Value {metric.metric_value}")
+                raise  # Re-raise exception after logging details
 
     if params_to_create:
         for i in range(0, len(params_to_create), BULK_CREATE_BATCH_SIZE):
-            IterationParameter.objects.bulk_create(params_to_create[i:i + BULK_CREATE_BATCH_SIZE])
+            batch = params_to_create[i:i + BULK_CREATE_BATCH_SIZE]
+            try:
+                IterationParameter.objects.bulk_create(batch)
+            except Exception as e:
+                logger.error(f"Error inserting IterationParameter batch {i // BULK_CREATE_BATCH_SIZE + 1}: {e}")
+                for param in batch:
+                    logger.error(f"Failed IterationParameter: Iteration {param.iteration.iteration_num}, Parameter {param.calibration_parameter.name}, Value {param.tuned_value}")
+                raise  # Re-raise exception after logging details
 
     # Log a warning if no best iteration was found for the worker
     if not best_iteration_found:
