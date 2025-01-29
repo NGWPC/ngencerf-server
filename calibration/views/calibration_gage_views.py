@@ -349,7 +349,7 @@ def get_geopackage_image_url(run: CalibrationRun) -> str | None:
         return None
 
 
-def save_gage(run: CalibrationRun, gage_id: int) -> dict:
+def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
     """
     Updates the gage field in a calibration run and removes any previously uploaded files.
 

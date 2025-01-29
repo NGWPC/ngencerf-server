@@ -49,6 +49,8 @@ def get_job_registry_key(run: BaseRun) -> tuple[int, int]:
     elif isinstance(run, ForecastForcingDownloadRun):
         return run.forecast_run.calibration_run.id, run.forecast_run.id
 
+    raise TypeError(f"Unsupported run type: {type(run).__name__}")
+
 
 def set_job_status(run: BaseRun, status: StatusEnum) -> None:
     """

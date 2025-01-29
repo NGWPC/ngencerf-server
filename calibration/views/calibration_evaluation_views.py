@@ -16,7 +16,7 @@ from calibration.util.ngen_locations import get_calibration_stdout_file, get_val
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename
 from calibration.views.calibration_landing_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    replace_nan_with_none, get_validation_run, CerfException
+    get_validation_run, CerfException, replace_nan_and_inf_with_none
 from calibration.views.end_of_job_processing import process_worker_dirs
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     }
 
     # Replace NaN values with None for JSON compatibility
-    response = replace_nan_with_none(response)
+    response = replace_nan_and_inf_with_none(response)
 
     response_validator, error_response = validate_response(
         GetCalibrationDataByIterationResponseSerializer,
