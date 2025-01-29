@@ -63,7 +63,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         url_endpoint = settings.SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT
         payload = {
             'forecast_forcing_download_run_id': (None, run.id),
-            'gpkg_file': (None, os.path.basename(get_single_file(get_geopackage_dir_for_job(run.forecast_run.calibration_run)))),
+            'gpkg_file': (None, get_single_file(get_geopackage_dir_for_job(run.forecast_run.calibration_run))),
             'cycle_name': (None, arguments['cycle_name']),
             'config_file': (None, arguments['config_file']),
             'forcing_file': (None, get_forecast_forcing_download_file(run.forecast_run)),
