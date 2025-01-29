@@ -217,9 +217,6 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
     """
     job_description = get_job_description(validation_run)
 
-    if ValidationMetrics.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
-        raise CerfException(f"End of job processing has already been completed for {job_description}")
-
     metrics_file = None
     expected_run_type = None
     worker_name = validation_run.worker_name
@@ -235,6 +232,8 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         metrics_file = get_validation_metrics_valid_best_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_BEST.value
 
+    if ValidationMetrics.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
+        raise CerfException(f"End of job processing has already been completed for {job_description}")
 
     process_validation_metrics(
         run=validation_run,
