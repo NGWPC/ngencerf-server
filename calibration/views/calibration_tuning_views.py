@@ -799,8 +799,7 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
     # Collect parameters that need to have user_selected_for_tuning turned off
     parameters_to_unselect = [
         param for param in existing_parameters
-        if (param.calibration_formulation.module.name, param.name) not in selected_for_tuning
-           and param.user_selected_for_tuning
+        if (param.calibration_formulation.module.name, param.name) not in selected_for_tuning and param.user_selected_for_tuning
     ]
 
     # Use bulk_update to update selected parameters

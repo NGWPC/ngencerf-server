@@ -23,7 +23,7 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     png_str_to_base64_url, ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-    get_forecast_run, replace_nan_with_none
+    get_forecast_run, replace_nan_and_inf_with_none
 from calibration.views.end_of_job_processing import process_worker_dirs
 
 logger = logging.getLogger(__name__)
@@ -232,9 +232,9 @@ def get_plot(request: Request) -> Response:
         plot_result = get_plot_data(run, plot_definition, start, limit)
         plot_data = plot_result.get('data', [])
         total_count = plot_result['total_count']
-        # Apply replace_nan_with_none to the retrieved data
+        # Replace NaN values with None for JSON compatibility
         if plot_data:
-            plot_data = replace_nan_with_none(plot_data)
+            plot_data = replace_nan_and_inf_with_none(plot_data)
         else:
             logger.warning(f"Data not available for {plot_name}")
 

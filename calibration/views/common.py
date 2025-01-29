@@ -585,26 +585,25 @@ def get_job_description(run: BaseRun) -> str:
     raise ValueError(f"Unknown job type: {type(run).__name__}")
 
 
-def replace_nan_with_none(data: Any) -> Any:
+def replace_nan_and_inf_with_none(data: Any) -> Any:
     """
-    Recursively traverses the input data and replaces any NaN values with None.
-    This ensures that the data is JSON-compliant by converting non-compliant
-    NaN values into nulls.
+    Recursively traverses the input data and replaces any NaN or infinity (inf) values with None.
+    This ensures that the data is JSON-compliant by converting non-compliant values into nulls.
 
     :param data: The input data, which can be a list, dictionary, or a single value.
-    :return: The sanitized data with NaN values replaced by None.
+    :return: The sanitized data with NaN and inf values replaced by None.
     """
 
     # If the data is a list, recursively process each item in the list
     if isinstance(data, list):
-        return [replace_nan_with_none(item) for item in data]
+        return [replace_nan_and_inf_with_none(item) for item in data]
 
     # If the data is a dictionary, recursively process each key-value pair
     elif isinstance(data, dict):
-        return {key: replace_nan_with_none(value) for key, value in data.items()}
+        return {key: replace_nan_and_inf_with_none(value) for key, value in data.items()}
 
-    # If the data is a float and it's NaN, replace it with None
-    elif isinstance(data, float) and np.isnan(data):
+    # If the data is a float and it's NaN or inf, replace it with None
+    elif isinstance(data, float) and (np.isnan(data) or np.isinf(data)):
         return None
 
     # If the data is any other type (int, str, etc.), return it unchanged
