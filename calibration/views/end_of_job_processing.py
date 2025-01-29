@@ -186,7 +186,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
-            metric_value = float(value) if value else float('nan')
+            metric_value = float(value) if value is not None else float('nan')
 
             # Create the Metric object (ValidationMetrics or NWMRetrospectiveMetrics)
             metric_obj = MetricModel(
@@ -217,6 +217,9 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
     """
     job_description = get_job_description(validation_run)
 
+    if ValidationMetrics.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
+        raise CerfException(f"End of job processing has already been completed for {job_description}")
+
     metrics_file = None
     expected_run_type = None
     worker_name = validation_run.worker_name
@@ -232,8 +235,6 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         metrics_file = get_validation_metrics_valid_best_file(validation_run.calibration_run)
         expected_run_type = ValidationType.VALID_BEST.value
 
-    if ValidationMetrics.objects.filter(validation_run=validation_run, run_type=expected_run_type).exists():
-        raise CerfException(f"End of job processing has already been completed for {job_description}")
 
     process_validation_metrics(
         run=validation_run,
@@ -429,7 +430,7 @@ def process_metrics_row_for_calibration(calibration_run: CalibrationRun,
             raise CerfException(f"Could not find metric '{metric_name}'")
 
         # Set metric_value to NaN if missing
-        metric_value = float(value) if value else float('nan')
+        metric_value = float(value) if value is not None else float('nan')
 
         metric_obj = IterationMetric(
             iteration=iteration,
@@ -500,7 +501,7 @@ def process_params_row(calibration_run: CalibrationRun,
         if not parameter:
             raise CerfException(f"Could not find parameter '{param_name}' referenced in params_iteration_file")
 
-        tuned_value = float(value) if value else None
+        tuned_value = float(value) if value is not None else None
         param_obj = IterationParameter(
             iteration=iteration,
             calibration_parameter=parameter,
@@ -519,14 +520,16 @@ def update_output_variables(metrics_iteration_file: str, calibration_run: Calibr
     :param calibration_run: The CalibrationRun instance.
     :param worker_name: The name of the worker.
     """
-    # Prefetch all relevant Iteration objects and create a dictionary keyed by iteration_num
+    # Fetch only the fields needed using .values_list()
     iterations_dict = {
-        iteration.iteration_num: iteration
-        for iteration in Iteration.objects.filter(calibration_run=calibration_run, worker_name=worker_name)
+        iteration_num: Iteration(id=iteration_id, objective_function_value=None)  # Initialize without value
+        for iteration_id, iteration_num in Iteration.objects.filter(
+            calibration_run=calibration_run, worker_name=worker_name
+        ).values_list("id", "iteration_num")
     }
 
     # Read the metrics file using pandas
-    metrics_df = pd.read_csv(metrics_iteration_file)
+    metrics_df = pd.read_csv(metrics_iteration_file, usecols=["iteration", "objFunVal"])
 
     iterations_to_update = []  # List to accumulate iterations to update
 
@@ -538,11 +541,12 @@ def update_output_variables(metrics_iteration_file: str, calibration_run: Calibr
         # Retrieve the iteration object from the dictionary
         iteration = iterations_dict.get(iteration_num)
         if not iteration:
-            raise CerfException(
-                f"Cannot find Iteration object for calibration run {calibration_run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
+            raise CerfException(f"Cannot find Iteration object for calibration run {calibration_run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
 
         logger.debug(
-            f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} for worker {worker_name} with output variable value {obj_fun_val}')
+            f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} '
+            f'for worker {worker_name} with output variable value {obj_fun_val}'
+        )
         iteration.objective_function_value = obj_fun_val
 
         # Add the modified object to the list
@@ -552,7 +556,9 @@ def update_output_variables(metrics_iteration_file: str, calibration_run: Calibr
     if iterations_to_update:
         with transaction.atomic():  # Ensure atomicity of the bulk update
             for i in range(0, len(iterations_to_update), BULK_CREATE_BATCH_SIZE):
-                Iteration.objects.bulk_update(iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['objective_function_value'])
+                Iteration.objects.bulk_update(
+                    iterations_to_update[i:i + BULK_CREATE_BATCH_SIZE], ['objective_function_value']
+                )
 
 
 # Function to read the last line of a file
