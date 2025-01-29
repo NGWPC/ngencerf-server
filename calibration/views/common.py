@@ -12,6 +12,7 @@ import numpy as np
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import QuerySet
+from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
@@ -352,7 +353,41 @@ def handle_exceptions(view_func):
     def _wrapped_view(request, *args, **kwargs):
         original_logger = logging.getLogger(view_func.__module__)
         try:
-            return view_func(request, *args, **kwargs)
+            response = view_func(request, *args, **kwargs)
+
+            # Hook into Django's response rendering
+            if isinstance(response, Response):
+                original_render = response.render
+
+                def safe_render():
+                    """ Wrap response rendering to catch JSON serialization errors """
+                    try:
+                        return original_render()
+                    except ValueError as e:
+                        original_logger.error(f"JSON serialization error in {view_func.__name__}: {str(e)}")
+                        return JsonResponse(
+                            {
+                                "message": "JSON serialization error in response. Response contains non-JSON-compliant values (e.g., Infinity, NaN).",
+                                "response_type": "json_serialization_error",
+                                "validation_errors": str(e),
+                            },
+                            status=500
+                        )
+                    except TypeError as e:
+                        original_logger.error(f"Non-serializable data error in {view_func.__name__}: {str(e)}")
+                        return JsonResponse(
+                            {
+                                "message": "Response contains non-serializable data (e.g., custom objects, functions).",
+                                "response_type": "json_serialization_error",
+                                "validation_errors": str(e),
+                            },
+                            status=500
+                        )
+
+                response.render = safe_render  # Override render method
+
+            return response
+
         except ParseError as e:
             message = f"{type(e).__name__} - {str(e)} - while running {view_func.__module__}.{view_func.__name__}"
             original_logger.exception(message)
@@ -546,6 +581,8 @@ def get_job_description(run: BaseRun) -> str:
         return f"Forecast Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, ForecastForcingDownloadRun):
         return f"Forecast Forcing Download Job {run.id} for Forecast Job {run.forecast_run.id} for Calibration Job {run.forecast_run.calibration_run.id}, user: {run.forecast_run.calibration_run.owner.username}"
+
+    raise ValueError(f"Unknown job type: {type(run).__name__}")
 
 
 def replace_nan_with_none(data: Any) -> Any:
