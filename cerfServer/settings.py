@@ -302,8 +302,10 @@ SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+
+    # Root Logger: Sends everything to the console
     'root': {
-        'handlers': ['console', 'file_dev'],
+        'handlers': ['console'],
         'level': 'DEBUG'
     },
     'formatters': {
