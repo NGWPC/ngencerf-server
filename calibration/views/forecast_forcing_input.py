@@ -6,7 +6,7 @@ from django.conf import settings
 from yaml.nodes import SequenceNode
 
 from calibration.models import ForecastForcingDownloadRun
-from calibration.util.ngen_locations import FORCING_MESH_SCRIPT_PATH, get_geopackage_dir_for_job, FORCING_BMI_SCRIPT_PATH, \
+from calibration.util.ngen_locations import FORCING_MESH_SCRIPT_PATH, FORCING_BMI_SCRIPT_PATH, \
     get_forecast_forcing_cycle_config_file, FORCING_HRRR, get_forecast_forcing_config_file, FORCING_EXTRACTION_SCRIPT_PATH, \
     get_forecast_temp_dir
 
@@ -33,7 +33,7 @@ def build_forecast_forcing_download_config(run: ForecastForcingDownloadRun):
     wrapper_config_json = {
         'global': {
             'mesh_script_path': FORCING_MESH_SCRIPT_PATH,
-            'mesh_in_base_path': get_geopackage_dir_for_job(run.forecast_run.calibration_run),
+            # 'mesh_in_base_path': get_geopackage_dir_for_job(run.forecast_run.calibration_run),
             'mesh_out_base_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'esmf_mesh'),
             'extraction_script_path': FORCING_EXTRACTION_SCRIPT_PATH,
             'extraction_out_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
@@ -78,6 +78,7 @@ def build_short_range_config(run: ForecastForcingDownloadRun):
         'OutputFrequency': 60,
         'SubOutputHour': 0,
         'SubOutFreq': 0,
+        # TODO Would rather specify a directory in /tmp, but ngen-forcing checks if the directory exists.  Hoping Kyle can change this
         'ScratchDir': get_forecast_temp_dir(run.forecast_run),
         'Output': 1,
         'compressOutput': 0,

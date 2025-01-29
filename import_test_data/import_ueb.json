@@ -43,10 +43,10 @@
     "peak_flow_threshold": 2.0,
     "parameters": [
         {
-            "name": "df",
-            "minimum": 1.234e-07,
-            "maximum": 1.2545678912345,
-            "initial_value": 1.24,
+            "name": "cg",
+            "minimum": 0.5,
+            "maximum": 4.0,
+            "initial_value": 3.0,
             "module": "UEB"
         }
 

@@ -1,6 +1,5 @@
 import logging
 import os
-import tempfile
 from typing import Literal
 
 from django.conf import settings
@@ -294,8 +293,10 @@ def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
 
 
 def get_forecast_temp_dir(forecast_run: ForecastRun) -> str:
-    prefix = f'forcing_work_Calibration_{forecast_run.calibration_run.id}_Forecast_{forecast_run.id}_'
-    temp_dir = tempfile.mkdtemp(prefix=prefix)
+    # TODO Need Kyle to create the directory, so we can use /tmp and not create it ourselves
+    # temp_dir = os.path.join('/tmp', f'forcing_workdir_Calibration_{forecast_run.calibration_run.id}_Forecast_{forecast_run.id}')
+    temp_dir = os.path.join(get_forecast_dir(forecast_run), 'scratch_dir')
+    os.mkdir(temp_dir)
     return temp_dir
 
 

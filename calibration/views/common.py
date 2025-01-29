@@ -12,6 +12,7 @@ import numpy as np
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import QuerySet
+from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
@@ -352,7 +353,41 @@ def handle_exceptions(view_func):
     def _wrapped_view(request, *args, **kwargs):
         original_logger = logging.getLogger(view_func.__module__)
         try:
-            return view_func(request, *args, **kwargs)
+            response = view_func(request, *args, **kwargs)
+
+            # Hook into Django's response rendering
+            if isinstance(response, Response):
+                original_render = response.render
+
+                def safe_render():
+                    """ Wrap response rendering to catch JSON serialization errors """
+                    try:
+                        return original_render()
+                    except ValueError as e:
+                        original_logger.error(f"JSON serialization error in {view_func.__name__}: {str(e)}")
+                        return JsonResponse(
+                            {
+                                "message": "JSON serialization error in response. Response contains non-JSON-compliant values (e.g., Infinity, NaN).",
+                                "response_type": "json_serialization_error",
+                                "validation_errors": str(e),
+                            },
+                            status=500
+                        )
+                    except TypeError as e:
+                        original_logger.error(f"Non-serializable data error in {view_func.__name__}: {str(e)}")
+                        return JsonResponse(
+                            {
+                                "message": "Response contains non-serializable data (e.g., custom objects, functions).",
+                                "response_type": "json_serialization_error",
+                                "validation_errors": str(e),
+                            },
+                            status=500
+                        )
+
+                response.render = safe_render  # Override render method
+
+            return response
+
         except ParseError as e:
             message = f"{type(e).__name__} - {str(e)} - while running {view_func.__module__}.{view_func.__name__}"
             original_logger.exception(message)
@@ -547,27 +582,28 @@ def get_job_description(run: BaseRun) -> str:
     elif isinstance(run, ForecastForcingDownloadRun):
         return f"Forecast Forcing Download Job {run.id} for Forecast Job {run.forecast_run.id} for Calibration Job {run.forecast_run.calibration_run.id}, user: {run.forecast_run.calibration_run.owner.username}"
 
+    raise ValueError(f"Unknown job type: {type(run).__name__}")
 
-def replace_nan_with_none(data: Any) -> Any:
+
+def replace_nan_and_inf_with_none(data: Any) -> Any:
     """
-    Recursively traverses the input data and replaces any NaN values with None.
-    This ensures that the data is JSON-compliant by converting non-compliant
-    NaN values into nulls.
+    Recursively traverses the input data and replaces any NaN or infinity (inf) values with None.
+    This ensures that the data is JSON-compliant by converting non-compliant values into nulls.
 
     :param data: The input data, which can be a list, dictionary, or a single value.
-    :return: The sanitized data with NaN values replaced by None.
+    :return: The sanitized data with NaN and inf values replaced by None.
     """
 
     # If the data is a list, recursively process each item in the list
     if isinstance(data, list):
-        return [replace_nan_with_none(item) for item in data]
+        return [replace_nan_and_inf_with_none(item) for item in data]
 
     # If the data is a dictionary, recursively process each key-value pair
     elif isinstance(data, dict):
-        return {key: replace_nan_with_none(value) for key, value in data.items()}
+        return {key: replace_nan_and_inf_with_none(value) for key, value in data.items()}
 
-    # If the data is a float and it's NaN, replace it with None
-    elif isinstance(data, float) and np.isnan(data):
+    # If the data is a float and it's NaN or inf, replace it with None
+    elif isinstance(data, float) and (np.isnan(data) or np.isinf(data)):
         return None
 
     # If the data is any other type (int, str, etc.), return it unchanged
