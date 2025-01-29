@@ -1,5 +1,4 @@
 import logging
-import os
 
 import yaml
 from django.conf import settings
@@ -8,7 +7,7 @@ from yaml.nodes import SequenceNode
 from calibration.models import ForecastForcingDownloadRun
 from calibration.util.ngen_locations import FORCING_MESH_SCRIPT_PATH, FORCING_BMI_SCRIPT_PATH, \
     get_forecast_forcing_cycle_config_file, FORCING_HRRR, get_forecast_forcing_config_file, FORCING_EXTRACTION_SCRIPT_PATH, \
-    get_forecast_temp_dir
+    get_forecast_temp_dir, FORCING_RAW_INPUT, FORCING_ESMF_MESH
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +33,9 @@ def build_forecast_forcing_download_config(run: ForecastForcingDownloadRun):
         'global': {
             'mesh_script_path': FORCING_MESH_SCRIPT_PATH,
             # 'mesh_in_base_path': get_geopackage_dir_for_job(run.forecast_run.calibration_run),
-            'mesh_out_base_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'esmf_mesh'),
+            'mesh_out_base_path': FORCING_ESMF_MESH,
             'extraction_script_path': FORCING_EXTRACTION_SCRIPT_PATH,
-            'extraction_out_path': os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
+            'extraction_out_path': FORCING_RAW_INPUT,
             'bmi_script_path': FORCING_BMI_SCRIPT_PATH,
             'mesh_env': settings.FORCING_MESH_ENV,
             'extract_env': settings.FORCING_EXTRACT_ENV,
