@@ -22,7 +22,7 @@ services:
     build: 
       context: .
       args:
-        - CREATE_INPUT_TAG=development
+        - CREATE_INPUT_TAG=${NGEN_CAL_TAG}
       secrets:
         - gitlab_token
     image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest
@@ -49,4 +49,4 @@ services:
 
 secrets:
   gitlab_token:
-    file: ~/.gitlab_token
+    file: ${GITLAB_TOKEN_PATH}
