@@ -1,3 +1,4 @@
+import json
 import logging
 
 from django.db import transaction
@@ -79,7 +80,7 @@ def load_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from load_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_formulation_tab() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -226,7 +227,7 @@ def save_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from save_formulation_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from save_formulation_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

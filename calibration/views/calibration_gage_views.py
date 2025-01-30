@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -86,7 +87,8 @@ def load_gage_tab(request: Request) -> Response:
     domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'description'])
 
     # Retrieve cached gages with necessary fields
-    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibration': gage.get('nwm_v3_calibration'), 'nws_id': gage.get('nws_id'), 'domain': gage.get('domain')}
+    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibration': gage.get('nwm_v3_calibration'), 'nws_id': gage.get('nws_id'),
+              'domain': gage.get('domain')}
              for gage in get_cached_gages().values()]
 
     ngen_cal_input.ready_to_run(run)
@@ -106,7 +108,9 @@ def load_gage_tab(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from load_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["gages", "geopackage_image_url"], max_length=50)}')
+        f'Returning to {request.user.email} from load_gage_tab() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages", "geopackage_image_url"], max_length=50))}'
+    )
 
     return Response(response_validator.data)
 
@@ -158,7 +162,7 @@ def get_gage(request: Request) -> Response:
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_gage() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_gage() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -313,7 +317,9 @@ def save_gage_tab(request: Request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from save_gage_tab() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from save_gage_tab() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
+    )
 
     return Response(response_validator.data)
 
@@ -464,7 +470,7 @@ def upload_observational_data(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from upload_observational_data() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_observational_data() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -548,7 +554,7 @@ def upload_forcing_data(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from upload_forcing_data() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_forcing_data() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -625,7 +631,9 @@ def upload_geopackage_data(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from upload_geopackage_data() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from upload_geopackage_data() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
+    )
     return Response(response_validator.data)
 
 
