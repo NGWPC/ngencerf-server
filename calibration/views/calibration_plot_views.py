@@ -545,13 +545,19 @@ def load_files_and_merge(file_paths: list[str], column_names: list[str], key_col
     """
     dataframes = []  # List to store individual DataFrames from each file
 
-    # Step 1: Read and prepare each file as a DataFrame
+    # Step 1: Read and prepare each file, dynamically detecting column names
     for file_path, col_name in zip(file_paths, column_names):
         try:
             if os.path.exists(file_path):
                 logger.info(f"Reading file: {file_path}")
-                # Use read_and_prepare_hydrograph_files to standardize columns and clean data
-                df = read_and_prepare_hydrograph_files(file_path, {"value": col_name})
+                # Read file and automatically detect value column
+                df = pd.read_csv(file_path, nrows=1)  # Read only the header to determine column names
+                value_col = next((col for col in df.columns if col.lower() not in ["time", "datetime", "date", "timestamp", "value_date"]), None)
+
+                if not value_col:
+                    raise ValueError(f"No valid data column found in file {file_path}")
+
+                df = read_and_prepare_hydrograph_files(file_path, column_mapping={value_col: col_name})
                 dataframes.append(df)
             else:
                 # Log a warning for missing files
@@ -592,12 +598,13 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     formats data, and filters out invalid rows.
 
     :param file_path: Path to the CSV file.
-    :param column_mapping: A dictionary mapping existing column names to standardized column names.
+    :param column_mapping: A dictionary mapping detected column names to standardized column names.
+                           If None is given as the key, it means the column should be detected dynamically.
     :return: A DataFrame containing valid data, formatted for merging.
-    :raises ValueError: If no timestamp column is found in the file.
+    :raises ValueError: If no timestamp or value column is found in the file.
     """
-    # Step 1: Read the CSV file into a DataFrame
-    df = pd.read_csv(file_path)
+    # Step 1: Read CSV and infer types
+    df = pd.read_csv(file_path, dtype=None)
     logger.debug(f"Loaded file: {file_path}, Columns: {df.columns.tolist()}, Shape: {df.shape}")
 
     # Step 2: Detect the timestamp column dynamically
@@ -618,6 +625,8 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     invalid_rows = df[df["time"].isna()]
     if not invalid_rows.empty:
         logger.warning(f"Invalid timestamps found in file {file_path}:\n{invalid_rows}")
+
+    # Drop rows with invalid timestamps
     df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
 
     # Step 5: Rename value columns based on the provided mapping
@@ -629,9 +638,7 @@ def read_and_prepare_hydrograph_files(file_path: str, column_mapping: dict[str, 
     return df
 
 
-def count_and_read_file_in_chunks(
-        file_path: str, start: int, limit: int
-) -> tuple[list[dict[str, Any]], int]:
+def count_and_read_file_in_chunks(file_path: str, start: int, limit: int) -> tuple[list[dict[str, Any]], int]:
     """
     Counts the total number of rows (excluding the header) in a file and retrieves a specific slice of rows efficiently.
 
@@ -650,8 +657,17 @@ def count_and_read_file_in_chunks(
         with open(file_path, 'r') as file:
             total_count = sum(1 for _ in file) - 1  # Subtract 1 for the header row
 
+        # Ensure start is within valid range
+        if start >= total_count:
+            return [], total_count  # No data to return
+
         # Read only the required rows using pandas
-        df = pd.read_csv(file_path, skiprows=range(1, start + 1), nrows=limit, names=header, header=0)
+        df = pd.read_csv(file_path, skiprows=list(range(1, start + 1)), nrows=limit, names=header, header=0)
+
+        # Convert the "time" column to datetime format, handling errors
+        if "time" in df.columns:
+            df["time"] = pd.to_datetime(df["time"], errors="coerce")
+            df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
 
         # Convert DataFrame to a list of dictionaries
         data = df.to_dict(orient="records")
