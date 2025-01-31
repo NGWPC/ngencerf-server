@@ -169,7 +169,7 @@ class PlotDefinitionsEnum(AbstractEnum):
     COST_HISTORY = 'Cost History'
     BAR_CHART_METRICS = 'Bar Chart Metrics'
     FLOW_DURATION_CURVES_VALIDATION = 'Flow Duration Curves Validation'
-    VALIDATION_HYDROGRAPH = 'Validation Hydrograph'
+    HYDROGRAPH_VALIDATION = 'Hydrograph Validation'
     STREAMFLOW_VALIDATION_PRECIPITATION = 'Streamflow Validation Precipitation'
     FORECAST_HYDROGRAPH = 'Forecast Hydrograph'
 

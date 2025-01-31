@@ -201,7 +201,7 @@ def get_plot(request: Request) -> Response:
     if force_include_plot or not plot_url or include_data:
         plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
         if not plot_definition:
-            return ResponseError(f"Plot '{plot_name}' not found for {run_type} Job {run.id}")
+           return ResponseError(f"Invalid plot type '{plot_name}' requested for {run_type} {run.id}.")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:
@@ -323,27 +323,47 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
     """
     Retrieves data for a specific plot based on its definition and includes the total count of rows.
 
-    :param run: The run object, either a calibration, validation run, or forecast run
+    :param run: The run object, either a calibration, validation, or forecast run
     :param plot_definition: Dictionary containing plot specifications.
     :param start: The starting index for pagination.
     :param limit: The maximum number of items to retrieve.
     :return: A dictionary containing 'data' and 'total_count'.
+    :raises CerfException: If an invalid plot type is requested for the given run.
     """
-    calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
     plot_enum = PlotDefinitionsEnum(plot_definition['name'])
+
+    # Initialize calibration_run to None
+    calibration_run = None
+
+    # Ensure ForecastRun only processes FORECAST_HYDROGRAPH
+    if isinstance(run, ForecastRun):
+        if plot_enum != PlotDefinitionsEnum.FORECAST_HYDROGRAPH:
+            raise CerfException(f"Invalid plot type '{plot_enum}' requested for ForecastRun {run.id}.")
+    else:
+        if not isinstance(run, (CalibrationRun, ValidationRun)):
+            raise CerfException(f"Invalid plot type '{plot_enum}' requested for {type(run).__name__} {run.id}.")
+        calibration_run = run.calibration_run if isinstance(run, ValidationRun) else run
+
     worker_dir = None  # Cache worker directory to avoid multiple lookups
 
     match plot_enum:
+        case PlotDefinitionsEnum.FORECAST_HYDROGRAPH:
+            # Ensure only ForecastRun can access this plot type
+            if not isinstance(run, ForecastRun):
+                raise CerfException(f"'{plot_enum}' is only valid for ForecastRun.")
+
+            # Read the forecast output data from a file and paginate the result
+            forecast_output = get_forecast_output_file(run)
+            if not os.path.exists(forecast_output):
+                raise FileNotFoundError(f"File not found: {forecast_output}")
+            data, total_count = count_and_read_file_in_chunks(forecast_output, start, limit)
+            return {'data': data, 'total_count': total_count}
+
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
             iterations = get_iterations_for_calibration_job(calibration_run)
             total_count = len(iterations)
-            data = [
-                {
-                    'iteration': iteration.iteration_num,
-                    'objective_function_value': iteration.objective_function_value
-                }
-                for iteration in iterations[start:start + limit]
-            ]
+            data = [{'iteration': iteration.iteration_num, 'objective_function_value': iteration.objective_function_value}
+                    for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.HYDROGRAPH_EVOLUTION | PlotDefinitionsEnum.SCATTERPLOT_STREAMFLOW:
@@ -363,39 +383,27 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
             iterations = get_iterations_for_calibration_job(calibration_run)
             total_count = len(iterations)
-            data = [
-                {
-                    'iteration': iteration.iteration_num,
-                    'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
-                }
-                for iteration in iterations[start:start + limit]
-            ]
+            data = [{'iteration': iteration.iteration_num,
+                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
+                    for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
             iterations = get_iterations_for_calibration_job(calibration_run)
             total_count = len(iterations)
-            data = [
-                {
-                    'iteration': iteration.iteration_num,
-                    'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
-                                   iteration.iterationparameter_set.all()]
-                }
-                for iteration in iterations[start:start + limit]
-            ]
+            data = [{'iteration': iteration.iteration_num,
+                     'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
+                                    iteration.iterationparameter_set.all()]}
+                    for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
             iterations = get_iterations_for_calibration_job(calibration_run)
             total_count = len(iterations)
-            data = [
-                {
-                    'iteration': iteration.iteration_num,
-                    'objective_function_value': iteration.objective_function_value,
-                    'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]
-                }
-                for iteration in iterations[start:start + limit]
-            ]
+            data = [{'iteration': iteration.iteration_num,
+                     'objective_function_value': iteration.objective_function_value,
+                     'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
+                    for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.STREAM_FLOW_PRECIPITATION:
@@ -450,7 +458,7 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             # Step 3: Return the paginated plot data and the total row count
             return {'data': paginated_data, 'total_count': total_count}
 
-        case PlotDefinitionsEnum.VALIDATION_HYDROGRAPH:
+        case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
             # Files being read:
             # 1. Observational data file
             # 2. NWM retrospective data file
@@ -464,14 +472,12 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
                 get_output_valid_control_file(calibration_run),  # Valid Control
                 get_output_valid_best_file(calibration_run)  # Valid Best
             ]
+            column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
+
             if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
                 # Add hydrograph data for the specific iteration
                 file_paths.append(get_output_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
-
-            # Column names for clarity in the merged data
-            column_names = ["Observation", "NWM Retro", "Valid Control", "Valid Best"]
-            if isinstance(run, ValidationRun) and run.validation_type == ValidationType.VALID_ITERATION.value:
-                column_names.append(run.worker_name)
+                column_names.append(run.worker_name)  # Append corresponding column name
 
             # Combine and paginate data from the hydrograph files
             data, total_count = load_and_merge_hydrograph_files_with_pagination_and_count(file_paths, column_names, start, limit)
@@ -480,16 +486,6 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
         case PlotDefinitionsEnum.STREAMFLOW_VALIDATION_PRECIPITATION:
             # Requires calculation, so we won't return data
             return {'data': [], 'total_count': 0}
-
-        case PlotDefinitionsEnum.FORECAST_HYDROGRAPH:
-            # Read the forecast output data from a file and paginate the result
-            forecast_output = get_forecast_output_file(run)
-            if not os.path.exists(forecast_output):
-                logger.error(f"File not found: {forecast_output}")
-                raise FileNotFoundError(f"File not found: {forecast_output}")
-            data, total_count = count_and_read_file_in_chunks(forecast_output, start, limit)
-
-            return {'data': data, 'total_count': total_count}
 
         case _:
             logger.error(f"Data handler not found for '{plot_enum}'")
@@ -677,8 +673,6 @@ def count_and_read_file_in_chunks(file_path: str, start: int, limit: int) -> tup
     except Exception as e:
         logger.error(f"Error reading file: {e}")
         raise CerfException(f"Failed to read file: {file_path}")
-
-
 
 
 def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
