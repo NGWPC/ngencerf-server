@@ -110,6 +110,10 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     if hasattr(run, 'ngen_cal_commit_hash'):
         run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
         update_fields.append('ngen_cal_commit_hash')
+    if hasattr(run, 'ngen_forcing_commit_hash'):
+        run.ngen_forcing_commit_hash = slurm_response.get('ngen_forcing_commit_hash')
+    if hasattr(run, 'ngen_forecast_commit_hash'):
+        run.ngen_forecast_commit_hash = slurm_response.get('ngen_forecast_commit_hash')
 
     run.save(update_fields=update_fields)
     logger.info(f"{get_job_description(run)} submitted successfully! Slurm id: {run.slurm_job_id}")
