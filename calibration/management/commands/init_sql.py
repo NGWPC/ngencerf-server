@@ -429,7 +429,7 @@ class Command(BaseCommand):
                 "filename_mask": "{gage_id}_fdc_valid_run.png"
             },
             {
-                "name": "Validation Hydrograph",
+                "name": "Hydrograph Validation",
                 "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
