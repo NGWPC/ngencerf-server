@@ -264,12 +264,20 @@ def get_forecast_dir(forecast_run: ForecastRun) -> str:
     return os.path.join(get_output_forecast_run_dir(forecast_run.calibration_run), f'forecast_{forecast_run.id}')
 
 
+def get_forecast_output_dir(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), 'output')
+
+
 def get_forecast_forcing_config_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_config.yaml')
 
 
 def get_forecast_forcing_cycle_config_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), f'{forecast_run.cycle.internal_name}_config.yaml')
+
+
+def get_forecast_output_file(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_output_dir(forecast_run), f'{forecast_run.calibration_run.gage.gage_id}_output.csv')
 
 
 def get_forecast_forcing_download_stdout_file(forecast_run: ForecastRun) -> str:
