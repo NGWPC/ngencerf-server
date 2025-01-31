@@ -1,9 +1,10 @@
+from django.db import models
+
 from calibration.models.base_run import BaseRun
 
 
 class ForecastForcingDownloadRun(BaseRun):
-    # No additional fields needed
-    pass
+    ngen_forcing_commit_hash = models.CharField(max_length=50, null=True)
 
     class Meta:
         db_table = 'forecast_forcing_download_run'
