@@ -47,6 +47,8 @@ forecast_forcing_work_directories = [
 
 for f in forecast_forcing_work_directories:
     os.makedirs(f, exist_ok=True)
+    # On PW, the server runs as root, but the Slurm jobs do not, so we need to adjust the permissions
+    os.chmod(f, 0o777)
 
 
 def check_files():
