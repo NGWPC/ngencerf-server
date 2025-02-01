@@ -416,7 +416,7 @@ class Command(BaseCommand):
                 "name": "Bar Chart Metrics",
                 "description": "Bar chart comparing metrics from best and control validation runs for each evaluation period of the best global, local and best cost values at each iteration",
                 "location": "plot_valid",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_barplot_metrics_valid_run.png"
             },
@@ -424,7 +424,7 @@ class Command(BaseCommand):
                 "name": "Flow Duration Curves Validation",
                 "description": "Plot of flow duration curve comparing best and control validation runs with observation for each evaluation period",
                 "location": "plot_valid",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_fdc_valid_run.png"
             },
@@ -432,7 +432,7 @@ class Command(BaseCommand):
                 "name": "Hydrograph Validation",
                 "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
                 "location": "plot_valid",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_hydrograph_valid_run.png"
             },
@@ -440,7 +440,7 @@ class Command(BaseCommand):
                 "name": "Streamflow Validation Precipitation",
                 "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axis",
                 "location": "plot_valid",
-                "valid_optimizations": "[\"GWO\", \"PSO\",  \"DDS\"]",
+                "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_streamflow_precip_valid_run.png"
             },

@@ -171,6 +171,7 @@ class PlotDefinitionsEnum(AbstractEnum):
     FLOW_DURATION_CURVES_VALIDATION = 'Flow Duration Curves Validation'
     HYDROGRAPH_VALIDATION = 'Hydrograph Validation'
     STREAMFLOW_VALIDATION_PRECIPITATION = 'Streamflow Validation Precipitation'
+    FORECAST_HYDROGRAPH = 'Forecast Hydrograph'
 
     @classmethod
     def get_model(cls) -> Type[PlotDefinition]:
