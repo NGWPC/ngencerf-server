@@ -7,10 +7,11 @@ services:
       - "5432:5432"
     volumes:
       - ../data/db:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+    env_file:
+      - path: ./postgres_db.env
+        required: true 
+      - path: ./postgres_db.override.env
+        required: false
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
@@ -20,22 +21,27 @@ services:
   ngencerf-services:
     build: 
       context: .
+      args:
+        - CREATE_INPUT_TAG=development
       secrets:
         - gitlab_token
-        - aws_token
     image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest
     pull_policy: build
     ports:
       - "8000:8000"
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
-      - ../data/ngen-cal-data:/ngencerf/data/
-      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
+      - ${NGEN_CAL_DATA_PATH}:/ngencerf/data/
+      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/run-logs/
+      - ${FORCING_DATA_S3_PATH}:${FORCING_DATA_MOUNT_PATH}
+      - ${HF_DATA_S3_PATH}:${HF_DATA_MOUNT_PATH}
     environment:
-      - CERF_SERVER_DATABASE_NAME=postgres
-      - CERF_SERVER_DATABASE_USER=postgres
-      - CERF_SERVER_DATABASE_PASSWORD=postgres
-      - CERF_SERVER_DATABASE_HOST=db
+      - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
+    env_file:
+      - path: ./ngencerf_services.env
+        required: true 
+      - path: ./ngencerf_services.override.env
+        required: false
     depends_on:
       db:
         condition: service_healthy
@@ -44,6 +50,3 @@ services:
 secrets:
   gitlab_token:
     file: ~/.gitlab_token
-  aws_token:
-    file: ./.aws_credentials
-

@@ -1,30 +1,27 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_results_views, calibration_gage_views, \
+from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
-    calibration_evaluation_views
+    calibration_evaluation_views, calibration_forecast_views
 
 urlpatterns = [
     ##################################
     # Landing page
     ##################################
     path('calibration/create_calibration_run/', calibration_landing_views.create_calibration_run, name="createCalibrationRun"),
-    path('calibration/create_validation_run/', calibration_landing_views.create_validation_run, name="createValidationRun"),
+    path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createValidationRun"),
+    path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createForecastRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_calibration_jobs/', calibration_landing_views.get_calibration_jobs, name="getCalibrationJobs"),
-    path('calibration/get_calibration_jobs_for_evaluation/', calibration_landing_views.get_calibration_jobs_for_evaluation, name="getCalibrationJobsForEvaluation"),
-    path('calibration/get_calibration_jobs_for_forecast/', calibration_landing_views.get_calibration_jobs_for_forecast, name="getCalibrationJobsForForecast"),
+    path('calibration/get_calibration_jobs_for_evaluation/', calibration_landing_views.get_calibration_jobs_for_evaluation,
+         name="getCalibrationJobsForEvaluation"),
+    path('calibration/get_calibration_jobs_for_forecast/', calibration_landing_views.get_calibration_jobs_for_forecast,
+         name="getCalibrationJobsForForecast"),
     path('calibration/get_validation_jobs/', calibration_evaluation_views.get_validation_jobs, name="getValidationJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
     path('calibration/delete_job/', calibration_landing_views.delete_job, name="deleteJob"),
     path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
-
-
-    ##################################
-    # Results page
-    ##################################
-    path('calibration/get_job_results/', calibration_results_views.get_job_results, name="getJobResults"),
 
     ##################################
     # Gage tab
@@ -66,18 +63,30 @@ urlpatterns = [
     ##################################
     path('calibration/get_status/', calibration_run_views.get_status, name="getStatus"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
-    path('calibration/run_validation/', calibration_run_views.run_validation, name="runValidation"),
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
     path('calibration/cancel_job/', calibration_run_views.cancel_job, name="cancelJob"),
+    path('calibration/get_job_data_dir/', calibration_run_views.get_job_dir, name="getJobDir"),
     path('calibration/calibration_job_slurm_callback/', calibration_run_views.calibration_job_slurm_callback, name="calibrationJobSlurmCallback"),
     path('calibration/validation_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
+    path('calibration/forecast_forcing_download_job_slurm_callback/', calibration_run_views.forecast_forcing_download_job_slurm_callback, name="forecastForcingDownloadJobSlurmCallback"),
+    path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
 
     ##################################
     # Evaluation
     ##################################
     path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration, name="getCalibrationDataByIteration"),
-    path('calibration/get_performance_metrics/', calibration_evaluation_views.get_performance_metrics, name="getPerformanceMetrics"),
+    path('calibration/get_log_names/', calibration_evaluation_views.get_log_names, name="getLogNames"),
+    path('calibration/get_log/', calibration_evaluation_views.get_log, name="getLog"),
+
+    ##################################
+    # Forecast
+    ##################################
+    path('calibration/load_forecast_tab/', calibration_forecast_views.load_forecast_tab, name="loadForecastTab"),
+    path('calibration/get_forecast_jobs/', calibration_forecast_views.get_forecast_jobs, name="getForecastJobs"),
+    path('calibration/clone_and_run_forecast/', calibration_forecast_views.clone_and_run_forecast_job, name="cloneAndRunForecastJob"),
+    path('calibration/delete_forecast_job/', calibration_forecast_views.delete_forecast_job, name="deleteForecastJob"),
+
 
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),

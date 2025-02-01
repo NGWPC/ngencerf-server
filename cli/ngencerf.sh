@@ -1,8 +1,34 @@
 #!/bin/bash
 
+# Source functions from both ngen_util.sh and ngen_functions.sh
+source ./ngen_util.sh
+source ./ngen_functions.sh
+source ./ngen_user.sh  # For ngen_login and ngen_register functions
+
+# Instructions for setting NGEN_EMAIL and NGEN_PASSWORD
+# --------------------------------------------------------
+# To avoid being prompted for your email and password, you can set these variables in several ways:
+#
+# 1. Temporarily export in the current session (lasts only until the session ends):
+#    Run the following commands before executing this script:
+#        export NGEN_EMAIL="your_email@example.com"
+#        export NGEN_PASSWORD="your_password"
+#
+# 2. Add to your shell configuration file (persistent across sessions):
+#    Add the following lines to your ~/.bashrc (or ~/.zshrc if using zsh) and then reload the file
+#    by running `source ~/.bashrc`:
+#        export NGEN_EMAIL="your_email@example.com"
+#        export NGEN_PASSWORD="your_password"
+#
+# 3. Pass directly on the command line (applies only to this execution):
+#    Use the export command inline with your call to this script:
+#        NGEN_EMAIL="your_email@example.com" NGEN_PASSWORD="your_password" ./ngencerf.sh import <file>
+#
+# Note: If NGEN_EMAIL is not set, NGEN_USERNAME will be used as a fallback.
+
 # Function to print usage
 print_usage() {
-    echo "Usage: $0 [import|export|delete|cancel|run] <file|calibration_run_id> [keyword arguments]"
+    echo "Usage: $0 [import|export|delete|cancel|run|register] <file|calibration_run_id> [keyword arguments]"
     echo ""
     echo "  Commands:"
     echo "    import <file> : Import the provided JSON file."
@@ -17,227 +43,32 @@ print_usage() {
     echo "          output=<directory or file path>   (optional) : Path to save the exported file (default filename used if a directory is provided)."
     echo ""
     echo "    run <calibration_run_id> : Run the calibration_run_id job."
-    echo "        Optional arguments:"
-    echo "          <None>"
-    echo ""
     echo "    delete <calibration_run_id> : Delete the calibration_run_id job."
-    echo "        Optional arguments:"
-    echo "          <None>"
-    echo ""
     echo "    cancel <calibration_run_id> : Cancel the calibration_run_id job."
-    echo "        Optional arguments:"
-    echo "          <None>"
+    echo "    register [email] : Register a new user with email and password. Optionally provide email as an argument."
     echo ""
     echo "  Example usage:"
     echo "    $0 import data.json observational_file=obs.csv forcing_dir=forcing run_after_import=true"
     echo "    $0 export 123 output=/path/to/exported_data.json"
     echo "    $0 run 123"
+    echo "    $0 register user@example.com"
     exit 1
 }
 
-
-# Function to handle the geopackage upload
-upload_geopackage_data() {
-    local geopackage_file=$1
-    local calibration_run_id=$2
-
-    echo "Uploading geopackage: $geopackage_file for calibration_run_id: $calibration_run_id"
-
-    # Send upload_geopackage request, capture the HTTP status and response
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: multipart/form-data' \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --form "return_geopackage_url=false" \
-    --form "geopackage_file=@$geopackage_file" \
-    --form "calibration_run_id=$calibration_run_id" \
-    "http://localhost:8000/calibration/upload_geopackage_data/")
-
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
-
-    check_http_error "$http_status" "$response"
-
-    # Extract the status field
-    # status=$(echo "$response" | jq -r '.status')
-
-    # Print the full response
-    echo "$response" | jq --indent 3
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
-}
-
-# Function to handle the observational upload
-upload_observational_data() {
-    local observational_filepath=$1
-    local calibration_run_id=$2
-
-    echo "Uploading observational data: $observational_filepath for calibration_run_id: $calibration_run_id"
-
-    # Send upload_observational request, capture the HTTP status and response
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: multipart/form-data' \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --form "observational_file=@$observational_filepath" \
-    --form "calibration_run_id=$calibration_run_id" \
-    "http://localhost:8000/calibration/upload_observational_data/")
-
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
-
-    check_http_error "$http_status" "$response"
-
-    # Extract the status field
-    # status=$(echo "$response" | jq -r '.status')
-
-    # Print the full response
-    echo "$response" | jq --indent 3
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
-}
-
-# Function to handle the forcing upload
-upload_forcing_data() {
-    local forcing_dir=$1
-    local calibration_run_id=$2
-
-    echo "Uploading forcing data from directory: '$forcing_dir' for calibration_run_id: $calibration_run_id"
-
-    # Initialize an array to hold all the --form arguments
-    form_files=()
-
-    # Add the files from the directory to the form data
-    for file in "$forcing_dir"/*; do
-        if [ -f "$file" ]; then
-            form_files+=("--form" "forcing_files=@$file")
-        fi
-    done
-
-    if [ ${#form_files[@]} -eq 0 ]; then
-        echo "Error: No files found in the forcing data directory."
+# Function to check if a file or directory exists
+check_existence() {
+    local path=$1
+    if [ ! -e "$path" ]; then
+        echo "Error: Required path '$path' does not exist."
         exit 1
     fi
-
-    # Send upload_forcing request, capture the HTTP status and response
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: multipart/form-data' \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    "${form_files[@]}" \
-    --form "calibration_run_id=$calibration_run_id" \
-    "http://localhost:8000/calibration/upload_forcing_data/")
-
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
-
-    check_http_error "$http_status" "$response"
-
-    # Extract the status field
-    # status=$(echo "$response" | jq -r '.status')
-
-    # Print the full response
-    echo "$response" | jq --indent 3
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
 }
 
-# Function to run the job
-run_job() {
-    local calibration_run_id=$1
+# Main Script Execution Logic
+# ---------------------------
 
-    echo "Submitting calibration run job $calibration_run_id"
-
-    # Prepare the JSON payload
-    json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
-
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: application/json'\
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --data "$json_payload" \
-    "http://localhost:8000/calibration/run_calibration/")
-
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
-
-    check_http_error "$http_status" "$response"
-
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-    fi
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
-}
-
-# Function to delete the job
-delete_job() {
-    local calibration_run_id=$1
-
-    echo "Deleting calibration run job $calibration_run_id"
-
-    # Prepare the JSON payload
-    json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
-
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: application/json'\
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --data "$json_payload" \
-    "http://localhost:8000/calibration/delete_job/")
-
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
-
-    check_http_error "$http_status" "$response"
-
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-    fi
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
-}
-
-# Function to cancel the job
-cancel_job() {
-    local calibration_run_id=$1
-
-    echo "Cancelling calibration run job $calibration_run_id"
-
-    # Prepare the JSON payload
-    json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
-
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: application/json'\
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --data "$json_payload" \
-    "http://localhost:8000/calibration/cancel_job/")
-
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
-
-    check_http_error "$http_status" "$response"
-
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-    fi
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
-}
-
-
-# Check if operation and argument are provided
-if [ -z "$1" ] || [ -z "$2" ]; then
+# Check if operation is provided
+if [ -z "$1" ]; then
     print_usage
 fi
 
@@ -246,241 +77,148 @@ operation="$1"
 argument="$2"
 shift 2  # Shift past the first two positional arguments
 
-# Initialize variables for optional keyword arguments
+# Handle the "register" operation before parsing other options
+if [ "$operation" == "register" ]; then
+    ngen_register "$argument"  # Call the register function with optional email argument
+    exit 0
+fi
+
+# Parse the keyword arguments for other operations
 observational_file=""
 forcing_dir=""
 geopackage_file=""
 output=""
 run_after_import=false
 
-# Parse the keyword arguments
 for arg in "$@"; do
     case $arg in
-        observational_file=*)
-            observational_file="${arg#*=}"
-            ;;
-        forcing_dir=*)
-            forcing_dir="${arg#*=}"
-            ;;
-        geopackage_file=*)
-            geopackage_file="${arg#*=}"
-            ;;
-        output=*)
-            output="${arg#*=}"
-            ;;
-        run_after_import=*)
-        run_after_import="${arg#*=}"
-            ;;
-        *)
-            echo "Unknown argument: $arg"
-            print_usage
-            ;;
+        observational_file=*) observational_file="${arg#*=}";;
+        forcing_dir=*) forcing_dir="${arg#*=}";;
+        geopackage_file=*) geopackage_file="${arg#*=}";;
+        output=*) output="${arg#*=}";;
+        run_after_import=*) run_after_import="${arg#*=}";;
+        *) echo "Unknown argument: $arg"; print_usage;;
     esac
 done
 
-# Ensure all specified files and directories exist before proceeding
-if [ "$operation" == "import" ] && [ ! -f "$argument" ]; then
-    echo "Error: Import file '$argument' not found."
-    exit 1
-fi
-
-if [ "$operation" == "import" ] && [ -f "$output" ]; then
-    echo "Error: The output option is not valid for import."f
-    exit 1
-fi
-
-if [ "$operation" == "output" ] && { [ -f "$observational_file" ] || [ -f "$forcing_dir" ] || [ -f "$geopackage_file" ]; }; then
-    echo "Error: Upload files can only be specified for import"
-    exit 1
-fi
-
-
-if [ "$operation" == "output" ] && [ -f "run_after_import" ]; then
-    echo "Error: The run_after_import option is only valid for import."
-    exit 1
-fi
-
-# Ensure run_after_import is either true or false
-if [[ "$run_after_import" != "true" && "$run_after_import" != "false" ]]; then
-    echo "Error: run_after_import must be either 'true' or 'false'."
-    exit 1
+# Ensure required files and directories exist
+if [ -n "$geopackage_file" ]; then
+    check_existence "$geopackage_file"
 fi
 
 if [ -n "$observational_file" ]; then
-    if [ ! -f "$observational_file" ]; then
-        echo "Error: Observational file '$observational_file' not found."
-        exit 1
-    elif [[ "$observational_file" != *.csv ]]; then
-        echo "Error: Observational file must have a .csv extension."
-        exit 1
-    fi
-fi
-
-if [ -n "$geopackage_file" ]; then
-    if [ ! -f "$geopackage_file" ]; then
-        echo "Error: Geopackage file '$geopackage_file' not found."
-        exit 1
-    elif [[ "$geopackage_file" != *.gpkg ]]; then
-        echo "Error: Geopackage file must have a .gpkg extension."
-        exit 1
-    fi
+    check_existence "$observational_file"
 fi
 
 if [ -n "$forcing_dir" ]; then
-    if [ ! -d "$forcing_dir" ]; then
-        echo "Error: Forcing data directory '$forcing_dir' not found."
-        exit 1
-    fi
-    for file in "$forcing_dir"/*; do
-        if [ ! -f "$file" ]; then
-            echo "Error: No files found in the forcing data directory, '$forcing_dir'."
-            exit 1
-        elif [[ "$file" != *.csv ]]; then
-            echo "Error: All forcing files must have a .csv extension. Invalid file: $file"
-            exit 1
-        fi
-    done
+    check_existence "$forcing_dir"
 fi
 
+# Preserve the operation variable before calling login
+original_operation="$operation"
+ngen_login  # Call the login function from ngen_user.sh
+operation="$original_operation"  # Restore the original operation after login
 
-source ./ngen_login.sh
-
-# Check if ACCESS_TOKEN is set
 if [ -z "$ACCESS_TOKEN" ]; then
-    echo "Error: ACCESS_TOKEN is not set. Please check the login script."
+    # ACCESS_TOKEN is not set. Please check the login script
+    echo "Error logging in"
     exit 1
 fi
 
-# Function to check for HTTP errors
-check_http_error() {
-    http_status=$1
-    response=$2
-    if [ "$http_status" -eq 000 ]; then
-        echo "Error: Could not connect to the server."
-        exit 1
-    elif [ "$http_status" -eq 400 ]; then
-        echo "Server returned HTTP 400 Bad Request. Response:"
-        echo "$response" | jq --indent 3 # Print the actual server response
-        rm -f /tmp/curl_response  # Clean up the temp file
-        exit 1
-    elif [ "$http_status" -ne 200 ]; then
-        echo "Error: Server returned HTTP status code $http_status."
-        rm -f /tmp/curl_response  # Clean up the temp file
-        exit 1
-    fi
-}
+# Case statement for handling different operations
+case "$operation" in
+    "import")
+        # Ensure the import file exists
+        if [ ! -f "$argument" ]; then
+            echo "Error: Import file '$argument' not found."
+            exit 1
+        fi
 
-# Handle import operation
-if [ "$operation" == "import" ]; then
-    # Read data from file
-    data=$(cat "$argument")
+        # Read data from the import file
+        data=$(cat "$argument")
 
-    # Send import request, capture the HTTP status and response
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: application/json' \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    --data "$data" 'http://localhost:8000/calibration/import/')
+        # Send import request, capture the HTTP status and response
+        response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            --data "$data" 'http://localhost:8000/calibration/import/')
 
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
+        # Extract HTTP status and response
+        http_status=$(tail -n1 <<< "$response")
+        response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    if [ -f /tmp/curl_response ]; then
-       response=$(cat /tmp/curl_response)
-    else
-       response=""
-    fi
+        # Check for HTTP errors and exit if any error is encountered
+        check_http_error "$http_status" "$response" true
 
-    # Check if there was an HTTP error, and exit if so
-    check_http_error "$http_status" "$response"
+        # Extract the calibration_run_id from the response
+        calibration_run_id=$(echo "$response" | jq -r '.calibration_run_id' 2>/dev/null)
 
-    # Print the response
-    if ! echo "$response" | jq . --indent 3 2>/dev/null; then
-       echo "Error parsing response."
-       exit 1
-    fi
+        # Perform uploads if calibration_run_id is valid
+        if [ -n "$geopackage_file" ]; then upload_geopackage_data "$geopackage_file" "$calibration_run_id" || exit 1; fi
+        if [ -n "$observational_file" ]; then upload_observational_data "$observational_file" "$calibration_run_id" || exit 1; fi
+        if [ -n "$forcing_dir" ]; then upload_forcing_data "$forcing_dir" "$calibration_run_id" || exit 1; fi
 
-    # Extract the calibration_run_id from the response
-    calibration_run_id=$(echo "$response" | jq -r '.calibration_run_id' 2>/dev/null)
+        # Run the job if requested
+        if [ "$run_after_import" = true ]; then run_job "$calibration_run_id" || exit 1; fi
+        rm -f /tmp/curl_response
+        ;;
 
-    # Upload geopackage data (exit if there's an error)
-    if [ -n "$geopackage_file" ]; then
-        upload_geopackage_data "$geopackage_file" "$calibration_run_id" || exit 1
-    fi
+    "export")
+        if [ -z "$argument" ]; then
+            echo "Error: Calibration run ID required for export."
+            exit 1
+        fi
+        response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+            --header 'Content-Type: application/json' \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
+            "http://localhost:8000/calibration/export/?calibration_run_id=$argument")
 
-    # Upload observational data (exit if there's an error)
-    if [ -n "$observational_file" ]; then
-        upload_observational_data "$observational_file" "$calibration_run_id" || exit 1
-    fi
+        # Extract HTTP status and response
+        http_status=$(tail -n1 <<< "$response")
+        response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
 
-    # Upload forcing data (exit if there's an error)
-    if [ -n "$forcing_dir" ]; then
-        upload_forcing_data "$forcing_dir" "$calibration_run_id" || exit 1
-    fi
+        check_http_error "$http_status" "$response"
 
-    # Run the calibration job after import if requested (exit if there's an error)
-    if [ "$run_after_import" = true ]; then
-        run_job "$calibration_run_id" || exit 1
-    fi
+        # Determine whether output is a directory or file
+        if [ -n "$output" ]; then
+            if [ -d "$output" ]; then
+                output_path="$output/calibration_run_$argument.json"  # Use default filename in specified directory
+            else
+                output_path="$output"  # Use specified file path
+            fi
+        else
+            output_path="calibration_run_$argument.json"  # Default filename if output not specified
+        fi
 
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
+        # Save the response to the file
+        if echo "$response" | jq . --indent 3 > "$output_path"; then
+            echo "Exported calibration run data to $output_path"
+        else
+            echo "Error saving export response to file."
+            exit 1
+        fi
 
-# Handle export operation
-elif [ "$operation" == "export" ]; then
-    calibration_run_id="$argument"
+        # Clean up
+        rm -f /tmp/curl_response
+        ;;
 
-    # Send export request, capture the HTTP status and response
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
-    --header 'Content-Type: application/json' \
-    --header "Authorization: Bearer $ACCESS_TOKEN" \
-    "http://localhost:8000/calibration/export/?calibration_run_id=$calibration_run_id")
+    "run")
+        if [ -z "$argument" ]; then echo "Error: Calibration run ID required to run job."; exit 1; fi
+        run_job "$argument"
+        ;;
 
-    # Extract HTTP status and response
-    http_status=$(tail -n1 <<< "$response")
-    response=$(cat /tmp/curl_response)
+    "delete")
+        if [ -z "$argument" ]; then echo "Error: Calibration run ID required to delete job."; exit 1; fi
+        delete_job "$argument"
+        ;;
 
-    check_http_error "$http_status" "$response"
+    "cancel")
+        if [ -z "$argument" ]; then echo "Error: Calibration run ID required to cancel job."; exit 1; fi
+        cancel_job "$argument"
+        ;;
 
-    # Determine if output is a directory or a file
-    if [ -z "$output" ]; then
-        # If output is not specified, use the default filename
-        output="calibration_run_$calibration_run_id.json"
-    elif [ -d "$output" ]; then
-        # If output is a directory, append the default filename
-        output="$output/calibration_run_$calibration_run_id.json"
-    fi
-
-    # Save the response to a JSON file
-    if ! echo "$response" | jq . --indent 3 > "$output" 2>/dev/null; then
-       echo "Error parsing response or saving to file."
-    else
-       full_path="$(realpath "$output")"
-       echo "Exported calibration run data to $full_path"
-    fi
-
-    # Clean up the temporary file
-    rm -f /tmp/curl_response
-
-# Handle run operation
-elif [ "$operation" == "run" ]; then
-    calibration_run_id="$argument"
-
-    run_job "$calibration_run_id"
-
-# Handle delete operation
-elif [ "$operation" == "delete" ]; then
-    calibration_run_id="$argument"
-
-    delete_job "$calibration_run_id"
-
-# Handle cancel operation
-elif [ "$operation" == "cancel" ]; then
-    calibration_run_id="$argument"
-
-    cancel_job "$calibration_run_id"
-
-else
-    echo You must enter 'import', 'export', 'run', 'delete' or 'cancel'
-    echo
-    print_usage
-fi
+    *)
+        echo "Invalid operation: $operation"
+        print_usage
+        ;;
+esac

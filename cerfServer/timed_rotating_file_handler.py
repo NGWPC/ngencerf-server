@@ -28,7 +28,7 @@ class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
         log_filename, log_extension = os.path.splitext(base_filename)
 
         # Format the date and insert it before the extension
-        date_suffix = time.strftime("%Y-%m-%d_%H-%M-%S", time_tuple)
+        date_suffix = time.strftime("%Y-%m-%dT%H:%M:%S", time_tuple)
         new_filename = f"{log_filename}.{date_suffix}{log_extension}"
 
         # Rename the current log file to the new filename

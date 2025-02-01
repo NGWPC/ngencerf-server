@@ -8,9 +8,8 @@ class PlotDefinition(BaseModel):
     is_active = models.BooleanField(null=False, default=True)
     name = models.CharField(max_length=50, unique=True, null=False)
     location = models.CharField(max_length=50, null=False)
-    valid_optimizations = models.TextField(null=False)
-    # True if validation plot; False if calibration plot
-    validation = models.BooleanField(null=False)
+    valid_optimizations = models.TextField(null=True)
+    job_type = models.CharField(max_length=20, null=False)
     filename_mask = models.TextField(null=False)
 
     class Meta:

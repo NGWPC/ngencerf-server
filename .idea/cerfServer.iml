@@ -14,11 +14,11 @@
   </component>
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
-      <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/.venv-cerf" />
       <excludePattern pattern=".$delete_me.venv" />
       <excludePattern pattern=".venv-cerf" />
       <excludePattern pattern="cerfServer.*.log" />
+      <excludePattern pattern="*.log" />
       <excludePattern pattern="cerfServer.log" />
       <excludePattern pattern="migrations" />
       <excludePattern pattern="createInput" />

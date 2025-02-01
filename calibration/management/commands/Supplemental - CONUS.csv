@@ -1,11 +1,11 @@
 # Another supplemental table to fill in agency/station name where we didn't have it.  These gages should already exist
-gage_id|nws_id|agency|station_name|rfc|nwm_v3_calibrated
+gage_id|nws_id|agency|station_name|rfc
 10172860| |USGS| |
 MTK| |CADWR| |
 09404343|TWVA3|USGS| |
 09404110|SUPA3|USGS| |
-05316992|COBM5|USGS|SLEEPY EYE CREEK AT CO. RD. 8 NEAR LEAVENWORTH MN|NCRFC|True
-05316970|LVNM5| USGS|COTTONWOOD RIVER AT LEAVENWORTH MN|NCRFC|True
+05316992|COBM5|USGS|SLEEPY EYE CREEK AT CO. RD. 8 NEAR LEAVENWORTH MN|NCRFC
+05316970|LVNM5| USGS|COTTONWOOD RIVER AT LEAVENWORTH MN|NCRFC
 NFW| |CADWR| |
 MPD| |CADWR| |
 LCB| |CADWR| |

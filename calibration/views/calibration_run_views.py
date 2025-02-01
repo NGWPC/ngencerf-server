@@ -1,36 +1,47 @@
+import concurrent.futures
 import logging
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 from datetimerange import DateTimeRange
+from django.conf import settings
 from django.db import transaction
-from django.db.models import Max, F
+from django.db.models import Max
+from django.forms import model_to_dict
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from rest_framework import status
 from rest_framework.decorators import api_view
+from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType
-from calibration.models import Iteration, ValidationRun
-from calibration.run_util.run_common import cancel_job_common, submit_validation_job, submit_calibration_job
-from calibration.run_util.run_ngen_cal_pw import run_calibration_job_callback_slurm, SlurmStatusEnum, run_validation_job_callback_slurm
-from calibration.util.calibration_validators import CalibrationRunSerializer, IsReadyResponseSerializer, GenericResponseSerializer, \
+from calibration.enums import StatusEnum
+from calibration.enums_vanilla import JobType
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status
+from calibration.run_util.run_common import cancel_job_common, submit_job
+from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
+    run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
+from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
-    CalibrationJobSlurmCallbackRequestSerializer, SubmitValidationJobResponseSerializer, \
-    ValidationRunSerializer, ValidationJobSlurmCallbackRequestSerializer, CalibrationOrValidationRunSerializer, EmptySerializer
+    CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
+    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer, \
+    ForecastJobSlurmCallbackRequestSerializer, \
+    ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run
-from calibration.views.read_output import read_calibration_output, accumulate_iterations
+    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
+    get_forecast_forcing_download_run
+from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=GetStatusRequestSerializer,
     responses={
-        200: IsReadyResponseSerializer,
+        200: GetStatusResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -40,66 +51,179 @@ logger = logging.getLogger(__name__)
             description="Internal server error"
         )
     },
-    description="Return the status of a job"
+    description="Return the status of a calibration job and associated validation and forecast jobs"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_status(request):
+def get_status(request: Request) -> Response:
+    """
+    Retrieves the status of a calibration job, including associated validation and forecast jobs.
+    Optionally includes performance metrics based on the request parameters.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the status and associated job details.
+    """
     data = request.data
     logger.debug(f'get_status() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(GetStatusRequestSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    include_performance_metrics = validator.get('include_performance_metrics')
 
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
-    # Find all ValidationRun objects associated with this CalibrationRun where validation_type is 'VALID_CONTROL' or 'VALID_BEST'
-    validation_runs = list(ValidationRun.objects.filter(
-        calibration_run=calibration_run,
-        validation_type__in=[ValidationType.VALID_CONTROL, ValidationType.VALID_BEST])
-                           .annotate(validation_run_id=F('id'))
-                           .values('validation_run_id', 'status__name', 'validation_type'))
+    def get_performance_metrics(performance_metrics):
+        """
+        Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
+        """
+        if not performance_metrics:
+            return {field: None for field in [
+                "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+            ]}
 
-    # Create validation response object
-    validation_response = [
-        {
-            'validation_run_id': run['validation_run_id'],
-            'status': run['status__name'],
-            'validation_type': run['validation_type']
+        # Convert numeric fields to kilobytes
+        metrics_dict = model_to_dict(performance_metrics, fields=[
+            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
+        ])
+        # Manually add io_throughput since it's a generated field
+        metrics_dict["io_throughput"] = performance_metrics.io_throughput
+
+        # Convert relevant fields to 'K' units
+        for field in ["max_rss", "max_disk_read", "max_disk_write"]:
+            value = metrics_dict.get(field)
+            if value is not None:  # Only convert non-null values
+                metrics_dict[field] = f"{value:.2f}K"
+
+        # Format io_throughput in 'K/s'
+        io_throughput = metrics_dict.get("io_throughput")
+        if io_throughput is not None:
+            metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
+
+        return metrics_dict
+
+    def should_include_metrics(run_status: Status):
+        """
+        Determines if performance metrics should be included based on job status and request parameters.
+        """
+        return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
+
+    # Conditionally retrieve calibration performance metrics
+    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status) else None
+
+    # Retrieve validation runs with related PerformanceMetrics data
+    validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
+        "performance_metrics"
+    ).only(
+        "id", "status__name", "validation_type", "submit_date",
+        "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
+        "performance_metrics__cpu_time", "performance_metrics__max_rss",
+        "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
+        "performance_metrics__reserved_time"
+    )
+
+    # Retrieve forecast runs with related PerformanceMetrics data
+    forecast_runs = ForecastRun.objects.filter(calibration_run=calibration_run).select_related(
+        "performance_metrics", "forcing_download_run"
+    ).only(
+        "id", "status__name", "submit_date",
+        "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
+        "performance_metrics__cpu_time", "performance_metrics__max_rss",
+        "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
+        "performance_metrics__reserved_time",
+        "forcing_download_run__status__name",
+        "forcing_download_run__performance_metrics__elapsed_time",
+        "forcing_download_run__performance_metrics__num_cpus",
+        "forcing_download_run__performance_metrics__cpu_time",
+        "forcing_download_run__performance_metrics__max_rss",
+        "forcing_download_run__performance_metrics__max_disk_read",
+        "forcing_download_run__performance_metrics__max_disk_write",
+        "forcing_download_run__performance_metrics__reserved_time"
+    )
+
+    # Construct validation response with performance metrics as needed
+    validation_response = []
+    for run in validation_runs:
+        validation_data = {
+            'validation_run_id': run.id,
+            'status': run.status.name,
+            'validation_type': run.validation_type,
+            'iteration_num': run.iteration_num,
+            'submit_date': run.submit_date,
+            'run_start': run.run_start,
+            'run_end': run.run_end,
+            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
-        for run in validation_runs
-    ]
+        if should_include_metrics(run.status):
+            validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
+        validation_response.append(validation_data)
 
-    print('validation_runs', validation_response)
+    # Construct validation response with performance metrics as needed
+    forecast_response = []
+    for run in forecast_runs:
+        forcing_download = run.forcing_download_run
+        forecast_data = {
+            'forecast_run_id': run.id,
+            'status': run.status.name,
+            'submit_date': run.submit_date,
+            'run_start': run.run_start,
+            'run_end': run.run_end,
+            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
+        }
+        if should_include_metrics(run.status):
+            forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
 
-    messages = None
-    if calibration_run.status in [StatusEnum.from_enum(StatusEnum.SAVED), StatusEnum.from_enum(StatusEnum.READY)]:
+        if forcing_download:
+            forcing_download_data = {
+                'forcing_download_run_id': forcing_download.id,
+                'status': forcing_download.status.name,
+                'elapsed_time': forcing_download.performance_metrics.elapsed_time if forcing_download.performance_metrics else None
+            }
+            if should_include_metrics(forcing_download.status):
+                forcing_download_data['performance_metrics'] = get_performance_metrics(forcing_download.performance_metrics)
+            forecast_data['forcing_download'] = forcing_download_data
+
+        forecast_response.append(forecast_data)
+
+    # Prepare the main response without calibration performance metrics if not requested
+    response = {
+        'message': f'Calibration Job {calibration_run.id}, status is {calibration_run.status.name}',
+        'calibration_run_id': calibration_run.id,
+        'status': calibration_run.status.name,
+        'submit_date': calibration_run.submit_date,
+        'run_start': calibration_run.run_start,
+        'run_end': calibration_run.run_end,
+        'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
+        'validations': validation_response,
+        'forecasts': forecast_response
+    }
+
+    # Conditionally add calibration run performance metrics to response if requested and status is DONE or FAIL
+    if calibration_metrics:
+        response['performance_metrics'] = calibration_metrics
+
+    # Add error messages if applicable
+    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
+        if messages:
+            response['errors'] = messages
 
-    response = {'message': f'Calibration Run {calibration_run.id}, status is {calibration_run.status.name}',
-                'calibration_run_id': calibration_run.id,
-                'status': calibration_run.status.name,
-                'validations': validation_response
-                }
-    if messages:
-        response['errors'] = messages
-
-    response_validator, error_response = validate_response(IsReadyResponseSerializer, response)
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'], max_length=10)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_status() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_status() - {truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10)}')
+
     return Response(response_validator.data)
 
 
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: GenericResponseSerializer,
+        200: SubmitCalibrationJobResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -113,7 +237,13 @@ def get_status(request):
 )
 @api_view(['POST'])
 @handle_exceptions
-def run_calibration(request):
+def run_calibration(request: Request) -> Response:
+    """
+    Submits a calibration job for processing.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response indicating job submission status.
+    """
     data = request.data
     logger.debug(f'run_calibration() request from {request.user.email} - {data}')
 
@@ -127,62 +257,15 @@ def run_calibration(request):
     if error_return:
         return error_return
 
-    response = submit_calibration_job(run)
-    if response:
-        return response
+    error_response = submit_job(run)
+    if error_response:
+        return error_response
 
-    response = {'message': f'Calibration Run {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name, 'run_date': run.run_date}
+    response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
+                'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
     logger.debug(f'Returning to {request.user.email} from run_calibration() - {response_validator.data}')
-
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=ValidationRunSerializer,
-    responses={
-        200: GenericResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Run a validation"
-)
-@api_view(['POST'])
-@handle_exceptions
-def run_validation(request):
-    data = request.data
-    logger.debug(f'run_validation() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(ValidationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    validation_run_id = validator.get('validation_run_id')
-
-    validation_run, error_return = get_validation_run(validation_run_id, request.user)
-    if error_return:
-        return error_return
-
-    # TODO Doesn't return anything.  Can any errors occur?
-    response = submit_validation_job(validation_run)
-    if response:
-        return response
-
-    response = {
-        'message': f'Validation Job {validation_run.id}, Calibration Job {validation_run.calibration_run.id}/{validation_run.calibration_run.owner.username}  has been submitted',
-        'validation_run_id': validation_run_id,
-        'status': validation_run.status.name, 'run_date': validation_run.run_date}
-
-    response_validator, error_response = validate_response(SubmitValidationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user.email} from run_validation() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -206,9 +289,9 @@ def run_validation(request):
 @handle_exceptions
 def process_calibration_output(request):
     """
-     This endpoint is mostly for testing, to kick of the processing of output for a completed job
-     Normally read_output() is called automatically when a job completes.
-     This endpoint can be used in case the output processing doesn't work.
+    This endpoint is mostly for testing, to kick off the processing of output for a completed job.
+    Normally read_calibration_output() is called automatically when a job completes.
+    This endpoint can be used in case the output processing doesn't work.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
@@ -226,7 +309,7 @@ def process_calibration_output(request):
 
     read_calibration_output(run)
 
-    response = {'message': f"End of job processing completed for Calibration Run {run.id}",
+    response = {'message': f"End of job processing completed for Calibration Job {run.id}",
                 'calibration_run_id': run.id,
                 'status': run.status.name}
 
@@ -257,6 +340,13 @@ def process_calibration_output(request):
 @api_view(['POST'])
 @handle_exceptions
 def report_iteration(request):
+    """
+    Reports an iteration for a running calibration job. This endpoint updates or creates an
+    iteration record for a specific worker in the calibration job.
+
+    :param request: HTTP request containing iteration details.
+    :return: JSON response indicating the success of the operation.
+    """
     data = request.data
     logger.debug(f'report_iteration() request from {request.user.email} - {data}')
 
@@ -295,7 +385,7 @@ def report_iteration(request):
         if not created:
             return ResponseError(f'Iteration object already exists for calibration run {run.id}, worker {worker_name}, iteration {iteration_number}')
 
-        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Run {run.id}",
+        response = {'message': f"Iteration {iteration_number} for worker_name '{worker_name}' set for Calibration Job {run.id}",
                     'calibration_run_id': run.id,
                     'status': run.status.name}
 
@@ -324,7 +414,13 @@ def report_iteration(request):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_iteration(request):
+def get_iteration(request: Request) -> Response:
+    """
+    Retrieves the current iteration of a running calibration job.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the current iteration details.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_iteration() request from {request.user.email} - {data}')
 
@@ -334,15 +430,20 @@ def get_iteration(request):
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED])
+    # Allow status Ready for UI polling immediately after submission.
+    run, error_return = get_calibration_run(calibration_run_id, request.user,
+                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED,
+                                                        StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
-    # Use accumulate_iterations to get the total iterations
-    total_iterations = accumulate_iterations(run)
+    high_iteration = Iteration.objects.filter(calibration_run=run, worker_number=1).order_by('-iteration_num').first()
+    high_iteration_number = high_iteration.iteration_num if high_iteration else None
 
-    response = {'message': f'Iterations so far for Calibration Run {run.id}, across all workers, is {total_iterations}', 'calibration_run_id': run.id,
-                'status': run.status.name, 'iterations': total_iterations}
+    response = {'message': f'Calibration Job {run.id} has completed {high_iteration_number} iterations',
+                'calibration_run_id': run.id,
+                'status': run.status.name,
+                'iteration': high_iteration_number}
 
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
@@ -353,7 +454,7 @@ def get_iteration(request):
 
 
 @extend_schema(
-    request=CalibrationOrValidationRunSerializer,
+    request=CalibrationOrValidationOrForecastRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -369,41 +470,125 @@ def get_iteration(request):
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def cancel_job(request):
+def cancel_job(request: Request) -> Response:
+    """
+    Cancel a running job for CalibrationRun, ValidationRun, or ForecastRun.
+
+    :param request: The HTTP request containing the run ID to cancel.
+    :return: A Response indicating the cancellation result.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'cancel_job() request from {request.user.email} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
 
-    # Determine job type and run function
-    run_func = get_calibration_run if calibration_run_id else get_validation_run
-    run_id = calibration_run_id or validation_run_id
+    # Determine job type and retrieve the appropriate run instance
+    if calibration_run_id:
+        run_func = get_calibration_run
+        run_id = calibration_run_id
+        run_type = JobType.CALIBRATION.value.capitalize()
+    elif validation_run_id:
+        run_func = get_validation_run
+        run_id = validation_run_id
+        run_type = JobType.VALIDATION.value.capitalize()
+    else:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = JobType.FORECAST.value.capitalize()
 
     run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
-    if not cancel_job_common(run_id):
-        return ResponseError(f"{'Calibration' if calibration_run_id else 'Validation'} Run {run.id} is not running")
+    if not cancel_job_common(run):
+        return ResponseError(f"Unable to cancel {run_type} Job {run.id}")
 
-    run.status = StatusEnum.from_enum(StatusEnum.CANCELLED)
+    run.status = StatusEnum.CANCELLED.db_instance
     run.save(update_fields=['status'])
 
     response = {
-        'message': f"{'Calibration' if calibration_run_id else 'Validation'} Run job {run.id} has been canceled",
-        f"{'calibration_run_id' if calibration_run_id else 'validation_run_id'}": run.id,
+        'message': f"{run_type} Run job {run.id} has been canceled",
+        f"{run_type.lower()}_run_id": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
-
-    response_validator, error_response = validate_response(GenericResponseSerializer, response)
+    response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GetJobDirResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Return the directory where a jobs data is stored"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_job_dir(request: Request) -> Response:
+    """
+    Retrieves the directory path where the data for a specific calibration run is stored.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the data directory path.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_job_dir() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user,
+                                            run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+    if error_return:
+        return error_return
+
+    if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
+        # Convert path inside the container to the mapped host pth outside the container
+        container_job_data_dir = run.job_data_dir
+        # Ensure the absolute path starts with the old root
+        if not os.path.isabs(container_job_data_dir):
+            raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
+        if not container_job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
+            raise ValueError(f"The path '{container_job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
+
+        # Replace the old root with the new root
+        relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
+        new_job_data_dir = os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
+    else:
+        new_job_data_dir = run.job_data_dir
+
+    response = {
+        'message': f"Calibration Job {run.id} data directory is {new_job_data_dir}",
+        'calibration_run_id': run.id,
+        'data_dir': new_job_data_dir,
+        'status': run.status.name
+    }
+
+    response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {response_validator.data}')
 
     return Response(response_validator.data)
 
@@ -421,12 +606,18 @@ def cancel_job(request):
             description="Internal server error"
         )
     },
-    description="Callback for slurm to call when a calibration job ends"
+    description="Callback for Slurm to call when a calibration job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
-def calibration_job_slurm_callback(request):
+def calibration_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a calibration job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
     data = request.data
     logger.debug(f'calibration_job_slurm_callback() request from {request.user.email} - {data}')
 
@@ -442,7 +633,7 @@ def calibration_job_slurm_callback(request):
         return error_return
 
     slurm_status = SlurmStatusEnum(job_status)
-    run_calibration_job_callback_slurm(calibration_run, slurm_status)
+    run_calibration_job_callback_pw(calibration_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from calibration_job_slurm_callback()')
 
@@ -462,12 +653,18 @@ def calibration_job_slurm_callback(request):
             description="Internal server error"
         )
     },
-    description="Callback for slurm to call when a validation job ends"
+    description="Callback for Slurm to call when a validation job ends"
 )
 @api_view(['POST'])
 @handle_exceptions
 @auth_scope_required(token_slurm_scope)
-def validation_job_slurm_callback(request):
+def validation_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a validation job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
     data = request.data
     logger.debug(f'validation_job_slurm_callback() request from {request.user.email} - {data}')
 
@@ -483,9 +680,103 @@ def validation_job_slurm_callback(request):
         return error_return
 
     slurm_status = SlurmStatusEnum(job_status)
-    run_validation_job_callback_slurm(validation_run, slurm_status)
+    run_validation_job_callback_pw(validation_run, slurm_status)
 
     logger.debug(f'Returning to {request.user.email} from validation_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    request=ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a forecast forcing download job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a forecast forcing download job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    data = request.data
+    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
+    job_status = validator.get('job_status')
+
+    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum(job_status)
+    run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
+
+    logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
+
+    return Response(status=status.HTTP_202_ACCEPTED)
+
+
+@extend_schema(
+    request=ForecastJobSlurmCallbackRequestSerializer,
+    responses={
+        202: None,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Callback for Slurm to call when a forecast job ends"
+)
+@api_view(['POST'])
+@handle_exceptions
+@auth_scope_required(token_slurm_scope)
+def forecast_job_slurm_callback(request: Request) -> Response:
+    """
+    Handles a callback from Slurm to update the status of a forecast job.
+
+    :param request: HTTP request containing Slurm job details and status.
+    :return: HTTP 202 response indicating the callback was processed.
+    """
+    data = request.data
+    logger.debug(f'forecast_job_slurm_callback() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    forecast_run_id = validator.get('forecast_run_id')
+    job_status = validator.get('job_status')
+
+    forecast_run, error_return = get_forecast_run(forecast_run_id, None, run_status=[StatusEnum.RUNNING])
+    if error_return:
+        return error_return
+
+    slurm_status = SlurmStatusEnum(job_status)
+    run_forecast_job_callback_pw(forecast_run, slurm_status)
+
+    logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -512,11 +803,17 @@ def validation_job_slurm_callback(request):
             description="Internal server error"
         )
     },
-    description="Return a token for use by slurm"
+    description="Return a token for use by Slurm"
 )
 @api_view(['GET'])
 @handle_exceptions
-def get_slurm_token(request):
+def get_slurm_token(request: Request) -> Response:
+    """
+    Generates and returns a token for use by Slurm.
+
+    :param request: HTTP request.
+    :return: JSON response containing the generated token.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_slurm_token() request from {request.user.email} - {data}')
 
@@ -527,35 +824,169 @@ def get_slurm_token(request):
     return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
 
 
-def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange):
-    logger.info(f'Subsetting directory {input_directory}')
+def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange, max_workers=4):
+    """
+    Subsets the files in a directory based on a provided time range and saves the filtered
+    files into an output directory. Uses parallel processing to handle multiple files at once.
 
-    if not os.path.isdir(output_directory):
-        os.makedirs(output_directory, exist_ok=True)
+    :param input_directory: Path to the input directory.
+    :param output_directory: Path to the output directory.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    :param max_workers: Maximum number of parallel workers (default is 4 to balance S3FS I/O and system resources).
+    - S3FS benefits from parallel reads, but excessive threads can cause API throttling or network congestion.
+    - 4 workers provide a good balance between concurrency and avoiding excessive I/O wait.
+    - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
+    - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
+    """
+    start_time = time.time()
+    logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers}')
 
-    for filename in os.listdir(input_directory):
-        input_file_path = os.path.join(input_directory, filename)
-        output_file_path = os.path.join(output_directory, filename)
+    if not os.path.isdir(input_directory):
+        raise ValueError(f"Input path '{input_directory}' is not a directory.")
 
-        if os.path.isfile(input_file_path):  # Ensure it's a file
-            subset_by_time_range(input_file_path, output_file_path, date_time_range)
+    os.makedirs(output_directory, exist_ok=True)
 
-    logger.info(f'Done subsetting directory {input_directory}')
+    files_to_process = [
+        (os.path.join(input_directory, filename), os.path.join(output_directory, filename))
+        for filename in os.listdir(input_directory)
+        if os.path.isfile(os.path.join(input_directory, filename))
+    ]
+
+    logger.info(f"Found {len(files_to_process)} files to process in {input_directory}")
+
+    def process_file(input_output_tuple):
+        input_file, output_file = input_output_tuple
+        subset_by_time_range(input_file, output_file, date_time_range)
+
+    # Use ThreadPoolExecutor for I/O-bound tasks (like S3FS-based file reads/writes)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(process_file, files_to_process)
+
+    elapsed_time = time.time() - start_time
+    logger.info(f"Finished subsetting directory {input_directory} in {elapsed_time:.2f} seconds")
+
+
+def get_performance_chunksize(file_path):
+    """
+    Dynamically determines an optimal chunksize for high-performance processing
+    using a **single row** to estimate memory size sine all rows are substantially the same size
+
+    :param file_path: Path to the input CSV file.
+    :return: Optimal chunksize for pandas.read_csv()
+    """
+    file_size = os.path.getsize(file_path)  # Get file size in bytes
+
+    # Read one row (excluding header) to estimate row size
+    sample_df = pd.read_csv(file_path, nrows=2)  # Read first two rows (header + 1 row)
+    row_size = sample_df.iloc[1:].memory_usage(deep=True).sum()  # Size of first data row (ignore header)
+
+    # Estimate total rows in the file
+    estimated_rows = file_size / row_size
+
+    # Adjust chunk fraction based on file size
+    if file_size < 50_000_000:  # <50MB
+        target_fraction = 0.05  # 5%
+    elif file_size < 200_000_000:  # 50MB-200MB
+        target_fraction = 0.03  # 3%
+    else:
+        target_fraction = 0.01  # 1% (limit memory impact for huge files)
+
+    # Set chunksize as 5-10% of total estimated rows
+    optimal_chunksize = int(estimated_rows * target_fraction)
+
+    # Ensure reasonable limits (between 10k - 100k)
+    return max(10_000, min(optimal_chunksize, 100_000))
 
 
 def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
-    logger.info(f'Subsetting file {input_file} to {output_file}')
+    """
+    Reads a CSV file, filters rows based on a time range, and writes the filtered data
+    to an output file with the original column names and timezone-naive datetime values.
 
-    # Read the CSV into a DataFrame, parsing dates in the first column
-    df = pd.read_csv(input_file, delimiter=',', parse_dates=[0], infer_datetime_format=True)
+    Optimized to take advantage of sorted data for faster processing.
+    Chunksize is optimized for **performance**, reducing disk I/O overhead.
 
-    df['dateTime'] = df['dateTime'].dt.tz_localize('UTC')
+    :param input_file: Path to the input CSV file.
+    :param output_file: Path to the output CSV file.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    """
+    logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range}')
+    file_basename = os.path.basename(input_file)  # Extract just the filename
 
-    # Efficiently filter rows using DataFrame.loc
-    subset_df = df.loc[
-        (df['dateTime'] >= date_time_range.start_datetime) &
-        (df['dateTime'] <= date_time_range.end_datetime)
-        ]
+    # Dynamically determine the best chunksize for performance
+    chunk_size = get_performance_chunksize(input_file)
+    logger.info(f"Using optimized chunksize={chunk_size} for {file_basename}")
 
-    # Write the filtered DataFrame to the output CSV file
-    subset_df.to_csv(output_file, index=False)
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    start_line = 1  # Track the first row of each chunk (excluding header)
+
+    # DateTimeRange arguments are already in UTC, so use them as-is
+    start_datetime = pd.Timestamp(date_time_range.start_datetime)
+    end_datetime = pd.Timestamp(date_time_range.end_datetime)
+
+    with open(output_file, 'w') as out_file:
+        write_header = True  # Ensure the header is written only once
+
+        # Read the first chunk to detect the datetime column name
+        first_chunk = pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size)
+        for chunk in first_chunk:
+            original_time_column = chunk.columns[0]  # Get the first column name dynamically
+            break  # Exit after getting the column name
+
+        # Read the CSV in chunks, parsing dates in the detected first column
+        for chunk in pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size):
+            end_line = start_line + len(chunk) - 1  # Compute last row index for this chunk
+
+            # Rename the first column to a consistent name
+            if original_time_column in chunk.columns:
+                chunk.rename(columns={original_time_column: 'dateTime'}, inplace=True)
+            else:
+                logger.error(f"Expected datetime column '{original_time_column}' not found in {file_basename}")
+                raise KeyError(f"Expected datetime column '{original_time_column}' not found in {file_basename}")
+
+            # Convert to datetime and explicitly assume timestamps are in UTC
+            chunk['dateTime'] = pd.to_datetime(chunk['dateTime'], errors='coerce')
+
+            # Validate datetime values before localizing
+            if chunk['dateTime'].isna().any():
+                logger.error(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line})")
+                raise ValueError(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line})")
+
+            # Now localize to UTC
+            chunk['dateTime'] = chunk['dateTime'].dt.tz_localize('UTC')
+
+            # Log the original start and end ranges in this chunk, including line numbers
+            chunk_start = chunk['dateTime'].min()
+            chunk_end = chunk['dateTime'].max()
+            logger.info(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
+
+            # Skip chunks that are entirely before the time range
+            if chunk_end < start_datetime:
+                start_line += chunk_size  # Update row counter
+                continue  # No relevant data in this chunk
+
+            # Stop processing early if chunks exceed the time range
+            if chunk_start > end_datetime:
+                break  # Since files are sorted, no need to read further
+
+            # Filter the data within the time range
+            subset_df = chunk.loc[
+                (chunk['dateTime'] >= start_datetime) &
+                (chunk['dateTime'] <= end_datetime)
+            ].copy()  # Explicitly create a copy
+
+            # Convert back to naive timestamps for output (to match original format)
+            subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
+
+            # Rename datetime column back to its original name
+            subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
+
+            # Write filtered data to output CSV
+            subset_df.to_csv(out_file, mode='a', index=False, header=write_header)
+            write_header = False  # Ensure subsequent writes do not include headers
+
+            # Update the starting line number for the next chunk
+            start_line = end_line + 1
+
+    logger.info(f'Finished subsetting file {input_file} to {output_file}')

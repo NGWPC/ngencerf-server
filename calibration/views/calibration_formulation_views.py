@@ -1,19 +1,18 @@
 import logging
 
-from django.core.cache import cache
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun, ModuleGroup
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun
+from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
-    get_cached_module_by_name, \
-    get_cached_modules_with_groups
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
+from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +39,10 @@ MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def load_formulation_tab(request):
-    data = request.data if request.method == 'POST' else request.query_params.dict()
+def load_formulation_tab(request) -> Response:
+    """Load the formulation tab data for a specific calibration run."""
 
+    data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'load_formulation_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
@@ -55,10 +55,10 @@ def load_formulation_tab(request):
     if error_return:
         return error_return
 
-    # Gget all modules and their groups from the cached result
+    # Retrieve all modules with their groups from the cache
     cached_modules = get_cached_modules_with_groups()
 
-    # Convert the cached Module instances to a list of dictionaries with the desired structure
+    # Prepare modules list as dictionaries for response serialization
     module_groups_list = [
         {
             "name": module.name,
@@ -68,15 +68,8 @@ def load_formulation_tab(request):
         for module in cached_modules.values()
     ]
 
-    # Check if the ordered module groups are in the cache
-    module_groups = cache.get(MODULE_GROUPS_CACHE_KEY)
-
-    # If not cached, retrieve from the database and cache the result
-    if module_groups is None:
-        module_groups = list(ModuleGroup.objects.filter(is_active=True).order_by('order').values_list('name', flat=True))
-        cache.set(MODULE_GROUPS_CACHE_KEY, module_groups, None)
-
-    print('groups', module_groups)
+    # Retrieve cached module groups
+    module_groups = get_cached_module_groups()
 
     ngen_cal_input.ready_to_run(run)
 
@@ -85,12 +78,22 @@ def load_formulation_tab(request):
     response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
     if error_response:
         return error_response
+
     logger.debug(f'Returning to {request.user.email} from load_formulation_tab() - {response_validator.data}')
 
     return Response(response_validator.data)
 
 
-def get_sloth_parameters(run):
+def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
+    """
+    Retrieve Sloth parameters for a given calibration run.
+
+    Parameters:
+        run (CalibrationRun): The calibration run instance.
+
+    Returns:
+        list[dict[str, str]]: A list of Sloth parameters formatted as dictionaries.
+    """
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
         .select_related('maps_to_module')
@@ -100,7 +103,6 @@ def get_sloth_parameters(run):
     )
     for sloth_param in sloth_parameters:
         sloth_param['maps_to_module'] = sloth_param.pop('maps_to_module__name')
-
     return sloth_parameters
 
 
@@ -121,16 +123,17 @@ def get_sloth_parameters(run):
 )
 @api_view(['POST'])
 @handle_exceptions
-def save_formulation_tab(request):
-    data = request.data
+def save_formulation_tab(request) -> Response:
+    """Save the formulation tab data for a calibration run."""
 
+    data = request.data
     logger.debug(f'save_formulation_tab() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
         return error_return
 
-    new_module_names = validator.get('modules')
+    new_module_names = set(validator.get('modules'))
     calibration_run_id = validator.get('calibration_run_id')
     user_formulation_name = validator.get('formulation_name')
     use_sloth = validator.get('use_sloth')
@@ -142,73 +145,82 @@ def save_formulation_tab(request):
 
     run.user_formulation_name = user_formulation_name
 
+    # Validate modules and formulation constraints
     error_message = validate_modules(new_module_names)
     if error_message:
         return ResponseError(error_message)
 
     formulation_warning, nwm_warning = validate_formulation(new_module_names)
-   
+
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
 
-    # Get current new_module_names
-    existing_module_names = set(CalibrationFormulation.objects
-                                .filter(calibration_run_id=run.id)
-                                .values_list('module__name', flat=True))
+    # Set run.use_sloth and handle Sloth parameters
+    run.use_sloth = use_sloth
 
-    print('old existing_module_names', existing_module_names)
-    print('new existing_module_names', new_module_names)
+    # Initialize the eds_errors list
+    eds_errors = []
+
+    # Fetch all formulations and determine changes
+    existing_formulations_qs = CalibrationFormulation.objects.filter(
+        calibration_run=run
+    )
+    existing_module_names = set(existing_formulations_qs.values_list('module__name', flat=True))
+    # Determine which modules to delete and add
+    to_be_added = new_module_names - existing_module_names
+    to_be_unused = existing_module_names - new_module_names
 
     with transaction.atomic():
-        # Only if the module names have changed
-        if new_module_names:
-            new_module_names = set(new_module_names)
-            if new_module_names != existing_module_names:
-                to_be_unused = existing_module_names - new_module_names
-                print('to_be_unused', to_be_unused)
+        # Delete unused formulations
+        if to_be_unused:
+            logger.info(f"Deleting unused modules: {to_be_unused}")
+            delete_unused_formulations(to_be_unused, run)
 
-                # Identify CalibrationFormulations to be deleted
-                formulations_to_delete = CalibrationFormulation.objects.filter(
-                    calibration_run=run,
-                    module__name__in=to_be_unused
-                )
+        # Add new formulations
+        for module_name in to_be_added:
+            module_instance = get_cached_module_by_name(module_name)
+            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
-                # Check if the current module_output_variable references a CalibrationFormulation to be deleted
-                if run.module_output_variable and run.module_output_variable.calibration_formulation in formulations_to_delete:
-                    run.module_output_variable = None
+        # Identify formulations without any calibration parameters, in case there was an error retriving them
+        formulations_without_params_qs = existing_formulations_qs.filter(calibrationparameter__isnull=True)
 
-                # Delete CalibrationParameters related to the formulations_to_delete
-                CalibrationParameter.objects.filter(
-                    calibration_formulation__in=formulations_to_delete
-                ).delete()
-                # Delete ModuleOutputVariables related to the formulations_to_delete
-                ModuleOutputVariable.objects.filter(
-                    calibration_formulation__in=formulations_to_delete
-                ).delete()
+        required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs
 
-                # Now delete the CalibrationFormulations
-                formulations_to_delete.delete()
+        # Retrieve metadata for required formulations
+        if required_formulations_qs.exists() and run.gage:
+            logger.info(f"Fetching metadata for modules: {required_formulations_qs}")
+            try:
+                get_module_metadata_from_data_services(run, required_formulations_qs)
+            except DataServicesException as e:
+                logger.exception("Error retrieving module parameter data from Data Services")
+                eds_errors.append({
+                    'name': 'parameters',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
 
-                for m_name in new_module_names:
-                    module_instance = get_cached_module_by_name(m_name)
-                    CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
-
-        run.use_sloth = use_sloth
-
-        # Delete sloth params for this run if they've already been specified since they might refer to modules no longer in use
-        # Easier to just delete them all and then re-validate  and re-save
+        # Delete existing Sloth params for this run and re-add them
         CalibrationSlothParam.objects.filter(calibration_run=run).delete()
 
         error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
         if error_message:
+            logger.error(f"Error adding Sloth parameters: {error_message}")
             return ResponseError(error_message)
 
         run.save()
 
     ngen_cal_input.ready_to_run(run)
-    response = {'message': f'Calibration Run {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name, 'nwm_warning': nwm_warning}
-    if formulation_warning is not None:
+
+    response = {
+        'message': f'Calibration Job {run.id} updated',
+        'calibration_run_id': run.id,
+        'status': run.status.name,
+        'nwm_warning': nwm_warning
+    }
+    if formulation_warning:
         response['formulation_warning'] = formulation_warning
+    if eds_errors:
+        response['eds_errors'] = eds_errors
 
     response_validator, error_response = validate_response(SaveFormulationResponseSerializer, response)
     if error_response:
@@ -218,17 +230,35 @@ def save_formulation_tab(request):
     return Response(response_validator.data)
 
 
-def validate_modules(module_names: set[str]):
-    """
-    Validate that all the provided module names exist in the cached modules.
-    """
-    if module_names:
-        # Check that all the module names are valid
-        valid_names = set(module_name for module_name in module_names if get_cached_module_by_name(module_name))
+def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun) -> None:
+    """Delete unused formulations and related parameters for a given calibration run."""
 
-        module_names = set(module_names)
-        if module_names - valid_names:
-            return f'Invalid modules - {module_names - valid_names}'
+    formulations_to_delete = CalibrationFormulation.objects.filter(
+        calibration_run=run,
+        module__name__in=to_delete_modules
+    )
+
+    # Check if the current module_output_variable references a formulation to be deleted
+    if run.module_output_variable and run.module_output_variable.calibration_formulation in formulations_to_delete:
+        run.module_output_variable = None
+        run.save(update_fields=["module_output_variable"])
+
+    # Delete CalibrationParameters related to the formulations_to_delete
+    CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
+
+    # Delete ModuleOutputVariables related to the formulations_to_delete
+    ModuleOutputVariable.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
+
+    # Finally, delete the formulations
+    formulations_to_delete.delete()
+
+
+def validate_modules(module_names: set[str]) -> str | None:
+    """Validate that all the provided module names exist in the cached modules."""
+
+    valid_names = {name for name in module_names if get_cached_module_by_name(name)}
+    if module_names - valid_names:
+        return f'Invalid modules - {module_names - valid_names}'
     return None
 
 
@@ -239,22 +269,22 @@ formulation_validations = {
         ],
         "group_requirements": {
             "Glacier": {
-                "allowed_counts": [0]  # Change back to [0, 1], once Topoflow is allowed
+                "expected_counts": [0]  # Change back to [0, 1], once Topoflow is allowed
             },
             "Snowmelt": {
-                "allowed_counts": [0, 1]
+                "expected_counts": [0, 1]
             },
             "Evapotranspiration": {
-                "allowed_counts": [1]
+                "expected_counts": [1]
             },
             "Rainfall Runoff": {
-                "allowed_counts": [1]
+                "expected_counts": [1]
             },
             "Soil Moisture": {
-                "allowed_counts": [0, 2]
+                "expected_counts": [0, 2]
             },
             "Routing": {
-                "allowed_counts": [1]
+                "expected_counts": [1]
             }
         },
         "module_exclusions": {
@@ -269,7 +299,9 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: set[str]):
+def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
+    """Validate formulation rules based on group requirements and exclusions."""
+
     if not module_names:
         return None, False
 
@@ -298,23 +330,25 @@ def validate_formulation(module_names: set[str]):
             must_have_modules = conditions.get("must_have", [])
             # Check if any of the required modules are present
             if not any(module in module_names for module in must_have_modules):
-                messages.append(
-                    f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
-                )
+                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
+                logger.warning(msg)
+                messages.append(msg)
                 formulation_validation_json['excluded_modules'].append(
                     {'module_name': excluded_module, 'must_have': must_have_modules}
                 )
 
     # Validate group requirements
     for group_name, group_rules in formulation_validations['formulation_rules']['group_requirements'].items():
-        allowed_counts = group_rules.get('allowed_counts')
+        expected_counts = group_rules.get('expected_counts')
         count = group_counts.get(group_name, 0)
 
-        # Validate the count against allowed_counts
-        if count not in allowed_counts:
-            messages.append(f"{group_name} group must have {allowed_counts} modules, but it has {count}")
+        # Validate the count against expected_counts
+        if count not in expected_counts:
+            msg = f"{group_name} group is expected to have {expected_counts} modules, but it has {count}"
+            logger.warning(msg)
+            messages.append(msg)
             formulation_validation_json['group_requirements'].append(
-                {'group_name': group_name, 'required_count': allowed_counts, 'has_count': count}
+                {'group_name': group_name, 'expected_counts': expected_counts, 'has_count': count}
             )
 
     nwm_warning = False
@@ -334,14 +368,15 @@ def validate_formulation(module_names: set[str]):
         return None, nwm_warning
 
 
-def add_sloth_parameters(run: CalibrationRun, sloth_parameters, module_names):
+def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:
+    """Add Sloth parameters to a calibration run, validating module associations."""
+
     sloth_param_objects = []
     if sloth_parameters is not None:
         for s in sloth_parameters:
             module = get_cached_module_by_name(s['maps_to_module'])
-            if not module or module.name not in (module_names or []):
-                print('found module', module)
-                return f"Sloth parameter \'{s['param_name']}\' contains an invalid module - \'{s['maps_to_module']}\'.  This module has not been added to this run"
+            if not module or module.name not in module_names:
+                return f"Sloth parameter '{s['param_name']}' has an invalid module - '{s['maps_to_module']}'.  This module has not been added to this run"
 
             sloth_param_objects.append(
                 CalibrationSlothParam(
