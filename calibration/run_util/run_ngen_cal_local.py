@@ -82,7 +82,7 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str,
     spawn_job(run, args, callback_function=job_callback, simulate=simulate)
 
 
-def check_local_status(run: BaseRun, future: Future) -> bool:
+def check_local_for_failure(run: BaseRun, future: Future) -> bool:
     """
     Monitor the status of a locally executed job and update its status in the system.
 
@@ -91,28 +91,28 @@ def check_local_status(run: BaseRun, future: Future) -> bool:
 
     :param run: The job object (CalibrationRun, ValidationRun, or ForecastRun) being monitored.
     :param future: The Future object representing the asynchronous process.
-    :return: True if the job completed successfully, False otherwise.
+    :return: True if the job failed or was cancelled, False otherwise.
     """
     try:
         if future.exception() is not None:
             logger.error(f"Exception occurred in {get_job_description(run)}: {future.exception() or 'Unknown error'}")
             set_job_status(run, StatusEnum.FAILED)
-            return False
+            return True
 
         exit_code = future.result()
-        if exit_code == -15:
+        if exit_code == -15 or exit_code == -9:
             logger.info(f"{get_job_description(run)} was cancelled")
             set_job_status(run, StatusEnum.CANCELLED)
-            return False
+            return True
         elif exit_code != 0:
             logger.error(f"{get_job_description(run)} ending due to abnormal return code {exit_code}")
             set_job_status(run, StatusEnum.FAILED)
-            return False
-        return True
+            return True
+        return False
     except Exception as e:
         logger.exception(f"Error in callback for {get_job_description(run)}: {str(e)}")
         set_job_status(run, StatusEnum.FAILED)
-        return False
+        return True
 
 
 # Local callbacks
@@ -124,28 +124,28 @@ def check_local_status(run: BaseRun, future: Future) -> bool:
 # - Uses `check_local_status` to validate the job's exit code.
 # - Executes `finalize_calibration` to read job output, mark the job as DONE, and possibly create validation runs.
 run_calibration_job_callback_local = functools.partial(
-    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_calibration_after_callback
+    run_generic_job_callback, check_if_failed=check_local_for_failure, finalize_func=finalize_calibration_after_callback
 )
 
 # Handles the completion of a validation job in the local environment.
 # - Uses `check_local_status` to validate the job's exit code.
 # - Executes `finalize_validation` to process validation results and potentially mark the best validation run.
 run_validation_job_callback_local = functools.partial(
-    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_validation_after_callback
+    run_generic_job_callback, check_if_failed=check_local_for_failure, finalize_func=finalize_validation_after_callback
 )
 
 # Handles the completion of a forecast job in the local environment.
 # - Uses `check_local_status` to validate the job's exit code.
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_job_callback_local = functools.partial(
-    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_forecast_after_callback
+    run_generic_job_callback, check_if_failed=check_local_for_failure, finalize_func=finalize_forecast_after_callback
 )
 
 # Handles the completion of a forecast job in the local environment.
 # - Uses `check_local_status` to validate the job's exit code.
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_forcing_download_job_callback_local = functools.partial(
-    run_generic_job_callback, job_callback_func=check_local_status, finalize_func=finalize_forecast_forcing_download_after_callback
+    run_generic_job_callback, check_if_failed=check_local_for_failure, finalize_func=finalize_forecast_forcing_download_after_callback
 )
 
 
@@ -214,7 +214,7 @@ def cancel_local_job(run: BaseRun) -> bool:
     logger.info(f"Cancelling {job_description}")
 
     if isinstance(run, ForecastRun):
-        # Special handling.  If we are downloading the forcing data, then we need to send a cancel request to the Forcing server
+        # #TODO Special handling.  If we are downloading the forcing data, then we need to send a cancel request to the Forcing server
         pass
 
     key = get_job_registry_key(run)

@@ -13,7 +13,7 @@ import pandas as pd
 from django.db import transaction
 from django.utils.timezone import now
 
-from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum
+from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum, StatusEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
 from calibration.models.base_run import BaseRun
@@ -33,7 +33,7 @@ BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
 worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
-def read_validation_output(validation_run: ValidationRun) -> None:
+def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -> None:
     """
     Processes the output of a validation run by identifying the correct worker, retrieving performance metrics,
     and updating the validation run's attributes.
@@ -42,7 +42,7 @@ def read_validation_output(validation_run: ValidationRun) -> None:
     """
     job_description = get_job_description(validation_run)
 
-    logger.info(f"Processing output for {job_description}")
+    logger.info(f"Processing output for {job_description}, status: {validation_run.status}")
 
     with transaction.atomic():
         # Convert validation_type to an instance of ValidationType
@@ -56,6 +56,7 @@ def read_validation_output(validation_run: ValidationRun) -> None:
             iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
         )
         validation_run.validation_worker_name = matching_worker
+        validation_run.save(update_fields=['validation_worker_name'])
 
         metrics_file = (
             get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
@@ -64,47 +65,47 @@ def read_validation_output(validation_run: ValidationRun) -> None:
         )
 
         create_performance_metrics(validation_run, metrics_file)
-        validation_run.save(update_fields=['performance_metrics', 'run_start', 'validation_worker_name'])
 
-        process_validation_for_validation_run(validation_run)
+        if not failed_so_far:
+            process_validation_for_validation_run(validation_run)
 
     logger.info(f"End of processing output for {job_description}")
 
 
-def read_calibration_output(calibration_run: CalibrationRun) -> None:
+def read_calibration_output(calibration_run: CalibrationRun, failed_so_far: bool) -> None:
     """
     Process the output of a CalibrationRun. This function handles reading and
     processing the worker directories and their iteration files.
 
     :param calibration_run: The CalibrationRun instance whose output is to be processed.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
     """
     job_description = get_job_description(calibration_run)
 
-    logger.info(f"Processing output for {job_description}")
+    logger.info(f"Processing output for {job_description}, status={calibration_run.status}")
 
     with transaction.atomic():
         metrics_file = get_calibration_performance_file(calibration_run)
         create_performance_metrics(calibration_run, metrics_file)
+        calibration_run.save(update_fields=['performance_metrics', 'run_start'])
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():
             raise CerfException(f"End of job processing has already been completed for {job_description}")
 
-        # Set the realization file path for the run
-        calibration_run.realization_file_path = get_realization_file_path(calibration_run)
+        if not failed_so_far:
+            # Set the realization file path for the run
+            calibration_run.realization_file_path = get_realization_file_path(calibration_run)
+            calibration_run.save(update_fields=['realization_file_path'])
 
-        # Save the run and process iterations within a transaction
-        calibration_run.save()
-        process_iterations_for_all_workers(calibration_run)
-
-        calibration_run.save(update_fields=['run_start', 'performance_metrics', 'realization_file_path'])
+            process_iterations_for_all_workers(calibration_run)
 
     logger.info(f"End of processing output for {job_description}")
 
 
-def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun) -> None:
+def read_forecast_output(run: ForecastForcingDownloadRun | ForecastRun, failed_so_far: bool) -> None:
     job_description = get_job_description(run)
 
-    logger.info(f"Processing output for {job_description}")
+    logger.info(f"Processing output for {job_description}, status={run.status}")
     with transaction.atomic():
         performance_metrics_file = (
             get_forecast_forcing_download_performance_file(run.forecast_run)
@@ -113,7 +114,8 @@ def process_forecast_output(run: ForecastForcingDownloadRun | ForecastRun) -> No
         )
 
         create_performance_metrics(run, performance_metrics_file)
-        run.save()
+
+    # No other processing needed
 
     logger.info(f"End of processing output for {job_description}")
 
@@ -138,6 +140,7 @@ def create_performance_metrics(run: BaseRun, performance_metrics_file: str) -> N
         performance_metrics = PerformanceMetrics.objects.create(elapsed_time=elapsed_time)
 
     run.performance_metrics = performance_metrics
+    run.save(update_fields=['performance_metrics', 'run_start'])
 
 
 def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file: str, expected_run_type: str) -> None:
