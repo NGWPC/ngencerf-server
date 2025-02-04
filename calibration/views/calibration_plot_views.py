@@ -201,7 +201,7 @@ def get_plot(request: Request) -> Response:
     if force_include_plot or not plot_url or include_data:
         plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
         if not plot_definition:
-           return ResponseError(f"Invalid plot type '{plot_name}' requested for {run_type} {run.id}.")
+            return ResponseError(f"Invalid plot type '{plot_name}' requested for {run_type} {run.id}.")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:

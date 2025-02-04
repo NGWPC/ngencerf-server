@@ -10,8 +10,6 @@ class ForecastRun(BaseRun):
     ngen_forecast_commit_hash = models.CharField(max_length=50, null=True)
     ngen_commit_hash = models.CharField(max_length=50, null=True)
 
-
-
     class Meta:
         db_table = 'forecast_run'
 

@@ -23,7 +23,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
 from calibration.views import ngen_cal_input
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
-from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, process_forecast_output
+from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -397,41 +397,47 @@ def create_and_submit_validation_control(calibration_run: CalibrationRun) -> Non
     submit_job(validation_run)
 
 
-def process_validation_output_and_maybe_create_best(validation_run: ValidationRun) -> None:
+def process_validation_output_and_maybe_create_best(validation_run: ValidationRun, failed_so_far: bool) -> None:
     """
     Process the validation output and create a new VALID_BEST run if the validation type is VALID_CONTROL.
 
     :param validation_run: The ValidationRun object representing the job run.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    - True if the job encountered a failure.
+    - False if the job has completed successfully so far.
     """
     job_description = get_job_description(validation_run)
 
     try:
         # Process the validation output
-        read_validation_output(validation_run)
-        set_job_status(validation_run, StatusEnum.DONE)
+        read_validation_output(validation_run, failed_so_far)
+        if not failed_so_far:
+            set_job_status(validation_run, StatusEnum.DONE)
     except Exception as e:
         # Catch the exception and mark the job as FAILED
         logger.exception(f"Error processing validation output for {job_description}: {str(e)}")
         set_job_status(validation_run, StatusEnum.FAILED)
         return  # Stop further processing if the job failed
 
+    if not failed_so_far:
     # If we just ran Validation Control, see if we want to run Validation Best
-    if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
-        if validation_run.calibration_run.automatic_validation:
-            best_validation_run = create_validation_run_internal(validation_run.calibration_run, None,
-                                                                 validation_type=ValidationType.VALID_BEST)
-            # Set the iteration containing the best values before we run it
-            iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
-            best_validation_run.iteration = iteration
-            best_validation_run.save(update_fields=['iteration'])
-            submit_job(best_validation_run)
+        if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
+            if validation_run.calibration_run.automatic_validation:
+                best_validation_run = create_validation_run_internal(
+                    validation_run.calibration_run, None, validation_type=ValidationType.VALID_BEST
+                )
+                # Set the iteration containing the best values before we run it
+                iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
+                best_validation_run.iteration = iteration
+                best_validation_run.save(update_fields=['iteration'])
+                submit_job(best_validation_run)
 
 
 def run_generic_job_callback(
         run: BaseRun,
         status: Future | SlurmStatusEnum,
-        job_callback_func: Callable[[BaseRun, Future | SlurmStatusEnum], bool],
-        finalize_func: Callable[[BaseRun], None]
+        check_if_failed: Callable[[BaseRun, Future | SlurmStatusEnum], bool],
+        finalize_func: Callable[[BaseRun, bool], None]
 ) -> None:
     """
     Generic callback function for handling job completion.
@@ -440,7 +446,7 @@ def run_generic_job_callback(
     :param status: The job's completion status. This can be:
         - A `Future` object (for Local environments)
         - A `SlurmStatusEnum` value (for Parallel Works environments)
-    :param job_callback_func: Function to check job status based on the environment.
+    :param check_if_failed: Function to check job status based on the environment.
     :param finalize_func: Function to execute finalization logic specific to the job type.
     """
     job_description = get_job_description(run)
@@ -448,15 +454,13 @@ def run_generic_job_callback(
     run.run_end = datetime.now(timezone.utc)
     run.save(update_fields=["run_end"])
 
-    if not job_callback_func(run, status):
-        # Stop processing if the job status indicates failure or cancellation
-        return
+    failed_so_far = check_if_failed(run, status)
 
     # Execute finalization logic
-    finalize_func(run)
+    finalize_func(run, failed_so_far)
 
 
-def finalize_calibration_after_callback(run: CalibrationRun) -> None:
+def finalize_calibration_after_callback(run: CalibrationRun, failed_so_far: bool) -> None:
     """
     Finalizes a calibration job after it has completed.
 
@@ -464,19 +468,25 @@ def finalize_calibration_after_callback(run: CalibrationRun) -> None:
     - Reads the output data generated by the calibration job and processes it.
     - Marks the calibration job as DONE in the database, indicating successful completion.
     - Creates and submits a validation control job to verify the calibration's results.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    - True if the job encountered a failure.
+    - False if the job has completed successfully so far.
     """
     job_description = get_job_description(run)
 
     try:
         # Process the calibration output
-        read_calibration_output(run)  # Process and store the output of the calibration job.
-        set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+        read_calibration_output(run, failed_so_far)  # Process and store the output of the calibration job.
+        if not failed_so_far:
+            set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
     except Exception as e:
         # Catch the exception and mark the job as FAILED
         logger.exception(f"Error processing calibration output for {job_description}: {str(e)}")
         set_job_status(run, StatusEnum.FAILED)
         return  # Stop further processing if the job failed
 
+    if failed_so_far:
+        return
     # If processing succeeded, continue with the next step
     try:
         create_and_submit_validation_control(run)  # Trigger the creation of validation jobs.
@@ -485,38 +495,49 @@ def finalize_calibration_after_callback(run: CalibrationRun) -> None:
         set_job_status(run, StatusEnum.FAILED)
 
 
-def finalize_validation_after_callback(run: ValidationRun) -> None:
+def finalize_validation_after_callback(run: ValidationRun, failed_so_far: bool) -> None:
     """
     Finalizes a validation job after it has completed.
 
     :param run: The ValidationRun object representing the validation job.
-    - Processes the output of the validation job to evaluate its results.
-    - Identifies and marks the best validation run if applicable.
+    - Processes the output of the validation job and evaluates its results.
+    - If applicable, creates a 'VALID_BEST' validation run.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    - True if the job encountered a failure.
+    - False if the job has completed successfully so far.
     """
-    process_validation_output_and_maybe_create_best(run)  # Process the validation results and handle best-run logic.
+    process_validation_output_and_maybe_create_best(run, failed_so_far)  # Process the validation results and handle best-run logic.
 
 
-def finalize_forecast_forcing_download_after_callback(run: ForecastForcingDownloadRun) -> None:
+def finalize_forecast_forcing_download_after_callback(run: ForecastForcingDownloadRun, failed_so_far: bool) -> None:
+    """
+    Finalizes a forecast forcing download job after it has completed.
+
+    :param run: The ForecastForcingDownloadRun object representing the job.
+    - Processes the output of the forecast forcing download.
+    - Marks the forecast forcing download job as DONE in the database.
+    - Submits the associated forecast job.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    - True if the job encountered a failure.
+    - False if the job has completed successfully so far.
+    """
+    read_forecast_output(run, failed_so_far)
+    if not failed_so_far:
+        set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+        # submit the forecast job with the forcing data
+        submit_job(run.forecast_run)
+
+
+def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> None:
     """
     Finalizes a forecast job after it has completed.
 
     :param run: The ForecastRun object representing the forecast job.
+    - Processes the output of the forecast job.
     - Marks the forecast job as DONE in the database, indicating successful completion.
-    - Currently, this function does not involve additional processing beyond marking the status.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    - True if the job encountered a failure.
+    - False if the job has completed successfully so far.
     """
-    process_forecast_output(run)
-    set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-    # submit the forecast job with the forcing data
-    submit_job(run.forecast_run)
-
-
-def finalize_forecast_after_callback(run: ForecastRun) -> None:
-    """
-    Finalizes a forecast job after it has completed.
-
-    :param run: The ForecastRun object representing the forecast job.
-    - Marks the forecast job as DONE in the database, indicating successful completion.
-    - Currently, this function does not involve additional processing beyond marking the status.
-    """
-    process_forecast_output(run)
+    read_forecast_output(run, failed_so_far)
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.

@@ -1,4 +1,3 @@
-import concurrent.futures
 import logging
 import os
 import time
@@ -307,7 +306,7 @@ def process_calibration_output(request):
     if error_return:
         return error_return
 
-    read_calibration_output(run)
+    read_calibration_output(run, False)
 
     response = {'message': f"End of job processing completed for Calibration Job {run.id}",
                 'calibration_run_id': run.id,
