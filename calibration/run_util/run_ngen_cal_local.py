@@ -208,6 +208,9 @@ def cancel_local_job(run: BaseRun) -> bool:
 
     :param run: The CalibrationRun, ValidationRun, or ForecastRun object to cancel.
     :return: True if the job was successfully terminated, False otherwise.
+
+    # TODO There is a known issue the cancelling a job doesn't actually work if the ngen/ngen-cal is running in a Docker container.
+    # Probably need to do a Docker kill, But that means we need to give each run a unique Docker name.
     """
     job_description = get_job_description(run)
 
@@ -217,8 +220,7 @@ def cancel_local_job(run: BaseRun) -> bool:
         # #TODO Special handling.  If we are downloading the forcing data, then we need to send a cancel request to the Forcing server
         pass
 
-    key = get_job_registry_key(run)
-    process = job_registry.get(key)
+    process = job_registry.get(get_job_registry_key(run))
 
     if process:
         process.terminate()  # Gracefully terminates the process
