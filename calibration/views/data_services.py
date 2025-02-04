@@ -375,7 +375,7 @@ translation_map = {
 
     ("LASAM", "theta_e"): "smcmax",
     ("LASAM", "theta_r"): "smcmin",
-    ("LASAM", "n"): "van_genuchten_n ",
+    ("LASAM", "n"): "van_genuchten_n",
     ("LASAM", "alpha"): "van_genuchten_alpha",
     ("LASAM", "Ks"): "hydraulic_conductivity",
     ("LASAM", "field_capacity_psi"): "field_capacity",
