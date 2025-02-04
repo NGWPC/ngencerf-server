@@ -646,7 +646,7 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
     """
     Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database.
     Logs a warning if any expected field is missing. Assumes MaxRSS, MaxDiskRead, and MaxDiskWrite are only on
-    the .batch line, while Reserved is only on the non-batch line.
+    the .batch line, while Planned (used to be called Reserved) is only on the non-batch line.
     """
     if not os.path.exists(file_path):
         logger.error(f'Performance metrics file {file_path} not found')
@@ -683,13 +683,13 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
                 }
             else:
                 # Expected fields only for the non-batch line
-                expected_non_batch_fields = ['Elapsed', 'NCPUS', 'CPUTime', 'Reserved']
+                expected_non_batch_fields = ['Elapsed', 'NCPUS', 'CPUTime', 'Planned']
                 missing_fields = [field for field in expected_non_batch_fields if not row.get(field)]
                 if missing_fields:
                     logger.warning(f'Missing fields for non-batch JobID {job_id}: {", ".join(missing_fields)}')
 
                 # Save the reserved time from the non-.batch line
-                reserved_time = parse_duration(row.get('Reserved', '')) if row.get('Reserved') else None
+                reserved_time = parse_duration(row.get('Planned', '')) if row.get('Planned') else None
 
     if batch_metrics:
         # Update the reserved_time for the batch metrics
