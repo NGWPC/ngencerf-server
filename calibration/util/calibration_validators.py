@@ -1020,7 +1020,7 @@ class RetrospectiveData(BaseSerializer):
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
     objective_function_metric = serializers.CharField(required=True)
-    iteration_data = CalibrationDataByIteration(many=True, required=True)
+    iteration_data = CalibrationDataByIteration(many=True, required=True, allow_null=True)
     retrospective_data = RetrospectiveData(many=True, required=True)
 
 
