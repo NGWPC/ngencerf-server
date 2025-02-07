@@ -1008,7 +1008,7 @@ class CalibrationDataByIteration(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=False)
     worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     best_params = serializers.BooleanField(required=True, allow_null=False)
-    objective_function_value = serializers.FloatField(required=True, allow_null=False)
+    objective_function_value = serializers.FloatField(required=True, allow_null=True)
     parameters = ParameterDataByIteration(many=True, required=True)
     metrics = MetricDataByIteration(many=True, required=True)
 
@@ -1020,7 +1020,7 @@ class RetrospectiveData(BaseSerializer):
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
     objective_function_metric = serializers.CharField(required=True)
-    iteration_data = CalibrationDataByIteration(many=True, required=True, allow_null=True)
+    iteration_data = CalibrationDataByIteration(many=True, required=True)
     retrospective_data = RetrospectiveData(many=True, required=True)
 
 
