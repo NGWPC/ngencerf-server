@@ -120,7 +120,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status=StatusEnum.DONE.db_instance
+        status__in = [StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
