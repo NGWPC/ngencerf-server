@@ -174,10 +174,10 @@ def get_observational_data_from_data_services(run: CalibrationRun):
     logger.info(f'Setting run.observational_eds_file_path to {run.observational_eds_file_path}')
 
 
-def clear_times(run: CalibrationRun):
+def clear_times(run: CalibrationRun, cli: bool = False):
     # Invalidate the dates, since we'll have to compute the intersection again
     # Only do this when running through the GUI.  If CLI, we assume the user knows what he is doing
-    if run.job_genesis == JobGenesis.GUI.value:
+    if not cli:
         run.time_range_start = None
         run.time_range_end = None
         run.calibration_start_period = None

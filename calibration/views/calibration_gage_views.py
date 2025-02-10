@@ -354,19 +354,25 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
     if run.gage != gage:
         if run.gage:
             # Delete any user-uploaded or EDS files associated with the previous gage
-            delete_all_files_in_directory(get_geopackage_dir_for_job(run))
+            # delete_all_files_in_directory(get_geopackage_dir_for_job(run))
+            if os.path.exists(get_geopackage_dir_for_job(run)):
+                logger.info(f"Deleting geopackage file in {get_geopackage_dir_for_job(run)}")
+                shutil.rmtree(get_geopackage_dir_for_job(run))
             run.geopackage_eds_file_path = None
 
             uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if os.path.exists(uploaded_forcing_dir):
+                logger.info(f"Deleting all forcing files in {uploaded_forcing_dir}")
                 shutil.rmtree(uploaded_forcing_dir)
             run.forcing_eds_dir_path = None
 
             uploaded_observational_file = get_observational_file_for_job(run)
             if os.path.exists(uploaded_observational_file):
+                logger.info(f"Deleting observational file in {uploaded_observational_file}")
                 os.remove(uploaded_observational_file)
             run.observational_eds_file_path = None
 
+            print('clearing times')
             clear_times(run)
 
         run.gage = gage
@@ -413,6 +419,8 @@ def upload_observational_data(request: Request) -> Response:
     """
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user.email} - {data}')
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    cli = user_agent.startswith('curl')
 
     validator, error_return = validate_request(UploadObservationalSerializer, data, context={'request': request})
     if error_return:
@@ -440,7 +448,7 @@ def upload_observational_data(request: Request) -> Response:
     logger.info(f"Saving user-uploaded observational file to {os.path.join(fs.location, user_observational_file.name)}")
     fs.save(user_observational_file.name, user_observational_file)
 
-    clear_times(run)
+    clear_times(run, cli)
 
     with transaction.atomic():
         run.save()
@@ -486,6 +494,8 @@ def upload_forcing_data(request: Request) -> Response:
     """
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user.email} - {data}')
+    user_agent = request.META.get('HTTP_USER_AGENT', '')
+    cli = user_agent.startswith('curl')
 
     validator, error_return = validate_request(UploadForcingSerializer, data, context={'request': request})
     if error_return:
@@ -521,7 +531,7 @@ def upload_forcing_data(request: Request) -> Response:
         else:
             logger.warning(f'Skipping forcing file {forcing_file.name} - does not match naming convention')
 
-    clear_times(run)
+    clear_times(run, cli)
 
     if number_of_files == 0:
         return ResponseError(f'No valid forcing files found')
