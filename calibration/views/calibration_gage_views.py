@@ -58,13 +58,12 @@ logger = logging.getLogger(__name__)
 @handle_exceptions
 def load_gage_tab(request: Request) -> Response:
     """
-    Loads gage tab data based on the calibration run.
+    Load gage tab data based on the calibration run.
 
-    Args:
-        request (Request): The request containing either POST data or query parameters.
-
-    Returns:
-        Response: A JSON response with gage data, source values, and calibration run status.
+    :param request: The HTTP request containing either POST data or query parameters.
+    :type request: Request
+    :return: A JSON response with gage data, available source options, and calibration run status.
+    :rtype: Response
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
@@ -87,9 +86,12 @@ def load_gage_tab(request: Request) -> Response:
     domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'description'])
 
     # Retrieve cached gages with necessary fields
-    gages = [{'gage_id': gage.get('gage_id'), 'nwm_v3_calibration': gage.get('nwm_v3_calibration'), 'nws_id': gage.get('nws_id'),
-              'domain': gage.get('domain')}
-             for gage in get_cached_gages().values()]
+    gages = [{
+        'gage_id': gage.get('gage_id'),
+        'nwm_v3_calibration': gage.get('nwm_v3_calibration'),
+        'nws_id': gage.get('nws_id'),
+        'domain': gage.get('domain')
+    } for gage in get_cached_gages().values()]
 
     ngen_cal_input.ready_to_run(run)
 
@@ -102,8 +104,12 @@ def load_gage_tab(request: Request) -> Response:
                 'gages': gages}
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
-    response_validator, error_response = validate_response(LoadGageResponseSerializer, response, fields_to_truncate=["gages", "geopackage_image_url"],
-                                                           max_length=50)
+    response_validator, error_response = validate_response(
+        LoadGageResponseSerializer,
+        response,
+        fields_to_truncate=["gages", "geopackage_image_url"],
+        max_length=50
+    )
     if error_response:
         return error_response
 
@@ -137,13 +143,12 @@ def load_gage_tab(request: Request) -> Response:
 @handle_exceptions
 def get_gage(request: Request) -> Response:
     """
-    Retrieves details for a specific gage based on the request data.
+    Retrieve details for a specific gage.
 
-    Args:
-        request (Request): The request containing either POST data or query parameters.
-
-    Returns:
-        Response: A JSON response with the details of the requested gage.
+    :param request: The HTTP request containing either POST data or query parameters.
+    :type request: Request
+    :return: A JSON response with the details of the requested gage.
+    :rtype: Response
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
@@ -185,30 +190,15 @@ def get_gage(request: Request) -> Response:
 @handle_exceptions
 def save_gage_tab(request: Request):
     """
-    Saves gage tab data, updating various sources, calibration run status, and handling data services data.
+    Save gage tab data and update the calibration run with new gage information.
 
-    Args:
-        request (Request): The request containing either POST data or query parameters.
+    This function handles updating forcing, observational, and geopackage data sources, clearing previously
+    uploaded files, and updating the calibration run status.
 
-    Returns:
-        Response: A JSON response confirming the update and reporting any data services errors.
-
-     Some notes about forcing/obs paths (relevant here and in import/export and ngen_cal_input)
-
-     run.forcing_eds_dir_path, observational_eds_file_path and run.geopackage_eds_file_path are *only* used when getting the data from data services.
-
-     User-uploaded files are stored in the job-specific paths and for both observational and forcing data, these are the paths that are always passed to ngen-cal.
-     For geopackage file, if the data is from Data Services, we pass the eds path.  If the user uploads a file, then we use the job-specific path.
-
-     The job-specific path is deterministic and can be derived at the time we create input.config.  Therefore, they are not stored in the run object.
-     They can be obtained by get_forcing_dir_for_job(), get_observational_dir_for_job() or get_geopackage_dir_for_job().
-
-     For Forcing and Observational data, if the files are obtained from Data Services, the job specific path remains empty,
-     until we build the config, at which point the Data Services data is subsetted by time-range and the resulting files placed in the job-specific paths.
-
-     Summary: For Forcing and Observational data, the job-specific paths are always the paths that are passed to ngen-cal.
-     They can contain either the unchanged user-uploaded data or subsetted Data Services data.
-     For Geopackage, we pass either the Data Services path or the user-uploaded path.
+    :param request: The HTTP request containing POST data with gage and data source details.
+    :type request: Request
+    :return: A JSON response confirming the update and including any errors from data services.
+    :rtype: Response
     """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
@@ -326,13 +316,12 @@ def save_gage_tab(request: Request):
 
 def get_geopackage_image_url(run: CalibrationRun) -> str | None:
     """
-    Converts a GeoPackage file to a PNG image URL if the file exists.
+    Convert a GeoPackage file to a PNG image URL if available.
 
-    Args:
-        run (CalibrationRun): The calibration run associated with the GeoPackage file.
-
-    Returns:
-        str | None: A base64 URL string of the PNG image, or None if conversion fails.
+    :param run: The calibration run instance containing the GeoPackage file information.
+    :type run: CalibrationRun
+    :return: A base64 URL string of the PNG image if conversion is successful; otherwise, None.
+    :rtype: str or None
     """
     geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
@@ -357,21 +346,25 @@ def get_geopackage_image_url(run: CalibrationRun) -> str | None:
 
 def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
     """
-    Updates the gage field in a calibration run and removes any previously uploaded files.
+    Update the calibration run with a new gage and remove any previously uploaded files.
 
-    Args:
-        run (CalibrationRun): The calibration run instance to update.
-        gage_id (int): The ID of the gage to set.
+    If the gage for the calibration run changes, this function clears any existing user-uploaded or EDS files and
+    updates initial parameter values via data services.
 
-    Returns:
-        dict: Error details if an error occurs, or an empty dictionary if no errors.
+    :param run: The calibration run instance to update.
+    :type run: CalibrationRun
+    :param gage_id: The ID of the new gage.
+    :type gage_id: int
+    :return: A dictionary with error details if an error occurs; otherwise, None.
+    :rtype: dict or None
+    :raises: Gage.DoesNotExist if the specified gage does not exist.
     """
     gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
 
     # Only update if the gage has changed
     if run.gage != gage:
         if run.gage:
-            # Delete any user-uploaded files associated with the previous gage
+            # Delete any user-uploaded or EDS files associated with the previous gage
             delete_all_files_in_directory(get_geopackage_dir_for_job(run))
             run.geopackage_eds_file_path = None
 
@@ -384,6 +377,8 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
             if os.path.exists(uploaded_observational_file):
                 os.remove(uploaded_observational_file)
             run.observational_eds_file_path = None
+
+            clear_times(run)
 
         run.gage = gage
 
@@ -420,13 +415,14 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
 @handle_exceptions
 def upload_observational_data(request: Request) -> Response:
     """
-    Allows user to upload observational data for a calibration run.
+    Upload observational data for a calibration run.
 
-    Args:
-        request (Request): The request containing either POST data or query parameters.
+    This function handles the upload of an observational file by saving it to the run-specific directory and updating the calibration run.
 
-    Returns:
-        Response: A JSON response confirming the upload and reporting any errors if they occur.
+    :param request: The HTTP request containing the observational file data.
+    :type request: Request
+    :return: A JSON response confirming the upload or reporting errors.
+    :rtype: Response
     """
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user.email} - {data}')
@@ -487,19 +483,21 @@ def upload_observational_data(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Allow user to upload observational data"
+    description="Allow user to upload forcing data"
 )
 @api_view(['POST'])
 @handle_exceptions
 def upload_forcing_data(request: Request) -> Response:
     """
-    Allows user to upload forcing data files for a calibration run.
+    Upload forcing data files for a calibration run.
 
-    Args:
-        request (Request): The request containing either POST data or query parameters.
+    This function validates forcing file naming conventions, saves valid forcing files to the run-specific directory,
+    and updates the calibration run.
 
-    Returns:
-        Response: A JSON response confirming the upload and reporting any errors if they occur.
+    :param request: The HTTP request containing forcing file data.
+    :type request: Request
+    :return: A JSON response indicating the number of forcing files saved or reporting errors.
+    :rtype: Response
     """
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user.email} - {data}')
@@ -577,13 +575,15 @@ def upload_forcing_data(request: Request) -> Response:
 @handle_exceptions
 def upload_geopackage_data(request: Request) -> Response:
     """
-    Allows user to upload a geopackage file for a calibration run.
+    Upload a geopackage file for a calibration run.
 
-    Args:
-        request (Request): The request containing either POST data or query parameters.
+    This function handles the geopackage file upload by saving it to the run-specific directory.
+    If requested, it converts the geopackage to a PNG image and updates the calibration run.
 
-    Returns:
-        Response: A JSON response confirming the upload and including a geopackage image URL if requested.
+    :param request: The HTTP request containing geopackage file data.
+    :type request: Request
+    :return: A JSON response confirming the upload and including the geopackage image URL if available.
+    :rtype: Response
     """
     data = request.data
     logger.debug(f'upload_geopackage_data() request from {request.user.email} - {data}')
@@ -622,12 +622,19 @@ def upload_geopackage_data(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Job {run.id}", 'calibration_run_id': run.id,
-                'status': run.status.name}
+    response = {
+        'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Job {run.id}",
+        'calibration_run_id': run.id,
+        'status': run.status.name
+    }
     if geopackage_image_url:
         response['geopackage_image_url'] = geopackage_image_url
 
-    response_validator, error_response = validate_response(UploadGeopackageResponseSerializer, response, fields_to_truncate=['geopackage_image_url'])
+    response_validator, error_response = validate_response(
+        UploadGeopackageResponseSerializer,
+        response,
+        fields_to_truncate=['geopackage_image_url']
+    )
     if error_response:
         return error_response
     logger.debug(
@@ -639,13 +646,14 @@ def upload_geopackage_data(request: Request) -> Response:
 
 def get_data_files_status(run: CalibrationRun) -> dict:
     """
-    Checks the status of data files related to a calibration run.
+    Check the status of data files for a calibration run.
 
-    Args:
-        run (CalibrationRun): The calibration run for which to check file statuses.
+    This function verifies whether observational, forcing, and geopackage files are available for the given calibration run.
 
-    Returns:
-        dict: A dictionary indicating the presence of observational, forcing, and geopackage files.
+    :param run: The calibration run instance to check.
+    :type run: CalibrationRun
+    :return: A dictionary with boolean values indicating the presence of observational, forcing, and geopackage files.
+    :rtype: dict
     """
     observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
