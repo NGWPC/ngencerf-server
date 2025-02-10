@@ -41,8 +41,12 @@ MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def load_formulation_tab(request) -> Response:
-    """Load the formulation tab data for a specific calibration run."""
+    """
+    Load the formulation tab data for a specific calibration run.
 
+    :param request: The HTTP request containing either POST data or query parameters.
+    :return: A JSON response with the calibration run ID, status, modules, and module groups.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'load_formulation_tab() request from {request.user.email} - {data}')
 
@@ -89,11 +93,8 @@ def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
     """
     Retrieve Sloth parameters for a given calibration run.
 
-    Parameters:
-        run (CalibrationRun): The calibration run instance.
-
-    Returns:
-        list[dict[str, str]]: A list of Sloth parameters formatted as dictionaries.
+    :param run: The calibration run instance.
+    :return: A list of Sloth parameters formatted as dictionaries.
     """
     sloth_parameters = list(
         CalibrationSlothParam.objects.filter(calibration_run=run)
@@ -125,8 +126,12 @@ def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
 @api_view(['POST'])
 @handle_exceptions
 def save_formulation_tab(request) -> Response:
-    """Save the formulation tab data for a calibration run."""
+    """
+    Save the formulation tab data for a calibration run.
 
+    :param request: The HTTP request containing POST data with formulation details.
+    :return: A JSON response confirming the update along with any warnings or errors.
+    """
     data = request.data
     logger.debug(f'save_formulation_tab() request from {request.user.email} - {data}')
 
@@ -182,7 +187,7 @@ def save_formulation_tab(request) -> Response:
             module_instance = get_cached_module_by_name(module_name)
             CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
 
-        # Identify formulations without any calibration parameters, in case there was an error retriving them
+        # Identify formulations without any calibration parameters, in case there was an error retrieving them
         formulations_without_params_qs = existing_formulations_qs.filter(calibrationparameter__isnull=True)
 
         required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs
@@ -232,8 +237,13 @@ def save_formulation_tab(request) -> Response:
 
 
 def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun) -> None:
-    """Delete unused formulations and related parameters for a given calibration run."""
+    """
+    Delete unused formulations and related parameters for a given calibration run.
 
+    :param to_delete_modules: A set of module names for formulations to delete.
+    :param run: The calibration run instance.
+    :return: None.
+    """
     formulations_to_delete = CalibrationFormulation.objects.filter(
         calibration_run=run,
         module__name__in=to_delete_modules
@@ -255,8 +265,12 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
 
 
 def validate_modules(module_names: set[str]) -> str | None:
-    """Validate that all the provided module names exist in the cached modules."""
+    """
+    Validate that all the provided module names exist in the cached modules.
 
+    :param module_names: A set of module names to validate.
+    :return: An error message if any module name is invalid; otherwise, None.
+    """
     valid_names = {name for name in module_names if get_cached_module_by_name(name)}
     if module_names - valid_names:
         return f'Invalid modules - {module_names - valid_names}'
@@ -301,8 +315,12 @@ formulation_validations = {
 
 
 def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
-    """Validate formulation rules based on group requirements and exclusions."""
+    """
+    Validate formulation rules based on group requirements and exclusions.
 
+    :param module_names: A set of module names to validate.
+    :return: A tuple containing validation details (or None if valid) and a boolean indicating if an NWM warning is triggered.
+    """
     if not module_names:
         return None, False
 
@@ -370,8 +388,14 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:
-    """Add Sloth parameters to a calibration run, validating module associations."""
+    """
+    Add Sloth parameters to a calibration run, validating module associations.
 
+    :param run: The calibration run instance.
+    :param sloth_parameters: A list of dictionaries containing Sloth parameter data.
+    :param module_names: A set of module names included in the run.
+    :return: An error message if a Sloth parameter is invalid; otherwise, None.
+    """
     sloth_param_objects = []
     if sloth_parameters is not None:
         for s in sloth_parameters:

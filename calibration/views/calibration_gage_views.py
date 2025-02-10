@@ -61,9 +61,7 @@ def load_gage_tab(request: Request) -> Response:
     Load gage tab data based on the calibration run.
 
     :param request: The HTTP request containing either POST data or query parameters.
-    :type request: Request
     :return: A JSON response with gage data, available source options, and calibration run status.
-    :rtype: Response
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
@@ -146,9 +144,7 @@ def get_gage(request: Request) -> Response:
     Retrieve details for a specific gage.
 
     :param request: The HTTP request containing either POST data or query parameters.
-    :type request: Request
     :return: A JSON response with the details of the requested gage.
-    :rtype: Response
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
@@ -196,9 +192,7 @@ def save_gage_tab(request: Request):
     uploaded files, and updating the calibration run status.
 
     :param request: The HTTP request containing POST data with gage and data source details.
-    :type request: Request
     :return: A JSON response confirming the update and including any errors from data services.
-    :rtype: Response
     """
     data = request.data
     logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
@@ -319,9 +313,7 @@ def get_geopackage_image_url(run: CalibrationRun) -> str | None:
     Convert a GeoPackage file to a PNG image URL if available.
 
     :param run: The calibration run instance containing the GeoPackage file information.
-    :type run: CalibrationRun
     :return: A base64 URL string of the PNG image if conversion is successful; otherwise, None.
-    :rtype: str or None
     """
     geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
                                      GeopackageSourceEnum.UPLOAD,
@@ -352,11 +344,8 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
     updates initial parameter values via data services.
 
     :param run: The calibration run instance to update.
-    :type run: CalibrationRun
     :param gage_id: The ID of the new gage.
-    :type gage_id: int
     :return: A dictionary with error details if an error occurs; otherwise, None.
-    :rtype: dict or None
     :raises: Gage.DoesNotExist if the specified gage does not exist.
     """
     gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
@@ -420,9 +409,7 @@ def upload_observational_data(request: Request) -> Response:
     This function handles the upload of an observational file by saving it to the run-specific directory and updating the calibration run.
 
     :param request: The HTTP request containing the observational file data.
-    :type request: Request
     :return: A JSON response confirming the upload or reporting errors.
-    :rtype: Response
     """
     data = request.data
     logger.debug(f'upload_observational_data() request from {request.user.email} - {data}')
@@ -495,9 +482,7 @@ def upload_forcing_data(request: Request) -> Response:
     and updates the calibration run.
 
     :param request: The HTTP request containing forcing file data.
-    :type request: Request
     :return: A JSON response indicating the number of forcing files saved or reporting errors.
-    :rtype: Response
     """
     data = request.data
     logger.debug(f'upload_forcing_data() request from {request.user.email} - {data}')
@@ -581,9 +566,7 @@ def upload_geopackage_data(request: Request) -> Response:
     If requested, it converts the geopackage to a PNG image and updates the calibration run.
 
     :param request: The HTTP request containing geopackage file data.
-    :type request: Request
     :return: A JSON response confirming the upload and including the geopackage image URL if available.
-    :rtype: Response
     """
     data = request.data
     logger.debug(f'upload_geopackage_data() request from {request.user.email} - {data}')
@@ -651,9 +634,7 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     This function verifies whether observational, forcing, and geopackage files are available for the given calibration run.
 
     :param run: The calibration run instance to check.
-    :type run: CalibrationRun
     :return: A dictionary with boolean values indicating the presence of observational, forcing, and geopackage files.
-    :rtype: dict
     """
     observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
                                       ObservationalSourceEnum.UPLOAD,
