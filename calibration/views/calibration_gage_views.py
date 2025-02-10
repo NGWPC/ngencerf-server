@@ -372,7 +372,6 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
                 os.remove(uploaded_observational_file)
             run.observational_eds_file_path = None
 
-            print('clearing times')
             clear_times(run)
 
         run.gage = gage
