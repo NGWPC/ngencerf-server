@@ -375,7 +375,7 @@ translation_map = {
     ("CFE-X", "K_lf"): "Klf",
     ("CFE-X", "K_nash"): "Kn",
     ("CFE-X", "soil_params.satpsi"): "satpsi",
-    ("CFE-X", "soil_params.wltsmc"): "wlt",
+    ("CFE-X", "soil_params.wltsmc"): "wltsmc",
 
     ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
     ("Noah-OWP-Modular", "CWPVT"): "CWP",
