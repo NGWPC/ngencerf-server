@@ -312,6 +312,12 @@ class GageSerializer(BaseSerializer):
     altitude = serializers.FloatField(required=True, allow_null=True)
 
 
+class EdsErrorsSerializer(BaseSerializer):
+    name = serializers.CharField(required=True, allow_null=False)
+    message = serializers.CharField(required=True, allow_null=False)
+    status_code = serializers.IntegerField(required=True, allow_null=True)
+
+
 # This class extends the original serializers.Serializer, since we want to ignore extra fields
 # Parameters from Data Services
 # initial_value, min and max are strings, since Data Services sometimes has some extra crap in there, like units
@@ -536,7 +542,7 @@ class SaveGageRequestSerializer(BaseSerializer):
 
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
-    eds_errors = serializers.JSONField(required=False)
+    eds_errors = EdsErrorsSerializer(many=True, required=False)
 
 
 class DomainResponseSerializer(BaseSerializer):
@@ -672,7 +678,7 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     nwm_warning = serializers.BooleanField(required=True)
     formulation_warning = serializers.JSONField(required=False)
-    eds_errors = serializers.JSONField(required=False)
+    eds_errors = EdsErrorsSerializer(many=True, required=False)
 
 
 class ModuleStaticSerializer(BaseSerializer):
