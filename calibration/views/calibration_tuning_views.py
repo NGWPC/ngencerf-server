@@ -1,4 +1,5 @@
 import io
+import json
 import logging
 import os
 import time
@@ -94,7 +95,7 @@ def load_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_tuning_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_tuning_tab() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -292,7 +293,7 @@ def save_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from save_tuning_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from save_tuning_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -402,7 +403,7 @@ def upload_user_parameters(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from upload_user_parameter_file() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from upload_user_parameter_file() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

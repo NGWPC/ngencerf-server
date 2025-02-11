@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 
@@ -60,7 +61,7 @@ def load_forecast_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(LoadForecastTabResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'load_forecast_tab() request from {request.user.email} - {response_validator.data}')
+    logger.debug(f'load_forecast_tab() request from {request.user.email} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -114,7 +115,9 @@ def get_forecast_jobs(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_validation_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_validation_jobs() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10))}'
+    )
     return Response(response_validator.data)
 
 
@@ -168,7 +171,7 @@ def clone_and_run_forecast_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from clone_forecast_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from clone_forecast_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -226,8 +229,6 @@ def delete_forecast_job(request: Request) -> Response:
     response_validator, error_response = validate_response(DeleteForecastRunResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
-
-

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import time
@@ -211,10 +212,14 @@ def get_status(request: Request) -> Response:
         if messages:
             response['errors'] = messages
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'], max_length=10)
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'],
+                                                           max_length=10)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_status() - {truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10)}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_status() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10))}'
+    )
 
     return Response(response_validator.data)
 
@@ -264,7 +269,7 @@ def run_calibration(request: Request) -> Response:
                 'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user.email} from run_calibration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from run_calibration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -315,7 +320,7 @@ def process_calibration_output(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from process_calibration_output() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from process_calibration_output() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -391,7 +396,7 @@ def report_iteration(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user.email} from report_iteration() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from report_iteration() - {json.dumps(response_validator.data)}')
 
         return Response(response_validator.data)
 
@@ -447,7 +452,7 @@ def get_iteration(request: Request) -> Response:
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_iteration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -519,7 +524,7 @@ def cancel_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from cancel_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -587,7 +592,7 @@ def get_job_dir(request: Request) -> Response:
     response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -721,7 +726,8 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
     job_status = validator.get('job_status')
 
-    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
+    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None,
+                                                                                    run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -973,7 +979,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             subset_df = chunk.loc[
                 (chunk['dateTime'] >= start_datetime) &
                 (chunk['dateTime'] <= end_datetime)
-            ].copy()  # Explicitly create a copy
+                ].copy()  # Explicitly create a copy
 
             # Convert back to naive timestamps for output (to match original format)
             subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
