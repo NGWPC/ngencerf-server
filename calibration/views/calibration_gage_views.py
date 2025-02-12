@@ -86,7 +86,7 @@ def load_gage_tab(request: Request) -> Response:
     # Retrieve cached gages with necessary fields
     gages = [{
         'gage_id': gage.get('gage_id'),
-        'nwm_v3_calibration': gage.get('nwm_v3_calibration'),
+        'headwater_calibration': gage.get('headwater_calibration'),
         'nws_id': gage.get('nws_id'),
         'domain': gage.get('domain')
     } for gage in get_cached_gages().values()]

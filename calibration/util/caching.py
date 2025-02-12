@@ -33,7 +33,7 @@ def get_cached_gages() -> dict[str, dict]:
     if not gages_lookup:
         # Fetch from the database and cache the results as a dictionary
         gages = Gage.objects.filter(is_active=True).values(
-            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'nwm_v3_calibration', 'domain__name'
+            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'headwater_calibration', 'domain__name'
         )
         gages_lookup = {gage['gage_id']: gage for gage in gages}
         # Adjust domain names
@@ -55,8 +55,8 @@ def get_gage_by_id(gage_id: str):
     gage = gages.get(gage_id)
 
     if gage:
-        # Exclude 'nws_id', 'domain', and 'nwm_v3_calibration' from the result
-        gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'nwm_v3_calibration']}
+        # Exclude 'nws_id', 'domain', and 'headwater_calibration' from the result
+        gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration']}
 
     return gage
 
