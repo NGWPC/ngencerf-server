@@ -14,7 +14,14 @@ matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for 
 
 
 def check_file_accessible(file_path: str) -> None:
-    """Checks if a file exists and is accessible."""
+    """
+    Checks if a file exists, is a valid file (not a directory), and is readable.
+
+    :param file_path: Path to the file.
+    :raises FileNotFoundError: If the file does not exist.
+    :raises IsADirectoryError: If the file path is a directory instead of a file.
+    :raises PermissionError: If the file exists but is not readable.
+    """
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"GeoPackage file not found: {file_path}")
     if not os.path.isfile(file_path):
@@ -23,7 +30,30 @@ def check_file_accessible(file_path: str) -> None:
         raise PermissionError(f"Permission denied: {file_path}")
 
 
-def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None:
+def safe_read_gpkg(gpkg_path: str, layer: str = None) -> gpd.GeoDataFrame:
+    """
+    Safely reads a layer from a GeoPackage file, providing detailed error messages.
+
+    :param gpkg_path: Path to the GeoPackage file.
+    :param layer: Name of the layer to read (reads default layer if None).
+    :return: GeoDataFrame containing the layer data.
+    :raises RuntimeError: If reading fails due to corruption, invalid format, or missing drivers.
+    """
+    try:
+        return gpd.read_file(gpkg_path, layer=layer)
+    except fiona.errors.DriverError as e:
+        raise RuntimeError(f"Could not open {gpkg_path}. Ensure it is a valid GeoPackage. Error: {e}")
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to read '{layer}' layer from {gpkg_path}. Possible issues:\n"
+            f"  - File exists: {os.path.exists(gpkg_path)}\n"
+            f"  - File size: {os.path.getsize(gpkg_path) if os.path.exists(gpkg_path) else 'N/A'} bytes\n"
+            f"  - Available layers: {fiona.listlayers(gpkg_path) if os.path.exists(gpkg_path) else 'N/A'}\n"
+            f"Error details: {e}"
+        )
+
+
+def gpkg_to_png(gpkg_path: str, png_path: str, layer: str = None) -> None:
     """
     Generates a PNG image from a specific layer in a GeoPackage.
 
@@ -33,11 +63,7 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None
     :raises FileNotFoundError: If the GeoPackage file does not exist.
     """
     check_file_accessible(gpkg_path)
-
-    try:
-        gdf = gpd.read_file(gpkg_path, layer=layer) if layer else gpd.read_file(gpkg_path)
-    except Exception as e:
-        raise RuntimeError(f"Failed to read GeoPackage: {gpkg_path}. Error: {e}")
+    gdf = safe_read_gpkg(gpkg_path, layer)
 
     # Plot the GeoDataFrame
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
@@ -52,7 +78,7 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str | None = None) -> None
 
 
 @lru_cache(maxsize=128)
-def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ...] | None = None) -> BytesIO:
+def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ...] = None) -> BytesIO:
     """
     Generates a PNG image from selected layers in a GeoPackage and returns it as a BytesIO object.
 
@@ -80,7 +106,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ..
     # Plot the divides layer (outline) if it exists
     if 'divides' in available_layers:
         try:
-            divides_gdf = gpd.read_file(gpkg_path, layer='divides')
+            divides_gdf = safe_read_gpkg(gpkg_path, layer='divides')
             # Simplify geometries for performance improvement
             divides_gdf['geometry'] = divides_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
             divides_gdf.boundary.plot(ax=ax, color='black', label='divides' if 'divides' not in labeled_layers else None)
@@ -95,7 +121,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ..
     for layer, color in zip(layers_to_include, color_cycle):
         if layer in available_layers:
             try:
-                layer_gdf = gpd.read_file(gpkg_path, layer=layer)
+                layer_gdf = safe_read_gpkg(gpkg_path, layer=layer)
                 # Simplify geometries for performance improvement
                 layer_gdf['geometry'] = layer_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
                 # Plot the entire layer at once
@@ -146,7 +172,7 @@ def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> lis
 
     # Read the catchments layer
     try:
-        gdf = gpd.read_file(gpkg_path, layer=layer_name)
+        gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
     except Exception as e:
         raise RuntimeError(f"Failed to read '{layer_name}' layer from {gpkg_path}. Error: {e}")
 
