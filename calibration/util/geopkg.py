@@ -171,10 +171,8 @@ def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> lis
         raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
 
     # Read the catchments layer
-    try:
-        gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
-    except Exception as e:
-        raise RuntimeError(f"Failed to read '{layer_name}' layer from {gpkg_path}. Error: {e}")
+    gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
+
 
     # Extract the 'divide_id' column
     if 'divide_id' in gdf.columns:
