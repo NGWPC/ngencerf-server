@@ -8,7 +8,6 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
-from calibration.enums import JobGenesis
 from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
@@ -174,10 +173,10 @@ def get_observational_data_from_data_services(run: CalibrationRun):
     logger.info(f'Setting run.observational_eds_file_path to {run.observational_eds_file_path}')
 
 
-def clear_times(run: CalibrationRun):
+def clear_times(run: CalibrationRun, cli: bool = False):
     # Invalidate the dates, since we'll have to compute the intersection again
     # Only do this when running through the GUI.  If CLI, we assume the user knows what he is doing
-    if run.job_genesis == JobGenesis.GUI.value:
+    if not cli:
         run.time_range_start = None
         run.time_range_end = None
         run.calibration_start_period = None
@@ -292,11 +291,11 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
 
             if module_name in extra_names:
                 # Ignore any extra names that Data Services sent us
-                logger.warning(f'Ignoring extra module from Data Services - {module["module_name"]}')
+                logger.warning(f'Ignoring extra module from Data Services - {module_name}')
                 continue
 
             # Fetch the corresponding module instance
-            module_instance = get_cached_module_by_name(module['module_name'])
+            module_instance = get_cached_module_by_name(module_name)
             calibration_formulation = calibration_formulations.get(module=module_instance)
 
             # Copy the BMI configuration file to the appropriate directory
@@ -304,43 +303,52 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
             copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module_name))
 
             # Save output variables for the module
-            if not module['output_variables']:
+            output_vars = module.get('output_variables', [])
+            if not output_vars:
                 logger.warning(f"Module '{module_name}' has no output variables.")
             else:
-                for output in module['output_variables']:
+                for output in output_vars:
                     ModuleOutputVariable.objects.update_or_create(
                         name=output['variable'],
                         calibration_formulation=calibration_formulation,
                         # TODO Fix this.  Description is required
-                        defaults={'description': output['description'] if output['description'] else 'placeholder description'}
+                        defaults={'description': output['description'] or 'placeholder description'}
                     )
 
             # Save or update parameters for the module
-            if not module['calibrate_parameters']:
+            parameters = module.get('calibrate_parameters', [])
+            if not parameters:
                 logger.warning(f"Module '{module_name}' has no calibratable parameters.")
             else:
-                for param in module['calibrate_parameters']:
+                for param in parameters:
                     # Data Services gives us initial_value, min and max as Strings because sometimes crap appears.
+
+                    # Convert values to floats safely
+                    initial_value = safe_float(param.get('initial_value'), "Initial value", param.get('name'), module_name)
+                    min_value = safe_float(param.get('min'), "Minimum value", param.get('name'), module_name)
+                    max_value = safe_float(param.get('max'), "Maximum value", param.get('name'), module_name)
 
                     # Using get_or_create because we don't want to override any values the user has already entered
                     calibration_parameter, created = CalibrationParameter.objects.get_or_create(
                         name=param['name'],
                         calibration_formulation=calibration_formulation,
-                        defaults={'data_type': param['data_type'],
-                                  'description': param['description'],
-                                  'initial_value': str_to_float(param['initial_value']),
-                                  'minimum': str_to_float(param['min']),
-                                  'maximum': str_to_float(param['max']),
-                                  'units': param['units']
-                                  }
+                        defaults={
+                            'data_type': param['data_type'],
+                            'description': param['description'],
+                            'initial_value': initial_value,
+                            'minimum': min_value,
+                            'maximum': max_value,
+                            'units': param['units']
+                        }
                     )
 
                     # Update initial value if the gage changed and the parameter already exists
                     if gage_changed and not created:
                         logger.info(
-                            f"Updating initial value for parameter {param['name']} for module {calibration_formulation.module.name}")
+                            f"Updating initial value for parameter {param['name']} for module {module_name} to {initial_value}"
+                        )
                         # We want to overwrite the initial_value from Data Services
-                        calibration_parameter.initial_value = str_to_float(param['initial_value'])
+                        calibration_parameter.initial_value = initial_value
                         calibration_parameter.save(update_fields=['initial_value'])
 
     # Raise an exception if any requested modules are missing in the response
@@ -358,7 +366,7 @@ translation_map = {
     ("CFE-S", "K_lf"): "Klf",
     ("CFE-S", "K_nash"): "Kn",
     ("CFE-S", "soil_params.satpsi"): "satpsi",
-    ("CFE-S", "soil_params.wlt"): "wltsmc",
+    ("CFE-S", "soil_params.wltsmc"): "wltsmc",
 
     ("CFE-X", "soil_params.smcmax"): "maxsmc",
     ("CFE-X", "soil_params.satdk"): "satdk",
@@ -367,15 +375,16 @@ translation_map = {
     ("CFE-X", "K_lf"): "Klf",
     ("CFE-X", "K_nash"): "Kn",
     ("CFE-X", "soil_params.satpsi"): "satpsi",
-    ("CFE-X", "soil_params.wlt"): "wltsmc",
+    ("CFE-X", "soil_params.wltsmc"): "wltsmc",
 
     ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
     ("Noah-OWP-Modular", "CWPVT"): "CWP",
     ("Noah-OWP-Modular", "SATDK"): "DKSAT",
+    ("Noah-OWP-Modular", "BB"): "BEXP",
 
     ("LASAM", "theta_e"): "smcmax",
     ("LASAM", "theta_r"): "smcmin",
-    ("LASAM", "n"): "van_genuchten_n ",
+    ("LASAM", "n"): "van_genuchten_n",
     ("LASAM", "alpha"): "van_genuchten_alpha",
     ("LASAM", "Ks"): "hydraulic_conductivity",
     ("LASAM", "field_capacity_psi"): "field_capacity",
@@ -420,16 +429,12 @@ def fix_module_metadata(metadata):
                 param["name"] = translation_map[key]
 
 
-def str_to_float(value):
+def safe_float(value, label, param_name, module_name):
     """
-    Converts a value to a float, returning None if conversion fails.
-
-    :param value: The value to convert.
-    :return: The converted float or None if the value is invalid.
+    Attempt to convert a value to float. Log a warning and return None if the conversion fails.
     """
-    if value is None:
-        return None
     try:
-        return float(value)
-    except ValueError:
+        return float(value) if value else None
+    except (ValueError, TypeError):
+        logger.warning(f"{label} '{value}' for parameter '{param_name}' for module '{module_name}' is not a valid float")
         return None

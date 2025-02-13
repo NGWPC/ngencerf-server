@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -128,7 +129,9 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_data_by_iteration() - {truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_data_by_iteration() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10))}'
+    )
 
     return Response(response_validator.data)
 
@@ -199,7 +202,7 @@ def get_validation_jobs(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -263,7 +266,7 @@ def get_log_names(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_log_names() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_log_names() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -390,7 +393,7 @@ def get_log(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_log() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_log() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

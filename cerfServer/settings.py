@@ -235,7 +235,7 @@ NGEN_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'forecast_forcing_wor
 # -----------------------------
 # Forcing environments
 # -----------------------------
-FORCING_MESH_ENV = 'ngen_esmf_mesh_prod'
+FORCING_MESH_ENV = 'ngen_esmf_mesh_domain'
 FORCING_EXTRACT_ENV = 'ngen_forcing_extraction'
 FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 

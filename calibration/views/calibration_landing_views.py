@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -74,7 +75,7 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {request.user.email} from create_calibration_run() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -120,7 +121,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status=StatusEnum.DONE.db_instance
+        status__in = [StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
@@ -145,7 +146,7 @@ def create_and_run_validation(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -206,7 +207,7 @@ def create_and_run_forecast(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -250,8 +251,10 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_calibration_jobs_for_evaluation() - '
-                 f'{truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_calibration_jobs_for_evaluation() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
+    )
     return Response(response_validator.data)
 
 
@@ -296,7 +299,9 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs_for_forecast() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_jobs_for_forecast() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
+    )
     return Response(response_validator.data)
 
 
@@ -338,7 +343,9 @@ def get_calibration_jobs(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs() - {truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10)}')
+        f'Returning to {request.user.email} from get_calibration_jobs() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
+    )
     return Response(response_validator.data)
 
 
@@ -524,7 +531,7 @@ def get_footer(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {user} from get_footer() - {response_validator.data}')
+    logger.debug(f'Returning to {user} from get_footer() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -575,7 +582,9 @@ def load_calibration_run(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from load_calibration_run() - {truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"])}')
+        f'Returning to {request.user.email} from load_calibration_run() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
+    )
 
     return Response(response_validator.data)
 
@@ -641,7 +650,7 @@ def clone_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from clone_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from clone_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -700,7 +709,7 @@ def delete_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from delete_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from delete_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 

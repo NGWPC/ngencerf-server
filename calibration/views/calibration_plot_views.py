@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from typing import Any
@@ -96,7 +97,7 @@ def get_plot_names(request: Request) -> Response:
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'get_plot_names() request from {request.user.email} - {response_validator.data}')
+    logger.debug(f'get_plot_names() request from {request.user.email} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -201,7 +202,7 @@ def get_plot(request: Request) -> Response:
     if force_include_plot or not plot_url or include_data:
         plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
         if not plot_definition:
-           return ResponseError(f"Invalid plot type '{plot_name}' requested for {run_type} {run.id}.")
+            return ResponseError(f"Invalid plot type '{plot_name}' requested for {run_type} {run.id}.")
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:
@@ -272,7 +273,9 @@ def get_plot(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_plot() - {truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10)}')
+        f'Returning to {request.user.email} from get_plot() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10))}'
+    )
 
     return Response(response_validator.data)
 
