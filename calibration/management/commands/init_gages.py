@@ -128,7 +128,6 @@ class Command(BaseCommand):
                     {'nws_id': nws_id or None,
                      'station_name': (station_name or '').strip(),
                      'rfc_id': rfc_id,
-                     'nwm_v3_calibration': False,
                      'headwater_calibration': True,
                      'agency': (agency or '').strip()
                      })

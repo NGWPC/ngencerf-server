@@ -86,7 +86,7 @@ def load_gage_tab(request: Request) -> Response:
     # Retrieve cached gages with necessary fields
     gages = [{
         'gage_id': gage.get('gage_id'),
-        'nwm_v3_calibration': gage.get('nwm_v3_calibration'),
+        'headwater_calibration': gage.get('headwater_calibration'),
         'nws_id': gage.get('nws_id'),
         'domain': gage.get('domain')
     } for gage in get_cached_gages().values()]
@@ -156,6 +156,8 @@ def get_gage(request: Request) -> Response:
 
     gage_id = validator.get('gage_id')
     gage = get_gage_by_id(gage_id)
+    if not gage['station_name']:
+        gage['station_name'] = "<undefined>"
 
     if not gage:
         return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
