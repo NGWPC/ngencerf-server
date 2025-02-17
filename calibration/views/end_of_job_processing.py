@@ -13,7 +13,7 @@ import pandas as pd
 from django.db import transaction
 from django.utils.timezone import now
 
-from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum, StatusEnum
+from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
 from calibration.models.base_run import BaseRun
