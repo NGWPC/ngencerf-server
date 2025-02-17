@@ -450,7 +450,7 @@ def run_generic_job_callback(
     :param finalize_func: Function to execute finalization logic specific to the job type.
     """
     job_description = get_job_description(run)
-    logger.info(f"Job end callback received for {job_description} with status {status}")
+    logger.info(f"Job end callback received for {job_description} with status{status}")
     run.run_end = datetime.now(timezone.utc)
     run.save(update_fields=["run_end"])
 
