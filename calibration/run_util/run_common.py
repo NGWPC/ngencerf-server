@@ -21,9 +21,9 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_file, \
     get_forecast_dir, get_forecast_forcing_config_file
 from calibration.views import ngen_cal_input
-from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
+from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -420,7 +420,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
         return  # Stop further processing if the job failed
 
     if not failed_so_far:
-    # If we just ran Validation Control, see if we want to run Validation Best
+        # If we just ran Validation Control, see if we want to run Validation Best
         if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
             if validation_run.calibration_run.automatic_validation:
                 best_validation_run = create_validation_run_internal(
