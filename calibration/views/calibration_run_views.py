@@ -19,7 +19,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Iteration, ValidationRun, ForecastRun, Status
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
@@ -32,7 +32,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
-    get_forecast_forcing_download_run
+    get_forecast_forcing_download_run, join_with_or
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -494,31 +494,57 @@ def cancel_job(request: Request) -> Response:
 
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
-        run_func = get_calibration_run
-        run_id = calibration_run_id
-        run_type = JobType.CALIBRATION.value.capitalize()
+        run_type = JobType.CALIBRATION.value
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     elif validation_run_id:
-        run_func = get_validation_run
-        run_id = validation_run_id
-        run_type = JobType.VALIDATION.value.capitalize()
+        run_type = JobType.VALIDATION.value
+        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING])
     else:
-        run_func = get_forecast_run
-        run_id = forecast_run_id
-        run_type = JobType.FORECAST.value.capitalize()
+        # Retrieve the ForecastForcingDownloadRun regardless of its status,
+        # using the provided forecast_run_id to get the forcing download run.
+        # First, get the ForecastRun (to access the forcing_download_run id).
+        forecast_run_unfiltered, error_return = get_forecast_run(forecast_run_id, request.user, run_status=list(StatusEnum))
+        if error_return:
+            return error_return
 
-    run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
+        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user, run_status=list(StatusEnum))
+        if forcing_error:
+            return forcing_error
+
+        # Check the status of the forcing download run.
+        if forcing_run.status == StatusEnum.RUNNING.db_instance:
+            # Forcing download run is running: cancel it.
+            run = forcing_run
+            # Call it a Forecast job and not Forcing Download
+            run_type = JobType.FORECAST.value
+        elif forcing_run.status == StatusEnum.DONE.db_instance:
+            # Forcing download run is done.
+            # Retrieve the forecast run from the forcing run.
+            forecast_run = forcing_run.forecast_run
+            if forecast_run.status == StatusEnum.RUNNING.db_instance:
+                run = forecast_run
+                run_type = JobType.FORECAST.value
+
+            else:
+                error = (f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
+                         f'{StatusEnum.RUNNING.value}. '
+                         f'Current status: {forecast_run.status.name}')
+                return ResponseError(error)
+        else:
+            error = (f'{ForecastForcingDownloadRun.__name__} {forcing_run.id} is not in an allowed status: '
+                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.DONE.value])}. '
+                     f'Current status: {forcing_run.status.name}')
+            return ResponseError(error)
 
     if not cancel_job_common(run):
-        return ResponseError(f"Unable to cancel {run_type} Job {run.id}")
+        return ResponseError(f"Unable to cancel {run_type.capitalize()} Job {run.id}")
 
     run.status = StatusEnum.CANCELLED.db_instance
     run.save(update_fields=['status'])
 
     response = {
-        'message': f"{run_type} Run job {run.id} has been canceled",
-        f"{run_type.lower()}_run_id": run.id,
+        'message': f"{run_type.capitalize()} Run job {run.id} has been canceled",
+        f"{run_type}_run_id": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
