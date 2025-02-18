@@ -209,7 +209,7 @@ def cancel_local_job(run: BaseRun) -> bool:
     :param run: The CalibrationRun, ValidationRun, or ForecastRun object to cancel.
     :return: True if the job was successfully terminated, False otherwise.
 
-    # TODO There is a known issue the cancelling a job doesn't actually work if the ngen/ngen-cal is running in a Docker container.
+    # TODO There is a known issue that cancelling a job doesn't actually work if the ngen/ngen-cal is running in a Docker container.
     # Probably need to do a Docker kill, But that means we need to give each run a unique Docker name.
     """
     job_description = get_job_description(run)

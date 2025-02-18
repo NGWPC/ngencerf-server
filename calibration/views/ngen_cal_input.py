@@ -407,8 +407,6 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     run.save()
 
-    # if errors:
-    #     print('There are validation errors. Normally, we would stop here and not try to build the config')
     # TODO Only build if no errors
     config_file = build_config(config, job_data_dir) if build and not errors else None
     # config_file = build_config(config, job_data_dir) if build else None
