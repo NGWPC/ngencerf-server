@@ -8,7 +8,7 @@ class NWMRetrospectiveMetrics(BaseModel):
     period = models.CharField(max_length=20, null=False)
     metric = models.ForeignKey('Metric', null=False, on_delete=models.RESTRICT)
     metric_value = models.FloatField(null=False)
-    calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.RESTRICT)
+    calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'nwm_retrospective_metrics'
