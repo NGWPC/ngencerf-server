@@ -11,7 +11,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     job_genesis = models.CharField(max_length=20, null=False)
     job_data_dir = models.CharField(max_length=255, null=False)
     optimization = models.ForeignKey('Optimization', null=True, on_delete=models.RESTRICT)
-    module_output_variable = models.ForeignKey('ModuleOutputVariable', null=True, on_delete=models.RESTRICT)
+    module_output_variable = models.ForeignKey('ModuleOutputVariable', null=True, on_delete=models.CASCADE)
     objective_function = models.ForeignKey('Metric', null=True, on_delete=models.RESTRICT)
     time_range_start = models.DateTimeField(null=True)
     time_range_end = models.DateTimeField(null=True)
@@ -41,7 +41,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     automatic_validation = models.BooleanField(null=False, default=False)
     ngen_commit_hash = models.CharField(max_length=50, null=True)
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
-    is_deleted = models.BooleanField(default=False)
+    is_archived = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'calibration_run'
@@ -56,5 +56,5 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             f"forcing_eds_dir_path: {self.forcing_eds_dir_path}, "
             f"observational_eds_file_path: {self.observational_eds_file_path}, "
             f"status.name: {self.status.name}, "
-            f"is_deleted: {self.is_deleted}"
+            f"is_archived: {self.is_archived}"
         )

@@ -24,7 +24,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    LoadCalibrationJobSerializer
+    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
@@ -121,7 +121,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status__in = [StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
+        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
@@ -364,8 +364,8 @@ def get_jobs(
         - 'status': Includes validation status details.
     :return: List of calibration jobs with selected fields.
     """
-    # Base query to filter jobs for the given user, excluding deleted jobs
-    query = Q(owner=user, is_deleted=False)
+    # Base query to filter jobs for the given user, excluding archived jobs
+    query = Q(owner=user, is_archived=False)
 
     # If a specific status list is provided, filter by those statuses
     if run_status:
@@ -674,7 +674,7 @@ def clone_job(request: Request) -> Response:
 @handle_exceptions
 def delete_job(request: Request) -> Response:
     """
-    Delete a calibration job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+    Permanently delete a calibration job.
 
     :param request: The HTTP request object.
     :return: A Response object with the deletion confirmation.
@@ -694,15 +694,11 @@ def delete_job(request: Request) -> Response:
 
     if run.status == StatusEnum.RUNNING.db_instance:
         return ResponseError(f'Calibration Job {run.id} is running.  Cannot delete a running job')
+    # TODO Should we check if any associated jobs are also running?
 
     run_id = run.id
 
-    if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
-        hard_delete(run)
-    else:
-        logger.debug(f"Deleting (soft delete) Calibration Job {run.id}")
-        run.is_deleted = True
-        run.save(update_fields=['is_deleted'])
+    hard_delete(run)
 
     response = {'message': f'Calibration Id {run_id} and associated records have been deleted', 'calibration_run_id': run_id}
 
@@ -710,6 +706,66 @@ def delete_job(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from delete_job() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ArchiveJobRequestSerializer,
+    responses={
+        200: CalibrationRunSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Archive a calibration job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def archive_job(request: Request) -> Response:
+    """
+    Archive a calibration job.   Essentially a soft delete.  We set a flag so it doesn't normally show up in any queries.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the deletion confirmation.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'archive_job() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ArchiveJobRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    archive = validator.get('archive')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum), include_archived=True)
+    if error_return:
+        return error_return
+
+    if archive == run.is_archived:
+        return ResponseError(f'Calibration Job {run.id} is {"already" if archive else "not"} archived')
+
+    # An already archived job can never be running, so this will only happen when we are trying to archive
+    if run.status == StatusEnum.RUNNING.db_instance:
+        return ResponseError(f'Calibration Job {run.id} is running.  Cannot archive a running job')
+    # TODO Should we check if any associated jobs are also running?
+
+    run.is_archived = archive
+    run.save(update_fields=['is_archived'])
+
+    response = {'message': f'Calibration Id {run.id} and associated records have been ' f"{'archived' if archive else 'unarchived'}",
+                'calibration_run_id': run.id}
+
+    response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from archive_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -731,7 +787,7 @@ def hard_delete(run: CalibrationRun) -> None:
         logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
         for instance in instances:
             # Customize the fields you want to display
-            logger.debug(f' -{instance}')
+            logger.debug(f' - {instance}')
 
     job_data_dir = run.job_data_dir
     run.delete()

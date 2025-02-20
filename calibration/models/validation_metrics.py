@@ -8,7 +8,7 @@ class ValidationMetrics(BaseModel):
     period = models.CharField(max_length=20, null=False)
     metric = models.ForeignKey('Metric', null=False, on_delete=models.RESTRICT)
     metric_value = models.FloatField(null=False)
-    validation_run = models.ForeignKey('ValidationRun', null=False, on_delete=models.RESTRICT)
+    validation_run = models.ForeignKey('ValidationRun', null=False, on_delete=models.CASCADE)
 
     class Meta:
         db_table = 'validation_metric'

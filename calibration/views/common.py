@@ -41,26 +41,29 @@ def get_run_instance(
         user: User | None,
         run_status: List[StatusEnum] | None = None,
         owner_field: str = 'owner',
-        is_deleted_field: str = 'is_deleted'
+        is_archived_field: str = 'is_archived',
+        include_archived: bool = False
 ) -> Tuple[BaseRun | None, Response | None]:
     """
     Retrieve an instance of a BaseRun-derived model by its ID,
-    optionally filtering by owner, status, and the 'is_deleted' flag.
+    optionally filtering by owner, status, and handling the 'is_archived' flag.
 
     :param model: The BaseRun-derived model class to query.
     :param run_id: The ID of the run to retrieve.
     :param user: The user requesting the run. If None, no filtering by owner is done.
     :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
     :param owner_field: The field used to filter by owner (default is 'owner').
-    :param is_deleted_field: The field path for the 'is_deleted' flag (default is 'is_deleted').
+    :param is_archived_field: The field path for the 'is_archived' flag (default is 'is_archived').
+    :param include_archived: Whether to allow access to archived jobs (default is False).
     :return: A tuple containing the run instance (or None if not found) and an optional Response with an error.
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
     allowed_statuses: List[Status] = [status_enum.db_instance for status_enum in run_status]
 
-    # Add is_deleted=False to the query
-    query: QuerySet = model.objects.filter(id=run_id, **{is_deleted_field: False})
+    # Query without filtering out archived jobs
+    query: QuerySet = model.objects.filter(id=run_id)
+
 
     if user:
         query = query.filter(**{f"{owner_field}": user})
@@ -70,6 +73,12 @@ def get_run_instance(
     except model.DoesNotExist:
         user_info = f' or is not owned by {user.email}' if user else ''
         error = f'{model.__name__} {run_id} does not exist{user_info}'
+        return None, ResponseError(error)
+
+    # Explicitly check if the job is archived and include_archived=False
+    is_archived = getattr(run, is_archived_field, False)
+    if is_archived and not include_archived:
+        error = f'{model.__name__} {run_id} is archived and should be unarchived before additional operations can be performed.'
         return None, ResponseError(error)
 
     # Check if the status of the run is in the allowed statuses
@@ -86,7 +95,8 @@ def get_run_instance(
 def get_calibration_run(
         calibration_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
+        run_status: List[StatusEnum] | None = None,
+        include_archived: bool = False
 ) -> Tuple[CalibrationRun | None, Response | None]:
     """
     Retrieve a CalibrationRun instance by its ID, filtering by owner and status.
@@ -94,9 +104,10 @@ def get_calibration_run(
     :param calibration_run_id: The ID of the CalibrationRun to retrieve.
     :param user: The user requesting the CalibrationRun. If None, no owner filtering is applied.
     :param run_status: A list of allowed statuses for the CalibrationRun.
+    :param include_archived: Whether to include archived jobs (default is False).
     :return: A tuple containing the CalibrationRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_deleted')
+    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_archived', include_archived)
 
 
 def get_validation_run(
@@ -112,7 +123,7 @@ def get_validation_run(
     :param run_status: A list of allowed statuses for the ValidationRun.
     :return: A tuple containing the ValidationRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
+    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
 
 def get_forecast_forcing_download_run(
@@ -135,7 +146,7 @@ not found) and an optional Response with an error.
         forecast_forcing_download_run_id, user,
         run_status,
         'forecast_run__calibration_run__owner',
-        'forecast_run__calibration_run__is_deleted'
+        'forecast_run__calibration_run__is_archived'
     )
 
 
@@ -152,7 +163,7 @@ def get_forecast_run(
     :param run_status: A list of allowed statuses for the ForecastRun.
     :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
     """
-    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
+    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
 
 def join_with_or(items):
