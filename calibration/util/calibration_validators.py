@@ -427,6 +427,10 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
+class ArchiveJobRequestSerializer(CalibrationRunSerializer):
+    archive = serializers.BooleanField(default=True, allow_null=False, required=False)
+
+
 ##################################
 # Gage Tab
 ##################################
