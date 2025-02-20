@@ -674,7 +674,7 @@ def clone_job(request: Request) -> Response:
 @handle_exceptions
 def delete_job(request: Request) -> Response:
     """
-    Delete a calibration job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+    Permanently delete a calibration job.
 
     :param request: The HTTP request object.
     :return: A Response object with the deletion confirmation.
@@ -694,15 +694,11 @@ def delete_job(request: Request) -> Response:
 
     if run.status == StatusEnum.RUNNING.db_instance:
         return ResponseError(f'Calibration Job {run.id} is running.  Cannot delete a running job')
+    # TODO Should we check if any associated jobs are also running?
 
     run_id = run.id
 
-    if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
-        hard_delete(run)
-    else:
-        logger.debug(f"Deleting (soft delete) Calibration Job {run.id}")
-        run.is_deleted = True
-        run.save(update_fields=['is_deleted'])
+    hard_delete(run)
 
     response = {'message': f'Calibration Id {run_id} and associated records have been deleted', 'calibration_run_id': run_id}
 
@@ -710,6 +706,60 @@ def delete_job(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(f'Returning to {request.user.email} from delete_job() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: CalibrationRunSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Archive a calibration job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def archive_job(request: Request) -> Response:
+    """
+    Archive a calibration job.   Essentially a soft delete.  We set a flag so it doesn't normally show up in any queries.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the deletion confirmation.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'archive_job() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+
+    if run.status == StatusEnum.RUNNING.db_instance:
+        return ResponseError(f'Calibration Job {run.id} is running.  Cannot archive a running job')
+    # TODO Should we check if any associated jobs are also running?
+
+    run.is_deleted = True
+    run.save(update_fields=['is_deleted'])
+
+    response = {'message': f'Calibration Id {run.id} and associated records have been archived', 'calibration_run_id': run.id}
+
+    response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {request.user.email} from archive_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
