@@ -7,7 +7,7 @@ from typing import Any, cast
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction, router
-from django.db.models import F, Q
+from django.db.models import F, Q, Prefetch
 from django.db.models.deletion import Collector
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
@@ -339,7 +339,12 @@ def get_calibration_jobs(request):
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, run_status=list(StatusEnum), include_validation_data=GetValidationJobsScope.STATUS)
+    jobs = get_jobs(
+        request.user,
+        run_status=list(StatusEnum),
+        include_validation_data=GetValidationJobsScope.STATUS,
+        include_modules=True
+    )
 
     response = {'jobs': jobs}
 
@@ -357,7 +362,8 @@ def get_calibration_jobs(request):
 def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
-        include_validation_data: GetValidationJobsScope = None
+        include_validation_data: GetValidationJobsScope = None,
+        include_modules: bool = False
 ) -> list[dict[str, Any]]:
     """
     Retrieves calibration jobs for the given user with optional status filtering and validation data inclusion.
@@ -367,6 +373,7 @@ def get_jobs(
     :param include_validation_data: Determines the level of validation data to include:
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
+    :param include_modules: Whether to include the list of associated modules (Module names).
     :return: List of calibration jobs with selected fields.
     """
     # Base query to filter jobs for the given user, excluding archived jobs
@@ -376,23 +383,46 @@ def get_jobs(
     if run_status:
         query &= Q(status__in=[s.db_instance for s in run_status])
 
-    # Fetch calibration runs, annotating user-specific fields like formulation_name
-    calibration_runs = (
-        CalibrationRun.objects.filter(query)
-        .annotate(formulation_name=F('user_formulation_name'))
-        .values(
-            'id', 'gage__gage_id', 'submit_date', 'formulation_name',
-            'calibration_start_period', 'calibration_end_period',
-            'status__name', 'job_genesis', 'created_at',
-            'objective_function__name', 'optimization__name'
-        )
+    # Prepare Prefetch object to optimize fetching formulations, ensuring we get module names
+    formulations_prefetch = Prefetch(
+        'calibrationformulation_set',
+        queryset=CalibrationFormulation.objects.select_related('module').only('calibration_run_id', 'module__name'),
+        to_attr='prefetched_formulations'
     )
+
+    # Fetch calibration runs with optional prefetching of formulations
+    calibration_runs_qs = CalibrationRun.objects.filter(query).annotate(
+        formulation_name=F('user_formulation_name')
+    )
+
+    if include_modules:
+        calibration_runs_qs = calibration_runs_qs.prefetch_related(formulations_prefetch)
+
+    # Fetch only required fields
+    calibration_runs = calibration_runs_qs.values(
+        'id', 'gage__gage_id', 'submit_date', 'formulation_name',
+        'calibration_start_period', 'calibration_end_period',
+        'status__name', 'job_genesis', 'created_at',
+        'objective_function__name', 'optimization__name'
+    )
+
+    # If modules are needed, retrieve associated formulations
+    formulations_map = {}
+    if include_modules:
+        formulations = CalibrationFormulation.objects.select_related('module').filter(
+            calibration_run__in=[run["id"] for run in calibration_runs]
+        ).values_list('calibration_run_id', 'module__name')
+
+        # Organize module names by calibration_run_id
+        for run_id, module_name in formulations:
+            formulations_map.setdefault(run_id, []).append(module_name)
 
     results = []
     for run in calibration_runs:
         # Map fields from the query to the desired response format
+        run_id = run.pop('id')
         result = {
-            'calibration_run_id': run.pop('id'),
+            'calibration_run_id': run_id,
             'gage_id': run.pop('gage__gage_id'),
             'status': run.pop('status__name'),
             'objective_function': run.pop('objective_function__name'),
@@ -400,10 +430,14 @@ def get_jobs(
             **run
         }
 
+        # Add modules if requested
+        if include_modules:
+            result['modules'] = formulations_map.get(run_id, [])
+
         # Include validation IDs and count if requested
         if include_validation_data == GetValidationJobsScope.IDS:
             validation_ids = get_validation_jobs_internal(
-                calibration_run_id=result['calibration_run_id'],
+                calibration_run_id=run_id,
                 detail_level=include_validation_data
             )
             result['validation_run_ids'] = validation_ids
@@ -412,7 +446,7 @@ def get_jobs(
         # Include detailed validation status if requested
         elif include_validation_data == GetValidationJobsScope.STATUS:
             result['validations'] = get_validation_jobs_internal(
-                calibration_run_id=result['calibration_run_id'],
+                calibration_run_id=run_id,
                 detail_level=include_validation_data
             )
 
