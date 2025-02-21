@@ -673,11 +673,9 @@ class ModuleStaticSerializer(BaseSerializer):
     is_active = serializers.BooleanField(required=True)
 
 
-class LoadFormulationResponseSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
+class GetModulesResponseSerializer(BaseSerializer):
     modules = ModuleStaticSerializer(many=True)
     module_groups = serializers.ListSerializer(child=serializers.CharField(required=True), required=True, allow_null=False, allow_empty=False)
-    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
 
 
 ##################################
