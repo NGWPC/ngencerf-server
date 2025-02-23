@@ -39,23 +39,23 @@ def get_run_instance(
         model: Type[BaseRun],
         run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None,
+        run_status: list[StatusEnum] | None = None,
         owner_field: str = 'owner',
         is_archived_field: str = 'is_archived',
         include_archived: bool = False
-) -> Tuple[BaseRun | None, Response | None]:
+) -> tuple[BaseRun | None, Response | None]:
     """
     Retrieve an instance of a BaseRun-derived model by its ID,
     optionally filtering by owner, status, and handling the 'is_archived' flag.
 
     :param model: The BaseRun-derived model class to query.
     :param run_id: The ID of the run to retrieve.
-    :param user: The user requesting the run. If None, no filtering by owner is done.
-    :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
-    :param owner_field: The field used to filter by owner (default is 'owner').
-    :param is_archived_field: The field path for the 'is_archived' flag (default is 'is_archived').
-    :param include_archived: Whether to allow access to archived jobs (default is False).
-    :return: A tuple containing the run instance (or None if not found) and an optional Response with an error.
+    :param user: The user requesting the run; if None, no filtering by owner is done.
+    :param run_status: A list of StatusEnum members to filter by.
+    :param owner_field: The field used to filter by owner (default 'owner').
+    :param is_archived_field: The field name for the 'is_archived' flag (default 'is_archived').
+    :param include_archived: Whether to include archived jobs.
+    :return: Tuple containing the run instance or None, and Response if error or None.
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
@@ -63,7 +63,6 @@ def get_run_instance(
 
     # Query without filtering out archived jobs
     query: QuerySet = model.objects.filter(id=run_id)
-
 
     if user:
         query = query.filter(**{f"{owner_field}": user})
@@ -95,17 +94,17 @@ def get_run_instance(
 def get_calibration_run(
         calibration_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None,
+        run_status: list[StatusEnum] | None = None,
         include_archived: bool = False
-) -> Tuple[CalibrationRun | None, Response | None]:
+) -> tuple[CalibrationRun | None, Response | None]:
     """
-    Retrieve a CalibrationRun instance by its ID, filtering by owner and status.
+    Retrieve a CalibrationRun by ID, optionally filtering by owner and status.
 
-    :param calibration_run_id: The ID of the CalibrationRun to retrieve.
-    :param user: The user requesting the CalibrationRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the CalibrationRun.
-    :param include_archived: Whether to include archived jobs (default is False).
-    :return: A tuple containing the CalibrationRun instance (or None if not found) and an optional Response with an error.
+    :param calibration_run_id: The ID of the CalibrationRun.
+    :param user: User requesting the CalibrationRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the CalibrationRun.
+    :param include_archived: Include archived jobs if True.
+    :return: Tuple of CalibrationRun or None, and Response if error or None.
     """
     return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_archived', include_archived)
 
@@ -113,15 +112,15 @@ def get_calibration_run(
 def get_validation_run(
         validation_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ValidationRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None
+) -> tuple[ValidationRun | None, Response | None]:
     """
-    Retrieve a ValidationRun instance by its ID, filtering by owner and status.
+    Retrieve a ValidationRun by ID, optionally filtering by owner and status.
 
-    :param validation_run_id: The ID of the ValidationRun to retrieve.
-    :param user: The user requesting the ValidationRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the ValidationRun.
-    :return: A tuple containing the ValidationRun instance (or None if not found) and an optional Response with an error.
+    :param validation_run_id: The ID of the ValidationRun.
+    :param user: User requesting the ValidationRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the ValidationRun.
+    :return: Tuple of ValidationRun or None, and Response if error or None.
     """
     return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
@@ -153,26 +152,26 @@ not found) and an optional Response with an error.
 def get_forecast_run(
         forecast_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ForecastRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None
+) -> tuple[ForecastRun | None, Response | None]:
     """
-    Retrieve a ForecastRun instance by its ID, filtering by owner and status.
+    Retrieve a ForecastRun by ID, optionally filtering by owner and status.
 
-    :param forecast_run_id: The ID of the ForecastRun to retrieve.
-    :param user: The user requesting the ForecastRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the ForecastRun.
-    :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
+    :param forecast_run_id: The ID of the ForecastRun.
+    :param user: User requesting the ForecastRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the ForecastRun.
+    :return: Tuple of ForecastRun or None, and Response if error or None.
     """
     return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
 
-def join_with_or(items):
+def join_with_or(items: list[str]) -> str:
     """
-       Join a list of strings into a single string, using commas and 'or' for the last item.
+    Join strings into a comma-separated string, using 'or' before the last item.
 
-       :param items: A list of strings.
-       :return: A grammatically joined string.
-       """
+    :param items: A list of strings.
+    :return: Joined string.
+    """
     if not items:
         return ''
     elif len(items) == 1:
@@ -184,21 +183,21 @@ def join_with_or(items):
 # Helper function to format datetime in a readable way
 def format_datetime(dt: datetime | None) -> str:
     """
-    Format a datetime object as a string, or return 'N/A' if None.
+    Format datetime to a string, or return 'N/A' if None.
 
-    :param dt: A datetime object or None.
-    :return: A formatted string representation of the datetime or 'N/A' if None.
+    :param dt: A datetime or None.
+    :return: Formatted string or 'N/A'.
     """
     return dt.strftime('%Y-%m-%d %H:%M:%S') if dt else 'N/A'
 
 
-def png_str_to_base64_url(png_str):
+def png_str_to_base64_url(png_str: bytes | None) -> str | None:
     """
-     Convert a PNG image in binary format to a base64-encoded data URL.
+    Convert PNG bytes to a base64-encoded data URL.
 
-     :param png_str: The binary data of a PNG image.
-     :return: A base64-encoded string for embedding images in URLs.
-     """
+    :param png_str: PNG image bytes.
+    :return: Base64-encoded data URL or None if input is empty.
+    """
     if png_str:
         base64_str = base64.b64encode(png_str).decode('utf-8')
         return f'data:image/png;base64,{base64_str}'
@@ -206,15 +205,14 @@ def png_str_to_base64_url(png_str):
         return None
 
 
-def create_calibration_run_internal(user, genesis: JobGenesis = None) -> CalibrationRun:
+def create_calibration_run_internal(user: User, genesis: JobGenesis | None = None) -> CalibrationRun:
     """
-    Create a new CalibrationRun object for the user making the request.
-    Ensures that the job directory is created and assigns the 'SAVED' status by default.
+    Create a new CalibrationRun for the given user.
 
-    :param user: The owner of the calibration run.
-    :param genesis: Genesis of the job
-    :return: The newly created CalibrationRun instance.
-     """
+    :param user: Owner of the calibration run.
+    :param genesis: Origin of the job (optional).
+    :return: New CalibrationRun instance.
+    """
     run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.SAVED.db_instance)
 
     # Just get the user part, before the @ sign
@@ -302,11 +300,11 @@ token_ngen = 'ngen'
 
 def generate_custom_token(user: User, scope: str) -> str:
     """
-    Generate a JWT access token for a user, with a custom scope and a 24-hour expiration.
+    Generate a JWT access token for a user with custom scope and 24-hour expiration.
 
-    :param user: The user for whom the token is being generated.
-    :param scope: The custom scope to be embedded in the token.
-    :return: The string representation of the access token.
+    :param user: User for whom to generate the token.
+    :param scope: Custom scope for the token.
+    :return: JWT token string.
     """
     access = AccessToken.for_user(user)
     # Set the expiration to 24 hours from now
@@ -543,15 +541,14 @@ def validate_response(serializer_class, data, fields_to_truncate=None, max_lengt
         return None, ResponseError(message, response_type='validation_error_response', validation_errors=validation_errors)
 
 
-def validate_response_data(serializer_class: Type[BaseSerializer], data: dict, error_message: str) -> dict[str, Any]:
+def validate_response_data(serializer_class: Type[BaseSerializer], data: dict[str, Any], error_message: str) -> dict[str, Any]:
     """
     Validates response data and raises an exception if validation fails.
 
     :param serializer_class: The serializer class for validation.
-    :param data: The data (as a dictionary) to validate.
-    :param error_message: Error message for exception if validation fails.
-    :return: Validated data if validation succeeds.
-    :raises CerfException: If validation fails.
+    :param data: The data to validate.
+    :param error_message: Error message if validation fails.
+    :return: Validated data.
     """
     try:
         formatted_data = json.dumps(data)  # Attempt JSON formatting
@@ -583,10 +580,10 @@ class CerfException(Exception):
 
 def get_job_description(run: BaseRun) -> str:
     """
-    Provides a descriptive string for a job, identifying its type and user.
+    Get a descriptive string identifying the job type and owner.
 
-    :param run: The job instance, either CalibrationRun, ValidationRun or ForecastRun.
-    :return: A description of the job.
+    :param run: Job instance (CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun).
+    :return: Description of the job.
     """
     if isinstance(run, CalibrationRun):
         return f"Calibration Job {run.id}, user: {run.owner.username}"
@@ -602,11 +599,10 @@ def get_job_description(run: BaseRun) -> str:
 
 def replace_nan_and_inf_with_none(data: Any) -> Any:
     """
-    Recursively traverses the input data and replaces any NaN or infinity (inf) values with None.
-    This ensures that the data is JSON-compliant by converting non-compliant values into nulls.
+    Replace NaN and infinity values with None recursively in data.
 
-    :param data: The input data, which can be a list, dictionary, or a single value.
-    :return: The sanitized data with NaN and inf values replaced by None.
+    :param data: Input data (list, dict, or scalar).
+    :return: Data with NaN and inf replaced by None.
     """
 
     # If the data is a list, recursively process each item in the list
