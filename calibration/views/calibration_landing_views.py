@@ -17,7 +17,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GetValidationJobsScope
-from calibration.models import CalibrationRun, ValidationRun, IterationParameter
+from calibration.models import CalibrationRun, ValidationRun, IterationParameter, ForecastRun, ForecastForcingDownloadRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
@@ -655,6 +655,30 @@ def clone_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
+def has_running_associated_jobs(run: CalibrationRun) -> Response | None:
+    """
+    Checks if the given calibration job or any associated jobs are currently running.
+
+    :param run: The CalibrationRun instance to check.
+    :return: Response if the job or any associated jobs are running, otherwise None.
+    """
+    if run.status == StatusEnum.RUNNING.db_instance:
+        return ResponseError(f'Calibration Job {run.id} is running. Cannot proceed while the job is running.')
+
+    if any([
+        ValidationRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
+        ForecastRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
+        ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
+    ]):
+        return ResponseError(
+            f'Calibration Job {run.id} has associated jobs that are still running. '
+            f'Cannot proceed until all related jobs (validations, forecasts, or forcing downloads) are completed.'
+        )
+
+    return None  # No running jobs, safe to proceed
+
+
+
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
@@ -692,15 +716,19 @@ def delete_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    if run.status == StatusEnum.RUNNING.db_instance:
-        return ResponseError(f'Calibration Job {run.id} is running.  Cannot delete a running job')
-    # TODO Should we check if any associated jobs are also running?
+    # Check for any running jobs (including the calibration job itself)
+    running_jobs_error = has_running_associated_jobs(run)
+    if running_jobs_error:
+        return running_jobs_error
 
+    # Proceed with deletion
     run_id = run.id
-
     hard_delete(run)
 
-    response = {'message': f'Calibration Id {run_id} and associated records have been deleted', 'calibration_run_id': run_id}
+    response = {
+        'message': f'Calibration Id {run_id} and associated records have been deleted',
+        'calibration_run_id': run_id
+    }
 
     response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
     if error_response:
@@ -729,10 +757,10 @@ def delete_job(request: Request) -> Response:
 @handle_exceptions
 def archive_job(request: Request) -> Response:
     """
-    Archive a calibration job.   Essentially a soft delete.  We set a flag so it doesn't normally show up in any queries.
+    Archive a calibration job. Essentially a soft delete by setting an archive flag.
 
     :param request: The HTTP request object.
-    :return: A Response object with the deletion confirmation.
+    :return: A Response object with the archive confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'archive_job() request from {request.user.email} - {data}')
@@ -751,16 +779,19 @@ def archive_job(request: Request) -> Response:
     if archive == run.is_archived:
         return ResponseError(f'Calibration Job {run.id} is {"already" if archive else "not"} archived')
 
-    # An already archived job can never be running, so this will only happen when we are trying to archive
-    if run.status == StatusEnum.RUNNING.db_instance:
-        return ResponseError(f'Calibration Job {run.id} is running.  Cannot archive a running job')
-    # TODO Should we check if any associated jobs are also running?
+    # Check for any running jobs (including the calibration job itself)
+    if archive:
+        running_jobs_error = has_running_associated_jobs(run)
+        if running_jobs_error:
+            return running_jobs_error
 
     run.is_archived = archive
     run.save(update_fields=['is_archived'])
 
-    response = {'message': f'Calibration Id {run.id} and associated records have been ' f"{'archived' if archive else 'unarchived'}",
-                'calibration_run_id': run.id}
+    response = {
+        'message': f'Calibration Id {run.id} and associated records have been {"archived" if archive else "unarchived"}',
+        'calibration_run_id': run.id
+    }
 
     response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
     if error_response:
