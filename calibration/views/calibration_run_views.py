@@ -169,6 +169,7 @@ def get_status(request: Request) -> Response:
         forecast_data = {
             'forecast_run_id': run.id,
             'status': run.status.name,
+            'cycle': run.cycle.name,
             'submit_date': run.submit_date,
             'run_start': run.run_start,
             'run_end': run.run_end,

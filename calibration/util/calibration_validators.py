@@ -812,6 +812,7 @@ class GetStatusForcingDownloadSerializer(BaseSerializer):
 
 
 class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer):
+    cycle = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
     forcing_download = GetStatusForcingDownloadSerializer(required=False, allow_null=True)
 
 
@@ -877,7 +878,7 @@ class LoadForecastTabResponseSerializer(BaseSerializer):
 class ForecastJobsResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     forecast_run_id = serializers.IntegerField(required=True)
-    cycle = serializers.CharField(required=True)
+    cycle = serializers.CharField(required=True, validators=[enum_validator(ForecastCycleEnum)])
     gage_id = serializers.CharField(required=True)
     forecast_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     forcing_download_status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
