@@ -387,7 +387,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
 
     # Log a warning if no best iteration was found for the worker
     if not best_iteration_found:
-        raise CerfException(f"No best iteration found for worker {worker_name} in CalibrationRun {calibration_run.id}")
+        logger.warning(f"No best iteration found for worker {worker_name} in CalibrationRun {calibration_run.id}")
 
     # Check if this worker has a non-empty Output_Iteration directory
     output_iter = os.path.join(worker_path, 'Output_Iteration')
