@@ -18,11 +18,11 @@ from calibration.models import Iteration, CalibrationRun, IterationMetric, Itera
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
-    get_params_iteration_file, get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
+    get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
     get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename, \
-    get_forecast_forcing_download_performance_file, get_forecast_performance_file
+    get_forecast_forcing_download_performance_file, get_forecast_performance_file, get_params_iteration_file
 from calibration.views.common import CerfException, get_job_description
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -
     and updating the validation run's attributes.
 
     :param validation_run: The ValidationRun instance.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
     """
     job_description = get_job_description(validation_run)
 
@@ -103,6 +104,13 @@ def read_calibration_output(calibration_run: CalibrationRun, failed_so_far: bool
 
 
 def read_forecast_output(run: ForecastForcingDownloadRun | ForecastRun, failed_so_far: bool) -> None:
+    """
+    Processes the output of a forecast run by parsing performance metrics.
+
+    :param run: The ForecastForcingDownloadRun or ForecastRun instance.
+    :param failed_so_far: Indicates whether the job has failed up to this point.
+    """
+
     job_description = get_job_description(run)
 
     logger.info(f"Processing output for {job_description}, status={run.status}")
@@ -267,18 +275,35 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
 
     :param calibration_run: The CalibrationRun instance.
     """
+    # Compute best_params_dict once, outside the loop
+    best_params_dict: Dict[str, float] = {}
+
+    if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
+        global_best_params_file = get_global_best_params_file(calibration_run)
+        if not os.path.isfile(global_best_params_file):
+            raise CerfException(f"{global_best_params_file} does not exist")
+
+        # Read the global best parameters into a dictionary
+        df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
+        best_params_dict = pd.Series(df['value'].astype(float).values, index=df['name']).to_dict()
+
     # Query all Iteration objects for the calibration run and prefetch related metrics and parameters
-    iterations = Iteration.objects.filter(calibration_run=calibration_run).order_by('worker_name', 'iteration_num').prefetch_related(
-        'iterationmetric_set',
-        'iterationparameter_set')
+    iterations = Iteration.objects.filter(calibration_run=calibration_run).order_by(
+        'worker_name', 'iteration_num'
+    ).prefetch_related('iterationmetric_set', 'iterationparameter_set')
 
     # Group the iterations by worker and process them
     for worker_name, worker_iterations in groupby(iterations, key=attrgetter('worker_name')):
-        process_iterations_for_a_worker(calibration_run, worker_name, list(worker_iterations))
+        process_iterations_for_a_worker(calibration_run, worker_name, list(worker_iterations), best_params_dict)
+
+    # Raise an error if no best iteration was found
+    if not Iteration.objects.filter(calibration_run=calibration_run, best_params=True).exists():
+        raise CerfException(f"No best iteration was found for CalibrationRun {calibration_run.id}")
 
 
 # Function to process iterations for a specific worker
-def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations: list[Iteration]) -> None:
+def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations: list[Iteration],
+                                    best_params_dict: Dict[str, float]) -> None:
     """
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
@@ -288,6 +313,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     :param worker_name: The name of the worker. This is the middle part of the worker name.
                         Need to prefix with ngen_ and suffix with _worker.
     :param iterations: A list of Iteration objects for the worker.
+    :param best_params_dict: Precomputed dictionary of best parameters for comparison.
     """
     logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
@@ -352,11 +378,11 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
         iteration_num = metrics_row_dict['iteration']
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
-            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} for CalibrationRun {calibration_run.id}")
+            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} in CalibrationRun {calibration_run.id}")
 
         # Process metrics and parameters for this iteration
         process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create)
-        process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker)
+        process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker, best_params_dict)
 
         # Check if this iteration was set as the best
         if iteration.best_params:
@@ -371,7 +397,8 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
             except Exception as e:
                 logger.error(f"Error inserting IterationMetric batch {i // BULK_CREATE_BATCH_SIZE + 1}: {e}")
                 for metric in batch:
-                    logger.error(f"Failed IterationMetric: Iteration {metric.iteration.iteration_num}, Metric {metric.metric}, Value {metric.metric_value}")
+                    logger.error(
+                        f"Failed IterationMetric: Iteration {metric.iteration.iteration_num}, Metric {metric.metric}, Value {metric.metric_value}")
                 raise  # Re-raise exception after logging details
 
     if params_to_create:
@@ -382,12 +409,13 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
             except Exception as e:
                 logger.error(f"Error inserting IterationParameter batch {i // BULK_CREATE_BATCH_SIZE + 1}: {e}")
                 for param in batch:
-                    logger.error(f"Failed IterationParameter: Iteration {param.iteration.iteration_num}, Parameter {param.calibration_parameter.name}, Value {param.tuned_value}")
+                    logger.error(
+                        f"Failed IterationParameter: Iteration {param.iteration.iteration_num}, Parameter {param.calibration_parameter.name}, Value {param.tuned_value}")
                 raise  # Re-raise exception after logging details
 
     # Log a warning if no best iteration was found for the worker
     if not best_iteration_found:
-        raise CerfException(f"No best iteration found for worker {worker_name} in CalibrationRun {calibration_run.id}")
+        logger.warning(f"No best iteration found for worker {worker_name} in CalibrationRun {calibration_run.id}")
 
     # Check if this worker has a non-empty Output_Iteration directory
     output_iter = os.path.join(worker_path, 'Output_Iteration')
@@ -448,7 +476,8 @@ def process_params_row(calibration_run: CalibrationRun,
                        iteration: Iteration,
                        params_row: dict[str, float | None],
                        params_to_create: list[IterationParameter],
-                       best_iteration_for_worker: int) -> None:
+                       best_iteration_for_worker: int,
+                       best_params_dict: Dict[str, float]) -> None:
     """
     Process a single row from the parameters file and create IterationParameter objects.
     Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
@@ -458,24 +487,12 @@ def process_params_row(calibration_run: CalibrationRun,
     :param params_row: The row of parameter data from the file.
     :param params_to_create: The list to accumulate created IterationParameter objects.
     :param best_iteration_for_worker: The best iteration number for the worker, used to mark the best parameters.
+    :param best_params_dict: Precomputed dictionary of best parameters for comparison.
     """
     job_description = get_job_description(calibration_run)
 
     # Filter out the 'iteration' column
     params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
-
-    # Initialize global_best_params_dict if not using DDS optimization
-    best_params_dict: Dict[str, float] = {}
-    if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
-        global_best_params_file = get_global_best_params_file(calibration_run)
-        if not os.path.isfile(global_best_params_file):
-            raise CerfException(f"{global_best_params_file} does not exist")
-
-        # Read the global best parameters into a DataFrame
-        df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
-
-        # Convert the 'name' and 'value' columns into a dictionary
-        best_params_dict = pd.Series(df['value'].astype(float).values, index=df['name']).to_dict()
 
     # Check if the current params_row matches the global best parameters
     is_best_match = (
@@ -543,7 +560,8 @@ def update_output_variables(metrics_iteration_file: str, calibration_run: Calibr
         # Retrieve the iteration object from the dictionary
         iteration = iterations_dict.get(iteration_num)
         if not iteration:
-            raise CerfException(f"Cannot find Iteration object for calibration run {calibration_run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
+            raise CerfException(
+                f"Cannot find Iteration object for calibration run {calibration_run.id}, worker {worker_name}, iteration {iteration_num}. Ngen-cal did not report this iteration")
 
         logger.debug(
             f'{calibration_run.id}_{calibration_run.owner.username} Updating iteration {iteration_num} '
@@ -577,12 +595,12 @@ def read_last_line(filename: str) -> str:
 
 def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Callable[[str, CalibrationRun | ValidationRun], None]) -> None:
     """
-    Generalized function to process worker directories for either a CalibrationRun or ValidationRun.
+    Processes worker directories in a given calibration or validation run.
 
-    :param run: The CalibrationRun or ValidationRun instance to process.
-    :param worker_lambda: A lambda function that processes each worker directory.
-    :raises CerfException: If the output directory is not found.
+    :param run: The CalibrationRun or ValidationRun instance.
+    :param worker_lambda: A callback function applied to each worker directory.
     """
+
     if isinstance(run, CalibrationRun):
         output_run_dir = get_output_calibration_run_dir(run)
     elif isinstance(run, ValidationRun):
@@ -617,7 +635,13 @@ def count_rows_in_csv(file_path: str) -> int:
 
 
 def parse_duration(duration_str: str) -> timedelta:
-    """Converts a duration string (HH:MM:SS) into a timedelta object."""
+    """
+    Converts a duration string (HH:MM:SS) into a timedelta object.
+
+    :param duration_str: The duration string in HH:MM:SS format.
+    :return: A timedelta object representing the duration.
+    """
+
     hours, minutes, seconds = map(int, duration_str.split(':'))
     return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
@@ -625,8 +649,11 @@ def parse_duration(duration_str: str) -> timedelta:
 def parse_size_to_kb(size_str: str | None) -> float | None:
     """
     Converts a size string (e.g., '123K', '1.5M', '2G') to a float in kilobytes.
-    Returns None if the string is invalid or empty.
+
+    :param size_str: The size string with an optional unit suffix (K, M, G).
+    :return: The size converted to kilobytes or None if invalid.
     """
+
     if not size_str:
         return None
 
@@ -647,9 +674,19 @@ def parse_size_to_kb(size_str: str | None) -> float | None:
 
 def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
     """
-    Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to database.
-    Logs a warning if any expected field is missing. Assumes MaxRSS, MaxDiskRead, and MaxDiskWrite are only on
-    the .batch line, while Planned (used to be called Reserved) is only on the non-batch line.
+    Opens the pipe-delimited file, parses the content, and extracts performance metrics to save to the database.
+
+    This function assumes:
+    - `MaxRSS`, `MaxDiskRead`, and `MaxDiskWrite` fields are only present in the `.batch` job line.
+    - `Planned` (previously called `Reserved`) is only present in the non-batch job line.
+
+    The function:
+    - Logs a warning if any expected field is missing.
+    - Extracts job performance details from batch and non-batch job records.
+    - Returns a `PerformanceMetrics` instance populated with parsed values.
+
+    :param file_path: The path to the performance metrics file.
+    :return: A `PerformanceMetrics` object with extracted metrics, or `None` if the file is missing or invalid.
     """
     if not os.path.exists(file_path):
         logger.error(f'Performance metrics file {file_path} not found')
