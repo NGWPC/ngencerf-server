@@ -3,7 +3,8 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
-    calibration_evaluation_views, calibration_forecast_views
+    calibration_evaluation_views, calibration_forecast_views, calibration_swe_views
+
 
 urlpatterns = [
     ##################################
@@ -109,4 +110,7 @@ urlpatterns = [
     # Testing
     ##################################
     path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
+    path('calibration/run_swe/', calibration_swe_views.run_swe_endpoint, name="runSwe"),
+    path('calibration/get_snodas_images/', calibration_swe_views.get_snodas_images, name="getSnodasImages"),
+
 ]

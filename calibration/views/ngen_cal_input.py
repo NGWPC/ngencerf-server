@@ -1,18 +1,19 @@
 import csv
 import logging
 import os
-import re
+from collections import defaultdict
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 
 import toml
 from datetimerange import DateTimeRange
 from django.db.models import F
+from toml import TomlEncoder
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
-from calibration.util.caching import get_cached_optimization_inputs
+from calibration.util.caching import get_cached_optimization_inputs, get_cached_module_by_name
 from calibration.util.file_util import get_single_file, copy_file_to_directory
 from calibration.util.geopkg import get_catchments_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
@@ -54,8 +55,8 @@ config_template = {
         # 1: Yes
         # It should be 0 if start_interation entry is 0.
         "restart": 0,
-        "output_variable_to_calibration_module": "",
-        "output_variable_to_calibration_name": "",
+        "output_variable_to_calibrate_module": "",
+        "output_variable_to_calibrate_name": "",
         "calib_start_period": "",
         "calib_end_period": "",
         "calib_eval_start_period": "",
@@ -80,6 +81,11 @@ config_template = {
         "streamflow_threshold": 0,
         "peak_flow_threshold": 0,
         "station_name": "",
+
+        # Snow Water equivalent output - Only True for snow models
+        "output_swe": False,
+        # Soil Moisture output - always True
+        "output_sm": True,
         "user_email": "",
     },
 
@@ -249,6 +255,12 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         module_names = [formulation.module.name for formulation in formulations]
         general['models'] = ', '.join(module_names)
 
+        # See if we have at least one module in Snowmelt
+        calibration['output_swe'] = any(
+            any(group.name == "Snowmelt" for group in get_cached_module_by_name(name).groups.all())
+            for name in module_names
+        )
+
         if run.use_sloth:
             general['models'] += f', {SLOTH}'
 
@@ -262,10 +274,17 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
     if build:
         os.makedirs(job_data_dir, exist_ok=True)
 
-    if any(field is None for field in
-           [run.calibration_start_period, run.calibration_end_period, run.calibration_eval_start_period, run.calibration_eval_end_period]):
-        errors.append(
-            'calibration_start_period, calibration_end_period, calibration_eval_start_period and calibration_eval_end_period must be specified')
+    # Validate required calibration fields
+    required_calibration_fields = {
+        "calibration_start_period": run.calibration_start_period,
+        "calibration_end_period": run.calibration_end_period,
+        "calibration_eval_start_period": run.calibration_eval_start_period,
+        "calibration_eval_end_period": run.calibration_eval_end_period,
+    }
+    missing_calibration_fields = [name for name, value in required_calibration_fields.items() if value is None]
+
+    if missing_calibration_fields:
+        errors.append(f"Missing required calibration fields: {', '.join(missing_calibration_fields)}")
     else:
         calibration.update({
             'calib_start_period': format_datetime(run.calibration_start_period),
@@ -275,10 +294,17 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         })
 
     if run.automatic_validation:
-        if any(field is None for field in
-               [run.validation_start_period, run.validation_end_period, run.validation_eval_start_period, run.validation_eval_end_period]):
-            errors.append(
-                'validation_start_period, validation_end_period, validation_eval_start_period and validation_eval_end_period must be specified')
+        # Validate required validation fields
+        required_validation_fields = {
+            "validation_start_period": run.validation_start_period,
+            "validation_end_period": run.validation_end_period,
+            "validation_eval_start_period": run.validation_eval_start_period,
+            "validation_eval_end_period": run.validation_eval_end_period,
+        }
+        missing_validation_fields = [name for name, value in required_validation_fields.items() if value is None]
+
+        if missing_validation_fields:
+            errors.append(f"Missing required validation fields: {', '.join(missing_validation_fields)}")
         else:
             calibration.update({
                 'valid_start_period': format_datetime(run.validation_start_period),
@@ -426,12 +452,9 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
     os.makedirs(parameter_dir, exist_ok=True)
 
     # Group parameters by model
-    params_by_model: Dict[str, List[Dict[str, str | float]]] = {}
+    params_by_model = defaultdict(list)
     for param in params:
-        model = param['model']
-        if model not in params_by_model:
-            params_by_model[model] = []
-        params_by_model[model].append(param)
+        params_by_model[param['model']].append(param)
 
     # Write a separate CSV file for each model
     for model, model_params in params_by_model.items():
@@ -453,6 +476,20 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
         logger.info(f'CSV parameter file for model {model} saved to {parameter_file}')
 
 
+class CustomTomlEncoder(TomlEncoder):
+    def __init__(self):
+        super().__init__()
+        self._dict = dict  # Ensure TOML dictionaries serialize properly
+
+    def dump_value(self, v):
+        """ Override default behavior to avoid quotes around any values, as required by ngen-cal. """
+        if isinstance(v, str):
+            return v  # Always return the raw string without quotes
+        if isinstance(v, bool):  # Ensure booleans remain lowercase as per TOML spec
+            return "true" if v else "false"
+        return super().dump_value(v)
+
+
 def build_config(config: dict, directory: str) -> str:
     """
     Builds the configuration file for the run and saves it to the specified directory.
@@ -463,16 +500,13 @@ def build_config(config: dict, directory: str) -> str:
     """
     config_file = os.path.join(directory, 'ngen-cal.config')
 
-    logger.info(f'saving config to {config_file}')
+    logger.info(f'Saving config to {config_file}')
 
-    # Convert config dictionary to TOML format
-    toml_string = toml.dumps(config)
-
-    # Remove quotes around strings as required by ngen_cal
-    modified_toml_string = re.sub(r'\"(.*?)\"', r'\1', toml_string)
+    # Use the custom encoder to format TOML correctly without quotes
+    toml_string = toml.dumps(config, encoder=CustomTomlEncoder())
 
     with open(config_file, 'w', encoding='utf-8') as file:
-        file.write(modified_toml_string)
+        file.write(toml_string)
 
     return config_file
 

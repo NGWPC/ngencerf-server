@@ -1079,6 +1079,19 @@ class GetLogsResponseSerializer(GenericMessageResponseSerializer):
 
 
 ##################################
+# Snowdas/SWE
+##################################
+class GetSnodasImagesRequestSerializer(ValidationRunSerializer):
+    date = serializers.DateField(required=True, allow_null=False)
+
+
+class GetSnodasImagesResponseSerializer(GenericMessageResponseSerializer):
+    lumped_map = serializers.CharField(required=True, allow_null=False)
+    raw_map = serializers.CharField(required=True, allow_null=False)
+    sim_map = serializers.CharField(required=True, allow_null=False)
+
+
+##################################
 # Slurm
 ##################################
 class SlurmSubmitCalibrationOrValidationJobResponse(BaseSerializer):
