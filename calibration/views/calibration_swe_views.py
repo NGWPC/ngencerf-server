@@ -27,8 +27,7 @@ User = get_user_model()
 
 @api_view(['GET', 'POST'])
 @handle_exceptions
-@permission_classes([AllowAny])
-def run_swe_endpoint(request: Request) -> Response:
+def get_snodas_images(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_job_dir() request from {request.user.email} - {data}')
 
@@ -99,43 +98,5 @@ def run_swe_endpoint(request: Request) -> Response:
         f'Returning to {request.user.email} from get_job_dir() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["lumped_map", "raw_map", "sim_map"]))}'
     )
-
-    return Response(response)
-
-
-@api_view(['GET', 'POST'])
-@handle_exceptions
-@permission_classes([AllowAny])
-def get_snodas_images(request: Request) -> Response:
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_snodas_images() request from {request.user.email} - {data}')
-
-    validator, error_return = validate_request(ValidationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    validation_run_id = validator.get('validation_run_id')
-
-    run, error_return = get_validation_run(validation_run_id, request.user,
-                                           run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
-    if error_return:
-        return error_return
-
-    lumped_map_file = os.path.join(settings.BASE_DIR, 'test_data', 'lumped_map.png')
-    raw_map_file = os.path.join(settings.BASE_DIR, 'test_data', 'raw_map.png')
-    sim_map_file = os.path.join(settings.BASE_DIR, 'test_data', 'sim_map.png')
-
-    response = {
-
-        'lumped_map': png_to_base64_url(lumped_map_file),
-        'raw_map': png_to_base64_url(raw_map_file),
-        'sim_map': png_to_base64_url(sim_map_file)
-
-    }
-
-    # response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
-    # if error_response:
-    #     return error_response
-    # logger.debug(f'Returning to {request.user.email} from get_job_dir() - {json.dumps(response_validator.data)}')
 
     return Response(response)
