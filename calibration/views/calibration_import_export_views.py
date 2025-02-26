@@ -29,7 +29,7 @@ from calibration.views.calibration_gage_views import save_gage, get_data_files_s
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
-    save_output_variable, save_parameters, get_time_range, has_user_selected_tuning_parameters
+    save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
@@ -293,12 +293,6 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 return None, None, ResponseError(error_message)
 
             save_parameters(run, parameters, allow_nulls=True)
-
-            output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')
-
-            error_message = save_output_variable(run, output_variable_to_calibrate)
-            if error_message:
-                return None, None, ResponseError(error_message)
 
         # Set automatic validation flags
         run.automatic_validation = calibration_run_data.get('automatic_validation')
@@ -581,10 +575,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
 
-    calibration_run_data['output_variable_to_calibrate'] = {
-        'module': run.module_output_variable.calibration_formulation.module.name,
-        'name': run.module_output_variable.name
-    } if run.module_output_variable else {}
     logger.info(f"Tuning data processed in {time.time() - tuning_start:.2f}s")
 
     #############################

@@ -249,11 +249,6 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
         module__name__in=to_delete_modules
     )
 
-    # Check if the current module_output_variable references a formulation to be deleted
-    if run.module_output_variable and run.module_output_variable.calibration_formulation in formulations_to_delete:
-        run.module_output_variable = None
-        run.save(update_fields=["module_output_variable"])
-
     # Delete CalibrationParameters related to the formulations_to_delete
     CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
 

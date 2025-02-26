@@ -330,7 +330,6 @@ class ModuleParametersSerializer(serializers.Serializer):
 class ModuleMetadataStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     parameters = LoadTuningParametersSerializer(required=True, many=True)
-    output_variables = OutputVariableMetadataSerializer(required=True, many=True)
 
 
 ##################################
@@ -414,8 +413,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    # TODO Get rid of this
-    output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
 
     objective_function = serializers.CharField(required=True, allow_null=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -711,7 +708,6 @@ class SaveTuningRequestSerializer(BaseSerializer):
     calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    # output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
 
 
 class LoadTuningResponseSerializer(BaseSerializer):
@@ -915,7 +911,6 @@ class ExportResponseSerializer(BaseSerializer):
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    # output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -949,7 +944,6 @@ class ImportSerializer(BaseSerializer):
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    # output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
