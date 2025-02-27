@@ -380,7 +380,6 @@ translation_map = {
     ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
     ("Noah-OWP-Modular", "CWPVT"): "CWP",
     ("Noah-OWP-Modular", "SATDK"): "DKSAT",
-    ("Noah-OWP-Modular", "BB"): "BEXP",
 
     ("LASAM", "theta_e"): "smcmax",
     ("LASAM", "theta_r"): "smcmin",
