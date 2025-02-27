@@ -571,7 +571,7 @@ def get_git_info(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_git_info() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {request.user.email} from get_git_info() - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 
