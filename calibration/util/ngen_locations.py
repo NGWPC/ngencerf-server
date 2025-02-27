@@ -40,12 +40,15 @@ forecast_forcing_scripts = [
 
 forecast_forcing_work_directories = [
     FORCING_RAW_INPUT := os.path.join(settings.NGEN_FORCING_WORK_DIR, 'raw_input'),
+    FORCING_ESMF_MESH := os.path.join(settings.NGEN_FORCING_WORK_DIR, 'esmf_mesh'),
     FORCING_HRRR := os.path.join(FORCING_RAW_INPUT, 'HRRR'),
-    FORCING_RAP := os.path.join(FORCING_RAW_INPUT, 'RAP')
+    FORCING_RAP := os.path.join(FORCING_RAW_INPUT, 'RAP'),
 ]
 
 for f in forecast_forcing_work_directories:
     os.makedirs(f, exist_ok=True)
+    # On PW, the server runs as root, but the Slurm jobs do not, so we need to adjust the permissions
+    os.chmod(f, 0o777)
 
 
 def check_files():

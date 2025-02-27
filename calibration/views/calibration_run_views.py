@@ -1,4 +1,4 @@
-import concurrent.futures
+import json
 import logging
 import os
 import time
@@ -19,7 +19,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Iteration, ValidationRun, ForecastRun, Status
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
@@ -32,7 +32,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
-    get_forecast_forcing_download_run
+    get_forecast_forcing_download_run, join_with_or
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -212,10 +212,14 @@ def get_status(request: Request) -> Response:
         if messages:
             response['errors'] = messages
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'], max_length=10)
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'],
+                                                           max_length=10)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_status() - {truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10)}')
+    logger.debug(
+        f'Returning to {request.user.email} from get_status() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10))}'
+    )
 
     return Response(response_validator.data)
 
@@ -265,7 +269,7 @@ def run_calibration(request: Request) -> Response:
                 'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user.email} from run_calibration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from run_calibration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -307,7 +311,7 @@ def process_calibration_output(request):
     if error_return:
         return error_return
 
-    read_calibration_output(run)
+    read_calibration_output(run, False)
 
     response = {'message': f"End of job processing completed for Calibration Job {run.id}",
                 'calibration_run_id': run.id,
@@ -316,7 +320,7 @@ def process_calibration_output(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from process_calibration_output() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from process_calibration_output() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -392,7 +396,7 @@ def report_iteration(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user.email} from report_iteration() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from report_iteration() - {json.dumps(response_validator.data)}')
 
         return Response(response_validator.data)
 
@@ -448,7 +452,7 @@ def get_iteration(request: Request) -> Response:
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_iteration() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_iteration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -490,37 +494,63 @@ def cancel_job(request: Request) -> Response:
 
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
-        run_func = get_calibration_run
-        run_id = calibration_run_id
-        run_type = JobType.CALIBRATION.value.capitalize()
+        run_type = JobType.CALIBRATION.value
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
     elif validation_run_id:
-        run_func = get_validation_run
-        run_id = validation_run_id
-        run_type = JobType.VALIDATION.value.capitalize()
+        run_type = JobType.VALIDATION.value
+        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING])
     else:
-        run_func = get_forecast_run
-        run_id = forecast_run_id
-        run_type = JobType.FORECAST.value.capitalize()
+        # Retrieve the ForecastForcingDownloadRun regardless of its status,
+        # using the provided forecast_run_id to get the forcing download run.
+        # First, get the ForecastRun (to access the forcing_download_run id).
+        forecast_run_unfiltered, error_return = get_forecast_run(forecast_run_id, request.user, run_status=list(StatusEnum))
+        if error_return:
+            return error_return
 
-    run, error_return = run_func(run_id, request.user, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
+        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user, run_status=list(StatusEnum))
+        if forcing_error:
+            return forcing_error
+
+        # Check the status of the forcing download run.
+        if forcing_run.status == StatusEnum.RUNNING.db_instance:
+            # Forcing download run is running: cancel it.
+            run = forcing_run
+            # Call it a Forecast job and not Forcing Download
+            run_type = JobType.FORECAST.value
+        elif forcing_run.status == StatusEnum.DONE.db_instance:
+            # Forcing download run is done.
+            # Retrieve the forecast run from the forcing run.
+            forecast_run = forcing_run.forecast_run
+            if forecast_run.status == StatusEnum.RUNNING.db_instance:
+                run = forecast_run
+                run_type = JobType.FORECAST.value
+
+            else:
+                error = (f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
+                         f'{StatusEnum.RUNNING.value}. '
+                         f'Current status: {forecast_run.status.name}')
+                return ResponseError(error)
+        else:
+            error = (f'{ForecastForcingDownloadRun.__name__} {forcing_run.id} is not in an allowed status: '
+                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.DONE.value])}. '
+                     f'Current status: {forcing_run.status.name}')
+            return ResponseError(error)
 
     if not cancel_job_common(run):
-        return ResponseError(f"Unable to cancel {run_type} Job {run.id}")
+        return ResponseError(f"Unable to cancel {run_type.capitalize()} Job {run.id}")
 
     run.status = StatusEnum.CANCELLED.db_instance
     run.save(update_fields=['status'])
 
     response = {
-        'message': f"{run_type} Run job {run.id} has been canceled",
-        f"{run_type.lower()}_run_id": run.id,
+        'message': f"{run_type.capitalize()} Run job {run.id} has been canceled",
+        f"{run_type}_run_id": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from cancel_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from cancel_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -588,7 +618,7 @@ def get_job_dir(request: Request) -> Response:
     response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -722,7 +752,8 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
     job_status = validator.get('job_status')
 
-    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None, run_status=[StatusEnum.RUNNING])
+    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None,
+                                                                                    run_status=[StatusEnum.RUNNING])
     if error_return:
         return error_return
 
@@ -974,7 +1005,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             subset_df = chunk.loc[
                 (chunk['dateTime'] >= start_datetime) &
                 (chunk['dateTime'] <= end_datetime)
-            ].copy()  # Explicitly create a copy
+                ].copy()  # Explicitly create a copy
 
             # Convert back to naive timestamps for output (to match original format)
             subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)

@@ -89,7 +89,7 @@ urlpatterns = [
 
 
     # Testing
-    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
+    path('calibration/process_calibration_output/', calibration_run_views.read_calibration_output, name="processCalibrationOutput"),
 
     ##################################
     # Import/Export

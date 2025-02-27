@@ -97,7 +97,7 @@ def import_job(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from import_job() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from import_job() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -404,7 +404,7 @@ def export_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from export() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from export() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 

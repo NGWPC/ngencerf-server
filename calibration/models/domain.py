@@ -10,3 +10,9 @@ class Domain(BaseModel):
 
     class Meta:
         db_table = 'domain'
+
+    def __str__(self):
+        return (
+            f"Domain {self.name}"
+        )
+

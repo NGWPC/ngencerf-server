@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import List, Dict, Any, Tuple
 
@@ -77,7 +78,7 @@ def load_optimization_tab(request) -> Response:
     response_validator, error_response = validate_response(LoadOptimizationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_optimization_tab() - {response_validator.data}')
+    logger.debug(f'Returning to {request.user.email} from load_optimization_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -206,7 +207,7 @@ def save_optimization_tab(request) -> Response:
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user.email} from save_optimization_tab() - {response_validator.data}')
+        logger.debug(f'Returning to {request.user.email} from save_optimization_tab() - {json.dumps(response_validator.data)}')
         return Response(response_validator.data)
 
 

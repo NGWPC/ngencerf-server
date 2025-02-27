@@ -69,20 +69,16 @@ def get_run_instance(
         run = query.get()
     except model.DoesNotExist:
         user_info = f' or is not owned by {user.email}' if user else ''
-        return None, Response(
-            {'error': f'{model.__name__} {run_id} does not exist{user_info}'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        error = f'{model.__name__} {run_id} does not exist{user_info}'
+        return None, ResponseError(error)
 
     # Check if the status of the run is in the allowed statuses
     if run.status not in allowed_statuses:
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
-        return run, Response(
-            {'error': (f'{model.__name__} {run_id} is not in an allowed status '
-                       f'({join_with_or(allowed_status_names)}). '
-                       f'Current status: {run.status.name}')},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        error = (f'{model.__name__} {run_id} is not in an allowed status: '
+                 f'{join_with_or(allowed_status_names)}. '
+                 f'Current status: {run.status.name}')
+        return run, ResponseError(error)
 
     return run, None
 
@@ -119,6 +115,30 @@ def get_validation_run(
     return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
 
 
+def get_forecast_forcing_download_run(
+        forecast_forcing_download_run_id: int,
+        user: User | None,
+        run_status: List[StatusEnum] | None = None
+) -> Tuple[ForecastForcingDownloadRun | None, Response | None]:
+    """
+    Retrieve a ForecastForcingDownloadRun instance by its ID, filtering by owner and status.
+
+    :param forecast_forcing_download_run_id: The ID of the ForecastForcingDownloadRun to retrieve.
+    :param user: The user requesting the ForecastForcingDownloadRun. If None, no owner filtering is applied.
+    :param run_status: A list of allowed statuses for the ForecastRun.
+    :return: A tuple containing the ForecastForcingDownloadRUn instance (or None if
+
+not found) and an optional Response with an error.
+    """
+    return get_run_instance(
+        ForecastForcingDownloadRun,
+        forecast_forcing_download_run_id, user,
+        run_status,
+        'forecast_run__calibration_run__owner',
+        'forecast_run__calibration_run__is_deleted'
+    )
+
+
 def get_forecast_run(
         forecast_run_id: int,
         user: User | None,
@@ -133,22 +153,6 @@ def get_forecast_run(
     :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
     """
     return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
-
-
-def get_forecast_forcing_download_run(
-        forecast_forcing_download_run_id: int,
-        user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ForecastForcingDownloadRun | None, Response | None]:
-    """
-    Retrieve a ForecastForcingDownloadRun instance by its ID, filtering by owner and status.
-
-    :param forecast_forcing_download_run_id: The ID of the ForecastForcingDownloadRun to retrieve.
-    :param user: The user requesting the ForecastForcingDownloadRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the ForecastRun.
-    :return: A tuple containing the ForecastForcingDownloadRUn instance (or None if not found) and an optional Response with an error.
-    """
-    return get_run_instance(ForecastForcingDownloadRun, forecast_forcing_download_run_id, user, run_status, 'forecast_run__calibration_run__owner', 'forecast_run__calibration_run__is_deleted')
 
 
 def join_with_or(items):
@@ -363,23 +367,23 @@ def handle_exceptions(view_func):
                     """ Wrap response rendering to catch JSON serialization errors """
                     try:
                         return original_render()
-                    except ValueError as e:
-                        original_logger.error(f"JSON serialization error in {view_func.__name__}: {str(e)}")
+                    except ValueError as d1:
+                        original_logger.error(f"JSON serialization error in {view_func.__name__}: {str(d1)}")
                         return JsonResponse(
                             {
-                                "message": "JSON serialization error in response. Response contains non-JSON-compliant values (e.g., Infinity, NaN).",
+                                "message": "JSON serialization error in response. Response contains non-JSON-compliant values (d1.g., Infinity, NaN).",
                                 "response_type": "json_serialization_error",
-                                "validation_errors": str(e),
+                                "validation_errors": str(d1),
                             },
                             status=500
                         )
-                    except TypeError as e:
-                        original_logger.error(f"Non-serializable data error in {view_func.__name__}: {str(e)}")
+                    except TypeError as d1:
+                        original_logger.error(f"Non-serializable data error in {view_func.__name__}: {str(d1)}")
                         return JsonResponse(
                             {
-                                "message": "Response contains non-serializable data (e.g., custom objects, functions).",
+                                "message": "Response contains non-serializable data (d1.g., custom objects, functions).",
                                 "response_type": "json_serialization_error",
-                                "validation_errors": str(e),
+                                "validation_errors": str(d1),
                             },
                             status=500
                         )

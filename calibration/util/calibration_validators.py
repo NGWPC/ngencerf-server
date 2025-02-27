@@ -274,11 +274,11 @@ class SaveTuningParametersSerializer(BaseSerializer):
         if min_val is not None and max_val is not None:
             if min_val > max_val:
                 raise serializers.ValidationError(
-                    f"Minimum ({min_val}) must be less than maximum ({max_val}) for parameter {data['name']}"
+                    f"Minimum ({min_val}) must be less than maximum ({max_val}) for parameter {data['name']} in module {data['module']}"
                 )
             if initial is not None and not (min_val <= initial <= max_val):
                 raise serializers.ValidationError(
-                    f"Value {initial} must be between minimum ({min_val:.10f}) and maximum ({max_val:.10f}) for parameter {data['name']}"
+                    f"Value {initial} must be between minimum ({min_val:.10f}) and maximum ({max_val:.10f}) for parameter {data['name']} in module {data['module']}"
                 )
 
         return data
@@ -511,7 +511,7 @@ class GagesSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
     nws_id = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-    nwm_v3_calibration = serializers.BooleanField(required=True)
+    headwater_calibration = serializers.BooleanField(required=True)
 
 
 class ForcingSourceSerializer(BaseSerializer):
@@ -1008,7 +1008,7 @@ class CalibrationDataByIteration(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=False)
     worker_name = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     best_params = serializers.BooleanField(required=True, allow_null=False)
-    objective_function_value = serializers.FloatField(required=True, allow_null=False)
+    objective_function_value = serializers.FloatField(required=True, allow_null=True)
     parameters = ParameterDataByIteration(many=True, required=True)
     metrics = MetricDataByIteration(many=True, required=True)
 
@@ -1091,4 +1091,3 @@ class SlurmSubmitForecastJobResponse(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
     ngen_forecast_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
     ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
-

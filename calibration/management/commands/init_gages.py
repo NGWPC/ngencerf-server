@@ -128,7 +128,6 @@ class Command(BaseCommand):
                     {'nws_id': nws_id or None,
                      'station_name': (station_name or '').strip(),
                      'rfc_id': rfc_id,
-                     'nwm_v3_calibration': False,
                      'headwater_calibration': True,
                      'agency': (agency or '').strip()
                      })
@@ -170,8 +169,8 @@ class Command(BaseCommand):
 
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - AK.csv', alaska_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - CONUS.csv', conus_domain)
-        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - PR.csv', conus_domain)
-        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - HI.csv', conus_domain)
+        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - PR.csv', puerto_rico_domain)
+        add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - HI.csv', hawaii_domain)
 
         logger.info('')
         logger.info('Creating objects.... this will take a minute or two')
@@ -180,8 +179,11 @@ class Command(BaseCommand):
         for gage in gages.values():
             gage['created_by'] = user
             try:
-                Gage.objects.update_or_create(defaults={key: value for key, value in gage.items() if key != unique_field},
-                                              **{unique_field: gage[unique_field]})
+                Gage.objects.update_or_create(
+                    defaults={key: value for key, value in gage.items() if key != unique_field},
+                    **{unique_field: gage[unique_field]}
+                )
+
             except Exception as e:
                 raise Exception(f'Error adding gage - {gage} - {str(e)}')
             row_num += 1
@@ -300,39 +302,39 @@ def dms_to_dd(lat_long_str):
 
     return dd
 
+#
+# bounding_boxes = [{'name': 'Alaska', 'upper_right': {'lat': 51.229087747767466, 'long': -157.68842},
+#                    'lower_left': {'lat': 71.352561, 'long': -139.55319}},
+#                   {'name': 'Hawaii', 'upper_right': {'lat': 18.91727560534605, 'long': -160.33116},
+#                    'lower_left': {'lat': 22.23238695135951, 'long': -154.80833743387433}},
+#                   {'name': 'Puerto Rico', 'upper_right': {'lat': 17.91217576734767, 'long': -67.33337},
+#                    'lower_left': {'lat': 18.51609472983729, 'long': -64.48663}},
+#                   ]
+#
+# # Normalize the longitude, so we don't have to worry about negatives
+# for b in bounding_boxes:
+#     b['upper_right']['long'] += 180
+#     b['lower_left']['long'] += 180
 
-bounding_boxes = [{'name': 'Alaska', 'upper_right': {'lat': 51.229087747767466, 'long': -157.68842},
-                   'lower_left': {'lat': 71.352561, 'long': -139.55319}},
-                  {'name': 'Hawaii', 'upper_right': {'lat': 18.91727560534605, 'long': -160.33116},
-                   'lower_left': {'lat': 22.23238695135951, 'long': -154.80833743387433}},
-                  {'name': 'Puerto Rico', 'upper_right': {'lat': 17.91217576734767, 'long': -67.33337},
-                   'lower_left': {'lat': 18.51609472983729, 'long': -64.48663}},
-                  ]
-
-# Normalize the longitude, so we don't have to worry about negatives
-for b in bounding_boxes:
-    b['upper_right']['long'] += 180
-    b['lower_left']['long'] += 180
-
-
-def calculate_domain(lat, long):
-    lat = float(lat)
-    long = float(long) + 180.0
-    # Oder matters.  Do the unambiguous ones first
-    puerto_rico = next(item for item in bounding_boxes if item['name'] == 'Puerto Rico')
-    if (puerto_rico['lower_left']['lat'] < lat < puerto_rico['upper_right']['lat']
-            and puerto_rico['lower_left']['long'] < lat < puerto_rico['upper_right']['long']):
-        return puerto_rico_domain
-
-    hawaii = next(item for item in bounding_boxes if item['name'] == 'Hawaii')
-    if (hawaii['lower_left']['lat'] < lat < hawaii['upper_right']['lat']
-            and hawaii['lower_left']['long'] < lat < hawaii['upper_right']['long']):
-        return hawaii_domain
-
-    alaska = next(item for item in bounding_boxes if item['name'] == 'Alaska')
-    # For alaska, where just going to check if the lat/long is West of the Eastern border
-    if long < alaska['upper_right']['long']:
-        return alaska_domain
-
-    # Assume anything else is Conus
-    return conus_domain
+#
+# def calculate_domain(lat, long):
+#     lat = float(lat)
+#     long = float(long) + 180.0
+#     # Oder matters.  Do the unambiguous ones first
+#     puerto_rico = next(item for item in bounding_boxes if item['name'] == 'Puerto Rico')
+#     if (puerto_rico['lower_left']['lat'] < lat < puerto_rico['upper_right']['lat']
+#             and puerto_rico['lower_left']['long'] < lat < puerto_rico['upper_right']['long']):
+#         return puerto_rico_domain
+#
+#     hawaii = next(item for item in bounding_boxes if item['name'] == 'Hawaii')
+#     if (hawaii['lower_left']['lat'] < lat < hawaii['upper_right']['lat']
+#             and hawaii['lower_left']['long'] < lat < hawaii['upper_right']['long']):
+#         return hawaii_domain
+#
+#     alaska = next(item for item in bounding_boxes if item['name'] == 'Alaska')
+#     # For alaska, where just going to check if the lat/long is West of the Eastern border
+#     if long < alaska['upper_right']['long']:
+#         return alaska_domain
+#
+#     # Assume anything else is Conus
+#     return conus_domain
