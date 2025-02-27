@@ -209,7 +209,7 @@ def png_to_base64_url(png_file_path: str) -> str:
         raise CerfException(f"File '{png_file_path}' does not exist")
 
 
-def png_str_to_base64_url(png_str):
+def png_str_to_base64_url(png_str: bytes | None) -> str | None:
     """
     Convert PNG bytes to a base64-encoded data URL.
 
