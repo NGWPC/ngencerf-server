@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 
@@ -13,6 +14,30 @@ def print_db_info():
     logger.info(f"Database Name: {db_info['NAME']}")
     logger.info(f"Database URL: {db_info['HOST']}:{db_info['PORT']}")
     logger.info(f"Database User: {db_info['USER']}")
+
+
+def print_git_info():
+    """
+    Reads git information from git_info.txt and logs it.
+    """
+    try:
+        with open('git_info.json', 'r') as f:
+            git_info = json.load(f)
+    except FileNotFoundError:
+        logger.warning('No git_info.json found')
+        return
+    except json.decoder.JSONDecodeError as e:
+        logger.warning(f"Error reading git_info.json: {e})")
+        return
+
+    if not git_info:
+        logger.error("Failed to retrieve git information.")
+        return
+
+    # We only expect a single key
+    name, git_info = git_info.popitem()
+    for key in git_info:
+        logger.info(f'{key}: {git_info[key]}')
 
 
 def print_banner():
@@ -48,8 +73,9 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-        # Check if the server is being started with 'runserver' or 'runsslserver'
-        if 'runserver' in sys.argv or 'runsslserver' in sys.argv:
+        # Check if we're running the server or a management command
+        running_server = 'runserver' in sys.argv or 'runsslserver' in sys.argv
+        if running_server:
             print_banner()
         else:
             logger.info(f'*** Running {sys.argv[1]}')
@@ -64,6 +90,9 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
         logger.info(f'NGEN_CAL_MOUNT_POINT - {settings.NGEN_CAL_MOUNT_POINT}')
         logger.info(f'NGEN_STATIC_DIR - {settings.NGEN_STATIC_DIR}')
+        if running_server:
+            logger.info('')
+            print_git_info()
 
         from calibration.util.ngen_locations import check_files
 

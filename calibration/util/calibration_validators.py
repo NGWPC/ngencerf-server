@@ -425,6 +425,20 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
+class GitInfoSerializer(BaseSerializer):
+    commit_hash = serializers.CharField(required=True)
+    branch = serializers.CharField(required=False)
+    tags = serializers.CharField(required=False, allow_blank=True)
+    author = serializers.CharField(required=False)
+    commit_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
+    message = serializers.CharField(required=False)
+    build_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
+
+
+class GetGitInfoResponseSerializer(BaseSerializer):
+    git_info = serializers.DictField(child=GitInfoSerializer())
+
+
 class ArchiveJobRequestSerializer(CalibrationRunSerializer):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
 
