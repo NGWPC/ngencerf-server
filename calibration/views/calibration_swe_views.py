@@ -50,6 +50,8 @@ def get_snodas_images(request: Request) -> Response:
 
     # Convert validation_type to an instance of ValidationType
     validation_type = ValidationType(run.validation_type)
+    if validation_type == ValidationType.VALID_CONTROL:
+        return ResponseError('Snodas plots are not avialable for a Validation Control run')
 
     # Get the worker for the Valid_Best run
     worker_name = find_validation_worker_with_matching_log(
