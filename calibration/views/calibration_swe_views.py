@@ -3,16 +3,16 @@ import logging
 import os
 import time
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import AllowAny
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from swe_mapping.core import run_swe
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.util.calibration_validators import ValidationRunSerializer, GetSnodasImagesRequestSerializer, GetSnodasImagesResponseSerializer
+from calibration.util.calibration_validators import GetSnodasImagesRequestSerializer, GetSnodasImagesResponseSerializer, \
+    ErrorResponseSerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_netcdf_file, get_validation_output_valid, \
     get_output_validation_iteration_plot_dir, get_output_validation_plot_dir
@@ -25,6 +25,21 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
+@extend_schema(
+    request=GetSnodasImagesRequestSerializer,
+    responses={
+        200: GetSnodasImagesResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Retrieve a Snodas images for a given date"
+)
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_snodas_images(request: Request) -> Response:
