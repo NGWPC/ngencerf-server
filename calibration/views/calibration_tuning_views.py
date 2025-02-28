@@ -268,7 +268,7 @@ def save_tuning_tab(request: Request) -> Response:
     if error_message:
         return ResponseError(error_message)
 
-    if (parameters) and not run.gage:
+    if parameters and not run.gage:
         return ResponseError('Parameters cannot be specified without a gage')
 
     error_message = validate_parameters(run, parameters)

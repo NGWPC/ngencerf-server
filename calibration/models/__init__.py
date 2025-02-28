@@ -20,7 +20,6 @@ from .iteration_result import IterationResult
 from .metric import Metric
 from .module import Module
 from .module_group import ModuleGroup
-from .module_output_variable import ModuleOutputVariable
 from .nwm_retrospective_metrics import NWMRetrospectiveMetrics
 from .observational_source import ObservationalSource
 from .optimization import Optimization

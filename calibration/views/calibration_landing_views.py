@@ -369,7 +369,7 @@ def get_jobs(
 
     # If a specific status list is provided, filter by those statuses
     if run_status:
-        query &= Q(status__in=[status.db_instance for status in run_status])
+        query &= Q(status__in=[s.db_instance for s in run_status])
 
     # Fetch calibration runs, annotating user-specific fields like formulation_name
     calibration_runs = (
