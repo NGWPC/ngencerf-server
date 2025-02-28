@@ -2,8 +2,8 @@ import base64
 import json
 import logging
 import os
-from typing import Tuple
 import time
+from typing import Tuple
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -23,8 +23,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
     get_observational_file_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
-    SLOTH, add_sloth_parameters, validate_formulation
+from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, SLOTH, add_sloth_parameters, validate_formulation
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
@@ -460,19 +459,24 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # We will subset them again with the new job, when it is imported
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
-        user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-        calibration_run_data[
-            'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
-            user_uploaded_geopackage_file) else None
 
-        user_uploaded_observational_file = get_observational_file_for_job(run)
-        calibration_run_data[
-            'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
-            user_uploaded_observational_file) else None
+        print('run.geopackage_source', run.geopackage_source, GeopackageSourceEnum.UPLOAD.db_instance)
+        if run.geopackage_source == GeopackageSourceEnum.UPLOAD:
+            user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
+            calibration_run_data[
+                'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
+                user_uploaded_geopackage_file) else None
 
-        user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
-        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
-            user_uploaded_forcing_dir) else None
+        if run.observational_source == ObservationalSourceEnum.UPLOAD:
+            user_uploaded_observational_file = get_observational_file_for_job(run)
+            calibration_run_data[
+                'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
+                user_uploaded_observational_file) else None
+
+        if run.forcing_source == ForcingSourceEnum.UPLOAD:
+            user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
+            calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
+                user_uploaded_forcing_dir) else None
 
         calibration_run_data['forcing_eds_dir_path'] = run.forcing_eds_dir_path if run.forcing_eds_dir_path and os.path.exists(
             run.forcing_eds_dir_path) else None
