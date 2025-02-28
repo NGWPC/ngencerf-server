@@ -574,9 +574,9 @@ class GeopackageSerializer(BaseSerializer):
 ##################################
 
 class PlotListStaticSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
-    # filename = serializers.CharField(required=True, allow_blank=False)
+    name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    description = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    timeseries_available = serializers.BooleanField(required=True, allow_null=False)
 
 
 class GetPLotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):

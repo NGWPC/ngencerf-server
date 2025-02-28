@@ -86,7 +86,8 @@ def get_plot_names(request: Request) -> Response:
     filtered_plot_definitions = get_filtered_plot_definitions(run)
 
     # Create a list of plot names with descriptions
-    plot_names = [{'name': plot['name'], 'description': plot['description']} for plot in filtered_plot_definitions]
+    plot_names = [{'name': plot['name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
+                  for plot in filtered_plot_definitions]
 
     response = {
         f"{run_type.lower()}_run_id": run.id,
