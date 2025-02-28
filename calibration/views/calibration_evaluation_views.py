@@ -384,7 +384,7 @@ def get_log(request: Request) -> Response:
     }
 
     response = {
-        'message': f"{log_category.value.capitalize()} {log_name} log file retrieved",
+        'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
         'log_data': paginated_lines,
         'pagination_metadata': pagination_metadata
     }

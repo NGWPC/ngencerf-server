@@ -124,7 +124,7 @@ def get_ngen_stdout_log_filename() -> str:
 
 
 def get_ngen_log_path(run: CalibrationRun) -> str:
-    return os.path.join(f"{run.job_data_dir}", 'logs', 'ngen.log')
+    return os.path.join(get_gage_dir(run), 'logs', 'ngen.log')
 
 
 def get_input_dir(run: CalibrationRun) -> str:
