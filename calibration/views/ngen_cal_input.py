@@ -362,9 +362,9 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     calibration['start_iteration'] = 0  # TODO ????'
 
-    if not is_missing(run.module_output_variable, 'Output variable to calibrate', errors):
-        calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
-        calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.module.name
+    # if not is_missing(run.module_output_variable, 'Output variable to calibrate', errors):
+    #     calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
+    #     calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.module.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold
