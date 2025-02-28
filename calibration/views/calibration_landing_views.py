@@ -678,7 +678,6 @@ def has_running_associated_jobs(run: CalibrationRun) -> Response | None:
     return None  # No running jobs, safe to proceed
 
 
-
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={

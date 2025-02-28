@@ -333,8 +333,9 @@ class Command(BaseCommand):
             Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})
 
     def define_plot_definitions(self):
-        if self.DELETE_FLAG:
-            PlotDefinition.objects.all().delete()
+
+        # Since this table is not used as a foreign key, it's easy to just delete and re-create
+        PlotDefinition.objects.all().delete()
 
         # Temporarily delete them, although this doesn't hurt, since this table is not a FK in any other table
         PlotDefinition.objects.all().delete()
@@ -346,7 +347,8 @@ class Command(BaseCommand):
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_hydrograph_iteration.png"
+                "filename_mask": "{gage_id}_hydrograph_iteration.png",
+                "timeseries_available": True
             },
             {
                 "name": "Objective Function evolution",
@@ -460,4 +462,5 @@ class Command(BaseCommand):
                                                                               "valid_optimizations": v.get('valid_optimizations'),
                                                                               "job_type": v['job_type'],
                                                                               "filename_mask": v['filename_mask'],
+                                                                              "timeseries_available": v.get('timeseries_available', False),
                                                                               "created_by": self.user})

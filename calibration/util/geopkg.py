@@ -1,8 +1,8 @@
+import os
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
 from typing import Tuple
-import os
 
 import fiona
 import geopandas as gpd
@@ -172,7 +172,6 @@ def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> lis
 
     # Read the catchments layer
     gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
-
 
     # Extract the 'divide_id' column
     if 'divide_id' in gdf.columns:
