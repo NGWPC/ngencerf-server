@@ -25,7 +25,7 @@ build:
     - echo "Building ${CI_PROJECT_NAME} docker image.. "
     - |
       if [[ -n "$CI_COMMIT_TAG" ]]; then
-        docker compose build --build-arg CREATE_INPUT_TAG="$CI_COMMIT_TAG"
+        docker compose build --build-arg CREATE_INPUT_TAG="$CI_COMMIT_TAG" --build-arg RUN_SWE_TAG="$CI_COMMIT_TAG"
       else
         docker compose build
       fi
@@ -34,7 +34,7 @@ build:
     - echo "Building ${CI_PROJECT_NAME} Production docker image.. "
     - |
       if [[ -n "$CI_COMMIT_TAG" ]]; then
-        docker compose -f production-pw.yaml build --build-arg CREATE_INPUT_TAG="$CI_COMMIT_TAG"
+        docker compose -f production-pw.yaml build --build-arg CREATE_INPUT_TAG="$CI_COMMIT_TAG" --build-arg RUN_SWE_TAG="$CI_COMMIT_TAG"
       else
         docker compose -f production-pw.yaml build
       fi

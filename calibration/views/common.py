@@ -191,6 +191,24 @@ def format_datetime(dt: datetime | None) -> str:
     return dt.strftime('%Y-%m-%d %H:%M:%S') if dt else 'N/A'
 
 
+def png_to_base64_url(png_file_path: str) -> str:
+    """
+    Converts a PNG file to a base64-encoded URL string.
+
+    :param png_file_path: Path to the PNG file.
+    :return: Base64 URL string if successful.
+    :raises CerfException: If the file does not exist or cannot be read.
+    """
+    if png_file_path and os.path.exists(png_file_path):
+        try:
+            with open(png_file_path, "rb") as png_file:
+                return png_str_to_base64_url(png_file.read())
+        except IOError as e:
+            raise CerfException(f"Failed to read PNG file: {e}")
+    else:
+        raise CerfException(f"File '{png_file_path}' does not exist")
+
+
 def png_str_to_base64_url(png_str: bytes | None) -> str | None:
     """
     Convert PNG bytes to a base64-encoded data URL.
@@ -619,3 +637,4 @@ def replace_nan_and_inf_with_none(data: Any) -> Any:
 
     # If the data is any other type (int, str, etc.), return it unchanged
     return data
+

@@ -990,7 +990,7 @@ class ErrorDetailListField(serializers.ListField):
 class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
-    validation_errors = serializers.JSONField(required=False, allow_null=True)
+    validation_errors = serializers.JSONField(required=False, allow_null=False)
 
 
 ##################################
@@ -1076,6 +1076,19 @@ class GetLogNamesResponseSerializer(BaseSerializer):
 class GetLogsResponseSerializer(GenericMessageResponseSerializer):
     log_data = serializers.ListSerializer(child=serializers.CharField(), required=True, allow_null=False)
     pagination_metadata = PaginationMetadataSerializer(required=False)
+
+
+##################################
+# Snowdas/SWE
+##################################
+class GetSnodasImagesRequestSerializer(ValidationRunSerializer):
+    date = serializers.DateField(required=True, allow_null=False)
+
+
+class GetSnodasImagesResponseSerializer(GenericMessageResponseSerializer):
+    lumped_map = serializers.CharField(required=True, allow_null=False)
+    raw_map = serializers.CharField(required=True, allow_null=False)
+    sim_map = serializers.CharField(required=True, allow_null=False)
 
 
 ##################################

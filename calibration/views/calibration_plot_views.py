@@ -23,8 +23,8 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
     get_validation_metrics_valid_iteration_file, get_output_valid_iteration_file, get_forecast_output_dir, get_forecast_output_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-    get_forecast_run, replace_nan_and_inf_with_none
+    ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
+    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url
 from calibration.views.end_of_job_processing import process_worker_dirs
 
 logger = logging.getLogger(__name__)
@@ -100,24 +100,6 @@ def get_plot_names(request: Request) -> Response:
     logger.debug(f'get_plot_names() request from {request.user.email} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
-
-
-def png_to_base64_url(png: str) -> str:
-    """
-    Converts a PNG file to a base64-encoded URL string.
-
-    :param png: Path to the PNG file.
-    :return: Base64 URL string if successful.
-    :raises CerfException: If the file does not exist or cannot be read.
-    """
-    if png and os.path.exists(png):
-        try:
-            with open(png, "rb") as png_file:
-                return png_str_to_base64_url(png_file.read())
-        except IOError as e:
-            raise CerfException(f"Failed to read PNG file: {e}")
-    else:
-        raise CerfException(f"Plot '{png}' does not exist")
 
 
 @extend_schema(

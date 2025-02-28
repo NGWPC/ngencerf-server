@@ -52,7 +52,6 @@ def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -
         # Identify the matching worker based on validation type
         matching_worker = find_validation_worker_with_matching_log(
             validation_run,
-            validation_type=validation_type,
             worker_name=validation_run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
             iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
         )
@@ -744,7 +743,6 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
 
 def find_validation_worker_with_matching_log(
         validation_run: ValidationRun,
-        validation_type: ValidationType,
         worker_name: str | None = None,
         iteration_num: int | None = None
 ) -> str | None:
@@ -755,12 +753,12 @@ def find_validation_worker_with_matching_log(
     - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
 
     :param validation_run: The validation run object to process.
-    :param validation_type: The type of validation (VALID_ITERATION, VALID_BEST, VALID_CONTROL).
     :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
     :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
     :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
     """
     matching_worker_name = None
+    validation_type = ValidationType(validation_run.validation_type)
 
     # Determine the expected first line of the log based on validation type
     if validation_type == ValidationType.VALID_ITERATION:
@@ -768,7 +766,7 @@ def find_validation_worker_with_matching_log(
             raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
         expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
     elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
-        expected_first_line = f"Starting {validation_type.value.replace('_', ' ').capitalize()} Run"
+        expected_first_line = f"Starting {validation_type.value.capitalize()} Run"
     else:
         raise ValueError(f"Unsupported validation type: {validation_type}")
 
@@ -790,4 +788,6 @@ def find_validation_worker_with_matching_log(
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(validation_run, check_worker)
 
+    if not matching_worker_name:
+        logger.error(f"Could not find worker corresponding to {validation_run}")
     return matching_worker_name
