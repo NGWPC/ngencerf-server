@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
-from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
+from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, S3DirectoryValidator
@@ -301,19 +301,6 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
             # Copy the BMI configuration file to the appropriate directory
             bmi_config = convert_s3_uri_to_fs(module['parameter_file']['uri'])
             copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module_name))
-
-            # Save output variables for the module
-            output_vars = module.get('output_variables', [])
-            if not output_vars:
-                logger.warning(f"Module '{module_name}' has no output variables.")
-            else:
-                for output in output_vars:
-                    ModuleOutputVariable.objects.update_or_create(
-                        name=output['variable'],
-                        calibration_formulation=calibration_formulation,
-                        # TODO Fix this.  Description is required
-                        defaults={'description': output['description'] or 'placeholder description'}
-                    )
 
             # Save or update parameters for the module
             parameters = module.get('calibrate_parameters', [])

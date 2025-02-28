@@ -682,18 +682,12 @@ class UserParameterFileUploadResponse(BaseSerializer):
     user_parameter_file = serializers.ListField(child=ParameterFileSerializer(), required=True)
 
 
-# Output variables from Data Services
-class ModuleOutputVariablesSerializer(BaseSerializer):
-    variable = serializers.CharField(required=True, allow_blank=False)
-    # TODO This is required, cannot be null
-    description = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-
-
 # Module object from Data Services containing module parameters and output variables
 class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
-    output_variables = ModuleOutputVariablesSerializer(many=True)
+    # TODO We are ignoring this so EDS can get rid of it
+    output_variables = serializers.JSONField(required=False)
     parameter_file = S3FileValidator(required=True)
 
 
