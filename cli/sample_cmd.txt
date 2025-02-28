@@ -9,7 +9,7 @@ FORCING=$SAMPLE_DATA/gpkg2.2/forcing/01123000
 FORCING=$SAMPLE_DATA/gpkg2.2/forcing/01047200
 FORCING=/home/peter.a.kronenberg/s3/ngwpc-dev/Yuqiong.Liu/data/aorc_nwm/csv_basin_group1/Gage_01123000_new
 
-./ngencerf.sh import ../import_test_data/import_complete.json \
+./ngencerf.sh import ../import_test_data/import_eds.json \
 run_after_import=true \
 forcing_dir=$FORCING \
 geopackage_file=$GPKG \

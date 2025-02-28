@@ -23,10 +23,7 @@
     "formulation_name": "my-cfe-noah",
     "use_sloth": false,
     "automatic_validation": true,
-    "output_variable_to_calibrate": {
-        "name": "atff",
-        "module": "UEB"
-    },
+
     "calibration_times": {
         "calibration_start_time": "2014-10-01T00:00:00Z",
         "calibration_end_time": "2015-09-30T23:00:00Z",
