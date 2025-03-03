@@ -110,5 +110,5 @@ urlpatterns = [
     # Testing
     ##################################
     path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
-    path('calibration/get_snodas_images/', calibration_swe_views.get_snodas_images, name="runSwe"),
+    path('calibration/get_swe_images_by_date/', calibration_swe_views.get_swe_images_by_date, name="getSweImagesByDate"),
 ]
