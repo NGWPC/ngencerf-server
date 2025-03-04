@@ -1,9 +1,10 @@
-import json
 import logging
 import sys
 
 from django.apps import AppConfig
 from django.conf import settings
+
+from calibration.util.git_util import print_git_info
 
 logger = logging.getLogger(__name__)
 
@@ -14,30 +15,6 @@ def print_db_info():
     logger.info(f"Database Name: {db_info['NAME']}")
     logger.info(f"Database URL: {db_info['HOST']}:{db_info['PORT']}")
     logger.info(f"Database User: {db_info['USER']}")
-
-
-def print_git_info():
-    """
-    Reads git information from git_info.txt and logs it.
-    """
-    try:
-        with open('git_info.json', 'r') as f:
-            git_info = json.load(f)
-    except FileNotFoundError:
-        logger.warning('No git_info.json found')
-        return
-    except json.decoder.JSONDecodeError as e:
-        logger.warning(f"Error reading git_info.json: {e})")
-        return
-
-    if not git_info:
-        logger.error("Failed to retrieve git information.")
-        return
-
-    # We only expect a single key
-    name, git_info = git_info.popitem()
-    for key in git_info:
-        logger.info(f'{key}: {git_info[key]}')
 
 
 def print_banner():
@@ -54,7 +31,7 @@ def print_banner():
 ███╗   ██╗ ██████╗ ███████╗███╗   ██╗ ██████╗███████╗██████╗ ███████╗
 ████╗  ██║██╔════╝ ██╔════╝████╗  ██║██╔════╝██╔════╝██╔══██╗██╔════╝
 ██╔██╗ ██║██║  ███╗█████╗  ██╔██╗ ██║██║     █████╗  ██████╔╝█████╗  
-██║╚██╗██║██║   ██║██╔══╝  ██║╚██╗██║██║     ██╔══╝  ██╔══██╗██╔══╝  
+██║╚██╗██║██║   ██║██╔══╝  ██║╚██╗██║██║     ██╔══╝  ██╔══██╗██╔══╝ta  
 ██║ ╚████║╚██████╔╝███████╗██║ ╚████║╚██████╗███████╗██║  ██║██║     
 ╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝     
                                                                      

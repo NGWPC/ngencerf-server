@@ -223,6 +223,9 @@ NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 
+# Used only by get_git_info when running on PW
+SINGULARITY_DIR = '/ngencerf-app/singularity'
+
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)

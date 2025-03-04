@@ -79,6 +79,8 @@ if [ "${CERF_VENV}" != "Docker" ]; then
            # Package is not installed, install with dependencies
            pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
        fi
+
+       generate_git_info
     else
        echo "CERF_VENV is not set. Please set the virtual environment variable."
        exit 1
@@ -116,8 +118,6 @@ else
     # Run this every time, since sometimes there are updates and it is very quick
     run_manage_command init_sql
 fi
-
-generate_git_info
 
 echo
 run_manage_command pre_start

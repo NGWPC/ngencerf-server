@@ -25,8 +25,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer
-from calibration.util.container_util import copy_file_from_singularity_image, copy_file_from_docker_image
-from calibration.util.file_util import copy_file
+from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
@@ -573,50 +572,6 @@ def get_git_info(request: Request) -> Response:
 
     logger.debug(f'Returning to {request.user.email} from get_git_info() - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
-
-
-def get_git_info_internal():
-    git_info_directory = os.path.join(settings.REPO_ROOT, 'git_info')
-    shutil.rmtree(git_info_directory)
-    os.mkdir(git_info_directory)
-
-    # Copy our git_info.properties to the shared directory
-    git_info = os.path.join(settings.BASE_DIR, 'git_info.json')
-    if os.path.exists(git_info):
-        copy_file(git_info, os.path.join(git_info_directory, 'cerfserver_git_info.json'))
-
-    for image_name in ['ngen', 'ngen-cal', 'ngen-bmi-forcing', 'ngen-fcst']:
-        container_name = f'{image_name}_temp_container'
-        container_properties = os.path.join(settings.REPO_ROOT, 'git_info.json')
-        local_properties = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-        if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-            copy_file_from_singularity_image(f'{image_name}.sif', container_properties, local_properties)
-        else:
-            copy_file_from_docker_image(image_name, container_name, container_properties, local_properties)
-
-    merged_data = {}
-
-    # Iterate over all files in the directory
-    for filename in os.listdir(git_info_directory):
-        if filename.endswith('.json'):
-            filepath = os.path.join(git_info_directory, filename)
-            try:
-                with open(filepath, 'r') as f:
-                    data = json.load(f)
-                    # Merge data; keys should be unique.
-                    merged_data.update(data)
-            except FileNotFoundError:
-                logger.warning(f'File "{filepath}" not found')
-                return {}
-            except json.decoder.JSONDecodeError as e:
-                logger.warning(f"Error reading {filepath}: {e})")
-                return {}
-
-    # Write the merged data to a new JSON file
-    with open(os.path.join(git_info_directory, 'combined_git_info.json'), 'w') as f:
-        json.dump(merged_data, f, indent=2)  # type: ignore
-
-    return merged_data
 
 
 @extend_schema(
