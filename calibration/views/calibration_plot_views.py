@@ -24,8 +24,7 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url
-from calibration.views.end_of_job_processing import process_worker_dirs
+    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url, process_worker_dirs
 
 logger = logging.getLogger(__name__)
 

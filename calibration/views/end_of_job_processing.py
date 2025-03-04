@@ -2,12 +2,11 @@ import csv
 import logging
 import math
 import os
-import re
 from collections import deque
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
-from typing import Dict, Callable
+from typing import Dict
 
 import pandas as pd
 from django.db import transaction
@@ -18,19 +17,17 @@ from calibration.models import Iteration, CalibrationRun, IterationMetric, Itera
     PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastForcingDownloadRun, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
-    get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_output_calibration_run_dir, \
-    get_validation_metrics_valid_control_file, get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
+    get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_validation_metrics_valid_control_file, \
+    get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
-    get_validation_special_performance_file, get_output_validation_run_dir, get_ngen_stdout_log_filename, \
-    get_forecast_forcing_download_performance_file, get_forecast_performance_file, get_params_iteration_file
-from calibration.views.common import CerfException, get_job_description
+    get_validation_special_performance_file, get_forecast_forcing_download_performance_file, \
+    get_forecast_performance_file, get_params_iteration_file
+from calibration.views.calibration_swe_views import generate_swe_ts_data
+from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_log
 
 logger = logging.getLogger(__name__)
 
 BULK_CREATE_BATCH_SIZE = 1000  # Define a reasonable batch size
-
-# Regular expression pattern to match directories like "ngen_xxxxxxx_worker"
-worker_directory_pattern = re.compile(r'ngen_\w+_worker')
 
 
 def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -> None:
@@ -58,13 +55,13 @@ def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -
         validation_run.validation_worker_name = matching_worker
         validation_run.save(update_fields=['validation_worker_name'])
 
-        metrics_file = (
+        performance_metrics_file = (
             get_validation_performance_file(validation_run.calibration_run, validation_run.worker_name, validation_run.iteration_num)
             if validation_type == ValidationType.VALID_ITERATION
             else get_validation_special_performance_file(validation_run.calibration_run, validation_type)
         )
 
-        create_performance_metrics(validation_run, metrics_file)
+        create_performance_metrics(validation_run, performance_metrics_file)
 
         if not failed_so_far:
             process_validation_for_validation_run(validation_run)
@@ -263,6 +260,8 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
             metrics_file=metrics_file,
             expected_run_type=expected_run_type
         )
+
+    generate_swe_ts_data(validation_run)
 
 
 # Function to process iterations for all workers in a run
@@ -592,34 +591,6 @@ def read_last_line(filename: str) -> str:
         return deque(file, maxlen=1).pop().decode().strip()
 
 
-def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Callable[[str, CalibrationRun | ValidationRun], None]) -> None:
-    """
-    Processes worker directories in a given calibration or validation run.
-
-    :param run: The CalibrationRun or ValidationRun instance.
-    :param worker_lambda: A callback function applied to each worker directory.
-    """
-
-    if isinstance(run, CalibrationRun):
-        output_run_dir = get_output_calibration_run_dir(run)
-    elif isinstance(run, ValidationRun):
-        output_run_dir = get_output_validation_run_dir(run.calibration_run)
-    else:
-        raise ValueError(f"Invalid run object: {type(run).__name__}. Expected CalibrationRun or ValidationRun.")
-
-    if not os.path.exists(output_run_dir):
-        raise CerfException(f"Cannot find expected data at {output_run_dir}")
-
-    job_description = get_job_description(run)
-
-    for item in os.listdir(output_run_dir):
-        worker_dir = os.path.join(output_run_dir, item)
-        # Check if the item is a directory and matches the pattern
-        if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
-            logger.debug(f'{job_description} Processing worker directory: {worker_dir}')
-            worker_lambda(worker_dir, run)
-
-
 # Function to count the number of rows in a CSV file
 def count_rows_in_csv(file_path: str) -> int:
     """
@@ -739,55 +710,3 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
         return metrics
 
     return None
-
-
-def find_validation_worker_with_matching_log(
-        validation_run: ValidationRun,
-        worker_name: str | None = None,
-        iteration_num: int | None = None
-) -> str | None:
-    """
-    Searches the worker directories of a validation run to locate the worker directory
-    containing the ngen stdout file. The matching criteria depend on the validation type:
-    - For VALID_ITERATION: Matches the worker name and iteration number in the log.
-    - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
-
-    :param validation_run: The validation run object to process.
-    :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
-    :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
-    :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
-    """
-    matching_worker_name = None
-    validation_type = ValidationType(validation_run.validation_type)
-
-    # Determine the expected first line of the log based on validation type
-    if validation_type == ValidationType.VALID_ITERATION:
-        if not worker_name or iteration_num is None:
-            raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
-        expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
-    elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
-        expected_first_line = f"Starting {validation_type.value.capitalize()} Run"
-    else:
-        raise ValueError(f"Unsupported validation type: {validation_type}")
-
-    # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, run: ValidationRun):
-        nonlocal matching_worker_name
-        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
-
-        # Check if ngen.log exists in the current worker directory
-        if os.path.isfile(potential_log_path):
-            # Read the first line of the file
-            with open(potential_log_path, 'r') as file:
-                first_line = file.readline().strip()
-
-            # Check if the first line matches the expected format
-            if first_line == expected_first_line:
-                matching_worker_name = os.path.basename(worker_dir)
-
-    # Call process_worker_dirs to iterate through the worker directories
-    process_worker_dirs(validation_run, check_worker)
-
-    if not matching_worker_name:
-        logger.error(f"Could not find worker corresponding to {validation_run}")
-    return matching_worker_name
