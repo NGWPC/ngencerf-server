@@ -25,5 +25,5 @@ numpy~=2.2.1
 
 # There is also a dependancy on these 2 entries
 # git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput
-# git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@$development#egg=swe_mappingt&subdirectory=swe_mapping
+# git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@$development#egg=swe_processing&subdirectory=swe_mapping
 # These dependancies are installed separately in runCerf.sh in order to ensure that we get the latest code
