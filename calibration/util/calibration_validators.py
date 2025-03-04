@@ -1086,10 +1086,15 @@ class GetSnodasImagesRequestSerializer(ValidationRunSerializer):
     date = serializers.DateField(required=True, allow_null=False)
 
 
-class GetSnodasImagesResponseSerializer(GenericMessageResponseSerializer):
+class GetSWEImagesResponseSerializer(GenericMessageResponseSerializer):
     lumped_map = serializers.CharField(required=True, allow_null=False)
     raw_map = serializers.CharField(required=True, allow_null=False)
     sim_map = serializers.CharField(required=True, allow_null=False)
+
+
+class GetSWETimeseriesDataResponseSerializer(GenericMessageResponseSerializer):
+    swe_timeseries_image = serializers.CharField(required=True, allow_null=False)
+    swe_timeseries_data = serializers.JSONField(required=True, allow_null=False)
 
 
 ##################################

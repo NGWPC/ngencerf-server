@@ -1,3 +1,4 @@
+import csv
 import json
 import logging
 import os
@@ -15,8 +16,8 @@ from swe_timeseries import swe_timeseries
 
 from calibration.enums import StatusEnum, ValidationType
 from calibration.models import ValidationRun
-from calibration.util.calibration_validators import GetSnodasImagesRequestSerializer, GetSnodasImagesResponseSerializer, \
-    ErrorResponseSerializer
+from calibration.util.calibration_validators import GetSnodasImagesRequestSerializer, GetSWEImagesResponseSerializer, \
+    ErrorResponseSerializer, ValidationRunSerializer, GetSWETimeseriesDataResponseSerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_netcdf_file, get_validation_output_valid, \
     get_output_validation_iteration_plot_dir, get_output_validation_plot_dir, get_output_validation_run_dir
@@ -118,17 +119,16 @@ def generate_swe_ts_data(validation_run: ValidationRun):
         gpkg = inputs['gpkg']
 
         # Determine the appropriate plot directory.
-        plot_dir = os.path.join(get_plot_dir(validation_run), 'SWE')
+        plot_dir = get_plot_dir(validation_run)
         os.makedirs(plot_dir, exist_ok=True)
 
         swe_args = [
             swe_csv,
             gpkg,
             '--plot_output',
-            os.path.join(plot_dir, 'swe_timeseries.png'),
+            get_swe_timeseries_png_filename(validation_run),
             '--csv_output',
-            os.path.join(get_output_validation_run_dir(validation_run.calibration_run),
-                         'swe_timeseries_best.csv' if validation_run.validation_type == ValidationType.VALID_BEST.value else f'swe_timeseries_{validation_run.worker_name}_iter{validation_run.iteration_num}')
+            get_swe_timeseries_data_filename(validation_run),
         ]
         logger.info(f"Calling swe_timeseries.swe_ts with arguments: {swe_args}")
         start_time = time.time()
@@ -137,10 +137,19 @@ def generate_swe_ts_data(validation_run: ValidationRun):
         logger.info(f"Finished running swe_timeseries.swe_ts in {elapsed_time:.2f} seconds")
 
 
+def get_swe_timeseries_png_filename(validation_run: ValidationRun):
+    return os.path.join(get_plot_dir(validation_run), 'swe_timeseries.png')
+
+
+def get_swe_timeseries_data_filename(validation_run: ValidationRun):
+    return os.path.join(get_output_validation_run_dir(validation_run.calibration_run),
+                        'swe_timeseries_best.csv' if validation_run.validation_type == ValidationType.VALID_BEST.value else f'swe_timeseries_{validation_run.worker_name}_iter{validation_run.iteration_num}')
+
+
 @extend_schema(
     request=GetSnodasImagesRequestSerializer,
     responses={
-        200: GetSnodasImagesResponseSerializer,
+        200: GetSWEImagesResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -150,13 +159,13 @@ def generate_swe_ts_data(validation_run: ValidationRun):
             description="Internal server error"
         )
     },
-    description="Retrieve a Snodas images for a given date"
+    description="Retrieve SWE images for a given date"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_swe_images_by_date(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_job_dir() request from {request.user.email} - {data}')
+    logger.debug(f'get_swe_images_by_date() request from {request.user.email} - {data}')
 
     validator, error_return = validate_request(GetSnodasImagesRequestSerializer, data)
     if error_return:
@@ -168,7 +177,7 @@ def get_swe_images_by_date(request: Request) -> Response:
     run, error_return = get_validation_run(
         validation_run_id,
         request.user,
-        run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
     )
     if error_return:
         return error_return
@@ -183,7 +192,6 @@ def get_swe_images_by_date(request: Request) -> Response:
         return ResponseError('Snodas plots are not available for a Validation Control run')
 
     plot_dir = os.path.join(get_plot_dir(run), 'SWE')
-    os.makedirs(plot_dir, exist_ok=True)
 
     # Retrieve or generate the SWE plots using the helper.
     swe_results = get_or_create_swe_plots(run, date, plot_dir)
@@ -198,15 +206,79 @@ def get_swe_images_by_date(request: Request) -> Response:
     }
 
     response_validator, error_response = validate_response(
-        GetSnodasImagesResponseSerializer,
+        GetSWEImagesResponseSerializer,
         response,
         fields_to_truncate=['lumped_map', 'raw_map', 'sim_map']
     )
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_job_dir() - '
+        f'Returning to {request.user.email} from get_swe_images_by_date() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["lumped_map", "raw_map", "sim_map"]))}'
+    )
+
+    return Response(response)
+
+
+@extend_schema(
+    request=ValidationRunSerializer,
+    responses={
+        200: GetSWETimeseriesDataResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Retrieve SWE timeseries data for a given validation run"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_swe_timeseries_data(request: Request) -> Response:
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'get_swe_timeseries_data() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(ValidationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+
+    run, error_return = get_validation_run(
+        validation_run_id,
+        request.user,
+        run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+    )
+    if error_return:
+        return error_return
+
+    # Read the CSV file and convert it to JSON (list of dicts)
+    csv_filepath = get_swe_timeseries_data_filename(run)
+    try:
+        swe_timeseries_data = read_csv_as_json(csv_filepath)
+    except Exception as e:
+        logger.error(f"Error reading SWE timeseries CSV: {e}")
+        return ResponseError("Failed to read SWE timeseries data file")
+
+    response = {
+        'message': f'Retrieved SWE timeseries data for Validation Run {run.id}',
+        'swe_timeseries_image': png_to_base64_url(get_swe_timeseries_png_filename(run)),
+        'swe_timeseries_data': swe_timeseries_data,
+    }
+
+    response_validator, error_response = validate_response(
+        GetSWETimeseriesDataResponseSerializer,
+        response,
+        fields_to_truncate=['swe_timeseries_image', 'swe_timeseries_data'], max_length=50
+    )
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {request.user.email} from get_swe_timeseries_data() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["swe_timeseries_image", "swe_timeseries_data"], max_length=50))}'
     )
 
     return Response(response)
@@ -218,4 +290,19 @@ def get_plot_dir(run: ValidationRun) -> str:
         plot_dir = os.path.join(get_output_validation_iteration_plot_dir(run.calibration_run, run.iteration_num, run.worker_name))
     else:
         plot_dir = os.path.join(get_output_validation_plot_dir(run.calibration_run))
-    return plot_dir
+    return os.path.join(plot_dir, 'SWE')
+
+
+def read_csv_as_json(csv_filepath: str):
+    """Reads a CSV file and returns a list of dictionaries representing the rows."""
+    data = []
+    with open(csv_filepath, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            # Ensure each row only has the three expected keys
+            data.append({
+                "timestamp": row.get("timestamp"),
+                "simulated_avg_swe": row.get("simulated_avg_swe"),
+                "snodas_avg_swe": row.get("snodas_avg_swe")
+            })
+    return data
