@@ -192,6 +192,7 @@ def get_swe_images_by_date(request: Request) -> Response:
         return ResponseError('Snodas plots are not available for a Validation Control run')
 
     plot_dir = os.path.join(get_plot_dir(run))
+    os.makedirs(plot_dir, exist_ok=True)
 
     # Retrieve or generate the SWE plots using the helper.
     swe_results = get_or_create_swe_plots(run, date, plot_dir)
