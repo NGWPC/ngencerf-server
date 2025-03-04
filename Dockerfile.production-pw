@@ -26,7 +26,6 @@ RUN --mount=type=secret,id=gitlab_token \
 # Set up working directory
 WORKDIR /ngencerf/ngencerf-server/
 
-# Copy requirements and .git folder
 COPY requirements.txt .
 
 # Install Python virtual environment
@@ -35,22 +34,20 @@ RUN set -eux; \
     python3.11 -m venv ${VIRTUAL_ENV}
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
-# Install dependencies
-RUN set -eux; \
-    pip3 install -r requirements.txt
-
 ARG CREATE_INPUT_TAG
 ARG RUN_SWE_TAG
 RUN set -eux; \
+    pip3 install -r requirements.txt ; \
     pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput" ; \
     pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${RUN_SWE_TAG}#egg=swe_processing&subdirectory=swe_processing" ; \
     # Lock numpy and netcdf4 versions so t-route doesn't break
     pip3 install "numpy==1.26.4" "pandas~=2.2.2" ; \
     pip3 cache purge; \
-    rm --force /root/.gitconfig
+    rm --force /root/.gitconfig \
+    rm requirments.txt
 
 # Extract Git information and write it to the JSON file specified by $GIT_INFO_PATH
-ENV GIT_INFO_PATH=git_info.json
+ARG GIT_INFO_PATH=git_info.json
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
 RUN jq -n \
@@ -68,7 +65,7 @@ RUN jq -n \
 COPY . /ngencerf/ngencerf-server/
 
 # Remove .git directory
-RUN rm -rf .git
+RUN rm --recursive --force .git
 
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
