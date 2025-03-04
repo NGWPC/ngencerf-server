@@ -55,8 +55,6 @@ config_template = {
         # 1: Yes
         # It should be 0 if start_interation entry is 0.
         "restart": 0,
-        "output_variable_to_calibrate_module": "",
-        "output_variable_to_calibrate_name": "",
         "calib_start_period": "",
         "calib_end_period": "",
         "calib_eval_start_period": "",
@@ -361,10 +359,6 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
         calibration['number_iteration'] = stop_criteria.value
 
     calibration['start_iteration'] = 0  # TODO ????'
-
-    # if not is_missing(run.module_output_variable, 'Output variable to calibrate', errors):
-    #     calibration['output_variable_to_calibrate_name'] = run.module_output_variable.name
-    #     calibration['output_variable_to_calibrate_module'] = run.module_output_variable.calibration_formulation.module.name
 
     if run.streamflow_threshold:
         calibration['streamflow_threshold'] = run.streamflow_threshold

@@ -330,7 +330,6 @@ class ModuleParametersSerializer(serializers.Serializer):
 class ModuleMetadataStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     parameters = LoadTuningParametersSerializer(required=True, many=True)
-    output_variables = OutputVariableMetadataSerializer(required=True, many=True)
 
 
 ##################################
@@ -414,8 +413,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
-    # TODO Get rid of this
-    output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
 
     objective_function = serializers.CharField(required=True, allow_null=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -685,18 +682,12 @@ class UserParameterFileUploadResponse(BaseSerializer):
     user_parameter_file = serializers.ListField(child=ParameterFileSerializer(), required=True)
 
 
-# Output variables from Data Services
-class ModuleOutputVariablesSerializer(BaseSerializer):
-    variable = serializers.CharField(required=True, allow_blank=False)
-    # TODO This is required, cannot be null
-    description = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-
-
 # Module object from Data Services containing module parameters and output variables
 class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
     calibrate_parameters = ModuleParametersSerializer(many=True)
-    output_variables = ModuleOutputVariablesSerializer(many=True)
+    # TODO We are ignoring this so EDS can get rid of it
+    output_variables = serializers.JSONField(required=False)
     parameter_file = S3FileValidator(required=True)
 
 
@@ -711,7 +702,6 @@ class SaveTuningRequestSerializer(BaseSerializer):
     calibration_times = CalibrationTimeControls(required=False, allow_empty=False)
     validation_times = ValidationTimeControls(required=False, allow_empty=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    # output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=False)
 
 
 class LoadTuningResponseSerializer(BaseSerializer):
@@ -902,20 +892,19 @@ class ExportResponseSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_eds_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    # forcing_eds_dir_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=False)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    # observational_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=False)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
-    geopackage_user_uploaded_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    # geopackage_eds_file_path = serializers.CharField(required=True, allow_blank=False, allow_null=True)
+    geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    # output_variable_to_calibrate = OutputVariableSerializer(required=True, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -935,21 +924,20 @@ class ImportSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    forcing_eds_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # forcing_eds_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    observational_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # observational_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # geopackage_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
-    # output_variable_to_calibrate = OutputVariableSerializer(required=False, allow_empty=True)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])

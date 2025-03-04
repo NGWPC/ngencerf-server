@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
@@ -248,11 +248,6 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
         calibration_run=run,
         module__name__in=to_delete_modules
     )
-
-    # Check if the current module_output_variable references a formulation to be deleted
-    if run.module_output_variable and run.module_output_variable.calibration_formulation in formulations_to_delete:
-        run.module_output_variable = None
-        run.save(update_fields=["module_output_variable"])
 
     # Delete CalibrationParameters related to the formulations_to_delete
     CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete).delete()

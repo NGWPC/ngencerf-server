@@ -362,7 +362,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     params_to_create = []  # List to accumulate parameters to be created
 
     # Update the output variables for the worker's iterations
-    update_output_variables(metrics_iteration_file, calibration_run, worker_name)
+    update_objective_function_values(metrics_iteration_file, calibration_run, worker_name)
 
     # Track whether a best iteration was set
     best_iteration_found = False
@@ -528,14 +528,13 @@ def process_params_row(calibration_run: CalibrationRun,
         params_to_create.append(param_obj)
 
 
-# Function to update the output variables for the worker's iterations
-def update_output_variables(metrics_iteration_file: str, calibration_run: CalibrationRun, worker_name: str) -> None:
+def update_objective_function_values(metrics_iteration_file: str, calibration_run: CalibrationRun, worker_name: str) -> None:
     """
-    Update the output variable values for each iteration in a worker's metrics file.
+    Updates the objective function values for each iteration of a given worker in a calibration run.
 
-    :param metrics_iteration_file: The path to the metrics file.
-    :param calibration_run: The CalibrationRun instance.
-    :param worker_name: The name of the worker.
+    :param metrics_iteration_file: The file path to the CSV metrics file containing iteration numbers and objective function values.
+    :param calibration_run: The CalibrationRun instance to which the iterations belong.
+    :param worker_name: The name of the worker whose iterations are being updated.
     """
     # Fetch only the fields needed using .values_list()
     iterations_dict = {
