@@ -27,7 +27,7 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import get_geometry_from_gpkg
-from calibration.util.git_util import get_git_info_internal
+from calibration.util.git_util import get_git_info_internal, load_git_info
 from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -526,8 +526,14 @@ def get_footer(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = {"version": settings.VERSION, "date": settings.DATE,
-                "commit_hash": settings.COMMIT_HASH,
+    git_info = load_git_info()
+    name, git_info_content = git_info.popitem() if git_info else ("", {})
+
+    branch = f"dev ({git_info_content.get('branch', '<unknown>')})"
+
+    response = {"version": git_info_content.get('release', branch),
+                "date": git_info_content.get('commit_date', '<unknown>'),
+                "commit_hash": git_info_content.get('commit_hash', '<unknown>'),
                 "ngenCerf_version": settings.NGENCERF_VERSION,
                 "ngenCerf_date": settings.NGENCERF_DATE,
                 "contact_email": settings.CONTACT_EMAIL}
