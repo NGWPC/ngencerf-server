@@ -4,7 +4,7 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
-from calibration.util.git_util import print_git_info
+from calibration.util.git_util import print_git_info_all
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +69,7 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGEN_STATIC_DIR - {settings.NGEN_STATIC_DIR}')
         if running_server:
             logger.info('')
-            print_git_info()
+            print_git_info_all()
 
         from calibration.util.ngen_locations import check_files
 
