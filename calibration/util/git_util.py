@@ -5,8 +5,7 @@ import shutil
 
 from django.conf import settings
 
-from calibration.enums_vanilla import NgenEnvironmentEnum
-from calibration.util.container_util import copy_file_from_docker_image, copy_file_from_singularity_image
+from calibration.util.container_util import copy_file_from_image
 from calibration.util.file_util import copy_file
 
 logger = logging.getLogger(__name__)
@@ -90,22 +89,6 @@ def get_git_info_internal():
     transformed_data = {key: transform_component(value) for key, value in merged_data.items()}
 
     return transformed_data
-
-
-def copy_file_from_image(container_name, container_file_name, image_name, local_file_name):
-    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-        copy_file_from_singularity_image(
-            os.path.join(settings.SINGULARITY_DIR, f'{image_name}.sif'),
-            container_file_name,
-            local_file_name
-        )
-    else:
-        copy_file_from_docker_image(
-            image_name,
-            container_name,
-            container_file_name,
-            local_file_name
-        )
 
 
 def transform_component(comp):
