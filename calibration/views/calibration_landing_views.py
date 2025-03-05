@@ -24,7 +24,8 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer
+    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer
+from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
@@ -532,6 +533,44 @@ def get_footer(request: Request) -> Response:
         return error_response
 
     logger.debug(f'Returning to {user} from get_footer() - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGitInfoResponseSerializer,
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get footer data"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_git_info(request: Request) -> Response:
+    """
+    Retrieve git info for all components
+
+    :param request: The HTTP request object.
+    :return: A Response object with version and contact information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'get_git_info() request from {request.user.email} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    response = {"git_info": get_git_info_internal()}
+
+    response_validator, error_response = validate_response(GetGitInfoResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {request.user.email} from get_git_info() - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 

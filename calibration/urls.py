@@ -13,6 +13,7 @@ urlpatterns = [
     path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createValidationRun"),
     path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createForecastRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
+    path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
     path('calibration/get_calibration_jobs/', calibration_landing_views.get_calibration_jobs, name="getCalibrationJobs"),
     path('calibration/get_calibration_jobs_for_evaluation/', calibration_landing_views.get_calibration_jobs_for_evaluation,
          name="getCalibrationJobsForEvaluation"),

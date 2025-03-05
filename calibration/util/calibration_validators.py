@@ -425,6 +425,40 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
+class GitInfoSerializer(BaseSerializer):
+    commit_hash = serializers.CharField(required=True)
+    branch = serializers.CharField(required=False)
+    tags = serializers.CharField(required=False, allow_blank=True)
+    author = serializers.CharField(required=False)
+    commit_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
+    message = serializers.CharField(required=False)
+    build_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
+    modules = serializers.ListField(child=serializers.DictField(), required=False)
+
+    def validate_modules(self, modules):
+        """
+        Ensure that each module entry is a dict with exactly one key-value pair,
+        and validate its value using GitInfoSerializer.
+        """
+        validated_modules = []
+        for module in modules:
+            if not isinstance(module, dict):
+                raise serializers.ValidationError("Each module must be an object.")
+            if len(module) != 1:
+                raise serializers.ValidationError("Each module must have exactly one key.")
+            # Get the single key and its associated value
+            module_name, module_data = list(module.items())[0]
+            # Validate the module_data using this serializer recursively
+            serializer = GitInfoSerializer(data=module_data)
+            serializer.is_valid(raise_exception=True)
+            validated_modules.append({module_name: serializer.validated_data})
+        return validated_modules
+
+
+class GetGitInfoResponseSerializer(BaseSerializer):
+    git_info = serializers.DictField(child=GitInfoSerializer())
+
+
 class ArchiveJobRequestSerializer(CalibrationRunSerializer):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
 
