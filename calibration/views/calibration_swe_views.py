@@ -262,7 +262,7 @@ def get_swe_timeseries_data(request: Request) -> Response:
         swe_timeseries_data = read_csv_as_json(csv_filepath)
     except Exception as e:
         logger.error(f"Error reading SWE timeseries CSV: {e}")
-        return ResponseError("Failed to read SWE timeseries data file")
+        return ResponseError(f"Failed to read SWE timeseries data file - {e}")
 
     response = {
         'message': f'Retrieved SWE timeseries data for Validation Run {run.id}',
