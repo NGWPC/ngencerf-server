@@ -45,23 +45,29 @@ def get_git_info_internal():
         copy_file(src_git_info, dest_git_info)
 
     # For each image, copy its git_info.json into the shared directory.
-    for image_name in ['ngen', 'ngen-cal', 'ngen-bmi-forcing', 'ngen-fcst']:
-        container_name = f'{image_name}_temp_container'
-        container_properties = os.path.join(settings.REPO_ROOT, 'git_info.json')
-        local_properties = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-        if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
-            copy_file_from_singularity_image(
-                os.path.join(settings.SINGULARITY_DIR, f'{image_name}.sif'),
-                container_properties,
-                local_properties
-            )
-        else:
-            copy_file_from_docker_image(
-                image_name,
-                container_name,
-                container_properties,
-                local_properties
-            )
+
+    # Get both ngen and ngen-cal git_info files from ngen-cal container
+    image_name = 'ngen-cal'
+    container_name = f'{image_name}_temp_container'
+    container_file_name = os.path.join(settings.REPO_ROOT, 'ngen_git_info.json')
+    local_file_name = os.path.join(git_info_directory, 'ngen_git_info.json')
+    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+
+    container_file_name = os.path.join(settings.REPO_ROOT, 'ngen-cal_git_info.json')
+    local_file_name = os.path.join(git_info_directory, 'ngen-cal_git_info.json')
+    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+
+    image_name = 'ngen-fcst'
+    container_name = f'{image_name}_temp_container'
+    container_file_name = os.path.join(settings.REPO_ROOT, 'git_info.json')
+    local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
+    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+
+    image_name = 'ngen-bmi_forcing'
+    container_name = f'{image_name}_temp_container'
+    container_file_name = os.path.join(settings.REPO_ROOT, 'git_info.json')
+    local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
+    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
 
     merged_data = {}
     # Iterate over all JSON files in the directory and merge them.
@@ -86,15 +92,31 @@ def get_git_info_internal():
     return transformed_data
 
 
+def copy_file_from_image(container_name, container_file_name, image_name, local_file_name):
+    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        copy_file_from_singularity_image(
+            os.path.join(settings.SINGULARITY_DIR, f'{image_name}.sif'),
+            container_file_name,
+            local_file_name
+        )
+    else:
+        copy_file_from_docker_image(
+            image_name,
+            container_name,
+            container_file_name,
+            local_file_name
+        )
+
+
 def transform_component(comp):
     """
     Transform a single component dictionary to include only selected Git fields.
 
     The transformation rules are:
       - Always include 'commit_hash' and 'build_date'.
-      - If 'tags' is non-empty, include the 'tags' field.
+      - If 'tags' is non-empty, include the 'tags' field (renamed to 'release').
       - If 'tags' is empty, include 'branch', 'author', 'message', and 'commit_date'.
-      - Recursively transform nested 'modules' (if present) with the same rules.
+      - Recursively transform nested 'modules' (if present).
 
     :param comp: A dictionary containing Git information for a component.
     :return: A new dictionary with only the desired fields.
@@ -125,31 +147,65 @@ def transform_component(comp):
     return new_comp
 
 
-def print_git_info():
+def recursive_print(d: dict, indent: int = 0) -> None:
     """
-    Read the combined git_info.json file, transform its contents,
-    and log each key-value pair.
+    Recursively print all key/value pairs from a dictionary.
 
-    If the file is not found or contains invalid JSON, logs a warning.
+    For each key-value pair:
+      - If the value is a dictionary, print the key on one line and then recurse into that dictionary.
+      - If the value is a list, print the key on one line and then iterate through the list;
+        for each element that is a dictionary, recurse into it; otherwise print the element on a separate line.
+      - Otherwise (if the value is a string or other non-dict, non-list), print the key and value on one line.
+
+    :param d: The dictionary to print.
+    :param indent: The current indentation level (number of spaces).
     """
-    GIT_INFO = 'git_info.json'
+    for key, value in d.items():
+        if isinstance(value, dict):
+            logger.info(" " * indent + f"{key}:")
+            recursive_print(value, indent + 2)
+        elif isinstance(value, list):
+            logger.info(" " * indent + f"{key}:")
+            for item in value:
+                if isinstance(item, dict):
+                    recursive_print(item, indent + 2)
+                else:
+                    logger.info(" " * (indent + 2) + str(item))
+        else:
+            logger.info(" " * indent + f"{key}: {value}")
+
+
+def print_git_info(git_info_file: str):
+    """
+    Read the specified git_info JSON file, transform its contents, and log all key/value pairs recursively.
+
+    The output will print top-level keys (such as 'ngen') as well as keys for nested modules (such as 'LASAM').
+
+    :param git_info_file: Path to the JSON file containing Git information.
+    """
     try:
-        with open(GIT_INFO, 'r') as f:
+        with open(git_info_file, 'r') as f:
             git_info = json.load(f)
     except FileNotFoundError:
-        logger.warning(f'{GIT_INFO} not found')
+        logger.warning(f'{git_info_file} not found')
         return
     except json.decoder.JSONDecodeError as e:
-        logger.warning(f"Error reading {GIT_INFO}: {e}")
+        logger.warning(f"Error reading {git_info_file}: {e}")
         return
 
     if not git_info:
-        logger.error(f"Failed to retrieve git information from {GIT_INFO}.")
+        logger.error(f"Failed to retrieve git information from {git_info_file}.")
         return
 
-    # Assuming there is only one top-level key in the file.
-    name, git_info_content = git_info.popitem()
+    # Transform each top-level component without removing the keys.
+    transformed_git_info = {key: transform_component(value) for key, value in git_info.items()}
 
-    transformed_git_info = transform_component(git_info_content)
-    for key, value in transformed_git_info.items():
-        logger.info(f'{key}: {value}')
+    recursive_print(transformed_git_info)
+
+
+def print_git_info_all():
+    """
+    Convenience function to print Git information from multiple JSON files.
+    """
+    print_git_info('git_info.json')
+    logger.info(' ')

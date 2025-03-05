@@ -428,7 +428,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
 class GitInfoSerializer(BaseSerializer):
     commit_hash = serializers.CharField(required=True)
     branch = serializers.CharField(required=False)
-    tags = serializers.CharField(required=False, allow_blank=True)
+    release = serializers.CharField(required=False, allow_blank=True)
     author = serializers.CharField(required=False)
     commit_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
     message = serializers.CharField(required=False)
