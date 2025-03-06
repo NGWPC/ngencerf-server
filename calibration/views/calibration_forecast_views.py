@@ -1,6 +1,7 @@
 import json
 import logging
 import shutil
+from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -9,7 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ForecastCycleEnum, StatusEnum
-from calibration.models import ForecastRun
+from calibration.models import ForecastRun, CustomUser
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, LoadForecastTabResponseSerializer, \
     GetForecastJobsResponseSerializer, ForecastRunSerializer, CreateAndRunForecastResponseSerializer, DeleteForecastRunResponseSerializer
@@ -48,7 +49,7 @@ def load_forecast_tab(request: Request) -> Response:
     :return: JSON response with forecast cycle values.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_forecast_tab() request from {request.user.email} - {data}')
+    logger.debug(f'load_forecast_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -61,7 +62,7 @@ def load_forecast_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(LoadForecastTabResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'load_forecast_tab() request from {request.user.email} - {json.dumps(response_validator.data)}')
+    logger.debug(f'load_forecast_tab() request from {(cast(CustomUser, request.user)).email}  - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -91,7 +92,7 @@ def get_forecast_jobs(request: Request) -> Response:
     :return: JSON response with validation jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_validation_jobs() request from {request.user.email} - {data}')
+    logger.debug(f'get_validation_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -115,7 +116,7 @@ def get_forecast_jobs(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_validation_jobs() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_validation_jobs() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
@@ -146,7 +147,7 @@ def clone_and_run_forecast_job(request: Request) -> Response:
     :return: A Response object with the cloned calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'clone_forecast_job() request from {request.user.email} - {data}')
+    logger.debug(f'clone_forecast_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ForecastRunSerializer, data)
     if error_return:
@@ -171,7 +172,7 @@ def clone_and_run_forecast_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from clone_forecast_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from clone_forecast_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -201,7 +202,7 @@ def delete_forecast_job(request: Request) -> Response:
     :return: A Response object with the deletion confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_forecast_job() request from {request.user.email} - {data}')
+    logger.debug(f'delete_forecast_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ForecastRunSerializer, data)
     if error_return:
@@ -229,6 +230,6 @@ def delete_forecast_job(request: Request) -> Response:
     response_validator, error_response = validate_response(DeleteForecastRunResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from delete_forecast_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from delete_forecast_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)

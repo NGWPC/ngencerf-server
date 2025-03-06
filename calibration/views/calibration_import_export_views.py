@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Tuple
+from typing import Tuple, cast
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -13,7 +13,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun, CustomUser
 from calibration.run_util.run_common import submit_job
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
@@ -63,7 +63,7 @@ def import_job(request: Request) -> Response:
     :return: HTTP response indicating success or error status.
     """
     data = request.data
-    logger.debug(f'import_job() request from {request.user.email} - {data}')
+    logger.debug(f'import_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ImportSerializer, data)
     if error_return:
@@ -96,7 +96,7 @@ def import_job(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from import_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from import_job() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -162,7 +162,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy directory to job-specific path
-               copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
+                copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
             else:
                 if forcing_user_uploaded_dir_path:
                     errors.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
@@ -244,7 +244,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         if modules and run.gage:
             try:
-                get_module_metadata_from_data_services(run, modules)
+                get_module_metadata_from_data_services(run, modules)  # type: ignore
             except DataServicesException as e:
                 errors.append(f"Error retrieving module parameter data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -350,7 +350,7 @@ def export_job(request: Request) -> Response:
     :return: Response containing the exported calibration run data or an error.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'export_job() request from {request.user.email} - {data}')
+    logger.debug(f'export_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -371,7 +371,7 @@ def export_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from export() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from export() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -426,7 +426,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
-        calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
+        calibration_run_data['parameters'] = get_parameters_for_export(module_objects)  # type: ignore
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
 
@@ -485,7 +485,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['external_data_status'] = get_data_files_status(run)
         logger.info(f"Data Files status completed in {time.time() - data_files_status_start:.2f}s")
 
-        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
+        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)  # type: ignore
         logger.info(f"UI display data preparation completed in {time.time() - ui_display_start:.2f}s")
 
     #############################

@@ -5,7 +5,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Tuple, Literal
+from typing import Tuple, Literal, cast
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -18,7 +18,7 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, CustomUser
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
@@ -61,7 +61,7 @@ def load_tuning_tab(request: Request) -> Response:
     :return: Response containing the tuning tab data, including time ranges, modules, and formulations.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_tuning_tab() request from {request.user.email} - {data}')
+    logger.debug(f'load_tuning_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -95,7 +95,7 @@ def load_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_tuning_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_tuning_tab() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -246,7 +246,7 @@ def save_tuning_tab(request: Request) -> Response:
     Saves tuning settings for a calibration run, including parameters, output variables, and time periods.
     """
     data = request.data
-    logger.debug(f'save_tuning_tab() request from {request.user.email} - {data}')
+    logger.debug(f'save_tuning_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(SaveTuningRequestSerializer, data)
     if error_return:
@@ -286,7 +286,7 @@ def save_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from save_tuning_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_tuning_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -313,7 +313,7 @@ def upload_user_parameters(request: Request) -> Response:
     and content, and then attaching it to the specified calibration run.
     """
     data = request.data
-    logger.debug(f'upload_user_parameter_file() request from {request.user.email} - {data}')
+    logger.debug(f'upload_user_parameter_file() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
     if error_return:
@@ -396,7 +396,7 @@ def upload_user_parameters(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from upload_user_parameter_file() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from upload_user_parameter_file() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

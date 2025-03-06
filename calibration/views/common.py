@@ -7,7 +7,7 @@ import re
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, List, Any, Callable
+from typing import Type, Tuple, List, Any, Callable, cast
 
 import numpy as np
 from django.conf import settings
@@ -22,7 +22,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
-from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun
+from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun, CustomUser
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
@@ -72,7 +72,7 @@ def get_run_instance(
     try:
         run = query.get()
     except model.DoesNotExist:
-        user_info = f' or is not owned by {user.email}' if user else ''
+        user_info = f' or is not owned by {cast(CustomUser, user).email}' if user else ''
         error = f'{model.__name__} {run_id} does not exist{user_info}'
         return None, ResponseError(error)
 
@@ -703,7 +703,7 @@ def find_validation_worker_with_matching_log(
         raise ValueError(f"Unsupported validation type: {validation_type}")
 
     # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, run: ValidationRun):
+    def check_worker(worker_dir: str, _run: ValidationRun):
         nonlocal matching_worker_name
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 

@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict
+from typing import Dict, cast
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -15,7 +15,7 @@ from swe_mapping.core import run_swe
 from swe_timeseries import swe_timeseries
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import ValidationRun
+from calibration.models import ValidationRun, CustomUser
 from calibration.util.calibration_validators import GetSnodasImagesRequestSerializer, GetSWEImagesResponseSerializer, \
     ErrorResponseSerializer, ValidationRunSerializer, GetSWETimeseriesDataResponseSerializer
 from calibration.util.file_util import get_single_file
@@ -165,7 +165,7 @@ def get_swe_timeseries_data_filename(validation_run: ValidationRun):
 @handle_exceptions
 def get_swe_images_by_date(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_swe_images_by_date() request from {request.user.email} - {data}')
+    logger.debug(f'get_swe_images_by_date() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(GetSnodasImagesRequestSerializer, data)
     if error_return:
@@ -214,7 +214,7 @@ def get_swe_images_by_date(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_swe_images_by_date() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_swe_images_by_date() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["lumped_map", "raw_map", "sim_map"]))}'
     )
 
@@ -240,7 +240,7 @@ def get_swe_images_by_date(request: Request) -> Response:
 @handle_exceptions
 def get_swe_timeseries_data(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_swe_timeseries_data() request from {request.user.email} - {data}')
+    logger.debug(f'get_swe_timeseries_data() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
@@ -278,7 +278,7 @@ def get_swe_timeseries_data(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_swe_timeseries_data() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_swe_timeseries_data() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["swe_timeseries_image", "swe_timeseries_data"], max_length=50))}'
     )
 

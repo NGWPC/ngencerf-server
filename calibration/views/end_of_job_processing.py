@@ -99,12 +99,12 @@ def read_calibration_output(calibration_run: CalibrationRun, failed_so_far: bool
     logger.info(f"End of processing output for {job_description}")
 
 
-def read_forecast_output(run: ForecastForcingDownloadRun | ForecastRun, failed_so_far: bool) -> None:
+def read_forecast_output(run: ForecastForcingDownloadRun | ForecastRun, _failed_so_far: bool) -> None:
     """
     Processes the output of a forecast run by parsing performance metrics.
 
     :param run: The ForecastForcingDownloadRun or ForecastRun instance.
-    :param failed_so_far: Indicates whether the job has failed up to this point.
+    :param _failed_so_far: Indicates whether the job has failed up to this point.
     """
 
     job_description = get_job_description(run)

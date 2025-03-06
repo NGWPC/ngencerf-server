@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from django.core.cache import cache
@@ -12,7 +12,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
 from calibration.enums_vanilla import JobType
-from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun, CustomUser
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
@@ -54,7 +54,7 @@ def get_plot_names(request: Request) -> Response:
     :return: A JSON response with the calibration run ID, list of plot names and descriptions, and run status.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
+    logger.debug(f'get_plot_names() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
@@ -97,7 +97,7 @@ def get_plot_names(request: Request) -> Response:
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'get_plot_names() request from {request.user.email} - {json.dumps(response_validator.data)}')
+    logger.debug(f'get_plot_names() request from {(cast(CustomUser, request.user)).email}  - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -132,7 +132,7 @@ def get_plot(request: Request) -> Response:
     :raises ResponseError: If the plot cannot be found or an error occurs.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_plot() request from {request.user.email} - {data}')
+    logger.debug(f'get_plot() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(GetPlotRequestSerializer, data)
     if error_return:
@@ -255,7 +255,7 @@ def get_plot(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_plot() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_plot() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10))}'
     )
 
@@ -670,7 +670,7 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     found_worker_dir = None
 
     # Custom function to check worker directories
-    def check_worker(worker_dir: str, run: CalibrationRun):
+    def check_worker(worker_dir: str, _run: CalibrationRun):
         nonlocal found_worker_dir
         plot_iteration_dir = os.path.join(worker_dir, 'Plot_Iteration')
 
