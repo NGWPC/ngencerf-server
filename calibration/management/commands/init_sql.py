@@ -5,7 +5,6 @@ from typing import cast
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
-from django.db.models.fields.related_descriptors import ManyRelatedManager
 
 from calibration.enums import DataTypeEnum
 from calibration.enums_vanilla import JobType
@@ -129,7 +128,7 @@ class Command(BaseCommand):
             group_names = v['groups']
             groups = ModuleGroup.objects.filter(name__in=group_names)
 
-            cast(ManyRelatedManager, module_instance.groups).set(groups)
+            module_instance.groups.set(groups)
             module_instance.save()
 
     def define_domains(self):
