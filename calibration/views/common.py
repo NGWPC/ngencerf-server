@@ -703,7 +703,7 @@ def find_validation_worker_with_matching_log(
         raise ValueError(f"Unsupported validation type: {validation_type}")
 
     # Custom function to check worker directories for the ngen.log file
-    def check_worker(worker_dir: str, run: ValidationRun):
+    def check_worker(worker_dir: str, _run: ValidationRun):
         nonlocal matching_worker_name
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 
