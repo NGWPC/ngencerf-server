@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+from typing import cast
 
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction
@@ -14,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum, StatusEnum
-from calibration.models import Gage, CalibrationRun, CalibrationFormulation
+from calibration.models import Gage, CalibrationRun, CalibrationFormulation, CustomUser
 from calibration.util.caching import get_cached_gages, get_gage_by_id
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
@@ -65,7 +66,7 @@ def load_gage_tab(request: Request) -> Response:
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_gage_tab() request from {request.user.email} - {data}')
+    logger.debug(f'load_gage_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -112,7 +113,7 @@ def load_gage_tab(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from load_gage_tab() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from load_gage_tab() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["gages", "geopackage_image_url"], max_length=50))}'
     )
 
@@ -148,7 +149,7 @@ def get_gage(request: Request) -> Response:
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_gage() request from {request.user.email} - {data}')
+    logger.debug(f'get_gage() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(GageIdSerializer, data)
     if error_return:
@@ -165,7 +166,7 @@ def get_gage(request: Request) -> Response:
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_gage() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_gage() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -197,7 +198,7 @@ def save_gage_tab(request: Request):
     :return: A JSON response confirming the update and including any errors from data services.
     """
     data = request.data
-    logger.debug(f'save_gage_tab() request from {request.user.email} - {data}')
+    logger.debug(f'save_gage_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(SaveGageRequestSerializer, data)
     if error_return:
@@ -303,7 +304,7 @@ def save_gage_tab(request: Request):
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from save_gage_tab() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from save_gage_tab() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
     )
 
@@ -382,7 +383,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
         my_formulations = CalibrationFormulation.objects.filter(calibration_run=run)
         if my_formulations.exists():
             try:
-                get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)
+                get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)  # type: ignore
             except DataServicesException as e:
                 logger.exception("Error retrieving module parameter data from Data Services")
                 return {
@@ -419,7 +420,7 @@ def upload_observational_data(request: Request) -> Response:
     :return: A JSON response confirming the upload or reporting errors.
     """
     data = request.data
-    logger.debug(f'upload_observational_data() request from {request.user.email} - {data}')
+    logger.debug(f'upload_observational_data() request from {(cast(CustomUser, request.user)).email}  - {data}')
     user_agent = request.META.get('HTTP_USER_AGENT', '')
     cli = user_agent.startswith('curl')
 
@@ -462,7 +463,7 @@ def upload_observational_data(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from upload_observational_data() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from upload_observational_data() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -494,7 +495,7 @@ def upload_forcing_data(request: Request) -> Response:
     :return: A JSON response indicating the number of forcing files saved or reporting errors.
     """
     data = request.data
-    logger.debug(f'upload_forcing_data() request from {request.user.email} - {data}')
+    logger.debug(f'upload_forcing_data() request from {(cast(CustomUser, request.user)).email}  - {data}')
     user_agent = request.META.get('HTTP_USER_AGENT', '')
     cli = user_agent.startswith('curl')
 
@@ -548,7 +549,7 @@ def upload_forcing_data(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from upload_forcing_data() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from upload_forcing_data() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -580,7 +581,7 @@ def upload_geopackage_data(request: Request) -> Response:
     :return: A JSON response confirming the upload and including the geopackage image URL if available.
     """
     data = request.data
-    logger.debug(f'upload_geopackage_data() request from {request.user.email} - {data}')
+    logger.debug(f'upload_geopackage_data() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(UploadGeopackageSerializer, data, context={'request': request})
     if error_return:
@@ -632,7 +633,7 @@ def upload_geopackage_data(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from upload_geopackage_data() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from upload_geopackage_data() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
     )
     return Response(response_validator.data)

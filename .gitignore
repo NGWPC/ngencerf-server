@@ -28,3 +28,4 @@ postgres_db.override.env
 
 .load_static
 git_info.json
+/git_info

@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import cast
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
@@ -8,7 +9,7 @@ from django.core.management.base import BaseCommand
 from calibration.enums import DataTypeEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
-    GeopackageSource, ForecastCycle
+    GeopackageSource, ForecastCycle, CustomUser
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
@@ -45,7 +46,7 @@ class Command(BaseCommand):
             logger.error('Admin user does not exist.')
             sys.exit(1)
 
-        logger.info(f"In init_sql: email: {self.user.email}")
+        logger.info(f"In init_sql: email: {cast(CustomUser, self.user).email}")
 
         self.define_module_groups()
         self.define_modules()

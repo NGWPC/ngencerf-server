@@ -234,7 +234,8 @@ def get_forcing_data_from_s3(run: CalibrationRun):
     raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 
 
-def get_module_metadata_from_data_services(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation],
+def get_module_metadata_from_data_services(run: CalibrationRun,
+                                           calibration_formulations: QuerySet[CalibrationFormulation],
                                            gage_changed: bool = False):
     """
     Retrieves module metadata from Data Services and updates the database with module parameters and output variables.
