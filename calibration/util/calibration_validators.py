@@ -435,7 +435,8 @@ class GitInfoSerializer(BaseSerializer):
     build_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
     modules = serializers.ListField(child=serializers.DictField(), required=False)
 
-    def validate_modules(self, modules):
+    @staticmethod
+    def validate_modules(modules):
         """
         Ensure that each module entry is a dict with exactly one key-value pair,
         and validate its value using GitInfoSerializer.
