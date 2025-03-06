@@ -69,6 +69,9 @@ COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
 COPY ./cerfServer/__.env-docker-dev /ngencerf/ngencerf-server/cerfServer/.env
 COPY ./cerfServer/__local_settings.py /ngencerf/ngencerf-server/cerfServer/local_settings.py
 
+# Set up working directory
+WORKDIR /ngencerf/ngencerf-server/
+
 # Set the entry point and expose the application port
 ENTRYPOINT [ "/ngencerf/ngencerf-server/runCerf.sh" ]
 EXPOSE 8000
