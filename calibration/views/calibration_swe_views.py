@@ -295,15 +295,6 @@ def get_plot_dir(run: ValidationRun) -> str:
 
 
 def read_csv_as_json(csv_filepath: str):
-    """Reads a CSV file and returns a list of dictionaries representing the rows."""
-    data = []
+    """Reads a CSV file and returns a list of dictionaries using column names as keys."""
     with open(csv_filepath, newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            # Ensure each row only has the three expected keys
-            data.append({
-                "timestamp": row.get("timestamp"),
-                "simulated_avg_swe": row.get("simulated_avg_swe"),
-                "snodas_avg_swe": row.get("snodas_avg_swe")
-            })
-    return data
+        return list(csv.DictReader(csvfile))
