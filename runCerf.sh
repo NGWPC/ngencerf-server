@@ -1,9 +1,13 @@
 #! /bin/bash
 
-# Source environment variables
-source "./cerfserver.env"
+# Get the directory of the script
+SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
-cerfServer="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+# Source environment variables
+source "$SCRIPT_DIR/cerfserver.env"
+
+# Use the same directory variable for cerfServer
+cerfServer="$SCRIPT_DIR"
 
 # Redirect stdout and stderr to two log files and the console
 mkdir -p run-logs
