@@ -16,8 +16,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GetValidationJobsScope, GeopackageSourceEnum
-from calibration.models import CalibrationRun, ValidationRun, IterationParameter, ForecastRun, ForecastForcingDownloadRun, CustomUser
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GetValidationJobsScope
+from calibration.models import CalibrationRun, ValidationRun, IterationParameter, ForecastRun, ForecastForcingDownloadRun, CalibrationFormulation
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
@@ -79,8 +79,7 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(
-            f'Returning to {(cast(CustomUser, request.user)).email}  from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -311,7 +310,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetCalibrationJobsRequestSerializer,
     responses={
         200: GetCalibrationJobsResponseSerializer,
         400: OpenApiResponse(
@@ -330,20 +329,23 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
 @handle_exceptions
 def get_calibration_jobs(request):
     """
-    Return all jobs
+    Return all calibration jobs, including archived ones.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_calibration_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
         return error_return
+
+    include_archived = validator.get('include_archived')
 
     jobs = get_jobs(
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
-        include_modules=True
+        include_modules=True,
+        include_archived=include_archived
     )
 
     response = {'jobs': jobs}
@@ -363,7 +365,8 @@ def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
         include_validation_data: GetValidationJobsScope = None,
-        include_modules: bool = False
+        include_modules: bool = False,
+        include_archived: bool = False
 ) -> list[dict[str, Any]]:
     """
     Retrieves calibration jobs for the given user with optional status filtering and validation data inclusion.
@@ -374,10 +377,15 @@ def get_jobs(
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
     :param include_modules: Whether to include the list of associated modules (Module names).
+    :param include_archived: Whether to include archived jobs in the queryset.
     :return: List of calibration jobs with selected fields.
     """
-    # Base query to filter jobs for the given user, excluding archived jobs
-    query = Q(owner=user, is_archived=False)
+    # Base query: filter jobs for the user
+    query = Q(owner=user)
+
+    # If include_archived=False, exclude archived jobs
+    if not include_archived:
+        query &= Q(is_archived=False)
 
     # If a specific status list is provided, filter by those statuses
     if run_status:
@@ -398,13 +406,16 @@ def get_jobs(
     if include_modules:
         calibration_runs_qs = calibration_runs_qs.prefetch_related(formulations_prefetch)
 
-    # Fetch only required fields
-    calibration_runs = calibration_runs_qs.values(
+    # Fields to include in the response
+    selected_fields = [
         'id', 'gage__gage_id', 'submit_date', 'formulation_name',
         'calibration_start_period', 'calibration_end_period',
         'status__name', 'job_genesis', 'created_at',
-        'objective_function__name', 'optimization__name'
-    )
+        'objective_function__name', 'optimization__name',
+        'is_archived'
+    ]
+
+    calibration_runs = calibration_runs_qs.values(*selected_fields)
 
     # If modules are needed, retrieve associated formulations
     formulations_map = {}
@@ -427,6 +438,7 @@ def get_jobs(
             'status': run.pop('status__name'),
             'objective_function': run.pop('objective_function__name'),
             'optimization_algorithm': run.pop('optimization__name'),
+            'is_archived': run.pop('is_archived'),  # Always include is_archived
             **run
         }
 

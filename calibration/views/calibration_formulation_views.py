@@ -7,7 +7,6 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, CustomUser
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, \
@@ -44,7 +43,7 @@ def get_modules(request) -> Response:
     :return: A JSON response with the calibration run ID, status, modules, and module groups.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_modules() request from {request.user.email} - {data}')
+    logger.debug(f'get_modules() request from {(cast(CustomUser, request.user)).email} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
