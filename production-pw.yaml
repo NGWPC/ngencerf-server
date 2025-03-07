@@ -28,6 +28,7 @@ services:
         required: true 
       - path: ./ngencerf_services.override.env
         required: false
+    privileged: true
 
 secrets:
   gitlab_token:

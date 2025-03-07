@@ -224,7 +224,7 @@ NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 
 # Used only by get_git_info when running on PW
-SINGULARITY_DIR = '/ngencerf-app/singularity'
+SINGULARITY_DIR = '/ngencerf/containers'
 
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
