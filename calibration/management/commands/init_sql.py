@@ -441,7 +441,8 @@ class Command(BaseCommand):
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
-                "filename_mask": "{gage_id}_hydrograph_valid_run.png"
+                "filename_mask": "{gage_id}_hydrograph_valid_run.png",
+                "timeseries_available": True
             },
             {
                 "name": "Streamflow Validation Precipitation",
