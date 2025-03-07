@@ -36,7 +36,7 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'headwater_calibration', 'domain__name'
         )
         gages_lookup = {gage['gage_id']: gage for gage in gages}
-        # Adjust domain names
+        # Adjust key for domain names
         for gage in gages_lookup.values():
             gage['domain'] = gage.pop('domain__name')
 
@@ -112,7 +112,7 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
 MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 
 
-def get_cached_module_groups() -> list:
+def get_cached_module_groups() -> list[str]:
     """
     Retrieve a list of active module group names, ordered by 'order', from cache or database if not cached.
 
