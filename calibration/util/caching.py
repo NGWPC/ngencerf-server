@@ -1,5 +1,4 @@
 import json
-from typing import Dict, List
 
 from django.core.cache import cache
 from django.db.models import Prefetch
@@ -16,16 +15,17 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
     :param module_name: The name of the module.
     :return: The cached module instance if it exists; otherwise None.
     """
-    cached_modules: Dict[str, Module] = get_cached_modules_with_groups()
+    cached_modules: dict[str, Module] = get_cached_modules_with_groups()
     return cached_modules.get(module_name)
 
 
 CACHED_GAGES_KEY = 'cached_gages'
 
 
-def get_cached_gages() -> dict[str, dict]:
+def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     """
     Retrieves all active gages from the cache or the database if not cached.
+
     :return: A dictionary of gages with gage_id as the key and gage details as values.
     """
     # Check if the gages are already cached
@@ -44,9 +44,10 @@ def get_cached_gages() -> dict[str, dict]:
     return gages_lookup
 
 
-def get_gage_by_id(gage_id: str):
+def get_gage_by_id(gage_id: str) -> dict[str, str | float | int | None] | None:
     """
     Retrieve a single gage by gage_id from the cached gages.
+
     :param gage_id: The gage_id to retrieve.
     :return: The gage data if found, otherwise None.
     """
@@ -61,7 +62,7 @@ def get_gage_by_id(gage_id: str):
     return gage
 
 
-def get_cached_optimization_inputs(optimization_name: str) -> List[Dict[str, str | int | float]]:
+def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str | int | float]]:
     """
     Retrieve optimization inputs for a specified optimization name from cache or database.
 
@@ -88,13 +89,13 @@ def get_cached_optimization_inputs(optimization_name: str) -> List[Dict[str, str
 MODULE_CACHE_WITH_GROUPS_KEY = 'module_cache_with_groups'
 
 
-def get_cached_modules_with_groups() -> Dict[str, Module]:
+def get_cached_modules_with_groups() -> dict[str, Module]:
     """
     Retrieve active Module objects with prefetched groups from cache or database if not cached.
 
     :return: A dictionary where keys are active module names, and values are Module objects, each with prefetched groups.
     """
-    cached_modules: Dict[str, Module] = cache.get(MODULE_CACHE_WITH_GROUPS_KEY)
+    cached_modules: dict[str, Module] = cache.get(MODULE_CACHE_WITH_GROUPS_KEY)
 
     if cached_modules is None:
         # Prefetch related groups when querying for modules
@@ -103,7 +104,7 @@ def get_cached_modules_with_groups() -> Dict[str, Module]:
         )
         # Cache active modules
         cached_modules = {module.name: module for module in modules}
-        cache.set(MODULE_CACHE_WITH_GROUPS_KEY, cached_modules, None)  # Cache indefinitely or set a timeout if needed
+        cache.set(MODULE_CACHE_WITH_GROUPS_KEY, cached_modules, None)
 
     return cached_modules
 
