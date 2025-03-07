@@ -174,8 +174,17 @@ def get_observational_data_from_data_services(run: CalibrationRun):
 
 
 def clear_times(run: CalibrationRun, cli: bool = False):
-    # Invalidate the dates, since we'll have to compute the intersection again
-    # Only do this when running through the GUI.  If CLI, we assume the user knows what he is doing
+    """
+    Clears the time-related fields of a CalibrationRun instance, forcing a recalculation later.
+
+    This function resets all time and period fields to None, which is useful when the GUI triggers
+    a recalculation of these time boundaries. If the operation is initiated via the CLI (cli=True),
+    the time fields are preserved because it is assumed that the user intends to keep them as set.
+
+    :param run: A CalibrationRun instance whose time-related fields will be cleared.
+    :param cli: A boolean flag indicating if the process is running from the CLI.
+                If True, the time fields are not cleared.
+    """
     if not cli:
         run.time_range_start = None
         run.time_range_end = None
