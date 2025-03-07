@@ -91,7 +91,7 @@ def get_git_info_internal():
     return transformed_data
 
 
-def transform_component(comp):
+def transform_component(component_git_info):
     """
     Transform a single component dictionary to include only selected Git fields.
 
@@ -101,27 +101,28 @@ def transform_component(comp):
       - If 'tags' is empty, include 'branch', 'author', 'message', and 'commit_date'.
       - Recursively transform nested 'modules' (if present).
 
-    :param comp: A dictionary containing Git information for a component.
+    :param component_git_info: A dictionary containing Git information for a component.
     :return: A new dictionary with only the desired fields.
     """
     new_comp = {
-        "commit_hash": comp.get("commit_hash", ""),
-        "build_date": comp.get("build_date", "")
+        "commit_hash": component_git_info.get("commit_hash", ""),
+        "build_date": component_git_info.get("build_date", "")
     }
-    if comp.get("tags", "").strip() == "":
+    if component_git_info.get("tags", "").strip() == "":
         # If tags is empty, include branch, author, message, and commit_date.
-        new_comp["branch"] = comp.get("branch", "")
-        new_comp["author"] = comp.get("author", "")
-        new_comp["message"] = comp.get("message", "")
-        new_comp["commit_date"] = comp.get("commit_date", "")
+        branch = f"dev ({component_git_info.get('branch', '<unknown>')})"
+        new_comp["release"] = branch
+        new_comp["author"] = component_git_info.get("author", "")
+        new_comp["message"] = component_git_info.get("message", "")
+        new_comp["commit_date"] = component_git_info.get("commit_date", "")
     else:
         # If tags is non-empty, include tags.
-        new_comp["release"] = comp.get("tags", "")
+        new_comp["release"] = component_git_info.get("tags", "")
 
     # Process nested modules recursively, if present
-    if "modules" in comp and isinstance(comp["modules"], list):
+    if "modules" in component_git_info and isinstance(component_git_info["modules"], list):
         new_modules = []
-        for module_obj in comp["modules"]:
+        for module_obj in component_git_info["modules"]:
             # Each module is an object with one key-value pair.
             for mod_name, mod_data in module_obj.items():
                 new_modules.append({mod_name: transform_component(mod_data)})
