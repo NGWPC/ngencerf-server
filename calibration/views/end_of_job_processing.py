@@ -82,8 +82,8 @@ def read_calibration_output(calibration_run: CalibrationRun, failed_so_far: bool
     logger.info(f"Processing output for {job_description}, status={calibration_run.status}")
 
     with transaction.atomic():
-        metrics_file = get_calibration_performance_file(calibration_run)
-        create_performance_metrics(calibration_run, metrics_file)
+        performance_metrics_file = get_calibration_performance_file(calibration_run)
+        create_performance_metrics(calibration_run, performance_metrics_file)
         calibration_run.save(update_fields=['performance_metrics', 'run_start'])
 
         if IterationMetric.objects.filter(iteration__calibration_run=calibration_run).exists():

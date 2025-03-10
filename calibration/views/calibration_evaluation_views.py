@@ -15,7 +15,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Er
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
-    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename
+    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_landing_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
     get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs
@@ -386,6 +386,7 @@ def get_log(request: Request) -> Response:
     response = {
         'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
         'log_data': paginated_lines,
+        'log_path': log_path,
         'pagination_metadata': pagination_metadata
     }
 
@@ -458,7 +459,7 @@ def get_global_log(validation_run: ValidationRun, log_name: LogName):
     :return: The path to the global log file.
     """
     if log_name == LogName.NGEN:
-        return find_ngen_stdout_log(validation_run)
+        return get_ngen_log_path(validation_run.calibration_run)
 
 
 def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
