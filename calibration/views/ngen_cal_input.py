@@ -15,7 +15,7 @@ from calibration.models import CalibrationOptimizationInput, CalibrationStopCrit
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, get_cached_module_by_name
 from calibration.util.file_util import get_single_file, copy_file_to_directory
-from calibration.util.geopkg import get_catchments_from_gpkg
+from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
@@ -232,7 +232,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                     datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
             if datafile['hydrofab_file'] and os.path.exists(datafile['hydrofab_file']):
-                logger.info(f"Catchments from {datafile['hydrofab_file']} file are {get_catchments_from_gpkg(datafile['hydrofab_file'])}")
+                logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):

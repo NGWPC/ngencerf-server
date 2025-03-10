@@ -1,3 +1,5 @@
+import argparse
+import json
 import os
 from functools import lru_cache
 from io import BytesIO
@@ -77,7 +79,7 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str = None) -> None:
     plt.close()
 
 
-@lru_cache(maxsize=128)
+@lru_cache()
 def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ...] = None) -> BytesIO:
     """
     Generates a PNG image from selected layers in a GeoPackage and returns it as a BytesIO object.
@@ -149,32 +151,93 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ..
     return img_buffer
 
 
-def get_catchments_from_gpkg(gpkg_path: str, layer_name: str = 'divides') -> list[str | int]:
+@lru_cache()
+def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_layer: str = None) -> dict:
     """
-    Extracts a list of catchments from a specified layer in a GeoPackage.
+    Extracts both catchment boundaries (as WKT) and gage coordinates (latitude & longitude) from a GeoPackage.
 
     :param gpkg_path: Path to the GeoPackage file.
-    :param layer_name: Name of the layer containing catchments. Defaults to 'divides'.
-    :return: List of catchment identifiers (e.g., 'divide_id').
-    :raises FileNotFoundError: If the GeoPackage file does not exist.
-    :raises ValueError: If the specified layer or the 'divide_id' column is missing.
+    :param catchment_layer: Name of the layer containing catchment boundaries. Defaults to 'divides'.
+    :param gage_layer: Name of the layer containing gage locations. Defaults to 'hydrolocations'.
+    :return: Dictionary containing:
+             - "catchments": Mapping of catchment identifiers to their boundaries as WKT strings.
+             - "gage_coordinates": Dictionary with 'latitude' and 'longitude'.
+             - "crs": The coordinate reference system of the layers.
+    :raises RuntimeError: If reading fails.
+    :raises ValueError: If the specified layers or required columns are missing.
     """
+    if catchment_layer is None:
+        catchment_layer = "divides"
+    if gage_layer is None:
+        gage_layer = "hydrolocations"
+
     check_file_accessible(gpkg_path)
 
-    # List all layers to verify the catchments layer exists
+    # List all layers to verify the requested layers exist
     try:
         available_layers = fiona.listlayers(gpkg_path)
     except Exception as e:
         raise RuntimeError(f"Failed to retrieve layers from GeoPackage: {gpkg_path}. Error: {e}")
 
-    if layer_name not in available_layers:
-        raise ValueError(f"Layer '{layer_name}' not found in the GeoPackage. Available layers: {available_layers}")
+    if catchment_layer not in available_layers:
+        raise ValueError(f"Catchment layer '{catchment_layer}' not found. Available layers: {available_layers}")
+
+    if gage_layer not in available_layers:
+        raise ValueError(f"Gage layer '{gage_layer}' not found. Available layers: {available_layers}")
 
     # Read the catchments layer
-    gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
+    gdf_catchments = safe_read_gpkg(gpkg_path, layer=catchment_layer)
 
-    # Extract the 'divide_id' column
-    if 'divide_id' in gdf.columns:
-        return gdf['divide_id'].tolist()
+    # Extract catchments, converting geometry to WKT
+    if 'divide_id' not in gdf_catchments.columns or 'geometry' not in gdf_catchments.columns:
+        raise ValueError("The required columns ('divide_id', 'geometry') were not found in the catchment layer.")
+
+    catchments = {
+        row['divide_id']: row['geometry'].wkt  # Convert to WKT (string)
+        for _, row in gdf_catchments.iterrows()
+    }
+
+    # Read the gage layer
+    gdf_gage = safe_read_gpkg(gpkg_path, layer=gage_layer)
+
+    # Ensure gage data exists and convert coordinates
+    if gdf_gage.empty or 'hl_x' not in gdf_gage.columns or 'hl_y' not in gdf_gage.columns:
+        gage_coordinates = None  # No valid gage data found
     else:
-        raise ValueError("The 'divide_id' column was not found in the layer.")
+        # Convert hl_x, hl_y into a GeoDataFrame
+        gdf_gage = gdf_gage.set_geometry(gpd.points_from_xy(gdf_gage.hl_x, gdf_gage.hl_y))
+
+        # Assign CRS from Catchments if Gage CRS is missing
+        if gdf_gage.crs is None:
+            if gdf_catchments.crs:
+                gdf_gage.set_crs(gdf_catchments.crs, inplace=True)
+            else:
+                raise RuntimeError("CRS is missing for both the gage and catchments layers. Cannot convert to latitude/longitude.")
+
+        # Convert to EPSG:4326 (WGS84 lat/lon)
+        gdf_gage = gdf_gage.to_crs(epsg=4326)
+        gage_point = gdf_gage.geometry.iloc[0]  # Assuming first entry is the gage
+        gage_coordinates = {"latitude": gage_point.y, "longitude": gage_point.x}
+
+    return {
+        "catchments": catchments,
+        "gage_coordinates": gage_coordinates,
+        "crs": gdf_catchments.crs.to_string() if gdf_catchments.crs else None
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="GeoPackage Catchments Extraction Tool")
+    parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
+    parser.add_argument("--layer", type=str, default="divides", help="Layer name containing catchments (default: 'divides')")
+    args = parser.parse_args()
+
+    try:
+        catchments_data = get_geometry_from_gpkg(args.gpkg_path, args.layer)
+        print(json.dumps(catchments_data, indent=4, default=str))
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    main()

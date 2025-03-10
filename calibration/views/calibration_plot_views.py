@@ -681,7 +681,7 @@ def count_and_read_file_in_chunks(file_path: str, start: int, limit: int) -> tup
         raise CerfException(f"Failed to read file: {file_path}")
 
 
-@lru_cache(maxsize=128)
+@lru_cache()
 def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
     """
     Uses process_worker_dirs to find the worker directory that has a non-empty 'Plot_Iteration' subdirectory.
@@ -706,7 +706,7 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     return found_worker_dir
 
 
-@lru_cache
+@lru_cache()
 def get_worker_name_from_directory(worker_dir: str) -> str:
     """
     Extracts the worker name from a given worker directory string.
