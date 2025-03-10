@@ -185,7 +185,7 @@ def get_swe_images_by_date(request: Request) -> Response:
     validation_start_date = run.calibration_run.validation_start_period.strftime("%Y-%m-%d")
     validation_end_date = run.calibration_run.validation_end_period.strftime("%Y-%m-%d")
     if date < validation_start_date or date > validation_end_date:
-        return ResponseError(f'Date specified {date} must be within the Validation range {validation_start_date} to {validation_end_date}')
+        return ResponseError(f'Date specified {date} must be within the Validation Simulation range {validation_start_date} to {validation_end_date}')
 
     # Do not allow snodas plots for Validation Control runs.
     if run.validation_type == ValidationType.VALID_CONTROL.value:
