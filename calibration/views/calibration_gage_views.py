@@ -21,7 +21,7 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
     SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory, get_single_file
-from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
     get_forcing_filename_pattern, get_observational_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
@@ -157,11 +157,12 @@ def get_gage(request: Request) -> Response:
 
     gage_id = validator.get('gage_id')
     gage = get_gage_by_id(gage_id)
-    if not gage['station_name']:
-        gage['station_name'] = "<undefined>"
 
     if not gage:
         return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+
+    if not gage['station_name']:
+        gage['station_name'] = "<undefined>"
 
     response_validator, error_response = validate_response(GageSerializer, gage)
     if error_response:
@@ -217,6 +218,7 @@ def save_gage_tab(request: Request):
     eds_errors = []
 
     geopackage_image_url = None
+    num_catchments = None
     if gage_id:
         try:
             eds_errors_entry = save_gage(run, gage_id)
@@ -246,7 +248,12 @@ def save_gage_tab(request: Request):
 
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
-        geopackage_image_url = get_geopackage_image_url(run)
+        geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
+                                         GeopackageSourceEnum.UPLOAD,
+                                         lambda: get_single_file(get_geopackage_dir_for_job(run)))
+
+        geopackage_image_url = get_geopackage_image_url(geopackage_path)
+        num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
 
         # Process observational source and delete user-uploaded file if necessary
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
@@ -296,7 +303,7 @@ def save_gage_tab(request: Request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
-                'geopackage_image_url': geopackage_image_url}
+                'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments}
     if eds_errors:
         response['eds_errors'] = eds_errors
 
@@ -311,17 +318,13 @@ def save_gage_tab(request: Request):
     return Response(response_validator.data)
 
 
-def get_geopackage_image_url(run: CalibrationRun) -> str | None:
+def get_geopackage_image_url(geopackage_path: str) -> str | None:
     """
     Convert a GeoPackage file to a PNG image URL if available.
 
-    :param run: The calibration run instance containing the GeoPackage file information.
-    :return: A base64 URL string of the PNG image if conversion is successful; otherwise, None.
+    :param geopackage_path: The file path of the GeoPackage.
+    :return: A base64-encoded URL string of the PNG image if conversion is successful; otherwise, None.
     """
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
-
     if geopackage_path and os.path.exists(geopackage_path):
         try:
             # Attempt to convert the GeoPackage to PNG for selected layers
@@ -610,7 +613,12 @@ def upload_geopackage_data(request: Request) -> Response:
     logger.info(f"Saving user-uploaded geopackage file to {os.path.join(fs.location, user_geopackage_file.name)}")
     fs.save(user_geopackage_file.name, user_geopackage_file)
 
-    geopackage_image_url = get_geopackage_image_url(run) if return_geopackage_url else None
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    geopackage_image_url = get_geopackage_image_url(geopackage_path) if return_geopackage_url else None
+
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
 
     with transaction.atomic():
         run.save()
@@ -620,6 +628,7 @@ def upload_geopackage_data(request: Request) -> Response:
     response = {
         'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Job {run.id}",
         'calibration_run_id': run.id,
+        'num_catchments': num_catchments,
         'status': run.status.name
     }
     if geopackage_image_url:

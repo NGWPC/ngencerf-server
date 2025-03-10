@@ -419,6 +419,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     time_range = TimeRangeSerializerAllowEmpty(required=False)
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
+    num_catchments = serializers.IntegerField(required=True, allow_null=True)
 
     objective_function = serializers.CharField(required=True, allow_null=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -530,6 +531,7 @@ class UploadGeopackageSerializer(BaseSerializer):
 
 class UploadGeopackageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False)
+    num_catchments = serializers.IntegerField(required=True, allow_null=True)
 
 
 class SaveGageRequestSerializer(BaseSerializer):
@@ -543,6 +545,7 @@ class SaveGageRequestSerializer(BaseSerializer):
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
+    num_catchments = serializers.IntegerField(required=True, allow_null=True)
 
 
 class DomainResponseSerializer(BaseSerializer):
