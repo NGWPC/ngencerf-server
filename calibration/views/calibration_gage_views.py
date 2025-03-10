@@ -133,9 +133,6 @@ def load_gage_tab(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    parameters=[
-        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
-    ],
     description="Get details for a specific gage"
 )
 @api_view(['GET', 'POST'])
@@ -156,15 +153,15 @@ def get_gage(request: Request) -> Response:
         return error_return
 
     gage_id = validator.get('gage_id')
-    gage = get_gage_by_id(gage_id)
+    gage_dict = get_gage_by_id(gage_id)
 
-    if not gage:
+    if not gage_dict:
         return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
-    if not gage['station_name']:
-        gage['station_name'] = "<undefined>"
+    if not gage_dict['station_name']:
+        gage_dict['station_name'] = "<undefined>"
 
-    response_validator, error_response = validate_response(GageSerializer, gage)
+    response_validator, error_response = validate_response(GageSerializer, gage_dict)
     if error_response:
         return error_response
     logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_gage() - {json.dumps(response_validator.data)}')
