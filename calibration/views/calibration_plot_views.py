@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import re
+from functools import lru_cache
 from typing import Any, cast
 
 import pandas as pd
@@ -290,7 +292,10 @@ def determine_plot_location(run: CalibrationRun | ValidationRun | ForecastRun, p
             return get_output_calibration_run_dir(calibration_run)
 
         case 'plot_iteration':
+            # TODO Need to return the worker name
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            print('worker_dir', worker_dir)
+            print('get_worker_name_from_directory', get_worker_name_from_directory(worker_dir))
             if worker_dir is None:
                 raise CerfException(f'Plots could not be found for {get_job_description(run)}')
             return os.path.join(worker_dir, 'Plot_Iteration')
@@ -345,8 +350,12 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num, 'objective_function_value': iteration.objective_function_value}
                     for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
@@ -366,16 +375,24 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num,
                      'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
                     for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num,
                      'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
                                     iteration.iterationparameter_set.all()]}
@@ -383,8 +400,12 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num,
                      'objective_function_value': iteration.objective_function_value,
                      'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
@@ -660,6 +681,7 @@ def count_and_read_file_in_chunks(file_path: str, start: int, limit: int) -> tup
         raise CerfException(f"Failed to read file: {file_path}")
 
 
+@lru_cache(maxsize=128)
 def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
     """
     Uses process_worker_dirs to find the worker directory that has a non-empty 'Plot_Iteration' subdirectory.
@@ -682,3 +704,22 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     process_worker_dirs(calibration_run, check_worker)
 
     return found_worker_dir
+
+
+@lru_cache
+def get_worker_name_from_directory(worker_dir: str) -> str:
+    """
+    Extracts the worker name from a given worker directory string.
+
+    This function assumes that the worker directory string contains a pattern of the form
+    'ngen_<worker_name>_worker'. It does not check for a missing match; if the pattern
+    is not found, an AttributeError will be raised.
+
+    :param worker_dir: The full path of the worker directory.
+    :return: The extracted worker name.
+    """
+    pattern = r'ngen_([^_]+)_worker'
+    dir_name = os.path.basename(worker_dir)
+    match = re.search(pattern, dir_name)
+    # This will raise an AttributeError if the pattern is not found.
+    return match.group(1)
