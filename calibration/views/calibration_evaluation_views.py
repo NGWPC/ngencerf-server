@@ -136,17 +136,24 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> QuerySet[Iteration]:
+def get_iterations_for_calibration_job(calibration_run: CalibrationRun, worker_name: str | None = None) -> QuerySet[Iteration]:
     """
-    Fetches iterations for the given calibration run.
+        Fetches iterations for the given calibration run.
 
-    - Prefetches related parameters and metrics for optimized retrieval.
+        - Optionally filters by worker name.
+        - Prefetches related parameters and metrics for optimized retrieval.
 
-    :param calibration_run: The CalibrationRun instance to fetch iterations for.
-    :return: QuerySet of Iteration objects associated with the calibration run.
-    """
+        :param calibration_run: The CalibrationRun instance to fetch iterations for.
+        :param worker_name: Optional worker name to filter iterations.
+        :return: QuerySet of Iteration objects associated with the calibration run.
+        """
+    queryset = Iteration.objects.filter(calibration_run=calibration_run)
+
+    if worker_name:
+        queryset = queryset.filter(worker_name=worker_name)
+
     return (
-        Iteration.objects.filter(calibration_run=calibration_run)
+        queryset
         .select_related('calibration_run')
         .prefetch_related('iterationparameter_set__calibration_parameter',
                           'iterationmetric_set')
