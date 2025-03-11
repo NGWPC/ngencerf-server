@@ -93,33 +93,37 @@ def get_git_info_internal():
 
 def transform_component(component_git_info):
     """
-    Transform a single component dictionary to include only selected Git fields.
-
-    The transformation rules are:
-      - Always include 'commit_hash' and 'build_date'.
-      - If 'tags' is non-empty, include the 'tags' field (renamed to 'release').
-      - If 'tags' is empty, include 'branch', 'author', 'message', and 'commit_date'.
+    Transform a single component dictionary to include only selected Git fields in a specific order:
+      - Always include 'release', 'build_date', and 'commit_hash' (in that order).
+      - If 'tags' is empty, also include 'commit_date', 'author', and 'message' (in that order) if they exist.
       - Recursively transform nested 'modules' (if present).
 
     :param component_git_info: A dictionary containing Git information for a component.
     :return: A new dictionary with only the desired fields.
     """
-    new_comp = {
-        "commit_hash": component_git_info.get("commit_hash", ""),
-        "build_date": component_git_info.get("build_date", "")
-    }
+    new_comp = {}
+
     if component_git_info.get("tags", "").strip() == "":
         # If tags is empty, include branch, author, message, and commit_date.
         branch = f"dev ({component_git_info.get('branch', '<unknown>')})"
         new_comp["release"] = branch
-        new_comp["author"] = component_git_info.get("author", "")
-        new_comp["message"] = component_git_info.get("message", "")
-        new_comp["commit_date"] = component_git_info.get("commit_date", "")
     else:
-        # If tags is non-empty, include tags.
         new_comp["release"] = component_git_info.get("tags", "")
 
-    # Process nested modules recursively, if present
+    # Insert keys in the desired order: build_date, then commit_hash.
+    new_comp["build_date"] = component_git_info.get("build_date", "")
+    new_comp["commit_hash"] = component_git_info.get("commit_hash", "")
+
+    # If tags is empty, add commit_date, author, and message in order, if they exist.
+    if component_git_info.get("tags", "").strip() == "":
+        if "commit_date" in component_git_info:
+            new_comp["commit_date"] = component_git_info.get("commit_date", "")
+        if "author" in component_git_info:
+            new_comp["author"] = component_git_info.get("author", "")
+        if "message" in component_git_info:
+            new_comp["message"] = component_git_info.get("message", "")
+
+    # Process nested modules recursively, if present.
     if "modules" in component_git_info and isinstance(component_git_info["modules"], list):
         new_modules = []
         for module_obj in component_git_info["modules"]:
