@@ -410,13 +410,12 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
 
 
 class GitInfoSerializer(BaseSerializer):
-    commit_hash = serializers.CharField(required=True)
-    branch = serializers.CharField(required=False)
     release = serializers.CharField(required=False, allow_blank=True)
-    author = serializers.CharField(required=False)
-    commit_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
-    message = serializers.CharField(required=False)
     build_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
+    commit_hash = serializers.CharField(required=True)
+    commit_date = serializers.DateTimeField(required=False, input_formats=['%Y-%m-%d %H:%M:%S %Z'])
+    author = serializers.CharField(required=False)
+    message = serializers.CharField(required=False)
     modules = serializers.ListField(child=serializers.DictField(), required=False)
 
     @staticmethod
