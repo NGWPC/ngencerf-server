@@ -232,7 +232,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                         copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None
-                        datafile['hydrofab_file'] = get_single_file(geopackage_dir)
+                    datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
             if datafile['hydrofab_file'] and os.path.exists(datafile['hydrofab_file']):
                 logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
