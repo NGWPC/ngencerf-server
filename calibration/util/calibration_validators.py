@@ -226,29 +226,6 @@ class ValidationTimeControls(BaseSerializer):
             self.fields['simulation_end_time'].required = True
 
 
-# TODO See if we can eliminate 1 of these after Data Services implementation
-# Used for the output from Data Services
-class OutputVariableMetadataSerializer(BaseSerializer):
-    name = serializers.CharField(required=True, allow_blank=False)
-    description = serializers.CharField(required=True, allow_blank=False)
-
-
-class OutputVariableSerializer(BaseSerializer):
-    name = serializers.CharField(allow_blank=False)
-    module = serializers.CharField(allow_blank=False)
-
-    def __init__(self, *args, allow_empty=False, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        # If allow_empty is True, make the fields not required
-        if allow_empty:
-            self.fields['name'].required = False
-            self.fields['module'].required = False
-        else:
-            self.fields['name'].required = True
-            self.fields['module'].required = True
-
-
 class SaveTuningParametersSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=True, allow_null=False)
