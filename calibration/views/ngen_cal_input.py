@@ -20,6 +20,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS
+from calibration.views.called_from import called_from
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
@@ -143,6 +144,8 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
     :param build: Whether to create directories and build configuration files.
     :return: Tuple containing any errors and the path to the config file (if created).
     """
+    logger.info(called_from())
+
     # Check if the run's status allows it to be prepared for execution
     if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         return None, None
@@ -229,7 +232,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
                         copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None
-                    datafile['hydrofab_file'] = get_single_file(geopackage_dir)
+                        datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
             if datafile['hydrofab_file'] and os.path.exists(datafile['hydrofab_file']):
                 logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
