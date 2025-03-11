@@ -2,6 +2,8 @@ import logging
 import os
 import shutil
 
+from calibration.views.called_from import called_from
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,6 +14,8 @@ def copy_file(source_file: str, destination_file: str):
     :param source_file: Path to the source file to be copied
     :param destination_file: Path to the destination file
     """
+    logger.info(called_from())
+
     # Check if the source file exists
     if not os.path.isfile(source_file):
         raise FileNotFoundError(f"Source file {source_file} does not exist or is not a file.")
@@ -35,6 +39,8 @@ def copy_directory(source_dir: str, destination_dir: str):
     :param source_dir: Path to the source directory to be copied
     :param destination_dir: Path to the destination directory
     """
+    logger.info(called_from())
+
     # Check if the source directory exists
     if not os.path.isdir(source_dir):
         raise FileNotFoundError(f"Source directory {source_dir} does not exist or is not a directory.")
@@ -57,6 +63,8 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
     :param source_file: Path to the source file to be copied
     :param destination_dir: Path to the destination directory
     """
+    logger.info(called_from())
+
     # Ensure the destination directory exists
     if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
@@ -66,6 +74,7 @@ def copy_file_to_directory(source_file: str, destination_dir: str):
 
     # Use copy_file to handle the file copying
     copy_file(source_file, destination_file)
+    logger.info(f"File successfully copied from {source_file} to {destination_dir}.")
 
 
 def delete_all_files_in_directory(source_dir: str):
