@@ -5,7 +5,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Tuple, Literal, cast
+from typing import Literal, cast
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -192,7 +192,7 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
 
-def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datetime]]:
+def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datetime]]:
     """
     Retrieves calibration and validation time periods for a given calibration run.
 
@@ -589,9 +589,9 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
 
 
 def get_full_evaluation_date_range_from_ranges(
-        calibration_evaluation_range: Tuple[datetime, datetime],
-        validation_evaluation_range: Tuple[datetime, datetime]
-) -> Tuple[datetime, datetime]:
+        calibration_evaluation_range: tuple[datetime, datetime],
+        validation_evaluation_range: tuple[datetime, datetime]
+) -> tuple[datetime, datetime]:
     """
     Determines the full evaluation date range by identifying the earliest start time and latest end time
     across both calibration and validation evaluation ranges.
@@ -610,7 +610,7 @@ def get_full_evaluation_date_range(
         calibration_evaluation_end_time: datetime,
         validation_evaluation_start_time: datetime,
         validation_evaluation_end_time: datetime
-) -> Tuple[datetime, datetime]:
+) -> tuple[datetime, datetime]:
     """
     Calculates the overall evaluation date range by taking the earliest start time and latest end time
     from both calibration and validation evaluation periods.

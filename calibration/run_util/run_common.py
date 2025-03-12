@@ -3,7 +3,7 @@ import os
 import subprocess
 from concurrent.futures import Future
 from datetime import datetime, timezone
-from typing import Dict, Callable
+from typing import Callable
 
 from createInput import create_input
 from django.conf import settings
@@ -29,7 +29,7 @@ from cerfServer.settings import NgenEnvironmentEnum
 logger = logging.getLogger(__name__)
 
 # Job registry to store subprocess objects keyed by a tuple of (calibration_run_id, validation_run_id)
-job_registry: Dict[tuple[int, int], subprocess.Popen] = {}
+job_registry: dict[tuple[int, int], subprocess.Popen] = {}
 
 
 def get_job_registry_key(run: BaseRun) -> tuple[int, int]:

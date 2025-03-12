@@ -4,7 +4,6 @@ import os
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
-from typing import Tuple
 
 import fiona
 import geopandas as gpd
@@ -80,7 +79,7 @@ def gpkg_to_png(gpkg_path: str, png_path: str, layer: str = None) -> None:
 
 
 @lru_cache()
-def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: Tuple[str, ...] = None) -> BytesIO:
+def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ...] = None) -> BytesIO:
     """
     Generates a PNG image from selected layers in a GeoPackage and returns it as a BytesIO object.
 

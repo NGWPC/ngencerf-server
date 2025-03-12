@@ -337,6 +337,9 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
     validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
+    modules = serializers.ListSerializer(child=serializers.CharField(required=True, allow_null=False, allow_blank=False), required=True,
+                                         allow_empty=True)
+    is_archived = serializers.BooleanField(required=True, allow_null=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
@@ -445,6 +448,10 @@ class GetGitInfoResponseSerializer(BaseSerializer):
 
 class ArchiveJobRequestSerializer(CalibrationRunSerializer):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
+
+
+class GetCalibrationJobsRequestSerilizer(BaseSerializer):
+    include_archived = serializers.BooleanField(default=False, required=False)
 
 
 ##################################

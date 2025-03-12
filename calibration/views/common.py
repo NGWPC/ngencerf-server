@@ -7,7 +7,7 @@ import re
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, List, Any, Callable, cast
+from typing import Type, Any, Callable, cast
 
 import numpy as np
 from django.conf import settings
@@ -61,7 +61,7 @@ def get_run_instance(
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
-    allowed_statuses: List[Status] = [status_enum.db_instance for status_enum in run_status]
+    allowed_statuses: list[Status] = [status_enum.db_instance for status_enum in run_status]
 
     # Query without filtering out archived jobs
     query: QuerySet = model.objects.filter(id=run_id)
@@ -130,8 +130,8 @@ def get_validation_run(
 def get_forecast_forcing_download_run(
         forecast_forcing_download_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ForecastForcingDownloadRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None
+) -> tuple[ForecastForcingDownloadRun | None, Response | None]:
     """
     Retrieve a ForecastForcingDownloadRun instance by its ID, filtering by owner and status.
 

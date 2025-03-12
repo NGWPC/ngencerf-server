@@ -3,7 +3,7 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Any
 
 import toml
 from datetimerange import DateTimeRange
@@ -20,9 +20,9 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS
-from calibration.views.called_from import called_from
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
+from calibration.views.called_from import called_from
 from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
 
 logger = logging.getLogger(__name__)
@@ -136,13 +136,13 @@ config_template = {
 }
 
 
-def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Optional[List[str]], Optional[str]]:
+def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | None, str | None]:
     """
-    Prepares the configuration and validates the `run` instance for readiness.
+    Prepares the configuration and validates the run instance for readiness.
 
     :param run: The CalibrationRun instance to be validated and prepared.
     :param build: Whether to create directories and build configuration files.
-    :return: Tuple containing any errors and the path to the config file (if created).
+    :return: A tuple containing a list of errors (if any) and the path to the config file (if created).
     """
     logger.info(called_from())
 
@@ -235,7 +235,7 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
                     datafile['hydrofab_file'] = get_single_file(geopackage_dir)
 
-            if datafile['hydrofab_file'] and os.path.exists(datafile['hydrofab_file']):
+            if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
                 logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
@@ -431,20 +431,19 @@ def ready_to_run(run: CalibrationRun, build: Optional[bool] = None) -> Tuple[Opt
 
     run.save()
 
-    # TODO Only build if no errors
+    # Only build the config file if there are no errors and build is True
     config_file = build_config(config, job_data_dir) if build and not errors else None
-    # config_file = build_config(config, job_data_dir) if build else None
 
     return errors, config_file
 
 
-def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: str) -> None:
+def write_parameter_files(params: list[dict[str, str | float]], parameter_dir: str) -> None:
     """
     Writes parameter files for each model in `params` as CSV files.
 
-    Args:
-        params: List of dictionaries, each containing information about the parameters for a specific model.
-        parameter_dir: Directory where the parameter files should be written.
+    :param params: A list of dictionaries containing information about the parameters for a specific model.
+    :param parameter_dir: The directory where the parameter files should be written.
+    :return: None
     """
     # Ensure the directory exists
     os.makedirs(parameter_dir, exist_ok=True)
@@ -458,7 +457,7 @@ def write_parameter_files(params: List[Dict[str, str | float]], parameter_dir: s
     for model, model_params in params_by_model.items():
         parameter_file = os.path.join(parameter_dir, f'calib_params_{model.lower()}.csv')
 
-        # Writing the CSV file
+        # Write the CSV file
         with open(parameter_file, mode='w', newline='') as param_file:
             # noinspection PyTypeChecker
             writer = csv.DictWriter(param_file, fieldnames=['param', 'min', 'max', 'init'])
@@ -480,7 +479,7 @@ class CustomTomlEncoder(TomlEncoder):
         self._dict = dict  # Ensure TOML dictionaries serialize properly
 
     def dump_value(self, v):
-        """ Override default behavior to avoid quotes around any values, as required by ngen-cal. """
+        """Override default behavior to avoid quotes around any values, as required by ngen-cal."""
         if isinstance(v, str):
             return v  # Always return the raw string without quotes
         if isinstance(v, bool):  # Ensure booleans remain lowercase as per TOML spec
@@ -509,17 +508,17 @@ def build_config(config: dict, directory: str) -> str:
     return config_file
 
 
-def is_missing(value: Any, field_name: str, errors: List[str], custom_error: Optional[str] = None) -> bool:
+def is_missing(value: Any, field_name: str, errors: list[str], custom_error: str = "") -> bool:
     """
     Checks if a required value is missing, adding an error message if so.
 
     :param value: The value to check.
     :param field_name: The name of the field being checked.
-    :param errors: List to which errors will be appended if the value is missing.
-    :param custom_error: Optional custom error message.
+    :param errors: The list to which errors will be appended if the value is missing.
+    :param custom_error: An optional custom error message.
     :return: True if the value is missing, False otherwise.
     """
     if value is None:
-        errors.append(custom_error or f"{field_name} must be specified")
+        errors.append(custom_error if custom_error else f"{field_name} must be specified")
         return True
     return False

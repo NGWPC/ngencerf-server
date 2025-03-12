@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Dict, Any, Generic
+from typing import Any, Generic
 from typing import Type, TypeVar
 
 from django.core.cache import cache
@@ -35,7 +35,7 @@ class AbstractEnum(Generic[T], Enum):
         return None
 
     @classmethod
-    def get_aliases(cls) -> Dict[Enum, List[str]]:
+    def get_aliases(cls) -> dict[Enum, list[str]]:
         """
         Optionally overridden by subclasses to provide aliases for enum members.
 
@@ -44,7 +44,7 @@ class AbstractEnum(Generic[T], Enum):
         return {}
 
     @classmethod
-    def _get_cached_items(cls) -> Dict[str, T] | None:
+    def _get_cached_items(cls) -> dict[str, T] | None:
         """
         Helper method to retrieve cached items, reloading them from the database if the cache is empty.
         Only applies if a model is defined.
@@ -62,7 +62,7 @@ class AbstractEnum(Generic[T], Enum):
         return items
 
     @classmethod
-    def get_names(cls) -> List[str]:
+    def get_names(cls) -> list[str]:
         """
         Returns a list of names for the enum values.
 
@@ -81,7 +81,7 @@ class AbstractEnum(Generic[T], Enum):
         return [item.name for item in items.values()] if items else []
 
     @classmethod
-    def get_all_valid_names(cls) -> List[str]:
+    def get_all_valid_names(cls) -> list[str]:
         """
         Retrieves all valid names for the enum, including any aliases defined by the subclass.
         Supports flexibility by allowing multiple names (aliases) for the same enum member.
@@ -99,7 +99,7 @@ class AbstractEnum(Generic[T], Enum):
         return list(valid_names)
 
     @classmethod
-    def get_filter(cls) -> Dict[str, Any] | None:
+    def get_filter(cls) -> dict[str, Any] | None:
         """
         Optional: Subclasses can override this to specify custom filters (e.g., `{'is_active': True}`)
         to apply when loading items from the database.
@@ -187,7 +187,7 @@ class AbstractEnum(Generic[T], Enum):
         return self.__class__.get_instance(self.value)
 
     @classmethod
-    def get_choices_with_fields(cls, fields: List[str] = None, extra_filter: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def get_choices_with_fields(cls, fields: list[str] = None, extra_filter: dict[str, Any] = None) -> list[dict[str, Any]]:
         """
         Returns a list of items from the database, including only the specified fields in each item
         (defaults to 'name' and 'description'). This method is useful for front-end selections.
