@@ -271,7 +271,7 @@ def run_calibration(request: Request) -> Response:
                 'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from run_calibration() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from run_calibration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 

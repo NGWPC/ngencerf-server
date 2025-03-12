@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Dict, Any, Tuple, cast
+from typing import Any, cast
 
 from django.db import transaction
 from django.db.models import F
@@ -82,7 +82,7 @@ def load_optimization_tab(request) -> Response:
     return Response(response_validator.data)
 
 
-def get_user_optimization(run: CalibrationRun) -> Tuple[str, List[Dict[str, Any]]]:
+def get_user_optimization(run: CalibrationRun) -> tuple[str, list[dict[str, Any]]]:
     """
     Retrieves user-selected optimization and inputs for a calibration run.
 
@@ -103,7 +103,7 @@ def get_user_optimization(run: CalibrationRun) -> Tuple[str, List[Dict[str, Any]
     return optimization, optimization_inputs
 
 
-def get_static_optimizations() -> List[Dict[str, Any]]:
+def get_static_optimizations() -> list[dict[str, Any]]:
     """
     Retrieves static optimizations with input details.
 
@@ -211,8 +211,8 @@ def save_optimization_tab(request) -> Response:
         return Response(response_validator.data)
 
 
-def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: List[Dict[str, Any]]) \
-        -> Tuple[Optimization | None, str | None]:
+def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: list[dict[str, Any]]) \
+        -> tuple[Optimization | None, str | None]:
     """
     Validates and assigns optimization inputs to a calibration run.
 
@@ -310,7 +310,7 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
     return None
 
 
-def write_optimization_inputs(run: CalibrationRun, optimization: Optimization, optimization_inputs: List[Dict[str, Any]]) -> None:
+def write_optimization_inputs(run: CalibrationRun, optimization: Optimization, optimization_inputs: list[dict[str, Any]]) -> None:
     """
     Writes optimization inputs to the database, removing any existing ones for the calibration run.
 

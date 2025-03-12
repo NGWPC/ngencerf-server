@@ -1,4 +1,4 @@
-from typing import Dict, Any, Type
+from typing import Any, Type
 
 from django.core.cache import cache
 
@@ -42,7 +42,7 @@ class ForcingSourceEnum(AbstractEnum):
         return ForcingSource
 
     @classmethod
-    def get_filter(cls) -> Dict[str, Any]:
+    def get_filter(cls) -> dict[str, Any]:
         # Apply the filter to return only active elements
         return {'is_active': True}
 
@@ -64,7 +64,7 @@ class ObservationalSourceEnum(AbstractEnum):
         return ObservationalSource
 
     @classmethod
-    def get_filter(cls) -> Dict[str, Any]:
+    def get_filter(cls) -> dict[str, Any]:
         # Apply the filter to return only active elements
         return {'is_active': True}
 
@@ -86,7 +86,7 @@ class GeopackageSourceEnum(AbstractEnum):
         return GeopackageSource
 
     @classmethod
-    def get_filter(cls) -> Dict[str, Any]:
+    def get_filter(cls) -> dict[str, Any]:
         # Apply the filter to return only active elements
         return {'is_active': True}
 
@@ -121,7 +121,7 @@ class MetricEnum(AbstractEnum):
         return Metric
 
     @classmethod
-    def get_filter(cls) -> Dict[str, Any]:
+    def get_filter(cls) -> dict[str, Any]:
         # Apply the filter to return only active elements
         return {'is_active': True}
 

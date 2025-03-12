@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Tuple, cast
+from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -83,7 +83,9 @@ def import_job(request: Request) -> Response:
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
-            submit_job(run, config_file=config_file)
+            error_response = submit_job(run, config_file=config_file)
+            if error_response:
+                return error_response
             imported_and_submitted = 'imported and submitted'
 
     response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
@@ -101,7 +103,7 @@ def import_job(request: Request) -> Response:
 
 
 def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) \
-        -> Tuple[CalibrationRun | None, dict | None, ResponseError]:
+        -> tuple[CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
