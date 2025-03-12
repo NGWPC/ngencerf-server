@@ -29,38 +29,36 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-def derive_swe_file_inputs(run: ValidationRun) -> Dict[str, str]:
+def derive_swe_file_inputs(run: ValidationRun) -> dict[str, str]:
     """
     Derives the common SWE file inputs from the validation run.
 
-    Returns a dict with:
-      - 'swe_csv': the path to the SWE CSV file,
-      - 'gpkg': the path to the geopackage file.
+    :param run: The ValidationRun object.
+    :return: A dict with keys 'swe_csv' for the path to the SWE CSV file and 'gpkg' for the geopackage file.
     """
     validation_type = ValidationType(run.validation_type)
+
+    # Find the matching worker name for the validation run if applicable.
     worker_name = find_validation_worker_with_matching_log(
         run,
         worker_name=run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
         iteration_num=run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
     )
+
+    # Retrieve paths to required files.
     swe_csv = get_validation_output_valid(run.calibration_run, worker_name)
     gpkg = get_single_file(get_geopackage_dir_for_job(run.calibration_run))
     return {'swe_csv': swe_csv, 'gpkg': gpkg}
 
 
-def get_or_create_swe_plots(run: ValidationRun, date: str, plot_dir: str) -> Dict[str, str]:
+def get_or_create_swe_plots(run: ValidationRun, date: str, plot_dir: str) -> dict[str, str]:
     """
-    Derives file paths based on the validation run, checks the cache,
-    and if needed, checks for existing files or calls run_swe.main to generate plots.
+    Derives file paths based on the validation run, checks the cache, and if needed, checks for existing files or calls run_swe.main to generate plots.
 
-    Args:
-        run: The validation run object.
-        date: The date string (YYYY-MM-DD) for which to generate plots.
-        plot_dir: Directory where the plots are stored.
-
-    Returns:
-        A dictionary with keys 'sim_map', 'raw_map', and 'lumped_map'
-        corresponding to their file paths.
+    :param run: The ValidationRun object.
+    :param date: The date string (YYYY-MM-DD) for which to generate plots.
+    :param plot_dir: Directory where the plots are stored.
+    :return: A dict with keys 'sim_map', 'raw_map', and 'lumped_map' corresponding to their file paths.
     """
     # Get common SWE file inputs.
     inputs = derive_swe_file_inputs(run)
@@ -111,7 +109,13 @@ def get_or_create_swe_plots(run: ValidationRun, date: str, plot_dir: str) -> Dic
     return result
 
 
-def generate_swe_ts_data(validation_run: ValidationRun):
+def generate_swe_ts_data(validation_run: ValidationRun) -> None:
+    """
+    Generates SWE timeseries images and CSV data if the validation run is not of type VALID_CONTROL.
+
+    :param validation_run: The ValidationRun object.
+    :return: None
+    """
     if validation_run.validation_type != ValidationType.VALID_CONTROL.value:
         # Generate SWE timeseries images.
         inputs = derive_swe_file_inputs(validation_run)
@@ -137,13 +141,29 @@ def generate_swe_ts_data(validation_run: ValidationRun):
         logger.info(f"Finished running swe_timeseries.swe_ts in {elapsed_time:.2f} seconds")
 
 
-def get_swe_timeseries_png_filename(validation_run: ValidationRun):
+def get_swe_timeseries_png_filename(validation_run: ValidationRun) -> str:
+    """
+    Returns the full file path for the SWE timeseries PNG image.
+
+    :param validation_run: The ValidationRun object.
+    :return: A string representing the path to the PNG file.
+    """
     return os.path.join(get_plot_dir(validation_run), 'swe_timeseries.png')
 
 
-def get_swe_timeseries_data_filename(validation_run: ValidationRun):
-    return os.path.join(get_output_validation_run_dir(validation_run.calibration_run),
-                        'swe_timeseries_best.csv' if validation_run.validation_type == ValidationType.VALID_BEST.value else f'swe_timeseries_{validation_run.worker_name}_iter{validation_run.iteration_num}')
+def get_swe_timeseries_data_filename(validation_run: ValidationRun) -> str:
+    """
+    Returns the full file path for the SWE timeseries CSV data file.
+
+    :param validation_run: The ValidationRun object.
+    :return: A string representing the path to the CSV file.
+    """
+    filename = (
+        'swe_timeseries_best.csv'
+        if validation_run.validation_type == ValidationType.VALID_BEST.value
+        else f'swe_timeseries_{validation_run.worker_name}_iter{validation_run.iteration_num}'
+    )
+    return os.path.join(get_output_validation_run_dir(validation_run.calibration_run), filename)
 
 
 @extend_schema(
@@ -164,6 +184,12 @@ def get_swe_timeseries_data_filename(validation_run: ValidationRun):
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_swe_images_by_date(request: Request) -> Response:
+    """
+    Retrieve SWE images for a given date.
+
+    :param request: The HTTP request object.
+    :return: A Response object with SWE image data or an error message.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_swe_images_by_date() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
@@ -239,6 +265,12 @@ def get_swe_images_by_date(request: Request) -> Response:
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_swe_timeseries_data(request: Request) -> Response:
+    """
+    Retrieve SWE timeseries data for a given validation run.
+
+    :param request: The HTTP request object.
+    :return: A Response object with SWE timeseries image and data or an error message.
+    """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'get_swe_timeseries_data() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
@@ -286,7 +318,12 @@ def get_swe_timeseries_data(request: Request) -> Response:
 
 
 def get_plot_dir(run: ValidationRun) -> str:
-    # Determine the appropriate plot directory.
+    """
+    Determines and returns the appropriate plot directory for a given validation run.
+
+    :param run: The ValidationRun object.
+    :return: A string representing the path to the directory for SWE plots.
+    """
     if run.validation_type == ValidationType.VALID_ITERATION.value:
         plot_dir = os.path.join(get_output_validation_iteration_plot_dir(run.calibration_run, run.iteration_num, run.worker_name))
     else:
@@ -294,7 +331,12 @@ def get_plot_dir(run: ValidationRun) -> str:
     return os.path.join(plot_dir, 'SWE')
 
 
-def read_csv_as_json(csv_filepath: str):
-    """Reads a CSV file and returns a list of dictionaries using column names as keys."""
+def read_csv_as_json(csv_filepath: str) -> list[dict[str, str]]:
+    """
+    Reads a CSV file and returns a list of dictionaries using column names as keys.
+
+    :param csv_filepath: Path to the CSV file.
+    :return: A list of dictionaries representing each row in the CSV.
+    """
     with open(csv_filepath, newline='') as csvfile:
         return list(csv.DictReader(csvfile))
