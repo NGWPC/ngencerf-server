@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, cast
+from typing import cast
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -222,8 +222,6 @@ def get_swe_images_by_date(request: Request) -> Response:
 
     # Retrieve or generate the SWE plots using the helper.
     swe_results = get_or_create_swe_plots(run, date, plot_dir)
-
-    generate_swe_ts_data(run)
 
     response = {
         'message': f'Plots created in {plot_dir}',
