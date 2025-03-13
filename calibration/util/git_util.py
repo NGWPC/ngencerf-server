@@ -102,19 +102,20 @@ def transform_component(component_git_info):
     """
     new_comp = {}
 
-    if component_git_info.get("tags", "").strip() == "":
+    tags = component_git_info.get("tags", "").strip()
+    if tags == "":
         # If tags is empty, include branch, author, message, and commit_date.
         branch = f"dev ({component_git_info.get('branch', '<unknown>')})"
         new_comp["release"] = branch
     else:
-        new_comp["release"] = component_git_info.get("tags")
+        new_comp["release"] = tags
 
     # Insert keys in the desired order: build_date, then commit_hash.
     new_comp["build_date"] = component_git_info.get("build_date", "")
     new_comp["commit_hash"] = component_git_info.get("commit_hash", "")
 
     # If tags is empty, add commit_date, author, and message in order, if they exist.
-    if component_git_info.get("tags", "").strip() == "":
+    if tags == "":
         if "commit_date" in component_git_info:
             new_comp["commit_date"] = component_git_info.get("commit_date", "")
         if "author" in component_git_info:
