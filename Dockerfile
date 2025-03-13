@@ -18,11 +18,6 @@ RUN set -eux; \
         which; \
     dnf clean all
 
-# Configure Git with the GitLab token using BuildKit secret mount
-RUN --mount=type=secret,id=gitlab_token \
-    set -eux; \
-    \
-    git config --global url."https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
 
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
 RUN set -eux; \
@@ -34,20 +29,30 @@ WORKDIR /ngencerf/ngencerf-server/
 
 # Install Python virtual environment
 COPY requirements.txt .
-ARG CREATE_INPUT_TAG
-ARG RUN_SWE_TAG
+
 RUN set -eux; \
     pip3 install -r requirements.txt ; \
-    pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput" ; \
-    pip3 install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${RUN_SWE_TAG}#egg=swe_processing&subdirectory=swe_processing" ; \
     # Lock numpy and netcdf4 versions so t-route doesn't break
     pip3 install "numpy==1.26.4" "pandas~=2.2.2" ; \
-    pip3 cache purge; \
+    rm --force requirements.txt
+
+ARG CREATE_INPUT_TAG
+ARG RUN_SWE_TAG
+ARG CACHE_BUST=1
+# Configure Git with the GitLab token using BuildKit secret mount
+RUN --mount=type=secret,id=gitlab_token \
+    set -eux; \
+    \
+    git config --global url."https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"; \
+    \
+    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput" ; \
+    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${RUN_SWE_TAG}#egg=swe_processing&subdirectory=swe_processing" ; \
     rm --force /root/.gitconfig; \
-    rm --force requirments.txt
+    pip3 cache purge;
 
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
+# Shoule we move COPY . /ngencerf/ngencerf-server/ to here?  Or up above before the Cache_bust
 
 RUN set -eux; \
     # Get the remote URL from Git configuration
