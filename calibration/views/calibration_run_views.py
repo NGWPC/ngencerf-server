@@ -596,7 +596,7 @@ def get_job_dir(request: Request) -> Response:
         return error_return
 
     if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Convert path inside the container to the mapped host pth outside the container
+        # Convert path inside the container to the mapped host path outside the container
         container_job_data_dir = run.job_data_dir
         # Ensure the absolute path starts with the old root
         if not os.path.isabs(container_job_data_dir):
