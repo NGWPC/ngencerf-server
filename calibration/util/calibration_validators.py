@@ -1090,7 +1090,7 @@ class GetLogNamesResponseSerializer(BaseSerializer):
 
 
 class GetLogsResponseSerializer(GenericMessageResponseSerializer):
-    log_data = serializers.ListSerializer(child=serializers.CharField(), required=True, allow_null=False)
+    log_data = serializers.ListSerializer(child=serializers.CharField(allow_blank=True), required=True, allow_null=False)
     pagination_metadata = PaginationMetadataSerializer(required=False)
     log_path = serializers.CharField(required=True, allow_blank=False, allow_null=False)
 
