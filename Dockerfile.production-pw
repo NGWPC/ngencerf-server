@@ -45,20 +45,27 @@ RUN set -eux; \
     rm --force /root/.gitconfig; \
     rm --force requirments.txt
 
-# Extract Git information and write it to the JSON file specified by $GIT_INFO_PATH
-ARG GIT_INFO_PATH=git_info.json
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
-RUN jq -n \
-    --arg commit_hash "$(git rev-parse HEAD)" \
-    --arg branch "$(git rev-parse --abbrev-ref HEAD)" \
-    --arg tags "$(git tag --points-at HEAD | tr '\n' ' ')" \
-    --arg author "$(git log -1 --pretty=format:'%an')" \
-    --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
-    --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
-    --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
-    '{"cerfServer": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
-    > "$GIT_INFO_PATH"
+
+RUN set -eux; \
+    # Get the remote URL from Git configuration
+    repo_url=$(git config --get remote.origin.url); \
+    # Extract the repo name (everything after the last slash) and remove any trailing .git
+    key=${repo_url##*/}; \
+    key=${key%.git}; \
+    # Construct the file path using the derived key
+    GIT_INFO_PATH="${key}_git_info.json"; \
+    jq -n \
+      --arg commit_hash "$(git rev-parse HEAD)" \
+      --arg branch "$(git rev-parse --abbrev-ref HEAD)" \
+      --arg tags "$(git tag --points-at HEAD | tr '\n' ' ')" \
+      --arg author "$(git log -1 --pretty=format:'%an')" \
+      --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
+      --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
+      --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+      "{\"$key\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
+      > $GIT_INFO_PATH
 
 # Copy application code
 COPY . /ngencerf/ngencerf-server/

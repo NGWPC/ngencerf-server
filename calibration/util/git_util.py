@@ -18,11 +18,10 @@ def get_git_info_internal():
       - Always include 'commit_hash' and 'build_date'.
       - If 'tags' is non-empty, include it (renamed to 'release').
       - If 'tags' is empty, include 'branch', 'author', 'message', and 'commit_date'.
-      - Recursively process any nested 'modules'.
 
     The function performs the following steps:
       1. Clears and recreates a temporary directory (git_info) in BASE_DIR.
-      2. Copies the local 'git_info.json' (generated externally) into this directory.
+      2. Copies the local 'ngencerf-server_git_info.json' into this directory.
       3. For each defined image (ngen, ngen-cal, ngen-bmi-forcing, ngen-fcst), it copies its
          'git_info.json' from Docker (or Singularity) into the directory.
       4. Iterates over all JSON files in the directory and merges their contents into a single dict.
@@ -38,7 +37,7 @@ def get_git_info_internal():
     os.mkdir(git_info_directory)
 
     # Copy our local git_info.json into the shared directory.
-    src_git_info = os.path.join(settings.BASE_DIR, 'git_info.json')
+    src_git_info = os.path.join(settings.BASE_DIR, 'ngencerf-server_git_info.json')
     dest_git_info = os.path.join(git_info_directory, 'cerfserver_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
@@ -96,7 +95,6 @@ def transform_component(component_git_info):
     Transform a single component dictionary to include only selected Git fields in a specific order:
       - Always include 'release', 'build_date', and 'commit_hash' (in that order).
       - If 'tags' is empty, also include 'commit_date', 'author', and 'message' (in that order) if they exist.
-      - Recursively transform nested 'modules' (if present).
 
     :param component_git_info: A dictionary containing Git information for a component.
     :return: A new dictionary with only the desired fields.
@@ -122,15 +120,6 @@ def transform_component(component_git_info):
             new_comp["author"] = component_git_info.get("author", "")
         if "message" in component_git_info:
             new_comp["message"] = component_git_info.get("message", "")
-
-    # Process nested modules recursively, if present.
-    if "modules" in component_git_info and isinstance(component_git_info["modules"], list):
-        new_modules = []
-        for module_obj in component_git_info["modules"]:
-            # Each module is an object with one key-value pair.
-            for mod_name, mod_data in module_obj.items():
-                new_modules.append({mod_name: transform_component(mod_data)})
-        new_comp["modules"] = new_modules
 
     return new_comp
 
@@ -167,7 +156,7 @@ def print_git_info(git_info_file: str):
     """
     Read the specified git_info JSON file, transform its contents, and log all key/value pairs recursively.
 
-    The output will print top-level keys (such as 'ngen') as well as keys for nested modules (such as 'LASAM').
+    The output will print top-level keys.
 
     :param git_info_file: Path to the JSON file containing Git information.
     """
