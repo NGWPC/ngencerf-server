@@ -38,7 +38,7 @@ def get_git_info_internal():
 
     # Copy our local git_info.json into the shared directory.
     src_git_info = os.path.join(settings.BASE_DIR, 'ngencerf-server_git_info.json')
-    dest_git_info = os.path.join(git_info_directory, 'cerfserver_git_info.json')
+    dest_git_info = os.path.join(git_info_directory, 'ngencerf-server_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
 
@@ -72,6 +72,7 @@ def get_git_info_internal():
     for filename in os.listdir(git_info_directory):
         if filename.endswith('.json'):
             filepath = os.path.join(git_info_directory, filename)
+            logging.info(f'Merging {filepath}')
             try:
                 with open(filepath, 'r') as f:
                     data = json.load(f)
@@ -106,7 +107,7 @@ def transform_component(component_git_info):
         branch = f"dev ({component_git_info.get('branch', '<unknown>')})"
         new_comp["release"] = branch
     else:
-        new_comp["release"] = component_git_info.get("tags", "")
+        new_comp["release"] = component_git_info.get("tags")
 
     # Insert keys in the desired order: build_date, then commit_hash.
     new_comp["build_date"] = component_git_info.get("build_date", "")
