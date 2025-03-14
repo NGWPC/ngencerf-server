@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+from functools import cache
 
 from django.conf import settings
 
@@ -37,7 +38,7 @@ def get_git_info_internal():
     os.mkdir(git_info_directory)
 
     # Copy our local git_info.json into the shared directory.
-    src_git_info = os.path.join(settings.BASE_DIR, 'ngencerf-server_git_info.json')
+    src_git_info = os.path.join(settings.BASE_DIR, 'git_info.json')
     dest_git_info = os.path.join(git_info_directory, 'ngencerf-server_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
@@ -154,6 +155,31 @@ def recursive_print(d: dict, indent: int = 0) -> None:
             logger.info(" " * indent + f"{key}: {value}")
 
 
+GIT_INFO_FILE = 'git_info.json'
+
+
+@cache
+def load_git_info(git_info_file: str = GIT_INFO_FILE):
+    try:
+        with open(git_info_file, 'r') as f:
+            git_info = json.load(f)
+    except FileNotFoundError:
+        logger.warning(f'{git_info_file} not found')
+        return None
+    except json.decoder.JSONDecodeError as e:
+        logger.warning(f"Error reading {git_info_file}: {e}")
+        return None
+
+    if not git_info:
+        logger.error(f"Failed to retrieve git information from {git_info_file}.")
+        return None
+
+    # Transform each top-level component without removing the keys.
+    transformed_git_info = {key: transform_component(value) for key, value in git_info.items()}
+
+    return transformed_git_info
+
+
 def print_git_info(git_info_file: str):
     """
     Read the specified git_info JSON file, transform its contents, and log all key/value pairs recursively.
@@ -162,29 +188,16 @@ def print_git_info(git_info_file: str):
 
     :param git_info_file: Path to the JSON file containing Git information.
     """
-    try:
-        with open(git_info_file, 'r') as f:
-            git_info = json.load(f)
-    except FileNotFoundError:
-        logger.warning(f'{git_info_file} not found')
-        return
-    except json.decoder.JSONDecodeError as e:
-        logger.warning(f"Error reading {git_info_file}: {e}")
-        return
+    git_info = load_git_info(git_info_file)
 
-    if not git_info:
-        logger.error(f"Failed to retrieve git information from {git_info_file}.")
-        return
-
-    # Transform each top-level component without removing the keys.
-    transformed_git_info = {key: transform_component(value) for key, value in git_info.items()}
-
-    recursive_print(transformed_git_info)
+    if git_info:
+        recursive_print(git_info)
 
 
 def print_git_info_all():
     """
     Convenience function to print Git information from multiple JSON files.
     """
-    print_git_info('git_info.json')
+
+    print_git_info(GIT_INFO_FILE)
     logger.info(' ')
