@@ -8,7 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
-from calibration.models import CalibrationParameter, ModuleOutputVariable, CalibrationFormulation, CalibrationRun
+from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, S3DirectoryValidator
@@ -139,7 +139,7 @@ def get_geopackage_from_data_services(run: CalibrationRun):
         s3_uri = eds_data.get('uri')
         run.geopackage_eds_file_path = convert_s3_uri_to_fs(s3_uri)
         if run.geopackage_eds_file_path and not os.path.exists(run.geopackage_eds_file_path):
-            logger.error(f"Geopackage from Data Services, {run.geopackage_eds_file_path} does not exist")
+            raise DataServicesException(f"Geopackage from Data Services, {run.geopackage_eds_file_path} does not exist")
         logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')
 
 
@@ -174,8 +174,17 @@ def get_observational_data_from_data_services(run: CalibrationRun):
 
 
 def clear_times(run: CalibrationRun, cli: bool = False):
-    # Invalidate the dates, since we'll have to compute the intersection again
-    # Only do this when running through the GUI.  If CLI, we assume the user knows what he is doing
+    """
+    Clears the time-related fields of a CalibrationRun instance, forcing a recalculation later.
+
+    This function resets all time and period fields to None, which is useful when the GUI triggers
+    a recalculation of these time boundaries. If the operation is initiated via the CLI (cli=True),
+    the time fields are preserved because it is assumed that the user intends to keep them as set.
+
+    :param run: A CalibrationRun instance whose time-related fields will be cleared.
+    :param cli: A boolean flag indicating if the process is running from the CLI.
+                If True, the time fields are not cleared.
+    """
     if not cli:
         run.time_range_start = None
         run.time_range_end = None
@@ -234,7 +243,8 @@ def get_forcing_data_from_s3(run: CalibrationRun):
     raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 
 
-def get_module_metadata_from_data_services(run: CalibrationRun, calibration_formulations: QuerySet[CalibrationFormulation],
+def get_module_metadata_from_data_services(run: CalibrationRun,
+                                           calibration_formulations: QuerySet[CalibrationFormulation],
                                            gage_changed: bool = False):
     """
     Retrieves module metadata from Data Services and updates the database with module parameters and output variables.
@@ -302,19 +312,6 @@ def get_module_metadata_from_data_services(run: CalibrationRun, calibration_form
             bmi_config = convert_s3_uri_to_fs(module['parameter_file']['uri'])
             copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module_name))
 
-            # Save output variables for the module
-            output_vars = module.get('output_variables', [])
-            if not output_vars:
-                logger.warning(f"Module '{module_name}' has no output variables.")
-            else:
-                for output in output_vars:
-                    ModuleOutputVariable.objects.update_or_create(
-                        name=output['variable'],
-                        calibration_formulation=calibration_formulation,
-                        # TODO Fix this.  Description is required
-                        defaults={'description': output['description'] or 'placeholder description'}
-                    )
-
             # Save or update parameters for the module
             parameters = module.get('calibrate_parameters', [])
             if not parameters:
@@ -380,7 +377,6 @@ translation_map = {
     ("Noah-OWP-Modular", "MAXSMC"): "SMCMAX",
     ("Noah-OWP-Modular", "CWPVT"): "CWP",
     ("Noah-OWP-Modular", "SATDK"): "DKSAT",
-    ("Noah-OWP-Modular", "BB"): "BEXP",
 
     ("LASAM", "theta_e"): "smcmax",
     ("LASAM", "theta_r"): "smcmin",

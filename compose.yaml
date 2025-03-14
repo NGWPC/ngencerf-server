@@ -23,6 +23,7 @@ services:
       context: .
       args:
         - CREATE_INPUT_TAG=${NGEN_CAL_TAG}
+        - RUN_SWE_TAG=${NGEN_FORCING_TAG}
       secrets:
         - gitlab_token
     image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest

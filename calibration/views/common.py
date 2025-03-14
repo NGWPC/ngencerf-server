@@ -3,10 +3,11 @@ import inspect
 import json
 import logging
 import os
+import re
 from datetime import timedelta, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Type, Tuple, List, Any
+from typing import Type, Any, Callable, cast
 
 import numpy as np
 from django.conf import settings
@@ -21,12 +22,13 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis
-from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun
+from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun, CustomUser
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
-from calibration.util.ngen_locations import get_forecast_dir
+from calibration.util.ngen_locations import get_forecast_dir, get_ngen_stdout_log_filename, get_output_calibration_run_dir, \
+    get_output_validation_run_dir
 
 logger = logging.getLogger(__name__)
 
@@ -39,28 +41,30 @@ def get_run_instance(
         model: Type[BaseRun],
         run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None,
+        run_status: list[StatusEnum] | None = None,
         owner_field: str = 'owner',
-        is_deleted_field: str = 'is_deleted'
-) -> Tuple[BaseRun | None, Response | None]:
+        is_archived_field: str = 'is_archived',
+        include_archived: bool = False
+) -> tuple[BaseRun | None, Response | None]:
     """
     Retrieve an instance of a BaseRun-derived model by its ID,
-    optionally filtering by owner, status, and the 'is_deleted' flag.
+    optionally filtering by owner, status, and handling the 'is_archived' flag.
 
     :param model: The BaseRun-derived model class to query.
     :param run_id: The ID of the run to retrieve.
-    :param user: The user requesting the run. If None, no filtering by owner is done.
-    :param run_status: A list of StatusEnum members (e.g., [StatusEnum.READY, StatusEnum.SAVED]).
-    :param owner_field: The field used to filter by owner (default is 'owner').
-    :param is_deleted_field: The field path for the 'is_deleted' flag (default is 'is_deleted').
-    :return: A tuple containing the run instance (or None if not found) and an optional Response with an error.
+    :param user: The user requesting the run; if None, no filtering by owner is done.
+    :param run_status: A list of StatusEnum members to filter by.
+    :param owner_field: The field used to filter by owner (default 'owner').
+    :param is_archived_field: The field name for the 'is_archived' flag (default 'is_archived').
+    :param include_archived: Whether to include archived jobs.
+    :return: Tuple containing the run instance or None, and Response if error or None.
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
 
-    allowed_statuses: List[Status] = [status_enum.db_instance for status_enum in run_status]
+    allowed_statuses: list[Status] = [status_enum.db_instance for status_enum in run_status]
 
-    # Add is_deleted=False to the query
-    query: QuerySet = model.objects.filter(id=run_id, **{is_deleted_field: False})
+    # Query without filtering out archived jobs
+    query: QuerySet = model.objects.filter(id=run_id)
 
     if user:
         query = query.filter(**{f"{owner_field}": user})
@@ -68,8 +72,14 @@ def get_run_instance(
     try:
         run = query.get()
     except model.DoesNotExist:
-        user_info = f' or is not owned by {user.email}' if user else ''
+        user_info = f' or is not owned by {cast(CustomUser, user).email}' if user else ''
         error = f'{model.__name__} {run_id} does not exist{user_info}'
+        return None, ResponseError(error)
+
+    # Explicitly check if the job is archived and include_archived=False
+    is_archived = getattr(run, is_archived_field, False)
+    if is_archived and not include_archived:
+        error = f'{model.__name__} {run_id} is archived and should be unarchived before additional operations can be performed.'
         return None, ResponseError(error)
 
     # Check if the status of the run is in the allowed statuses
@@ -86,40 +96,42 @@ def get_run_instance(
 def get_calibration_run(
         calibration_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[CalibrationRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None,
+        include_archived: bool = False
+) -> tuple[CalibrationRun | None, Response | None]:
     """
-    Retrieve a CalibrationRun instance by its ID, filtering by owner and status.
+    Retrieve a CalibrationRun by ID, optionally filtering by owner and status.
 
-    :param calibration_run_id: The ID of the CalibrationRun to retrieve.
-    :param user: The user requesting the CalibrationRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the CalibrationRun.
-    :return: A tuple containing the CalibrationRun instance (or None if not found) and an optional Response with an error.
+    :param calibration_run_id: The ID of the CalibrationRun.
+    :param user: User requesting the CalibrationRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the CalibrationRun.
+    :param include_archived: Include archived jobs if True.
+    :return: Tuple of CalibrationRun or None, and Response if error or None.
     """
-    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_deleted')
+    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_archived', include_archived)
 
 
 def get_validation_run(
         validation_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ValidationRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None
+) -> tuple[ValidationRun | None, Response | None]:
     """
-    Retrieve a ValidationRun instance by its ID, filtering by owner and status.
+    Retrieve a ValidationRun by ID, optionally filtering by owner and status.
 
-    :param validation_run_id: The ID of the ValidationRun to retrieve.
-    :param user: The user requesting the ValidationRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the ValidationRun.
-    :return: A tuple containing the ValidationRun instance (or None if not found) and an optional Response with an error.
+    :param validation_run_id: The ID of the ValidationRun.
+    :param user: User requesting the ValidationRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the ValidationRun.
+    :return: Tuple of ValidationRun or None, and Response if error or None.
     """
-    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
+    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
 
 def get_forecast_forcing_download_run(
         forecast_forcing_download_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ForecastForcingDownloadRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None
+) -> tuple[ForecastForcingDownloadRun | None, Response | None]:
     """
     Retrieve a ForecastForcingDownloadRun instance by its ID, filtering by owner and status.
 
@@ -135,33 +147,33 @@ not found) and an optional Response with an error.
         forecast_forcing_download_run_id, user,
         run_status,
         'forecast_run__calibration_run__owner',
-        'forecast_run__calibration_run__is_deleted'
+        'forecast_run__calibration_run__is_archived'
     )
 
 
 def get_forecast_run(
         forecast_run_id: int,
         user: User | None,
-        run_status: List[StatusEnum] | None = None
-) -> Tuple[ForecastRun | None, Response | None]:
+        run_status: list[StatusEnum] | None = None
+) -> tuple[ForecastRun | None, Response | None]:
     """
-    Retrieve a ForecastRun instance by its ID, filtering by owner and status.
+    Retrieve a ForecastRun by ID, optionally filtering by owner and status.
 
-    :param forecast_run_id: The ID of the ForecastRun to retrieve.
-    :param user: The user requesting the ForecastRun. If None, no owner filtering is applied.
-    :param run_status: A list of allowed statuses for the ForecastRun.
-    :return: A tuple containing the ForecastRun instance (or None if not found) and an optional Response with an error.
+    :param forecast_run_id: The ID of the ForecastRun.
+    :param user: User requesting the ForecastRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the ForecastRun.
+    :return: Tuple of ForecastRun or None, and Response if error or None.
     """
-    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_deleted')
+    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
 
-def join_with_or(items):
+def join_with_or(items: list[str]) -> str:
     """
-       Join a list of strings into a single string, using commas and 'or' for the last item.
+    Join strings into a comma-separated string, using 'or' before the last item.
 
-       :param items: A list of strings.
-       :return: A grammatically joined string.
-       """
+    :param items: A list of strings.
+    :return: Joined string.
+    """
     if not items:
         return ''
     elif len(items) == 1:
@@ -173,21 +185,39 @@ def join_with_or(items):
 # Helper function to format datetime in a readable way
 def format_datetime(dt: datetime | None) -> str:
     """
-    Format a datetime object as a string, or return 'N/A' if None.
+    Format datetime to a string, or return 'N/A' if None.
 
-    :param dt: A datetime object or None.
-    :return: A formatted string representation of the datetime or 'N/A' if None.
+    :param dt: A datetime or None.
+    :return: Formatted string or 'N/A'.
     """
     return dt.strftime('%Y-%m-%d %H:%M:%S') if dt else 'N/A'
 
 
-def png_str_to_base64_url(png_str):
+def png_to_base64_url(png_file_path: str) -> str:
     """
-     Convert a PNG image in binary format to a base64-encoded data URL.
+    Converts a PNG file to a base64-encoded URL string.
 
-     :param png_str: The binary data of a PNG image.
-     :return: A base64-encoded string for embedding images in URLs.
-     """
+    :param png_file_path: Path to the PNG file.
+    :return: Base64 URL string if successful.
+    :raises CerfException: If the file does not exist or cannot be read.
+    """
+    if png_file_path and os.path.exists(png_file_path):
+        try:
+            with open(png_file_path, "rb") as png_file:
+                return png_str_to_base64_url(png_file.read())
+        except IOError as e:
+            raise CerfException(f"Failed to read PNG file: {e}")
+    else:
+        raise CerfException(f"File '{png_file_path}' does not exist")
+
+
+def png_str_to_base64_url(png_str: bytes | None) -> str | None:
+    """
+    Convert PNG bytes to a base64-encoded data URL.
+
+    :param png_str: PNG image bytes.
+    :return: Base64-encoded data URL or None if input is empty.
+    """
     if png_str:
         base64_str = base64.b64encode(png_str).decode('utf-8')
         return f'data:image/png;base64,{base64_str}'
@@ -195,15 +225,14 @@ def png_str_to_base64_url(png_str):
         return None
 
 
-def create_calibration_run_internal(user, genesis: JobGenesis = None) -> CalibrationRun:
+def create_calibration_run_internal(user: User, genesis: JobGenesis | None = None) -> CalibrationRun:
     """
-    Create a new CalibrationRun object for the user making the request.
-    Ensures that the job directory is created and assigns the 'SAVED' status by default.
+    Create a new CalibrationRun for the given user.
 
-    :param user: The owner of the calibration run.
-    :param genesis: Genesis of the job
-    :return: The newly created CalibrationRun instance.
-     """
+    :param user: Owner of the calibration run.
+    :param genesis: Origin of the job (optional).
+    :return: New CalibrationRun instance.
+    """
     run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.SAVED.db_instance)
 
     # Just get the user part, before the @ sign
@@ -291,11 +320,11 @@ token_ngen = 'ngen'
 
 def generate_custom_token(user: User, scope: str) -> str:
     """
-    Generate a JWT access token for a user, with a custom scope and a 24-hour expiration.
+    Generate a JWT access token for a user with custom scope and 24-hour expiration.
 
-    :param user: The user for whom the token is being generated.
-    :param scope: The custom scope to be embedded in the token.
-    :return: The string representation of the access token.
+    :param user: User for whom to generate the token.
+    :param scope: Custom scope for the token.
+    :return: JWT token string.
     """
     access = AccessToken.for_user(user)
     # Set the expiration to 24 hours from now
@@ -532,15 +561,14 @@ def validate_response(serializer_class, data, fields_to_truncate=None, max_lengt
         return None, ResponseError(message, response_type='validation_error_response', validation_errors=validation_errors)
 
 
-def validate_response_data(serializer_class: Type[BaseSerializer], data: dict, error_message: str) -> dict[str, Any]:
+def validate_response_data(serializer_class: Type[BaseSerializer], data: dict[str, Any], error_message: str) -> dict[str, Any]:
     """
     Validates response data and raises an exception if validation fails.
 
     :param serializer_class: The serializer class for validation.
-    :param data: The data (as a dictionary) to validate.
-    :param error_message: Error message for exception if validation fails.
-    :return: Validated data if validation succeeds.
-    :raises CerfException: If validation fails.
+    :param data: The data to validate.
+    :param error_message: Error message if validation fails.
+    :return: Validated data.
     """
     try:
         formatted_data = json.dumps(data)  # Attempt JSON formatting
@@ -572,10 +600,10 @@ class CerfException(Exception):
 
 def get_job_description(run: BaseRun) -> str:
     """
-    Provides a descriptive string for a job, identifying its type and user.
+    Get a descriptive string identifying the job type and owner.
 
-    :param run: The job instance, either CalibrationRun, ValidationRun or ForecastRun.
-    :return: A description of the job.
+    :param run: Job instance (CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun).
+    :return: Description of the job.
     """
     if isinstance(run, CalibrationRun):
         return f"Calibration Job {run.id}, user: {run.owner.username}"
@@ -591,11 +619,10 @@ def get_job_description(run: BaseRun) -> str:
 
 def replace_nan_and_inf_with_none(data: Any) -> Any:
     """
-    Recursively traverses the input data and replaces any NaN or infinity (inf) values with None.
-    This ensures that the data is JSON-compliant by converting non-compliant values into nulls.
+    Replace NaN and infinity values with None recursively in data.
 
-    :param data: The input data, which can be a list, dictionary, or a single value.
-    :return: The sanitized data with NaN and inf values replaced by None.
+    :param data: Input data (list, dict, or scalar).
+    :return: Data with NaN and inf replaced by None.
     """
 
     # If the data is a list, recursively process each item in the list
@@ -612,3 +639,87 @@ def replace_nan_and_inf_with_none(data: Any) -> Any:
 
     # If the data is any other type (int, str, etc.), return it unchanged
     return data
+
+
+# Regular expression pattern to match directories like "ngen_xxxxxxx_worker"
+worker_directory_pattern = re.compile(r'ngen_\w+_worker')
+
+
+def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Callable[[str, CalibrationRun | ValidationRun], None]) -> None:
+    """
+    Processes worker directories in a given calibration or validation run.
+
+    :param run: The CalibrationRun or ValidationRun instance.
+    :param worker_lambda: A callback function applied to each worker directory.
+    """
+
+    if isinstance(run, CalibrationRun):
+        output_run_dir = get_output_calibration_run_dir(run)
+    elif isinstance(run, ValidationRun):
+        output_run_dir = get_output_validation_run_dir(run.calibration_run)
+    else:
+        raise ValueError(f"Invalid run object: {type(run).__name__}. Expected CalibrationRun or ValidationRun.")
+
+    if not os.path.exists(output_run_dir):
+        raise CerfException(f"Cannot find expected data at {output_run_dir}")
+
+    job_description = get_job_description(run)
+
+    for item in os.listdir(output_run_dir):
+        worker_dir = os.path.join(output_run_dir, item)
+        # Check if the item is a directory and matches the pattern
+        if os.path.isdir(worker_dir) and worker_directory_pattern.match(item):
+            logger.debug(f'{job_description} Processing worker directory: {worker_dir}')
+            worker_lambda(worker_dir, run)
+
+
+def find_validation_worker_with_matching_log(
+        validation_run: ValidationRun,
+        worker_name: str | None = None,
+        iteration_num: int | None = None
+) -> str | None:
+    """
+    Searches the worker directories of a validation run to locate the worker directory
+    containing the ngen stdout file. The matching criteria depend on the validation type:
+    - For VALID_ITERATION: Matches the worker name and iteration number in the log.
+    - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
+
+    :param validation_run: The validation run object to process.
+    :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
+    :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
+    :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
+    """
+    matching_worker_name = None
+    validation_type = ValidationType(validation_run.validation_type)
+
+    # Determine the expected first line of the log based on validation type
+    if validation_type == ValidationType.VALID_ITERATION:
+        if not worker_name or iteration_num is None:
+            raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
+        expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
+    elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
+        expected_first_line = f"Starting {validation_type.value.capitalize()} Run"
+    else:
+        raise ValueError(f"Unsupported validation type: {validation_type}")
+
+    # Custom function to check worker directories for the ngen.log file
+    def check_worker(worker_dir: str, _run: ValidationRun):
+        nonlocal matching_worker_name
+        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
+
+        # Check if ngen.log exists in the current worker directory
+        if os.path.isfile(potential_log_path):
+            # Read the first line of the file
+            with open(potential_log_path, 'r') as file:
+                first_line = file.readline().strip()
+
+            # Check if the first line matches the expected format
+            if first_line == expected_first_line:
+                matching_worker_name = os.path.basename(worker_dir)
+
+    # Call process_worker_dirs to iterate through the worker directories
+    process_worker_dirs(validation_run, check_worker)
+
+    if not matching_worker_name:
+        logger.error(f"Could not find worker corresponding to {validation_run}")
+    return matching_worker_name

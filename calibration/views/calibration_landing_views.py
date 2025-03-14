@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Any
+from typing import Any, cast
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -16,19 +16,23 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GetValidationJobsScope
-from calibration.models import CalibrationRun, ValidationRun, IterationParameter
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GetValidationJobsScope, GeopackageSourceEnum
+from calibration.models import CalibrationRun, ValidationRun, IterationParameter, ForecastRun, ForecastForcingDownloadRun, CustomUser
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import GetCalibrationJobsResponseSerializer, FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    LoadCalibrationJobSerializer
+    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer
+from calibration.util.file_util import get_single_file
+from calibration.util.geopkg import get_geometry_from_gpkg
+from calibration.util.git_util import get_git_info_internal, load_git_info
+from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, truncate_large_fields, create_validation_run_internal, create_forecast_run_internal
+    validate_request, truncate_large_fields, create_validation_run_internal, create_forecast_run_internal, get_valid_path
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +64,7 @@ def create_calibration_run(request: Request) -> Response:
     :return: A Response object with the serialized calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'create_calibration_run() request from {request.user.email}')
+    logger.debug(f'create_calibration_run() request from {(cast(CustomUser, request.user)).email} ')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -75,7 +79,8 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {request.user.email} from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(
+            f'Returning to {(cast(CustomUser, request.user)).email}  from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -104,7 +109,7 @@ def create_and_run_validation(request: Request) -> Response:
     :return: JSON response with validation run details or error information.
     """
     data = request.data
-    logger.debug(f'create_and_run_validation() request from {request.user.email}')
+    logger.debug(f'create_and_run_validation() request from {(cast(CustomUser, request.user)).email} ')
 
     validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
@@ -121,7 +126,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status__in = [StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
+        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
@@ -146,7 +151,7 @@ def create_and_run_validation(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from create_and_run_validation() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -175,7 +180,7 @@ def create_and_run_forecast(request: Request) -> Response:
     :return: JSON response with validation run details or error information.
     """
     data = request.data
-    logger.debug(f'create_and_run_forecast() request from {request.user.email}')
+    logger.debug(f'create_and_run_forecast() request from {(cast(CustomUser, request.user)).email} ')
 
     validator, error_return = validate_request(CreateForecastRequestSerializer, data)
     if error_return:
@@ -207,7 +212,7 @@ def create_and_run_forecast(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from create_and_run_validation() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from create_and_run_validation() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -236,7 +241,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_evaluation() request from {request.user.email} - {data}')
+    logger.debug(f'get_calibration_jobs_for_evaluation() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -252,7 +257,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs_for_evaluation() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_jobs_for_evaluation() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
@@ -284,7 +289,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_forecast() request from {request.user.email} - {data}')
+    logger.debug(f'get_calibration_jobs_for_forecast() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -299,7 +304,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs_for_forecast() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_jobs_for_forecast() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
@@ -328,7 +333,7 @@ def get_calibration_jobs(request):
     Return all jobs
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs() request from {request.user.email} - {data}')
+    logger.debug(f'get_calibration_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -343,7 +348,7 @@ def get_calibration_jobs(request):
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_jobs() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_jobs() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
@@ -364,12 +369,12 @@ def get_jobs(
         - 'status': Includes validation status details.
     :return: List of calibration jobs with selected fields.
     """
-    # Base query to filter jobs for the given user, excluding deleted jobs
-    query = Q(owner=user, is_deleted=False)
+    # Base query to filter jobs for the given user, excluding archived jobs
+    query = Q(owner=user, is_archived=False)
 
     # If a specific status list is provided, filter by those statuses
     if run_status:
-        query &= Q(status__in=[status.db_instance for status in run_status])
+        query &= Q(status__in=[s.db_instance for s in run_status])
 
     # Fetch calibration runs, annotating user-specific fields like formulation_name
     calibration_runs = (
@@ -521,8 +526,14 @@ def get_footer(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = {"version": settings.VERSION, "date": settings.DATE,
-                "commit_hash": settings.COMMIT_HASH,
+    git_info = load_git_info()
+    name, git_info_content = git_info.popitem() if git_info else ("", {})
+
+    branch = f"dev ({git_info_content.get('branch', '<unknown>')})"
+
+    response = {"version": git_info_content.get('release', branch),
+                "date": git_info_content.get('commit_date', '<unknown>'),
+                "commit_hash": git_info_content.get('commit_hash', '<unknown>'),
                 "ngenCerf_version": settings.NGENCERF_VERSION,
                 "ngenCerf_date": settings.NGENCERF_DATE,
                 "contact_email": settings.CONTACT_EMAIL}
@@ -532,6 +543,44 @@ def get_footer(request: Request) -> Response:
         return error_response
 
     logger.debug(f'Returning to {user} from get_footer() - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetGitInfoResponseSerializer,
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get footer data"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_git_info(request: Request) -> Response:
+    """
+    Retrieve git info for all components
+
+    :param request: The HTTP request object.
+    :return: A Response object with version and contact information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'get_git_info() request from {(cast(CustomUser, request.user)).email}  - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    response = {"git_info": get_git_info_internal()}
+
+    response_validator, error_response = validate_response(GetGitInfoResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_git_info() - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 
@@ -560,7 +609,7 @@ def load_calibration_run(request: Request) -> Response:
     :return: A Response object containing the serialized calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_calibration_run() request from {request.user.email} - {data}')
+    logger.debug(f'load_calibration_run() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(LoadCalibrationJobSerializer, data)
     if error_return:
@@ -576,13 +625,21 @@ def load_calibration_run(request: Request) -> Response:
 
     calibration_run_data = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
 
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
+        geopackage_path) else None
+
+    calibration_run_data['num_catchments'] = num_catchments
+
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
                                                            fields_to_truncate=['geopackage_image_url'])
 
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from load_calibration_run() - '
+        f'Returning to {(cast(CustomUser, request.user)).email} from load_calibration_run() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
     )
 
@@ -614,7 +671,7 @@ def clone_job(request: Request) -> Response:
     :return: A Response object with the cloned calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'clone_job() request from {request.user.email} - {data}')
+    logger.debug(f'clone_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -650,9 +707,32 @@ def clone_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from clone_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from clone_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
+
+
+def has_running_associated_jobs(run: CalibrationRun) -> Response | None:
+    """
+    Checks if the given calibration job or any associated jobs are currently running.
+
+    :param run: The CalibrationRun instance to check.
+    :return: Response if the job or any associated jobs are running, otherwise None.
+    """
+    if run.status == StatusEnum.RUNNING.db_instance:
+        return ResponseError(f'Calibration Job {run.id} is running. Cannot proceed while the job is running.')
+
+    if any([
+        ValidationRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
+        ForecastRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
+        ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
+    ]):
+        return ResponseError(
+            f'Calibration Job {run.id} has associated jobs that are still running. '
+            f'Cannot proceed until all related jobs (validations, forecasts, or forcing downloads) are completed.'
+        )
+
+    return None  # No running jobs, safe to proceed
 
 
 @extend_schema(
@@ -674,13 +754,13 @@ def clone_job(request: Request) -> Response:
 @handle_exceptions
 def delete_job(request: Request) -> Response:
     """
-    Delete a calibration job. Performs a hard delete if the run status is SAVED or READY, and a soft delete otherwise.
+    Permanently delete a calibration job.
 
     :param request: The HTTP request object.
     :return: A Response object with the deletion confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_job() request from {request.user.email} - {data}')
+    logger.debug(f'delete_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -692,24 +772,87 @@ def delete_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    if run.status == StatusEnum.RUNNING.db_instance:
-        return ResponseError(f'Calibration Job {run.id} is running.  Cannot delete a running job')
+    # Check for any running jobs (including the calibration job itself)
+    running_jobs_error = has_running_associated_jobs(run)
+    if running_jobs_error:
+        return running_jobs_error
 
+    # Proceed with deletion
     run_id = run.id
+    hard_delete(run)
 
-    if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
-        hard_delete(run)
-    else:
-        logger.debug(f"Deleting (soft delete) Calibration Job {run.id}")
-        run.is_deleted = True
-        run.save(update_fields=['is_deleted'])
-
-    response = {'message': f'Calibration Id {run_id} and associated records have been deleted', 'calibration_run_id': run_id}
+    response = {
+        'message': f'Calibration Id {run_id} and associated records have been deleted',
+        'calibration_run_id': run_id
+    }
 
     response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from delete_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from delete_job() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ArchiveJobRequestSerializer,
+    responses={
+        200: CalibrationRunSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Archive a calibration job"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def archive_job(request: Request) -> Response:
+    """
+    Archive a calibration job. Essentially a soft delete by setting an archive flag.
+
+    :param request: The HTTP request object.
+    :return: A Response object with the archive confirmation.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'archive_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+
+    validator, error_return = validate_request(ArchiveJobRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    archive = validator.get('archive')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum), include_archived=True)
+    if error_return:
+        return error_return
+
+    if archive == run.is_archived:
+        return ResponseError(f'Calibration Job {run.id} is {"already" if archive else "not"} archived')
+
+    # Check for any running jobs (including the calibration job itself)
+    if archive:
+        running_jobs_error = has_running_associated_jobs(run)
+        if running_jobs_error:
+            return running_jobs_error
+
+    run.is_archived = archive
+    run.save(update_fields=['is_archived'])
+
+    response = {
+        'message': f'Calibration Id {run.id} and associated records have been {"archived" if archive else "unarchived"}',
+        'calibration_run_id': run.id
+    }
+
+    response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from archive_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -731,7 +874,7 @@ def hard_delete(run: CalibrationRun) -> None:
         logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
         for instance in instances:
             # Customize the fields you want to display
-            logger.debug(f' -{instance}')
+            logger.debug(f' - {instance}')
 
     job_data_dir = run.job_data_dir
     run.delete()

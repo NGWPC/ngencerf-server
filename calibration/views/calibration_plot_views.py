@@ -1,7 +1,9 @@
 import json
 import logging
 import os
-from typing import Any
+import re
+from functools import lru_cache
+from typing import Any, cast
 
 import pandas as pd
 from django.core.cache import cache
@@ -12,7 +14,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
 from calibration.enums_vanilla import JobType
-from calibration.models import CalibrationRun, ValidationRun, ForecastRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun, CustomUser
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
@@ -23,9 +25,8 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
     get_validation_metrics_valid_iteration_file, get_output_valid_iteration_file, get_forecast_output_dir, get_forecast_output_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
-    png_str_to_base64_url, ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-    get_forecast_run, replace_nan_and_inf_with_none
-from calibration.views.end_of_job_processing import process_worker_dirs
+    ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
+    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url, process_worker_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def get_plot_names(request: Request) -> Response:
     :return: A JSON response with the calibration run ID, list of plot names and descriptions, and run status.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_plot_names() request from {request.user.email} - {data}')
+    logger.debug(f'get_plot_names() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
@@ -86,7 +87,8 @@ def get_plot_names(request: Request) -> Response:
     filtered_plot_definitions = get_filtered_plot_definitions(run)
 
     # Create a list of plot names with descriptions
-    plot_names = [{'name': plot['name'], 'description': plot['description']} for plot in filtered_plot_definitions]
+    plot_names = [{'name': plot['name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
+                  for plot in filtered_plot_definitions]
 
     response = {
         f"{run_type.lower()}_run_id": run.id,
@@ -97,27 +99,9 @@ def get_plot_names(request: Request) -> Response:
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'get_plot_names() request from {request.user.email} - {json.dumps(response_validator.data)}')
+    logger.debug(f'get_plot_names() request from {(cast(CustomUser, request.user)).email}  - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
-
-
-def png_to_base64_url(png: str) -> str:
-    """
-    Converts a PNG file to a base64-encoded URL string.
-
-    :param png: Path to the PNG file.
-    :return: Base64 URL string if successful.
-    :raises CerfException: If the file does not exist or cannot be read.
-    """
-    if png and os.path.exists(png):
-        try:
-            with open(png, "rb") as png_file:
-                return png_str_to_base64_url(png_file.read())
-        except IOError as e:
-            raise CerfException(f"Failed to read PNG file: {e}")
-    else:
-        raise CerfException(f"Plot '{png}' does not exist")
 
 
 @extend_schema(
@@ -150,7 +134,7 @@ def get_plot(request: Request) -> Response:
     :raises ResponseError: If the plot cannot be found or an error occurs.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_plot() request from {request.user.email} - {data}')
+    logger.debug(f'get_plot() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(GetPlotRequestSerializer, data)
     if error_return:
@@ -273,7 +257,7 @@ def get_plot(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_plot() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_plot() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10))}'
     )
 
@@ -308,7 +292,10 @@ def determine_plot_location(run: CalibrationRun | ValidationRun | ForecastRun, p
             return get_output_calibration_run_dir(calibration_run)
 
         case 'plot_iteration':
+            # TODO Need to return the worker name
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            print('worker_dir', worker_dir)
+            print('get_worker_name_from_directory', get_worker_name_from_directory(worker_dir))
             if worker_dir is None:
                 raise CerfException(f'Plots could not be found for {get_job_description(run)}')
             return os.path.join(worker_dir, 'Plot_Iteration')
@@ -363,8 +350,12 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num, 'objective_function_value': iteration.objective_function_value}
                     for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
@@ -384,16 +375,24 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num,
                      'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
                     for iteration in iterations[start:start + limit]]
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num,
                      'parameters': [{'name': parameter.calibration_parameter.name, 'value': parameter.tuned_value} for parameter in
                                     iteration.iterationparameter_set.all()]}
@@ -401,8 +400,12 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
-            iterations = get_iterations_for_calibration_job(calibration_run)
+            # Only get iterations for a specific worker
+            worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            worker_name = get_worker_name_from_directory(worker_dir)
+            iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
+
             data = [{'iteration': iteration.iteration_num,
                      'objective_function_value': iteration.objective_function_value,
                      'metrics': [{'name': metric.metric.name, 'value': metric.metric_value} for metric in iteration.iterationmetric_set.all()]}
@@ -678,6 +681,7 @@ def count_and_read_file_in_chunks(file_path: str, start: int, limit: int) -> tup
         raise CerfException(f"Failed to read file: {file_path}")
 
 
+@lru_cache()
 def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -> str | None:
     """
     Uses process_worker_dirs to find the worker directory that has a non-empty 'Plot_Iteration' subdirectory.
@@ -688,7 +692,7 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     found_worker_dir = None
 
     # Custom function to check worker directories
-    def check_worker(worker_dir: str, run: CalibrationRun):
+    def check_worker(worker_dir: str, _run: CalibrationRun):
         nonlocal found_worker_dir
         plot_iteration_dir = os.path.join(worker_dir, 'Plot_Iteration')
 
@@ -700,3 +704,22 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     process_worker_dirs(calibration_run, check_worker)
 
     return found_worker_dir
+
+
+@lru_cache()
+def get_worker_name_from_directory(worker_dir: str) -> str:
+    """
+    Extracts the worker name from a given worker directory string.
+
+    This function assumes that the worker directory string contains a pattern of the form
+    'ngen_<worker_name>_worker'. It does not check for a missing match; if the pattern
+    is not found, an AttributeError will be raised.
+
+    :param worker_dir: The full path of the worker directory.
+    :return: The extracted worker name.
+    """
+    pattern = r'ngen_([^_]+)_worker'
+    dir_name = os.path.basename(worker_dir)
+    match = re.search(pattern, dir_name)
+    # This will raise an AttributeError if the pattern is not found.
+    return match.group(1)

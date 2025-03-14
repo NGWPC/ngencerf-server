@@ -1,15 +1,15 @@
 import logging
 import os
-from typing import List
+
+from django.conf import settings
 
 from calibration.views.common import CerfException
-from django.conf import settings
 
 logger = logging.getLogger(__name__)
 logging.getLogger('boto').setLevel(logging.INFO)
 
 
-def parse_s3_uri(s3_uri: str) -> List[str]:
+def parse_s3_uri(s3_uri: str) -> list[str]:
     """
     Parse an S3 URI into bucket and key components.
 
