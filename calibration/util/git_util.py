@@ -37,7 +37,7 @@ def get_git_info_internal():
     os.mkdir(git_info_directory)
 
     # Copy our local git_info.json into the shared directory.
-    src_git_info = os.path.join(settings.BASE_DIR, 'ngencerf-server_git_info.json')
+    src_git_info = os.path.join(settings.BASE_DIR, 'git_info.json')
     dest_git_info = os.path.join(git_info_directory, 'ngencerf-server_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
