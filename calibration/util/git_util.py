@@ -159,7 +159,24 @@ GIT_INFO_FILE = 'ngencerf-server_git_info.json'
 
 
 @cache
-def load_git_info(git_info_file: str = GIT_INFO_FILE):
+def load_git_info(git_info_file: str):
+    """
+    Load and transform Git information from a JSON file.
+
+    This function reads Git metadata from the specified JSON file and applies a transformation
+    to each top-level component to retain only relevant fields.
+
+    Steps performed:
+      1. Attempt to open and parse the JSON file.
+      2. If the file does not exist, log a warning and return None.
+      3. If the JSON content is malformed, log an error and return None.
+      4. If the parsed content is empty, log an error and return None.
+      5. Transform each component in the parsed JSON using `transform_component()`.
+      6. Return the transformed Git information as a dictionary.
+
+    :param git_info_file: Path to the JSON file containing Git information.
+    :return: A dictionary with transformed Git metadata, or None if an error occurs.
+    """
     try:
         with open(git_info_file, 'r') as f:
             git_info = json.load(f)

@@ -579,17 +579,12 @@ def get_footer(request: Request) -> Response:
     if error_return:
         return error_return
 
-    git_info = load_git_info()
-    name, git_info_content = git_info.popitem() if git_info else ("", {})
-
-    branch = f"dev ({git_info_content.get('branch', '<unknown>')})"
-
-    response = {"version": git_info_content.get('release', branch),
-                "date": git_info_content.get('commit_date', '<unknown>'),
-                "commit_hash": git_info_content.get('commit_hash', '<unknown>'),
-                "ngenCerf_version": settings.NGENCERF_VERSION,
-                "ngenCerf_date": settings.NGENCERF_DATE,
-                "contact_email": settings.CONTACT_EMAIL}
+    response = {
+        "ngenCerf_version": settings.NGENCERF_VERSION,
+        "ngenCerf_date": settings.NGENCERF_DATE,
+        "ngenCerf_copyright": settings.NGENCERF_COPYRIGHT,
+        "contact_email": settings.CONTACT_EMAIL
+    }
 
     response_validator, error_response = validate_response(FooterResponseSerializer, response)
     if error_response:

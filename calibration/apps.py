@@ -57,19 +57,17 @@ class CalibrationConfig(AppConfig):
         else:
             logger.info(f'*** Running {sys.argv[1]}')
 
-        logger.info(f'Version: {settings.VERSION}, {settings.DATE}')
-
         logger.info(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
-        logger.info('')
+        if running_server:
+            logger.info('')
+            print_git_info_all()
 
+        logger.info('')
         print_db_info()
         logger.info('')
         logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
         logger.info(f'NGEN_CAL_MOUNT_POINT - {settings.NGEN_CAL_MOUNT_POINT}')
         logger.info(f'NGEN_STATIC_DIR - {settings.NGEN_STATIC_DIR}')
-        if running_server:
-            logger.info('')
-            print_git_info_all()
 
         from calibration.util.ngen_locations import check_files
 

@@ -31,15 +31,10 @@ version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
 load_dotenv(version_path)
 
-VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
-DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
-COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
-# dotenv doesn't handle Unicode escaping
-NGENCERF_VERSION = codecs.decode(NGENCERF_VERSION, "unicode_escape")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
-
-CONTACT_EMAIL = 'support@ngencerf.com'
+NGENCERF_COPYRIGHT = os.getenv("NGENCERF_COPYRIGHT", "<unknown>")
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
