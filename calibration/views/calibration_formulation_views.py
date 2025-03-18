@@ -3,28 +3,25 @@ import logging
 from typing import cast
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, CustomUser
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
-from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
-    ErrorResponseSerializer, SaveFormulationResponseSerializer
+from calibration.util.calibration_validators import SaveFormulationRequestSerializer, \
+    ErrorResponseSerializer, SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
 from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
 
 logger = logging.getLogger(__name__)
 
-MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
-
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=EmptySerializer,
     responses={
-        200: LoadFormulationResponseSerializer,
+        200: GetModulesResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -34,30 +31,21 @@ MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
             description="Internal server error"
         )
     },
-    parameters=[
-        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
-    ],
-    description="Load formulation tab data"
+    description="Get static list of modules and groups"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def load_formulation_tab(request) -> Response:
+def get_modules(request) -> Response:
     """
-    Load the formulation tab data for a specific calibration run.
+    Retrieve module and group information
 
     :param request: The HTTP request containing either POST data or query parameters.
     :return: A JSON response with the calibration run ID, status, modules, and module groups.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_formulation_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'get_modules() request from {(cast(CustomUser, request.user)).email} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
         return error_return
 
@@ -74,18 +62,16 @@ def load_formulation_tab(request) -> Response:
         for module in cached_modules.values()
     ]
 
-    # Retrieve cached module groups
+    # Retrieve ordered list of module groups from cache
     module_groups = get_cached_module_groups()
 
-    ngen_cal_input.ready_to_run(run)
+    response = {'modules': module_groups_list, 'module_groups': module_groups}
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_groups_list, 'module_groups': module_groups}
-
-    response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
+    response_validator, error_response = validate_response(GetModulesResponseSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_formulation_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from get_modules() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
