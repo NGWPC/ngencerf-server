@@ -25,7 +25,8 @@ from calibration.util.calibration_validators import GetCalibrationJobsResponseSe
     CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     GetCalibrationJobsForEvaluationResponseSerializer, EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, GetCalibrationJobsRequestSerializer
+    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, GetCalibrationJobsRequestSerializer, \
+    CalibrationRunIdList, CalibrationRunListResponse
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.git_util import get_git_info_internal, load_git_info
@@ -59,7 +60,10 @@ User = get_user_model()
 @handle_exceptions
 def create_calibration_run(request: Request) -> Response:
     """
-    Handles creating a new calibration run for the requesting user.
+    Creates a new calibration run for the requesting user.
+
+    Handles the creation process by accepting calibration details in the request, validating them,
+    and creating a new calibration job if the request is valid.
 
     :param request: The HTTP request object, containing user and calibration run details.
     :return: A Response object with the serialized calibration run data.
@@ -80,7 +84,7 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -104,6 +108,9 @@ def create_calibration_run(request: Request) -> Response:
 def create_and_run_validation(request: Request) -> Response:
     """
     Creates and runs a new validation run for a specified calibration run and iteration.
+
+    Validates the request, checks if a validation job already exists for the specified calibration run
+    and iteration, and creates and submits a new validation job if not.
 
     :param request: The HTTP request object containing calibration and iteration details.
     :return: JSON response with validation run details or error information.
@@ -276,7 +283,6 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
             description="Internal server error"
         )
     },
-
     description="Get all calibration jobs for Forecast"
 )
 @api_view(['POST', 'GET'])
@@ -759,33 +765,39 @@ def clone_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def has_running_associated_jobs(run: CalibrationRun) -> Response | None:
+def has_running_associated_jobs(run: CalibrationRun) -> str | None:
     """
     Checks if the given calibration job or any associated jobs are currently running.
 
+    This function checks if the calibration run itself, or any of its associated validation, forecast, or forcing download jobs, are running.
+
     :param run: The CalibrationRun instance to check.
-    :return: Response if the job or any associated jobs are running, otherwise None.
+    :return: A message indicating if the job or its associated jobs are running, or None if there are no running jobs.
     """
+    # Check if the calibration run itself is running
     if run.status == StatusEnum.RUNNING.db_instance:
-        return ResponseError(f'Calibration Job {run.id} is running. Cannot proceed while the job is running.')
+        return f'Calibration Job {run.id} is running. Cannot proceed while the job is running.'
 
-    if any([
-        ValidationRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
-        ForecastRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
-        ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists(),
-    ]):
-        return ResponseError(
-            f'Calibration Job {run.id} has associated jobs that are still running. '
-            f'Cannot proceed until all related jobs (validations, forecasts, or forcing downloads) are completed.'
-        )
+    # Check if any associated validation jobs are running
+    if ValidationRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+        return f'Calibration Job {run.id} has associated validation jobs that are still running. Cannot proceed until they are completed.'
 
-    return None  # No running jobs, safe to proceed
+    # Check if any associated forecast jobs are running
+    if ForecastRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+        return f'Calibration Job {run.id} has associated forecast jobs that are still running. Cannot proceed until they are completed.'
+
+    # Check if any associated forcing download jobs are running
+    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+        return f'Calibration Job {run.id} has associated forcing download jobs that are still running. Cannot proceed until they are completed.'
+
+    # No running jobs found
+    return None
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=CalibrationRunIdList,
     responses={
-        200: CalibrationRunSerializer,
+        200: CalibrationRunListResponse,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -795,48 +807,64 @@ def has_running_associated_jobs(run: CalibrationRun) -> Response | None:
             description="Internal server error"
         )
     },
-    description="Delete a calibration job"
+    description="Delete a list of calibration jobs"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def delete_job(request: Request) -> Response:
+def delete_jobs(request: Request) -> Response:
     """
-    Permanently delete a calibration job.
+    Permanently delete multiple calibration jobs.
 
     :param request: The HTTP request object.
-    :return: A Response object with the deletion confirmation.
+    :return: A Response object with the deletion status for each calibration job.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'delete_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationRunIdList, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.get('calibration_run_id')
+    calibration_run_ids = validator.get('calibration_run_ids')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
-    if error_return:
-        return error_return
+    job_results = []
 
-    # Check for any running jobs (including the calibration job itself)
-    running_jobs_error = has_running_associated_jobs(run)
-    if running_jobs_error:
-        return running_jobs_error
+    # Process each calibration_run_id in the list
+    for calibration_run_id in calibration_run_ids:
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+        if error_return:
+            job_results.append({
+                "message": error_return.data.get('message'),
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
 
-    # Proceed with deletion
-    run_id = run.id
-    hard_delete(run)
+        # Check for any running jobs (including the calibration job itself)
+        running_jobs_error = has_running_associated_jobs(run)
+        if running_jobs_error:
+            job_results.append({
+                "message": running_jobs_error,
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
 
-    response = {
-        'message': f'Calibration Id {run_id} and associated records have been deleted',
-        'calibration_run_id': run_id
-    }
+        # Proceed with deletion
+        # hard_delete(run)
 
-    response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
+        job_results.append({
+            "message": f"Calibration Id {calibration_run_id} and associated records have been deleted",
+            "calibration_run_id": calibration_run_id,
+            "success": True
+        })
+
+    response = {"jobs": job_results}
+
+    response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from delete_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from delete_jobs() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -844,7 +872,7 @@ def delete_job(request: Request) -> Response:
 @extend_schema(
     request=ArchiveJobRequestSerializer,
     responses={
-        200: CalibrationRunSerializer,
+        200: CalibrationRunListResponse,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -854,52 +882,74 @@ def delete_job(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Archive a calibration job"
+    description="Archive or unarchive a list of calibration jobs"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
-def archive_job(request: Request) -> Response:
+def archive_jobs(request: Request) -> Response:
     """
-    Archive a calibration job. Essentially a soft delete by setting an archive flag.
+    Archive or unarchive multiple calibration jobs. Essentially a soft delete by setting an archive flag.
 
     :param request: The HTTP request object.
     :return: A Response object with the archive confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'archive_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'archive_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ArchiveJobRequestSerializer, data)
     if error_return:
         return error_return
 
-    calibration_run_id = validator.get('calibration_run_id')
+    calibration_run_ids = validator.get('calibration_run_ids')
     archive = validator.get('archive')
 
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum), include_archived=True)
-    if error_return:
-        return error_return
+    job_results = []
 
-    if archive == run.is_archived:
-        return ResponseError(f'Calibration Job {run.id} is {"already" if archive else "not"} archived')
+    # Process each calibration_run_id in the list
+    for calibration_run_id in calibration_run_ids:
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum), include_archived=True)
+        if error_return:
+            job_results.append({
+                "message": error_return.data.get('message'),
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
 
-    # Check for any running jobs (including the calibration job itself)
-    if archive:
-        running_jobs_error = has_running_associated_jobs(run)
-        if running_jobs_error:
-            return running_jobs_error
+        if archive == run.is_archived:
+            job_results.append({
+                "message": f'Calibration Job {run.id} is {"already" if archive else "not"} archived',
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
 
-    run.is_archived = archive
-    run.save(update_fields=['is_archived'])
+        # Check for any running jobs (including the calibration job itself)
+        if archive:
+            running_jobs_error = has_running_associated_jobs(run)
+            if running_jobs_error:
+                job_results.append({
+                    "message": running_jobs_error,
+                    "calibration_run_id": calibration_run_id,
+                    "success": False
+                })
+                continue
 
-    response = {
-        'message': f'Calibration Id {run.id} and associated records have been {"archived" if archive else "unarchived"}',
-        'calibration_run_id': run.id
-    }
+        run.is_archived = archive
+        run.save(update_fields=['is_archived'])
 
-    response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
+        job_results.append({
+            'message': f'Calibration Id {run.id} and associated records have been {"archived" if archive else "unarchived"}',
+            "calibration_run_id": calibration_run_id,
+            "success": True
+        })
+
+    response = {"jobs": job_results}
+
+    response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from archive_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from archive_jobs() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 

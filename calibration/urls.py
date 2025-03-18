@@ -21,8 +21,8 @@ urlpatterns = [
          name="getCalibrationJobsForForecast"),
     path('calibration/get_validation_jobs/', calibration_evaluation_views.get_validation_jobs, name="getValidationJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
-    path('calibration/delete_job/', calibration_landing_views.delete_job, name="deleteJob"),
-    path('calibration/archive_job/', calibration_landing_views.archive_job, name="deleteJob"),
+    path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),
+    path('calibration/archive_jobs/', calibration_landing_views.archive_jobs, name="archiveJobs"),
     path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
 
     ##################################
