@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import cast
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
@@ -8,7 +9,7 @@ from django.core.management.base import BaseCommand
 from calibration.enums import DataTypeEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import Domain, ObservationalSource, Optimization, Metric, OptimizationInput, PlotDefinition, \
-    GeopackageSource, ForecastCycle
+    GeopackageSource, ForecastCycle, CustomUser
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
@@ -45,7 +46,7 @@ class Command(BaseCommand):
             logger.error('Admin user does not exist.')
             sys.exit(1)
 
-        logger.info(f"In init_sql: email: {self.user.email}")
+        logger.info(f"In init_sql: email: {cast(CustomUser, self.user).email}")
 
         self.define_module_groups()
         self.define_modules()
@@ -120,15 +121,15 @@ class Command(BaseCommand):
                   ]
 
         for v in values:
-            module, _ = Module.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
-                                                                                  "description": v['description'],
-                                                                                  "created_by": self.user})
+            module_instance, _ = Module.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+                                                                                           "description": v['description'],
+                                                                                           "created_by": self.user})
 
             group_names = v['groups']
             groups = ModuleGroup.objects.filter(name__in=group_names)
 
-            module.groups.set(groups)
-            module.save()
+            module_instance.groups.set(groups)
+            module_instance.save()
 
     def define_domains(self):
         if self.DELETE_FLAG:
@@ -225,13 +226,17 @@ class Command(BaseCommand):
             ForecastCycle.objects.all().delete()
 
         values = [
-            {"name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "3 hr",
+            {"name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
+             "time_range": "3 hr",
              "is_active": False},
-            {"name": "Short Range Forecast", "internal_name": "short_range", "data_sources": "HRRR, RAP", "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
+            {"name": "Short Range Forecast", "internal_name": "short_range", "data_sources": "HRRR, RAP",
+             "time_range": "Latest forecast cycle, 18 hours", "is_active": True},
             {"name": "Extended AnA", "internal_name": "extended_ana", "data_sources": "RAP, HRRR, Stage IV", "time_range": "tbd", "is_active": False},
             {"name": "Medium Range Forecast", "internal_name": "medium_range", "data_sources": "tbd", "time_range": "tbd", "is_active": False},
-            {"name": "Long Range AnA", "internal_name": "long_range_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages", "time_range": "tbd", "is_active": False},
-            {"name": "Long Range Forecast", "internal_name": "long_range", "data_sources": "long_range_forecast", "time_range": "tbd", "is_active": False},
+            {"name": "Long Range AnA", "internal_name": "long_range_ana", "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
+             "time_range": "tbd", "is_active": False},
+            {"name": "Long Range Forecast", "internal_name": "long_range", "data_sources": "long_range_forecast", "time_range": "tbd",
+             "is_active": False},
         ]
 
         for v in values:
@@ -333,8 +338,9 @@ class Command(BaseCommand):
             Status.objects.update_or_create(name=v['name'], defaults={"created_by": self.user})
 
     def define_plot_definitions(self):
-        if self.DELETE_FLAG:
-            PlotDefinition.objects.all().delete()
+
+        # Since this table is not used as a foreign key, it's easy to just delete and re-create
+        PlotDefinition.objects.all().delete()
 
         # Temporarily delete them, although this doesn't hurt, since this table is not a FK in any other table
         PlotDefinition.objects.all().delete()
@@ -346,7 +352,8 @@ class Command(BaseCommand):
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_hydrograph_iteration.png"
+                "filename_mask": "{gage_id}_hydrograph_iteration.png",
+                "timeseries_available": True
             },
             {
                 "name": "Objective Function evolution",
@@ -434,7 +441,8 @@ class Command(BaseCommand):
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
-                "filename_mask": "{gage_id}_hydrograph_valid_run.png"
+                "filename_mask": "{gage_id}_hydrograph_valid_run.png",
+                "timeseries_available": True
             },
             {
                 "name": "Streamflow Validation Precipitation",
@@ -460,4 +468,5 @@ class Command(BaseCommand):
                                                                               "valid_optimizations": v.get('valid_optimizations'),
                                                                               "job_type": v['job_type'],
                                                                               "filename_mask": v['filename_mask'],
+                                                                              "timeseries_available": v.get('timeseries_available', False),
                                                                               "created_by": self.user})

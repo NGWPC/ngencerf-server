@@ -21,7 +21,6 @@ from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
-# Build paths inside the project like this: os.path.join(BASE_DIR, 'subdir').
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -224,6 +223,9 @@ NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 NGEN_CAL_MOUNT_POINT = '/ngencerf/data'
 NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 
+# Used only by get_git_info when running on PW
+SINGULARITY_DIR = '/ngencerf/containers'
+
 NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
@@ -251,6 +253,8 @@ NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-cal'
 NGEN_FORCING_DOCKER_CMD = f'docker run --entrypoint /ngen-app/bin/run-ngen-forcing.sh -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-bmi-forcing'
 NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
+
+NGEN_CONTAINERS = ['ngen', 'ngen-cal', 'ngen-bmi-forcing', 'ngen-fcst']
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
 NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')

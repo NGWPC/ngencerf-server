@@ -2,13 +2,14 @@ import csv
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.management.base import BaseCommand
 
 from calibration.enums import DomainEnum
-from calibration.models import Gage, Domain, Rfc
+from calibration.models import Gage, Domain, Rfc, CustomUser
 from cerfServer.settings import BASE_DIR
 
 logger = logging.getLogger(__name__)
@@ -54,7 +55,7 @@ class Command(BaseCommand):
             logger.error('Admin user does not exist.')
             sys.exit(1)
 
-        logger.info(f"In init_gages: email: {user.email}")
+        logger.info(f"In init_gages: email: {cast(CustomUser, user).email}")
 
         add_usgs_gages(data_dir / 'USGS_gages_CONUS.csv', conus_domain)
         add_usgs_gages(data_dir / 'USGS_gages_AK.csv', alaska_domain)

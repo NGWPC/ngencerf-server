@@ -5,7 +5,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Tuple, Literal
+from typing import Literal, cast
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -18,7 +18,7 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, ModuleOutputVariable
+from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, CustomUser
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
@@ -61,7 +61,7 @@ def load_tuning_tab(request: Request) -> Response:
     :return: Response containing the tuning tab data, including time ranges, modules, and formulations.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_tuning_tab() request from {request.user.email} - {data}')
+    logger.debug(f'load_tuning_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -77,11 +77,11 @@ def load_tuning_tab(request: Request) -> Response:
     calibration_times, validation_times = get_times(run)
 
     formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
-        'calibrationparameter_set', 'output_variables'
+        'calibrationparameter_set'
     )
 
     # For each module, get the Parameters and Output Variables
-    module_list = get_parameters_and_output_variables(formulations)
+    module_list = get_parameters(formulations)
 
     ngen_cal_input.ready_to_run(run)
 
@@ -95,7 +95,7 @@ def load_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_tuning_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_tuning_tab() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -110,7 +110,7 @@ def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation
     return modules.filter(calibrationparameter__user_selected_for_tuning=True).exists()
 
 
-def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
+def get_parameters(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
     """
     Retrieves the calibration parameters and output variables for each module in the specified calibration formulation.
 
@@ -119,19 +119,17 @@ def get_parameters_and_output_variables(modules: QuerySet[CalibrationFormulation
     """
     module_list = []
 
-    for formulation in modules.prefetch_related('calibrationparameter_set', 'output_variables'):
+    for formulation in modules.prefetch_related('calibrationparameter_set'):
         module = get_cached_module_by_name(formulation.module.name)
 
         if module:
-            # Gather calibration parameters and output variables for each module
+            # Gather calibration parameters and for each module
             calibration_parameters = formulation.calibrationparameter_set.values(
                 'name', 'minimum', 'maximum', 'initial_value', 'units', 'data_type', 'description', 'user_selected_for_tuning'
             )
-            output_variables = formulation.output_variables.values('name', 'description')
             module_entry = {
                 'name': formulation.module.name,
                 'parameters': list(calibration_parameters),
-                'output_variables': list(output_variables)
             }
             module_list.append(module_entry)
     return module_list
@@ -194,7 +192,7 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
     return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
 
-def get_times(run: CalibrationRun) -> Tuple[dict[str, datetime], dict[str, datetime]]:
+def get_times(run: CalibrationRun) -> tuple[dict[str, datetime], dict[str, datetime]]:
     """
     Retrieves calibration and validation time periods for a given calibration run.
 
@@ -248,7 +246,7 @@ def save_tuning_tab(request: Request) -> Response:
     Saves tuning settings for a calibration run, including parameters, output variables, and time periods.
     """
     data = request.data
-    logger.debug(f'save_tuning_tab() request from {request.user.email} - {data}')
+    logger.debug(f'save_tuning_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(SaveTuningRequestSerializer, data)
     if error_return:
@@ -259,7 +257,6 @@ def save_tuning_tab(request: Request) -> Response:
     calibration_times = validator.get('calibration_times')
     validation_times = validator.get('validation_times')
     parameters = validator.get('parameters')
-    output_variable_to_calibrate = validator.get('output_variable_to_calibrate')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
@@ -271,14 +268,10 @@ def save_tuning_tab(request: Request) -> Response:
     if error_message:
         return ResponseError(error_message)
 
-    if (parameters or output_variable_to_calibrate) and not run.gage:
-        return ResponseError('Parameters and output variable cannot be specified without a gage')
+    if parameters and not run.gage:
+        return ResponseError('Parameters cannot be specified without a gage')
 
     error_message = validate_parameters(run, parameters)
-    if error_message:
-        return ResponseError(error_message)
-
-    error_message = save_output_variable(run, output_variable_to_calibrate)
     if error_message:
         return ResponseError(error_message)
 
@@ -293,7 +286,7 @@ def save_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from save_tuning_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_tuning_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -320,7 +313,7 @@ def upload_user_parameters(request: Request) -> Response:
     and content, and then attaching it to the specified calibration run.
     """
     data = request.data
-    logger.debug(f'upload_user_parameter_file() request from {request.user.email} - {data}')
+    logger.debug(f'upload_user_parameter_file() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
     if error_return:
@@ -403,7 +396,7 @@ def upload_user_parameters(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from upload_user_parameter_file() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from upload_user_parameter_file() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -596,9 +589,9 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
 
 
 def get_full_evaluation_date_range_from_ranges(
-        calibration_evaluation_range: Tuple[datetime, datetime],
-        validation_evaluation_range: Tuple[datetime, datetime]
-) -> Tuple[datetime, datetime]:
+        calibration_evaluation_range: tuple[datetime, datetime],
+        validation_evaluation_range: tuple[datetime, datetime]
+) -> tuple[datetime, datetime]:
     """
     Determines the full evaluation date range by identifying the earliest start time and latest end time
     across both calibration and validation evaluation ranges.
@@ -617,7 +610,7 @@ def get_full_evaluation_date_range(
         calibration_evaluation_end_time: datetime,
         validation_evaluation_start_time: datetime,
         validation_evaluation_end_time: datetime
-) -> Tuple[datetime, datetime]:
+) -> tuple[datetime, datetime]:
     """
     Calculates the overall evaluation date range by taking the earliest start time and latest end time
     from both calibration and validation evaluation periods.
@@ -694,44 +687,6 @@ def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | fl
         return ", ".join(invalid_param_list + invalid_module_list)
 
     return None
-
-
-def save_output_variable(run: CalibrationRun, output_variable_to_calibrate: dict[str, str]) -> str | None:
-    """
-    Saves the specified output variable to be used for calibration in the calibration run.
-
-    :param run: The calibration run being updated.
-    :param output_variable_to_calibrate: A dictionary containing the module name and
-                                         the name of the output variable to be calibrated.
-    :return: An error message if the module or output variable is invalid, otherwise None.
-    """
-    if output_variable_to_calibrate:
-        # Retrieve the cached module by name
-        module = get_cached_module_by_name(output_variable_to_calibrate['module'])
-
-        if not module:
-            return f"Module '{output_variable_to_calibrate['module']}' not found in the database."
-
-        try:
-            # Check if the module is part of the calibration run
-            module_with_output_variable = CalibrationFormulation.objects.get(
-                module=module,
-                calibration_run=run
-            )
-        except CalibrationFormulation.DoesNotExist:
-            return f"Module '{output_variable_to_calibrate['module']}' is not part of calibration run {run.id}"
-
-        try:
-            # Get the output variable from the module's output variables
-            module_output_variable = module_with_output_variable.output_variables.get(
-                name=output_variable_to_calibrate['name']
-            )
-        except ModuleOutputVariable.DoesNotExist:
-            return f"Module output variable '{output_variable_to_calibrate['name']}' not found in module '{output_variable_to_calibrate['module']}' for this run"
-
-        # Set the run's module output variable
-        run.module_output_variable = module_output_variable
-        return None
 
 
 def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]], allow_nulls: bool = False) -> None:

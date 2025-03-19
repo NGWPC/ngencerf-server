@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -7,7 +8,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, ModuleOutputVariable, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, CustomUser
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer
@@ -48,7 +49,7 @@ def load_formulation_tab(request) -> Response:
     :return: A JSON response with the calibration run ID, status, modules, and module groups.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_formulation_tab() request from {request.user.email} - {data}')
+    logger.debug(f'load_formulation_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -84,7 +85,7 @@ def load_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from load_formulation_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_formulation_tab() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -133,7 +134,7 @@ def save_formulation_tab(request) -> Response:
     :return: A JSON response confirming the update along with any warnings or errors.
     """
     data = request.data
-    logger.debug(f'save_formulation_tab() request from {request.user.email} - {data}')
+    logger.debug(f'save_formulation_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
@@ -190,7 +191,7 @@ def save_formulation_tab(request) -> Response:
         # Identify formulations without any calibration parameters, in case there was an error retrieving them
         formulations_without_params_qs = existing_formulations_qs.filter(calibrationparameter__isnull=True)
 
-        required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs
+        required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs  # type: ignore
 
         # Retrieve metadata for required formulations
         if required_formulations_qs.exists() and run.gage:
@@ -232,7 +233,7 @@ def save_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from save_formulation_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_formulation_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -249,16 +250,8 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
         module__name__in=to_delete_modules
     )
 
-    # Check if the current module_output_variable references a formulation to be deleted
-    if run.module_output_variable and run.module_output_variable.calibration_formulation in formulations_to_delete:
-        run.module_output_variable = None
-        run.save(update_fields=["module_output_variable"])
-
     # Delete CalibrationParameters related to the formulations_to_delete
     CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
-
-    # Delete ModuleOutputVariables related to the formulations_to_delete
-    ModuleOutputVariable.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
 
     # Finally, delete the formulations
     formulations_to_delete.delete()

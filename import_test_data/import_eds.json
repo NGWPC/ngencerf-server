@@ -9,11 +9,8 @@
     "run_after_import": false,
     "gage_id": "01123000",
     "forcing_source": "AORC",
-    "forcing_eds_dir_path": null,
     "observational_source": "Data Services",
-    "observational_eds_file_path": null,
     "geopackage_source": "Data Services",
-    "geopackage_eds_file_path": null,
     "modules": [
         "Noah-OWP-Modular",
         "CFE-S",
@@ -54,10 +51,7 @@
         }
     ],
     "automatic_validation": true,
-    "output_variable_to_calibrate": {
-        "name": "QINSUR",
-        "module": "Noah-OWP-Modular"
-    },
+
     "calibration_times": {
         "calibration_start_time": "2014-10-01T00:00:00Z",
         "calibration_end_time": "2015-09-30T23:00:00Z",

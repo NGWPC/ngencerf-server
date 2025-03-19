@@ -2,8 +2,8 @@ import base64
 import json
 import logging
 import os
-from typing import Tuple
 import time
+from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -13,7 +13,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun, CustomUser
 from calibration.run_util.run_common import submit_job
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
@@ -23,13 +23,12 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
     get_observational_file_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, \
-    SLOTH, add_sloth_parameters, validate_formulation
+from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, SLOTH, add_sloth_parameters, validate_formulation
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
-    save_output_variable, save_parameters, get_time_range, has_user_selected_tuning_parameters
+    save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
@@ -64,7 +63,7 @@ def import_job(request: Request) -> Response:
     :return: HTTP response indicating success or error status.
     """
     data = request.data
-    logger.debug(f'import_job() request from {request.user.email} - {data}')
+    logger.debug(f'import_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ImportSerializer, data)
     if error_return:
@@ -84,7 +83,9 @@ def import_job(request: Request) -> Response:
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
-            submit_job(run, config_file=config_file)
+            error_response = submit_job(run, config_file=config_file)
+            if error_response:
+                return error_response
             imported_and_submitted = 'imported and submitted'
 
     response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
@@ -97,12 +98,12 @@ def import_job(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from import_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from import_job() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
 def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) \
-        -> Tuple[CalibrationRun | None, dict | None, ResponseError]:
+        -> tuple[CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
@@ -115,7 +116,6 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         run = create_calibration_run_internal(request.user, genesis)
 
         errors = []
-        info = []
         eds_errors = []
 
         #############################
@@ -135,64 +135,50 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         geopackage_source_name = calibration_run_data.get('geopackage_source')
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
-        geopackage_eds_file_path = calibration_run_data.get('geopackage_eds_file_path')
-        run.geopackage_eds_file_path = (
-            geopackage_eds_file_path if geopackage_eds_file_path and os.path.exists(geopackage_eds_file_path) else None
-        )
-
         if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
             geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
             if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
                 # Copy file to job-specific directory
-                info.append(copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run)))
+                copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
             else:
                 if geopackage_user_uploaded_file_path:
                     errors.append(f"User uploaded geopackage data from '{geopackage_user_uploaded_file_path}' not found")
         else:
-            if not run.geopackage_eds_file_path:
-                # Fetch geopackage from Data Services if not set
-                try:
-                    get_geopackage_from_data_services(run)
-                except DataServicesException as e:
-                    errors.append(f"Error retrieving geopackage data from Data Services - status code: {e.status_code} - {str(e)}")
-                    eds_errors.append({
-                        'name': 'geopackage',
-                        'message': str(e),
-                        'status_code': e.status_code if e.status_code else None
-                    })
-
+            # Fetch geopackage from Data Services
+            try:
+                get_geopackage_from_data_services(run)
+            except DataServicesException as e:
+                errors.append(f"Error retrieving geopackage data from Data Services - status code: {e.status_code} - {str(e)}")
+                eds_errors.append({
+                    'name': 'geopackage',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
         #############################
         # Forcing Data Handling
         #############################
         forcing_source_name = calibration_run_data.get('forcing_source')
         run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
 
-        forcing_eds_dir_path = calibration_run_data.get('forcing_eds_dir_path')
-        if forcing_eds_dir_path and os.path.isdir(forcing_eds_dir_path) and any(os.scandir(forcing_eds_dir_path)):
-            run.forcing_eds_dir_path = forcing_eds_dir_path
-        else:
-            run.forcing_eds_dir_path = None
-
         if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
             forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy directory to job-specific path
-                info.append(copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run)))
+                copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
             else:
                 if forcing_user_uploaded_dir_path:
                     errors.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
         else:
-            if not run.forcing_eds_dir_path:
-                # Fetch forcing data from Data Services if not set
-                try:
-                    get_forcing_data_from_data_services(run)
-                except DataServicesException as e:
-                    errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
-                    eds_errors.append({
-                        'name': 'forcing',
-                        'message': str(e),
-                        'status_code': e.status_code if e.status_code else None
-                    })
+            # Fetch forcing data from Data Services
+            try:
+                get_forcing_data_from_data_services(run)
+            except DataServicesException as e:
+                errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
+                eds_errors.append({
+                    'name': 'forcing',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
 
         #############################
         # Observational Data Handling
@@ -200,30 +186,24 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         observational_source_name = calibration_run_data.get('observational_source')
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
-        observational_eds_file_path = calibration_run_data.get('observational_eds_file_path')
-        run.observational_eds_file_path = (
-            observational_eds_file_path if observational_eds_file_path and os.path.exists(observational_eds_file_path) else None
-        )
-
         if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
             observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy file to job-specific path
-                info.append(copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run)))
+                copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
             else:
                 if observational_user_uploaded_file_path:
                     errors.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
         else:
-            if not run.observational_eds_file_path:
-                try:
-                    get_observational_data_from_data_services(run)
-                except DataServicesException as e:
-                    errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
-                    eds_errors.append({
-                        'name': 'observational',
-                        'message': str(e),
-                        'status_code': e.status_code if e.status_code else None
-                    })
+            try:
+                get_observational_data_from_data_services(run)
+            except DataServicesException as e:
+                errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
+                eds_errors.append({
+                    'name': 'observational',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
 
         #############################
         # Formulations and Modules
@@ -266,7 +246,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         if modules and run.gage:
             try:
-                get_module_metadata_from_data_services(run, modules)
+                get_module_metadata_from_data_services(run, modules)  # type: ignore
             except DataServicesException as e:
                 errors.append(f"Error retrieving module parameter data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -275,12 +255,9 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     'status_code': e.status_code if e.status_code else None
                 })
 
-        # TODO We should check if observation, forcing and geopackage data exists and if not, then get it
-
         #############################
         # Tuning
         #############################
-
         parameters = calibration_run_data.get('parameters')
 
         if parameters and not modules:
@@ -293,12 +270,6 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 return None, None, ResponseError(error_message)
 
             save_parameters(run, parameters, allow_nulls=True)
-
-            output_variable_to_calibrate = calibration_run_data.get('output_variable_to_calibrate')
-
-            error_message = save_output_variable(run, output_variable_to_calibrate)
-            if error_message:
-                return None, None, ResponseError(error_message)
 
         # Set automatic validation flags
         run.automatic_validation = calibration_run_data.get('automatic_validation')
@@ -350,8 +321,6 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
     messages = {}
     if errors:
         messages['errors'] = errors
-    if info:
-        messages['info'] = info
     if eds_errors:
         messages['eds_errors'] = eds_errors
 
@@ -383,7 +352,7 @@ def export_job(request: Request) -> Response:
     :return: Response containing the exported calibration run data or an error.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'export_job() request from {request.user.email} - {data}')
+    logger.debug(f'export_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -404,7 +373,7 @@ def export_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from export() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from export() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -459,33 +428,27 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
-        calibration_run_data['parameters'] = get_parameters_for_export(module_objects)
-
-        # There fields are exported so we can import them later
-        # Note that it makes sense to export the unsubsetted Data Services files
-        # We will subset them again with the new job, when it is imported
+        calibration_run_data['parameters'] = get_parameters_for_export(module_objects)  # type: ignore
 
         # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
-        user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
-        calibration_run_data[
-            'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
-            user_uploaded_geopackage_file) else None
 
-        user_uploaded_observational_file = get_observational_file_for_job(run)
-        calibration_run_data[
-            'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
-            user_uploaded_observational_file) else None
+        if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
+            user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
+            calibration_run_data[
+                'geopackage_user_uploaded_file_path'] = user_uploaded_geopackage_file if user_uploaded_geopackage_file and os.path.exists(
+                user_uploaded_geopackage_file) else None
 
-        user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
-        calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
-            user_uploaded_forcing_dir) else None
+        if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
+            user_uploaded_observational_file = get_observational_file_for_job(run)
+            calibration_run_data[
+                'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
+                user_uploaded_observational_file) else None
 
-        calibration_run_data['forcing_eds_dir_path'] = run.forcing_eds_dir_path if run.forcing_eds_dir_path and os.path.exists(
-            run.forcing_eds_dir_path) else None
-        calibration_run_data['observational_eds_file_path'] = run.observational_eds_file_path if run.observational_eds_file_path and os.path.exists(
-            run.observational_eds_file_path) else None
-        calibration_run_data['geopackage_eds_file_path'] = run.geopackage_eds_file_path if run.geopackage_eds_file_path and os.path.exists(
-            run.geopackage_eds_file_path) else None
+        if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
+            user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
+            calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
+                user_uploaded_forcing_dir) else None
+
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
     #############################
@@ -511,8 +474,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         # Generate Geopackage map if requested
         if include_gpkg_map:
             gpkg_map_start = time.time()
-            # For the UI, we don't need the Geopackage file, but rather, the full map
-            # TODO This should be the map file, which might need to be regenerated
             geopackage_path = get_single_file(
                 get_geopackage_dir_for_job(run)) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_eds_file_path
             if geopackage_path and os.path.exists(geopackage_path):
@@ -526,7 +487,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['external_data_status'] = get_data_files_status(run)
         logger.info(f"Data Files status completed in {time.time() - data_files_status_start:.2f}s")
 
-        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)
+        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_objects)  # type: ignore
         logger.info(f"UI display data preparation completed in {time.time() - ui_display_start:.2f}s")
 
     #############################
@@ -581,10 +542,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['calibration_times'] = calibration_times
     calibration_run_data['validation_times'] = validation_times
 
-    calibration_run_data['output_variable_to_calibrate'] = {
-        'module': run.module_output_variable.calibration_formulation.module.name,
-        'name': run.module_output_variable.name
-    } if run.module_output_variable else {}
     logger.info(f"Tuning data processed in {time.time() - tuning_start:.2f}s")
 
     #############################

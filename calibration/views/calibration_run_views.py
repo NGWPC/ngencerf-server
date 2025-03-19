@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from typing import cast
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -19,7 +20,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun, CustomUser
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
@@ -64,7 +65,7 @@ def get_status(request: Request) -> Response:
     :return: JSON response with the status and associated job details.
     """
     data = request.data
-    logger.debug(f'get_status() request from {request.user.email} - {data}')
+    logger.debug(f'get_status() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(GetStatusRequestSerializer, data)
     if error_return:
@@ -169,6 +170,7 @@ def get_status(request: Request) -> Response:
         forecast_data = {
             'forecast_run_id': run.id,
             'status': run.status.name,
+            'cycle': run.cycle.name,
             'submit_date': run.submit_date,
             'run_start': run.run_start,
             'run_end': run.run_end,
@@ -217,7 +219,7 @@ def get_status(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {request.user.email} from get_status() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_status() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10))}'
     )
 
@@ -249,7 +251,7 @@ def run_calibration(request: Request) -> Response:
     :return: JSON response indicating job submission status.
     """
     data = request.data
-    logger.debug(f'run_calibration() request from {request.user.email} - {data}')
+    logger.debug(f'run_calibration() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -269,7 +271,7 @@ def run_calibration(request: Request) -> Response:
                 'status': run.status.name, 'submit_date': run.submit_date}
 
     response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
-    logger.debug(f'Returning to {request.user.email} from run_calibration() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from run_calibration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -299,7 +301,7 @@ def process_calibration_output(request):
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'process_calibration_output() request from {request.user.email} - {data}')
+    logger.debug(f'process_calibration_output() request from {(cast(CustomUser, request.user)).email}  - {data}')
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
@@ -320,7 +322,7 @@ def process_calibration_output(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from process_calibration_output() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from process_calibration_output() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -352,7 +354,7 @@ def report_iteration(request):
     :return: JSON response indicating the success of the operation.
     """
     data = request.data
-    logger.debug(f'report_iteration() request from {request.user.email} - {data}')
+    logger.debug(f'report_iteration() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ReportIterationSerializer, data)
     if error_return:
@@ -396,7 +398,7 @@ def report_iteration(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user.email} from report_iteration() - {json.dumps(response_validator.data)}')
+        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from report_iteration() - {json.dumps(response_validator.data)}')
 
         return Response(response_validator.data)
 
@@ -426,7 +428,7 @@ def get_iteration(request: Request) -> Response:
     :return: JSON response with the current iteration details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_iteration() request from {request.user.email} - {data}')
+    logger.debug(f'get_iteration() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -452,7 +454,7 @@ def get_iteration(request: Request) -> Response:
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_iteration() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_iteration() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -482,7 +484,7 @@ def cancel_job(request: Request) -> Response:
     :return: A Response indicating the cancellation result.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'cancel_job() request from {request.user.email} - {data}')
+    logger.debug(f'cancel_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
@@ -550,7 +552,7 @@ def cancel_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from cancel_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from cancel_job() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -580,7 +582,7 @@ def get_job_dir(request: Request) -> Response:
     :return: JSON response with the data directory path.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_job_dir() request from {request.user.email} - {data}')
+    logger.debug(f'get_job_dir() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -594,7 +596,7 @@ def get_job_dir(request: Request) -> Response:
         return error_return
 
     if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Convert path inside the container to the mapped host pth outside the container
+        # Convert path inside the container to the mapped host path outside the container
         container_job_data_dir = run.job_data_dir
         # Ensure the absolute path starts with the old root
         if not os.path.isabs(container_job_data_dir):
@@ -618,7 +620,7 @@ def get_job_dir(request: Request) -> Response:
     response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from get_job_dir() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_job_dir() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -649,7 +651,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'calibration_job_slurm_callback() request from {request.user.email} - {data}')
+    logger.debug(f'calibration_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -665,7 +667,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_calibration_job_callback_pw(calibration_run, slurm_status)
 
-    logger.debug(f'Returning to {request.user.email} from calibration_job_slurm_callback()')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from calibration_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -696,7 +698,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'validation_job_slurm_callback() request from {request.user.email} - {data}')
+    logger.debug(f'validation_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -712,7 +714,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_validation_job_callback_pw(validation_run, slurm_status)
 
-    logger.debug(f'Returning to {request.user.email} from validation_job_slurm_callback()')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from validation_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -743,7 +745,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {request.user.email} - {data}')
+    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -760,7 +762,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
 
-    logger.debug(f'Returning to {request.user.email} from forecast_forcing_download_job_slurm_callback()')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from forecast_forcing_download_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -791,7 +793,7 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'forecast_job_slurm_callback() request from {request.user.email} - {data}')
+    logger.debug(f'forecast_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -807,7 +809,7 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_forecast_job_callback_pw(forecast_run, slurm_status)
 
-    logger.debug(f'Returning to {request.user.email} from forecast_job_slurm_callback()')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from forecast_job_slurm_callback()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -846,7 +848,7 @@ def get_slurm_token(request: Request) -> Response:
     :return: JSON response containing the generated token.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_slurm_token() request from {request.user.email} - {data}')
+    logger.debug(f'get_slurm_token() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:

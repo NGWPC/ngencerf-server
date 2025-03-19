@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Dict, Any, Tuple
+from typing import Any, cast
 
 from django.db import transaction
 from django.db.models import F
@@ -9,7 +9,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import OptimizationEnum, StatusEnum, MetricEnum
-from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
+from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun, CustomUser
 from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
@@ -51,7 +51,7 @@ def load_optimization_tab(request) -> Response:
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_optimization_tab() request from {request.user.email} - {data}')
+    logger.debug(f'load_optimization_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -78,11 +78,11 @@ def load_optimization_tab(request) -> Response:
     response_validator, error_response = validate_response(LoadOptimizationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {request.user.email} from load_optimization_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_optimization_tab() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
-def get_user_optimization(run: CalibrationRun) -> Tuple[str, List[Dict[str, Any]]]:
+def get_user_optimization(run: CalibrationRun) -> tuple[str, list[dict[str, Any]]]:
     """
     Retrieves user-selected optimization and inputs for a calibration run.
 
@@ -103,7 +103,7 @@ def get_user_optimization(run: CalibrationRun) -> Tuple[str, List[Dict[str, Any]
     return optimization, optimization_inputs
 
 
-def get_static_optimizations() -> List[Dict[str, Any]]:
+def get_static_optimizations() -> list[dict[str, Any]]:
     """
     Retrieves static optimizations with input details.
 
@@ -151,7 +151,7 @@ def save_optimization_tab(request) -> Response:
     """
     data = request.data
 
-    logger.debug(f'save_optimization_tab() request from {request.user.email} - {data}')
+    logger.debug(f'save_optimization_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(SaveOptimizationRequestSerializer, data)
     if error_return:
@@ -207,12 +207,12 @@ def save_optimization_tab(request) -> Response:
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {request.user.email} from save_optimization_tab() - {json.dumps(response_validator.data)}')
+        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_optimization_tab() - {json.dumps(response_validator.data)}')
         return Response(response_validator.data)
 
 
-def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: List[Dict[str, Any]]) \
-        -> Tuple[Optimization | None, str | None]:
+def validate_optimizations(run: CalibrationRun, optimization_name: str, optimization_inputs: list[dict[str, Any]]) \
+        -> tuple[Optimization | None, str | None]:
     """
     Validates and assigns optimization inputs to a calibration run.
 
@@ -310,7 +310,7 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
     return None
 
 
-def write_optimization_inputs(run: CalibrationRun, optimization: Optimization, optimization_inputs: List[Dict[str, Any]]) -> None:
+def write_optimization_inputs(run: CalibrationRun, optimization: Optimization, optimization_inputs: list[dict[str, Any]]) -> None:
     """
     Writes optimization inputs to the database, removing any existing ones for the calibration run.
 

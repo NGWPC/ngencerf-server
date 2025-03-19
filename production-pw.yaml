@@ -7,6 +7,7 @@ services:
       context: .
       args:
         - CREATE_INPUT_TAG=${NGEN_CAL_TAG}
+        - RUN_SWE_TAG=${NGEN_FORCING_TAG}
       secrets:
         - gitlab_token
     image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:prod
@@ -19,6 +20,8 @@ services:
       - ../logs/ngencerf-server:/ngencerf/ngencerf-server/run-logs/
       - ${FORCING_DATA_S3_PATH}:${FORCING_DATA_MOUNT_PATH}
       - ${HF_DATA_S3_PATH}:${HF_DATA_MOUNT_PATH}
+      - ${CONTAINER_PATH}:/ngencerf/containers/
+      - /etc/aws_credentials:/root/.aws/credentials:ro
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
@@ -26,6 +29,7 @@ services:
         required: true 
       - path: ./ngencerf_services.override.env
         required: false
+    privileged: true
 
 secrets:
   gitlab_token:

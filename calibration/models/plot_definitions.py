@@ -11,6 +11,7 @@ class PlotDefinition(BaseModel):
     valid_optimizations = models.TextField(null=True)
     job_type = models.CharField(max_length=20, null=False)
     filename_mask = models.TextField(null=False)
+    timeseries_available = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'plot_definitions'

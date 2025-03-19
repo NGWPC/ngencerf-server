@@ -4,7 +4,7 @@ import os
 import subprocess
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, List
+from typing import Callable
 
 from django.conf import settings
 
@@ -149,7 +149,7 @@ run_forecast_forcing_download_job_callback_local = functools.partial(
 )
 
 
-def spawn_job(run: BaseRun, args: List[str], callback_function: Callable[[Future], None], simulate: bool = False) -> None:
+def spawn_job(run: BaseRun, args: list[str], callback_function: Callable[[Future], None], simulate: bool = False) -> None:
     """
     Start a new process to execute the job and register it in the system.
 

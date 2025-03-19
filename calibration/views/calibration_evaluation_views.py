@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from typing import cast
 
 from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -9,16 +10,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName, GetValidationJobsScope
-from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun, CustomUser
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
-    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename
+    get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_landing_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none
-from calibration.views.end_of_job_processing import process_worker_dirs
+    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     :return: JSON response with calibration data or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_data_by_iteration() request from {request.user.email} - {data}')
+    logger.debug(f'get_calibration_data_by_iteration() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -129,24 +129,31 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {request.user.email} from get_calibration_data_by_iteration() - '
+        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_data_by_iteration() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10))}'
     )
 
     return Response(response_validator.data)
 
 
-def get_iterations_for_calibration_job(calibration_run: CalibrationRun) -> QuerySet[Iteration]:
+def get_iterations_for_calibration_job(calibration_run: CalibrationRun, worker_name: str | None = None) -> QuerySet[Iteration]:
     """
-    Fetches iterations for the given calibration run.
+        Fetches iterations for the given calibration run.
 
-    - Prefetches related parameters and metrics for optimized retrieval.
+        - Optionally filters by worker name.
+        - Prefetches related parameters and metrics for optimized retrieval.
 
-    :param calibration_run: The CalibrationRun instance to fetch iterations for.
-    :return: QuerySet of Iteration objects associated with the calibration run.
-    """
+        :param calibration_run: The CalibrationRun instance to fetch iterations for.
+        :param worker_name: Optional worker name to filter iterations.
+        :return: QuerySet of Iteration objects associated with the calibration run.
+        """
+    queryset = Iteration.objects.filter(calibration_run=calibration_run)
+
+    if worker_name:
+        queryset = queryset.filter(worker_name=worker_name)
+
     return (
-        Iteration.objects.filter(calibration_run=calibration_run)
+        queryset
         .select_related('calibration_run')
         .prefetch_related('iterationparameter_set__calibration_parameter',
                           'iterationmetric_set')
@@ -183,7 +190,7 @@ def get_validation_jobs(request: Request) -> Response:
     :return: JSON response containing validation jobs or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_validation_jobs() request from {request.user.email} - {data}')
+    logger.debug(f'get_validation_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -202,7 +209,7 @@ def get_validation_jobs(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_validation_jobs() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_validation_jobs() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -234,7 +241,7 @@ def get_log_names(request: Request) -> Response:
     :return: JSON response with log names or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_log_names() request from {request.user.email} - {data}')
+    logger.debug(f'get_log_names() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
@@ -266,7 +273,7 @@ def get_log_names(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_log_names() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_log_names() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -324,7 +331,7 @@ def get_log(request: Request) -> Response:
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_log() request from {request.user.email} - {data}')
+    logger.debug(f'get_log() request from {(cast(CustomUser, request.user)).email}  - {data}')
 
     validator, error_return = validate_request(GetLogRequestSerializer, data)
     if error_return:
@@ -384,8 +391,9 @@ def get_log(request: Request) -> Response:
     }
 
     response = {
-        'message': f"{log_category.value.capitalize()} {log_name} log file retrieved",
+        'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
         'log_data': paginated_lines,
+        'log_path': log_path,
         'pagination_metadata': pagination_metadata
     }
 
@@ -393,7 +401,7 @@ def get_log(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {request.user.email} from get_log() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_log() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -458,7 +466,7 @@ def get_global_log(validation_run: ValidationRun, log_name: LogName):
     :return: The path to the global log file.
     """
     if log_name == LogName.NGEN:
-        return find_ngen_stdout_log(validation_run)
+        return get_ngen_log_path(validation_run.calibration_run)
 
 
 def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
@@ -474,7 +482,7 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     ngen_log_path = None
 
     # Custom function to check worker directories for the ngen log file
-    def check_worker(worker_dir: str, run_object: CalibrationRun | ValidationRun):
+    def check_worker(worker_dir: str, _run: CalibrationRun | ValidationRun):
         nonlocal ngen_log_path
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 

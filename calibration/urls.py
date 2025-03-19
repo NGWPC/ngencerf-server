@@ -3,7 +3,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
-    calibration_evaluation_views, calibration_forecast_views
+    calibration_evaluation_views, calibration_forecast_views, calibration_swe_views
 
 urlpatterns = [
     ##################################
@@ -13,6 +13,7 @@ urlpatterns = [
     path('calibration/create_and_run_validation/', calibration_landing_views.create_and_run_validation, name="createValidationRun"),
     path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createForecastRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
+    path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
     path('calibration/get_calibration_jobs/', calibration_landing_views.get_calibration_jobs, name="getCalibrationJobs"),
     path('calibration/get_calibration_jobs_for_evaluation/', calibration_landing_views.get_calibration_jobs_for_evaluation,
          name="getCalibrationJobsForEvaluation"),
@@ -21,6 +22,7 @@ urlpatterns = [
     path('calibration/get_validation_jobs/', calibration_evaluation_views.get_validation_jobs, name="getValidationJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
     path('calibration/delete_job/', calibration_landing_views.delete_job, name="deleteJob"),
+    path('calibration/archive_job/', calibration_landing_views.archive_job, name="deleteJob"),
     path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
 
     ##################################
@@ -69,13 +71,15 @@ urlpatterns = [
     path('calibration/get_job_data_dir/', calibration_run_views.get_job_dir, name="getJobDir"),
     path('calibration/calibration_job_slurm_callback/', calibration_run_views.calibration_job_slurm_callback, name="calibrationJobSlurmCallback"),
     path('calibration/validation_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
-    path('calibration/forecast_forcing_download_job_slurm_callback/', calibration_run_views.forecast_forcing_download_job_slurm_callback, name="forecastForcingDownloadJobSlurmCallback"),
+    path('calibration/forecast_forcing_download_job_slurm_callback/', calibration_run_views.forecast_forcing_download_job_slurm_callback,
+         name="forecastForcingDownloadJobSlurmCallback"),
     path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
 
     ##################################
     # Evaluation
     ##################################
-    path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration, name="getCalibrationDataByIteration"),
+    path('calibration/get_calibration_data_by_iteration/', calibration_evaluation_views.get_calibration_data_by_iteration,
+         name="getCalibrationDataByIteration"),
     path('calibration/get_log_names/', calibration_evaluation_views.get_log_names, name="getLogNames"),
     path('calibration/get_log/', calibration_evaluation_views.get_log, name="getLog"),
 
@@ -87,7 +91,12 @@ urlpatterns = [
     path('calibration/clone_and_run_forecast/', calibration_forecast_views.clone_and_run_forecast_job, name="cloneAndRunForecastJob"),
     path('calibration/delete_forecast_job/', calibration_forecast_views.delete_forecast_job, name="deleteForecastJob"),
 
-
+    ##################################
+    # SWE
+    ##################################
+    path('calibration/get_swe_images_by_date/', calibration_swe_views.get_swe_images_by_date, name="getSweImagesByDate"),
+    path('calibration/get_swe_timeseries_data/', calibration_swe_views.get_swe_timeseries_data, name="getSweTimeseriesData"),
+    
     # Testing
     path('calibration/process_calibration_output/', calibration_run_views.read_calibration_output, name="processCalibrationOutput"),
 
@@ -108,4 +117,5 @@ urlpatterns = [
     # Testing
     ##################################
     path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
+
 ]

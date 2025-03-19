@@ -4,6 +4,8 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
+from calibration.util.git_util import print_git_info_all
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +31,7 @@ def print_banner():
 ███╗   ██╗ ██████╗ ███████╗███╗   ██╗ ██████╗███████╗██████╗ ███████╗
 ████╗  ██║██╔════╝ ██╔════╝████╗  ██║██╔════╝██╔════╝██╔══██╗██╔════╝
 ██╔██╗ ██║██║  ███╗█████╗  ██╔██╗ ██║██║     █████╗  ██████╔╝█████╗  
-██║╚██╗██║██║   ██║██╔══╝  ██║╚██╗██║██║     ██╔══╝  ██╔══██╗██╔══╝  
+██║╚██╗██║██║   ██║██╔══╝  ██║╚██╗██║██║     ██╔══╝  ██╔══██╗██╔══╝ta  
 ██║ ╚████║╚██████╔╝███████╗██║ ╚████║╚██████╗███████╗██║  ██║██║     
 ╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝     
                                                                      
@@ -48,8 +50,9 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-        # Check if the server is being started with 'runserver' or 'runsslserver'
-        if 'runserver' in sys.argv or 'runsslserver' in sys.argv:
+        # Check if we're running the server or a management command
+        running_server = 'runserver' in sys.argv or 'runsslserver' in sys.argv
+        if running_server:
             print_banner()
         else:
             logger.info(f'*** Running {sys.argv[1]}')
@@ -64,6 +67,9 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
         logger.info(f'NGEN_CAL_MOUNT_POINT - {settings.NGEN_CAL_MOUNT_POINT}')
         logger.info(f'NGEN_STATIC_DIR - {settings.NGEN_STATIC_DIR}')
+        if running_server:
+            logger.info('')
+            print_git_info_all()
 
         from calibration.util.ngen_locations import check_files
 
