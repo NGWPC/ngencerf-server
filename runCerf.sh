@@ -33,12 +33,12 @@ done
 # Function to generate git_info.properties
 # Should parallel similar functionality in the Dockerfile
 generate_git_info() {
-    GIT_INFO_PATH=$cerfServer/git_info.json
     repo_url=$(git config --get remote.origin.url)
     # Extract the repo name (everything after the last slash) and remove any trailing .git
     key=${repo_url##*/}
     key=${key%.git}
-    echo "Generating git_info.json..."
+    GIT_INFO_PATH=$SCRIPT_DIR/${key}_git_info.json
+    echo "Generating ${GIT_INFO_PATH}..."
     jq -n \
         --arg commit_hash "$(git rev-parse HEAD)" \
         --arg branch "$(git rev-parse --abbrev-ref HEAD)" \
@@ -49,7 +49,7 @@ generate_git_info() {
         --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
         "{\"${key}\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
         > "$GIT_INFO_PATH"
-    echo "git_info.json created at $GIT_INFO_PATH"
+    echo "Generated $GIT_INFO_PATH"
 }
 
 if [ "${CERF_VENV}" != "Docker" ]; then
