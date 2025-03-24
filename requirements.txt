@@ -1,26 +1,26 @@
-Django~=5.1.4
+Django~=5.1.7
 djangorestframework~=3.15.2
-djangorestframework-simplejwt~=5.4.0
+djangorestframework-simplejwt~=5.5.0
 geopandas~=1.0.1
-matplotlib~=3.10.0
+matplotlib~=3.10.1
 fiona~=1.10.1
-shapely~=2.0.5
+shapely~=2.0.7
 toml~=0.10.2
 DateTimeRange~=2.3.1
 python-dotenv~=1.0.1
 django-currentuser~=0.8.0
-psycopg~=3.2.3
-django_dbconn_retry~=0.1.7
+psycopg~=3.2.6
+django_dbconn_retry~=0.1.8
 djoser~=2.3.1
-pyjwt~=2.10.1
+pyjwt~=2.9.0
 PyYAML~=6.0.2
 django_dbconn_retry~=0.1.7
 drf_spectacular~=0.28.0
-django-cors-headers~=4.6.0
+django-cors-headers~=4.7.0
 requests~=2.32.3
 pandas~=2.2.3
 pyogrio~=0.10.0
-numpy~=2.2.1
+numpy~=2.2.4
 
 
 # There is also a dependancy on these 2 entries
