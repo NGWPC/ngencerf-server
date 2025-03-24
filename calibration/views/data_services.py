@@ -121,6 +121,7 @@ def get_and_set_geopackage_from_data_services(run: CalibrationRun):
     # placeholder
     pass
 
+
 def get_geopackage_from_data_services(run: CalibrationRun):
     """
     Retrieves GeoPackage data from Data Services and updates the CalibrationRun instance.
