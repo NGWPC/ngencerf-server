@@ -6,7 +6,7 @@ from functools import cache
 
 from django.conf import settings
 
-from calibration.util.container_util import copy_file_from_image
+from calibration.util.container_util import copy_file_from_image, copy_file_from_docker_image
 from calibration.util.file_util import copy_file
 
 logger = logging.getLogger(__name__)
@@ -50,23 +50,29 @@ def get_git_info_internal():
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen_git_info.json')
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen-cal_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen-cal_git_info.json')
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-fcst'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-bmi-forcing'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
+
+    image_name = 'ngencerf-ngencerf-ui'
+    container_name = f'{image_name}_temp_container'
+    container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name.replace('-', '_')}_git_info.json")
+    # This will always be from docker
+    copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
 
     merged_data = {}
     # Iterate over all JSON files in the directory and merge them.
