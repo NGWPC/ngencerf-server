@@ -19,9 +19,6 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
     return cached_modules.get(module_name)
 
 
-CACHED_GAGES_KEY = 'cached_gages'
-
-
 def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     """
     Retrieves all active gages from the cache or the database if not cached.
@@ -29,7 +26,8 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     :return: A dictionary of gages with gage_id as the key and gage details as values.
     """
     # Check if the gages are already cached
-    gages_lookup = cache.get(CACHED_GAGES_KEY)
+    cache_key = 'cached_gages'
+    gages_lookup = cache.get(cache_key)
     if not gages_lookup:
         # Fetch from the database and cache the results as a dictionary
         gages = Gage.objects.filter(is_active=True).values(
@@ -40,7 +38,7 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
         for gage in gages_lookup.values():
             gage['domain'] = gage.pop('domain__name')
 
-        cache.set(CACHED_GAGES_KEY, gages_lookup, timeout=None)
+        cache.set(cache_key, gages_lookup, timeout=None)
     return gages_lookup
 
 

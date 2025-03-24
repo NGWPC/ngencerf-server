@@ -28,12 +28,12 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
     """
     Sends an HTTP request to Data Services and processes the response.
 
-    :param method: HTTP method (e.g., 'GET' or 'POST')
+    :param method: HTTP method (e.g., 'GET' or 'POST').
     :param url: The full URL of the Data Services endpoint.
     :param headers: Optional HTTP headers to include.
     :param payload: Optional JSON payload for POST requests.
     :return: The response JSON data as a dictionary.
-    :raises: DataServicesException for any HTTP or connection-related errors.
+    :raises: DataServicesException: For any HTTP or connection-related errors.
     """
     status_code = None
     response_text = None
@@ -107,12 +107,19 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
 class DataServicesException(Exception):
     """
     Custom exception for errors related to Data Services.
+
+    :param message: Description of the error.
+    :param status_code: Optional HTTP status code associated with the error.
     """
 
     def __init__(self, message, status_code=None):
         super().__init__(message)
         self.status_code = status_code
 
+
+def get_and_set_geopackage_from_data_services(run: CalibrationRun):
+    # placeholder
+    pass
 
 def get_geopackage_from_data_services(run: CalibrationRun):
     """
@@ -406,7 +413,7 @@ def fix_module_metadata(metadata):
                      {
                          "modules": [
                              {
-                                 "name": "module_name",
+                                 "module_name": "module_name",
                                  "calibrate_parameters": [
                                      {"name": "full_param_name", "value": 123}
                                  ]

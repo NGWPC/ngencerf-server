@@ -1,0 +1,165 @@
+{
+   "metadata": {
+      "source_calibration_run_id": 95,
+      "source_status": "Failed",
+      "time_range": {
+         "start_time": "2013-01-01T00:00:00+00:00",
+         "end_time": "2022-12-31T22:00:00+00:00"
+      }
+   },
+   "run_after_import": false,
+   "gage_id": "01123000",
+   "forcing_source": "AORC",
+   "observational_source": "Data Services",
+   "geopackage_source": "Data Services",
+   "modules": [
+      "T-Route",
+      "Noah-OWP-Modular",
+      "CFE-S",
+      "SFT",
+      "SMP"
+   ],
+   "formulation_name": "noah_cfes_troute_gwo",
+   "use_sloth": false,
+   "sloth_parameters": [],
+   "automatic_validation": true,
+   "calibration_times": {
+      "calibration_start_time": "2016-10-01T00:00:00Z",
+      "calibration_end_time": "2017-09-01T00:00:00Z",
+      "simulation_start_time": "2015-10-01T00:00:00Z",
+      "simulation_end_time": "2017-09-01T00:00:00Z"
+   },
+   "validation_times": {
+      "validation_start_time": "2015-10-01T00:00:00Z",
+      "validation_end_time": "2016-09-01T00:00:00Z",
+      "simulation_start_time": "2014-10-01T00:00:00Z",
+      "simulation_end_time": "2017-09-01T00:00:00Z"
+   },
+   "streamflow_threshold": 3.88,
+   "peak_flow_threshold": null,
+   "parameters": [
+      {
+         "name": "b",
+         "minimum": 2.0,
+         "maximum": 15.0,
+         "initial_value": 4.05,
+         "module": "CFE-S"
+      },
+      {
+         "name": "satdk",
+         "minimum": 1E-7,
+         "maximum": 0.000726,
+         "initial_value": 0.00000338,
+         "module": "CFE-S"
+      },
+      {
+         "name": "satpsi",
+         "minimum": 0.03,
+         "maximum": 0.955,
+         "initial_value": 0.355,
+         "module": "CFE-S"
+      },
+      {
+         "name": "slope",
+         "minimum": 0.0,
+         "maximum": 1.0,
+         "initial_value": 0.1,
+         "module": "CFE-S"
+      },
+      {
+         "name": "max_gw_storage",
+         "minimum": 0.01,
+         "maximum": 0.25,
+         "initial_value": 0.05,
+         "module": "CFE-S"
+      },
+      {
+         "name": "Cgw",
+         "minimum": 0.0000018,
+         "maximum": 0.0018,
+         "initial_value": 0.000018,
+         "module": "CFE-S"
+      },
+      {
+         "name": "expon",
+         "minimum": 1.0,
+         "maximum": 8.0,
+         "initial_value": 3.0,
+         "module": "CFE-S"
+      },
+      {
+         "name": "Klf",
+         "minimum": 0.0,
+         "maximum": 1.0,
+         "initial_value": 0.01,
+         "module": "CFE-S"
+      },
+      {
+         "name": "refkdt",
+         "minimum": 0.1,
+         "maximum": 4.0,
+         "initial_value": 1.0,
+         "module": "CFE-S"
+      },
+      {
+         "name": "MFSNO",
+         "minimum": 0.5,
+         "maximum": 4.0,
+         "initial_value": 2.0,
+         "module": "Noah-OWP-Modular"
+      },
+      {
+         "name": "CWP",
+         "minimum": 0.09,
+         "maximum": 0.36,
+         "initial_value": 0.18,
+         "module": "Noah-OWP-Modular"
+      },
+      {
+         "name": "VCMX25",
+         "minimum": 24.0,
+         "maximum": 112.0,
+         "initial_value": 52.2,
+         "module": "Noah-OWP-Modular"
+      },
+      {
+         "name": "MP",
+         "minimum": 3.6,
+         "maximum": 12.6,
+         "initial_value": 9.0,
+         "module": "Noah-OWP-Modular"
+      },
+      {
+         "name": "RSURF_SNOW",
+         "minimum": 0.136,
+         "maximum": 100.0,
+         "initial_value": 50.0,
+         "module": "Noah-OWP-Modular"
+      },
+      {
+         "name": "RSURF_EXP",
+         "minimum": 1.0,
+         "maximum": 6.0,
+         "initial_value": 5.0,
+         "module": "Noah-OWP-Modular"
+      },
+      {
+         "name": "SCAMAX",
+         "minimum": 0.7,
+         "maximum": 1.0,
+         "initial_value": 0.9,
+         "module": "Noah-OWP-Modular"
+      }
+   ],
+   "objective_function": "KGE",
+   "optimization_inputs": [
+      {
+         "name": "swarm_size",
+         "value": 4.0
+      }
+   ],
+   "optimization": "GWO",
+   "save_plot_iteration_frequency": 1,
+   "save_output_iteration": true,
+   "stop_criteria": 8
+}
