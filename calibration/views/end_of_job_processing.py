@@ -261,6 +261,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
             expected_run_type=expected_run_type
         )
 
+    logger.info('Generating SWE timeseries data')
     generate_swe_ts_data(validation_run)
 
 
