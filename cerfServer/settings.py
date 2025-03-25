@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import codecs
 import os
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime
 from enum import StrEnum, auto
 
 from dotenv import load_dotenv
@@ -33,8 +33,10 @@ load_dotenv(version_path)
 
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
-NGENCERF_COPYRIGHT = os.getenv("NGENCERF_COPYRIGHT", "<unknown>")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
+NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
+
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
