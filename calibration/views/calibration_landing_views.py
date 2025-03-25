@@ -851,7 +851,7 @@ def delete_jobs(request: Request) -> Response:
             continue
 
         # Proceed with deletion
-        # hard_delete(run)
+        hard_delete(run)
 
         job_results.append({
             "message": f"Calibration Id {calibration_run_id} and associated records have been deleted",
@@ -965,16 +965,19 @@ def hard_delete(run: CalibrationRun) -> None:
     # Collect related objects that will be deleted due to cascade
     collector.collect([run])
 
-    logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
-    # Iterate through the collected objects and list IDs and other fields
-    for model, instances in collector.data.items():
-        logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
-        for instance in instances:
-            # Customize the fields you want to display
-            logger.debug(f' - {instance}')
+    with transaction.atomic():
+        # Collect related objects that will be deleted due to cascade
+        collector.collect([run])
 
-    job_data_dir = run.job_data_dir
-    run.delete()
-    logger.debug(f'Deleting directory {job_data_dir}')
-    if os.path.exists(job_data_dir):
-        shutil.rmtree(job_data_dir)
+        logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
+        # Iterate through the collected objects and list IDs and other fields
+        for model, instances in collector.data.items():
+            logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
+            for instance in instances:
+                logger.debug(f' - {instance}')
+    
+        job_data_dir = run.job_data_dir
+        run.delete()
+        logger.debug(f'Deleting directory {job_data_dir}')
+        if os.path.exists(job_data_dir):
+            shutil.rmtree(job_data_dir)
