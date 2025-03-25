@@ -6,6 +6,7 @@ from functools import cache
 
 from django.conf import settings
 
+from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.util.container_util import copy_file_from_image, copy_file_from_docker_image
 from calibration.util.file_util import copy_file
 
@@ -68,11 +69,20 @@ def get_git_info_internal():
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
-    image_name = 'ngencerf-ngencerf-ui'
-    container_name = f'{image_name}_temp_container'
-    container_file_name = "/var/www//ngencerf/nuxt-app/ngencerf_ui_git_info.json"
-    # This will always be from docker
-    copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
+    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        image_name = 'ngencerf-ngencerf-ui'
+        container_name = f'{image_name}_temp_container'
+        container_file_name = "/var/www//ngencerf/nuxt-app/ngencerf_ui_git_info.json"
+        # This will always be from docker
+        copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
+    else:
+        ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf_ui')
+        git_info = os.path.join(ui_directory, 'ngencerf_ui_git_info.json')
+        try:
+            copy_file(git_info, os.path.join(git_info_directory, os.path.basename(git_info)))
+        except FileNotFoundError:
+            logger.warning(f'File {git_info} not found.')
+
 
     merged_data = {}
     # Iterate over all JSON files in the directory and merge them.
