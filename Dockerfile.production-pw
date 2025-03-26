@@ -19,6 +19,13 @@ RUN set -eux; \
         which; \
     dnf clean all
 
+# Install Docker CLI
+RUN dnf -y install dnf-plugins-core && \
+    dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && \
+    dnf install -y docker-ce-cli && \
+    dnf clean all
+
+
 # Configure Git with the GitLab token using BuildKit secret mount
 RUN --mount=type=secret,id=gitlab_token \
     set -eux; \

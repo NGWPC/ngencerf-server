@@ -6,7 +6,8 @@ from functools import cache
 
 from django.conf import settings
 
-from calibration.util.container_util import copy_file_from_image
+from calibration.enums_vanilla import NgenEnvironmentEnum
+from calibration.util.container_util import copy_file_from_image, copy_file_from_docker_image
 from calibration.util.file_util import copy_file
 
 logger = logging.getLogger(__name__)
@@ -50,23 +51,38 @@ def get_git_info_internal():
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen_git_info.json')
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen-cal_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen-cal_git_info.json')
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-fcst'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-bmi-forcing'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
+
+    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        image_name = 'ngencerf-ngencerf-ui'
+        container_name = f'{image_name}_temp_container'
+        container_file_name = "/var/www//ngencerf/nuxt-app/ngencerf_ui_git_info.json"
+        # This will always be from docker
+        copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
+    else:
+        ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf_ui')
+        git_info = os.path.join(ui_directory, 'ngencerf_ui_git_info.json')
+        try:
+            copy_file(git_info, os.path.join(git_info_directory, os.path.basename(git_info)))
+        except FileNotFoundError:
+            logger.warning(f'File {git_info} not found.')
+
 
     merged_data = {}
     # Iterate over all JSON files in the directory and merge them.
@@ -159,7 +175,24 @@ GIT_INFO_FILE = 'ngencerf-server_git_info.json'
 
 
 @cache
-def load_git_info(git_info_file: str = GIT_INFO_FILE):
+def load_git_info(git_info_file: str):
+    """
+    Load and transform Git information from a JSON file.
+
+    This function reads Git metadata from the specified JSON file and applies a transformation
+    to each top-level component to retain only relevant fields.
+
+    Steps performed:
+      1. Attempt to open and parse the JSON file.
+      2. If the file does not exist, log a warning and return None.
+      3. If the JSON content is malformed, log an error and return None.
+      4. If the parsed content is empty, log an error and return None.
+      5. Transform each component in the parsed JSON using `transform_component()`.
+      6. Return the transformed Git information as a dictionary.
+
+    :param git_info_file: Path to the JSON file containing Git information.
+    :return: A dictionary with transformed Git metadata, or None if an error occurs.
+    """
     try:
         with open(git_info_file, 'r') as f:
             git_info = json.load(f)

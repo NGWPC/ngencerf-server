@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import codecs
 import os
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime
 from enum import StrEnum, auto
 
 from dotenv import load_dotenv
@@ -31,15 +31,12 @@ version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
 load_dotenv(version_path)
 
-VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
-DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
-COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
-# dotenv doesn't handle Unicode escaping
-NGENCERF_VERSION = codecs.decode(NGENCERF_VERSION, "unicode_escape")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
+NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 
-CONTACT_EMAIL = 'support@ngencerf.com'
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/

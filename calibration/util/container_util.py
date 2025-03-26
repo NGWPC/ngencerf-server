@@ -79,13 +79,13 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
     return success
 
 
-def generate_cache_key(container_name: str, container_file_name: str, image_name: str, local_file_name: str) -> str:
+def generate_cache_key(image_name: str, container_name: str, container_file_name: str, local_file_name: str) -> str:
     """
     Generates a unique cache key for the file copy operation based on input parameters.
 
+    :param image_name: Name of the image.
     :param container_name: Name of the container.
     :param container_file_name: Path to the file inside the container.
-    :param image_name: Name of the image.
     :param local_file_name: Local destination file name.
     :return: A unique cache key string.
     """
@@ -93,7 +93,7 @@ def generate_cache_key(container_name: str, container_file_name: str, image_name
     return "copy_file:" + hashlib.md5(key_string.encode()).hexdigest()
 
 
-def copy_file_from_image(container_name: str, container_file_name: str, image_name: str, local_file_name: str, ) -> bool:
+def copy_file_from_image(image_name: str, container_name: str, container_file_name: str, local_file_name: str) -> bool:
     """
     Copies a file from an image (Docker or Singularity) based on the current environment,
     with caching for successful operations.
@@ -101,13 +101,13 @@ def copy_file_from_image(container_name: str, container_file_name: str, image_na
     The function first checks if the copy operation was successfully cached.
     If not cached, it performs the copy operation and caches the success result.
 
+    :param image_name: Name of the image.
     :param container_name: Name of the container (used for Docker).
     :param container_file_name: Path to the file inside the container.
-    :param image_name: Name of the image.
     :param local_file_name: Local destination file name.
     :return: True if the file copy was successful, False otherwise.
     """
-    cache_key = generate_cache_key(container_name, container_file_name, image_name, local_file_name)
+    cache_key = generate_cache_key(image_name, container_name, container_file_name, local_file_name)
     cached = cache.get(cache_key)
     if cached is not None:
         return cached  # Return cached success status
