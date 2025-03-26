@@ -55,7 +55,7 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
     """
     success = False  # Default to failure
 
-    logger.info(f'copy_file_from_singularity_image: {image_path}')
+    logger.info(f'Copy file {src_path} from image {image_path}')
 
     if os.path.exists(image_path):
         try:
