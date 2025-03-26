@@ -155,7 +155,7 @@ def recursive_print(d: dict, indent: int = 0) -> None:
             logger.info(" " * indent + f"{key}: {value}")
 
 
-GIT_INFO_FILE = 'git_info.json'
+GIT_INFO_FILE = 'ngencerf-server_git_info.json'
 
 
 @cache

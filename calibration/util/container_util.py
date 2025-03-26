@@ -57,18 +57,24 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
 
     logger.info(f'copy_file_from_singularity_image: {image_path}')
 
-    if os.path.exists(image_path):
-        try:
-            # Step 1: Execute the Singularity command to copy the file
-            copy_cmd = ["singularity", "exec", image_path, "cp", src_path, dest_path]
-            subprocess.run(copy_cmd, check=True)
+    # Check if the path exists
+    if not os.path.exists(image_path):
+        # If it's a symlink, check whether it's broken
+        if os.path.islink(image_path):
+            target = os.readlink(image_path)
+            logger.error(f"Image path {image_path} is a symlink to {target}, but the target does not exist.")
+        else:
+            logger.error(f"Image {image_path} does not exist.")
+        return False
 
-            logger.info(f"Successfully copied {src_path} from {image_path} to {dest_path}")
-            success = True
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error copying file: {e.stderr or str(e)}")
-    else:
-        logger.error(f"Image {image_path} does not exist")
+    try:
+        copy_cmd = ["singularity", "exec", image_path, "cp", src_path, dest_path]
+        subprocess.run(copy_cmd, check=True)
+
+        logger.info(f"Successfully copied {src_path} from {image_path} to {dest_path}")
+        success = True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error copying file: {e.stderr or str(e)}")
 
     return success
 
