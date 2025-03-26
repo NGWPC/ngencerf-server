@@ -363,6 +363,19 @@ class LoadCalibrationJobSerializer(CalibrationRunSerializer):
     include_gpkg_map = serializers.BooleanField(required=False, default=True)
 
 
+class CalibrationRunIdList(BaseSerializer):
+    calibration_run_ids = serializers.ListSerializer(child=serializers.IntegerField(), required=True)
+
+
+class JobElement(GenericMessageResponseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    success = serializers.BooleanField(required=True, allow_null=False)
+
+
+class CalibrationRunListResponse(BaseSerializer):
+    jobs = JobElement(many=True, required=True, allow_null=False)
+
+
 class FooterResponseSerializer(BaseSerializer):
     version = serializers.CharField(required=True)
     date = serializers.CharField(required=True)
@@ -445,22 +458,11 @@ class GetGitInfoResponseSerializer(BaseSerializer):
     git_info = serializers.DictField(child=GitInfoSerializer())
 
 
-class ArchiveJobRequestSerializer(CalibrationRunSerializer):
+class ArchiveJobRequestSerializer(CalibrationRunIdList):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
 
-class GetCalibrationJobsRequestSerilizer(BaseSerializer):
-    include_archived = serializers.BooleanField(default=False, required=False)
-
 
 class GetCalibrationJobsRequestSerializer(BaseSerializer):
-    include_archived = serializers.BooleanField(default=False, required=False)
-
-
-class GetCalibrationJobsRequestSerializer(BaseSerializer):
-    include_archived = serializers.BooleanField(default=False, required=False)
-
-
-class GetCalibrationJobsRequestSerilizer(BaseSerializer):
     include_archived = serializers.BooleanField(default=False, required=False)
 
 
