@@ -1,3 +1,4 @@
+import copy
 import csv
 import logging
 import os
@@ -150,7 +151,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         return None, None
 
-    config = dict(config_template)
+    config = copy.deepcopy(config_template)
     general = config['General']
     calibration = config['Calibration']
     datafile = config['DataFile']
@@ -168,10 +169,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
 
         # Determine the source of the forcing data (user-uploaded or EDS)
         if not is_missing(run.forcing_source, 'Forcing source', errors):
+            forcing_dir = get_forcing_dir_for_job(run)
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance
+
             if is_forcing_upload:
                 # Check if forcing data has been uploaded
-                forcing_dir = get_forcing_dir_for_job(run)
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
             elif build:
@@ -180,60 +182,66 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                 if source_dir:
                     subset_directory_by_time_range(
                         source_dir,
-                        get_forcing_dir_for_job(run),
+                        forcing_dir,
                         DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
                                       max(run.calibration_end_period, run.validation_end_period))
                     )
 
-        datafile['forcing_dir'] = get_forcing_dir_for_job(run)
+            datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         # Determine the source of observational data (user-uploaded or EDS)
         if not is_missing(run.observational_source, 'Observational source', errors):
+            observational_dir = get_observational_dir_for_job(run)
+            observational_file = get_observational_file_for_job(run)
             is_observational_upload = run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance
+
             if is_observational_upload:
-                user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
+                user_uploaded_observational_file = get_single_file(observational_dir)
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
                 else:
                     # Rename the observational file if necessary
-                    observational_file_for_job_path = get_observational_file_for_job(run)
                     # If the user uploaded it with the proper name, no need to rename
-                    if user_uploaded_observational_file != observational_file_for_job_path:
-                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file_for_job_path}")
-                        os.rename(user_uploaded_observational_file, observational_file_for_job_path)
+                    if user_uploaded_observational_file != observational_file:
+                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
+                        os.rename(user_uploaded_observational_file, observational_file)
             elif build:
                 # For non-uploaded data, subset the observational data by time range
                 source_file = run.observational_eds_file_path
                 if source_file:
                     subset_by_time_range(
                         source_file,
-                        get_observational_file_for_job(run),
-                        DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                      max(run.calibration_end_period, run.validation_end_period))
+                        observational_file,
+                        DateTimeRange(
+                            min(run.calibration_start_period, run.validation_start_period),
+                            max(run.calibration_end_period, run.validation_end_period)
+                        )
                     )
 
-        datafile['obs_dir'] = get_observational_dir_for_job(run)
+            datafile['obs_dir'] = observational_dir
 
         if not is_missing(run.geopackage_source, 'Geopackage source', errors):
             geopackage_dir = get_geopackage_dir_for_job(run)
             is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
 
             if is_geopackage_upload:
-                user_uploaded_geopackage_file = get_single_file(geopackage_dir)
-                if user_uploaded_geopackage_file:
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
                     # For user uploads, use the job-specific location directly
-                    datafile['hydrofab_file'] = user_uploaded_geopackage_file
+                    datafile['hydrofab_file'] = geopackage_file
                 else:
                     errors.append('Geopackage data must be uploaded')
             else:
                 if run.geopackage_eds_file_path:
-                    # For data from Data Services copy to job-specific location
+                    # For data from Data Services, copy to job-specific location
                     try:
                         copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None
 
-                    datafile['hydrofab_file'] = get_single_file(geopackage_dir)
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
+                    datafile['hydrofab_file'] = geopackage_file
 
             if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
                 logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
