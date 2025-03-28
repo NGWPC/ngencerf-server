@@ -1,6 +1,7 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+import calibration.views.calibration_import_export_views
 import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
@@ -21,7 +22,7 @@ urlpatterns = [
     path('calibration/get_calibration_jobs_for_forecast/', calibration.views.get_jobs_views.get_calibration_jobs_for_forecast,
          name="getCalibrationJobsForForecast"),
     path('calibration/get_validation_jobs/', calibration.views.get_jobs_views.get_validation_jobs, name="getValidationJobs"),
-    path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
+    path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),
     path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),
     path('calibration/archive_jobs/', calibration_landing_views.archive_jobs, name="archiveJobs"),
     path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),

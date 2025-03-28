@@ -15,23 +15,20 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum, GeopackageSourceEnum
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun, CustomUser
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
-    CalibrationRunSerializer, LoadCalibrationRunResponseSerializer, ImportResponseSerializer, \
+    CalibrationRunSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    LoadCalibrationJobSerializer, ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse
-from calibration.util.file_util import get_single_file
-from calibration.util.geopkg import get_geometry_from_gpkg
+    ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse
 from calibration.util.git_util import get_git_info_internal
-from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, truncate_large_fields, create_validation_run_internal, create_forecast_run_internal, get_valid_path
+    validate_request, create_validation_run_internal, create_forecast_run_internal
 
 logger = logging.getLogger(__name__)
 
@@ -304,68 +301,6 @@ def get_git_info(request: Request) -> Response:
         return error_response
 
     logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_git_info() - {json.dumps(response_validator.data, default=str)}')
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=LoadCalibrationJobSerializer,
-    responses={
-        200: LoadCalibrationRunResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Load all data for a previously saved calibration"
-)
-@api_view(['POST', 'GET'])
-@handle_exceptions
-def load_calibration_run(request: Request) -> Response:
-    """
-    Load all data for a previously saved calibration run.
-
-    :param request: The HTTP request object.
-    :return: A Response object containing the serialized calibration run data.
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_calibration_run() request from {(cast(CustomUser, request.user)).email}  - {data}')
-
-    validator, error_return = validate_request(LoadCalibrationJobSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-    include_gpkg_map = validator.get('include_gpkg_map')
-
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
-
-    if error_return:
-        return error_return
-
-    calibration_run_data = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
-
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
-    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
-        geopackage_path) else None
-
-    calibration_run_data['num_catchments'] = num_catchments
-
-    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
-                                                           fields_to_truncate=['geopackage_image_url'])
-
-    if error_response:
-        return error_response
-    logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email} from load_calibration_run() - '
-        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
-    )
-
     return Response(response_validator.data)
 
 
