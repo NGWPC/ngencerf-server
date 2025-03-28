@@ -23,7 +23,7 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CalibrationRunSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse
+    ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -586,3 +586,68 @@ def hard_delete(run: CalibrationRun) -> None:
         logger.debug(f'Deleting directory {job_data_dir}')
         if os.path.exists(job_data_dir):
             shutil.rmtree(job_data_dir)
+
+
+@extend_schema(
+    request=ImportSerializer,
+    responses={
+        200: ImportResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Import a job"
+)
+@api_view(['POST'])
+@handle_exceptions
+def import_job(request: Request) -> Response:
+    """
+    API endpoint to import a calibration job. It validates input data,
+    imports calibration run data, and optionally submits a job.
+
+    :param request: Django HTTP request containing job import data.
+    :return: HTTP response indicating success or error status.
+    """
+    data = request.data
+    logger.debug(f'import_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+
+    validator, error_return = validate_request(ImportSerializer, data)
+    if error_return:
+        return error_return
+
+    run_after_import = validator.get('run_after_import', False)
+
+    run, messages, fatal_error = import_calibration_run_data(request, validator, JobGenesis.IMPORT)
+    if fatal_error:
+        return fatal_error
+
+    imported_and_submitted = 'imported'
+
+    # TODO Only run this if there are no other errors
+    errors, config_file = ngen_cal_input.ready_to_run(run)
+
+    if run_after_import and not errors:
+        errors, config_file = ngen_cal_input.ready_to_run(run)
+        if not errors:
+            error_response = submit_job(run, config_file=config_file)
+            if error_response:
+                return error_response
+            imported_and_submitted = 'imported and submitted'
+
+    response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
+    if messages:
+        response['messages'] = messages
+    if errors:
+        response['errors'] = errors
+
+    response_validator, error_response = validate_response(ImportResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from import_job() - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
