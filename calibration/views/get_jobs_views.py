@@ -151,7 +151,6 @@ def get_calibration_jobs(request):
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
-        include_modules=True,
         include_archived=include_archived
     )
 
@@ -172,7 +171,6 @@ def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
         include_validation_data: GetValidationJobsScope = None,
-        include_modules: bool = False,
         include_archived: bool = False
 ) -> list[dict[str, Any]]:
     """
@@ -183,7 +181,6 @@ def get_jobs(
     :param include_validation_data: Determines the level of validation data to include:
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
-    :param include_modules: Whether to include the list of associated modules (Module names).
     :param include_archived: Whether to include archived jobs in the queryset.
     :return: List of calibration jobs with selected fields.
     """
@@ -208,10 +205,9 @@ def get_jobs(
     # Fetch calibration runs with optional prefetching of formulations
     calibration_runs_qs = CalibrationRun.objects.filter(query).annotate(
         formulation_name=F('user_formulation_name')
-    )
-
-    if include_modules:
-        calibration_runs_qs = calibration_runs_qs.prefetch_related(formulations_prefetch)
+    ).select_related(
+        'gage', 'status', 'objective_function', 'optimization'
+    ).prefetch_related(formulations_prefetch)
 
     # Fields to include in the response
     selected_fields = [
@@ -222,52 +218,41 @@ def get_jobs(
         'is_archived'
     ]
 
-    calibration_runs = calibration_runs_qs.values(*selected_fields)
+    calibration_runs = list(calibration_runs_qs.only(*selected_fields))
 
-    # If modules are needed, retrieve associated formulations
-    formulations_map = {}
-    if include_modules:
-        formulations = CalibrationFormulation.objects.select_related('module').filter(
-            calibration_run__in=[run["id"] for run in calibration_runs]
-        ).values_list('calibration_run_id', 'module__name')
-
-        # Organize module names by calibration_run_id
-        for run_id, module_name in formulations:
-            formulations_map.setdefault(run_id, []).append(module_name)
+    # Retrieve associated formulations
+    formulations_map = {
+        run.id: [f.module.name for f in run.prefetched_formulations]
+        for run in calibration_runs
+    }
 
     results = []
     for run in calibration_runs:
-        # Map fields from the query to the desired response format
-        run_id = run.pop('id')
         result = {
-            'calibration_run_id': run_id,
-            'gage_id': run.pop('gage__gage_id'),
-            'status': run.pop('status__name'),
-            'objective_function': run.pop('objective_function__name'),
-            'optimization_algorithm': run.pop('optimization__name'),
-            'is_archived': run.pop('is_archived'),  # Always include is_archived
-            **run
+            'calibration_run_id': run.id,
+            'gage_id': run.gage.gage_id,
+            'status': run.status.name,
+            'objective_function': run.objective_function.name,
+            'optimization_algorithm': run.optimization.name,
+            'is_archived': run.is_archived,
+            'submit_date': run.submit_date,
+            'formulation_name': run.formulation_name,
+            'calibration_start_period': run.calibration_start_period,
+            'calibration_end_period': run.calibration_end_period,
+            'job_genesis': run.job_genesis,
+            'created_at': run.created_at,
+            'modules': formulations_map.get(run.id, [])
         }
-
-        # Add modules if requested
-        if include_modules:
-            result['modules'] = formulations_map.get(run_id, [])
 
         # Include validation IDs and count if requested
         if include_validation_data == GetValidationJobsScope.IDS:
-            validation_ids = get_validation_jobs_internal(
-                calibration_run_id=run_id,
-                detail_level=include_validation_data
-            )
+            validation_ids = get_validation_jobs_internal(run.id, include_validation_data)
             result['validation_run_ids'] = validation_ids
             result['validation_runs'] = len(validation_ids)
 
         # Include detailed validation status if requested
         elif include_validation_data == GetValidationJobsScope.STATUS:
-            result['validations'] = get_validation_jobs_internal(
-                calibration_run_id=run_id,
-                detail_level=include_validation_data
-            )
+            result['validations'] = get_validation_jobs_internal(run.id, include_validation_data)
 
         results.append(result)
 
