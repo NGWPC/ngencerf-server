@@ -83,7 +83,6 @@ def get_git_info_internal():
         except FileNotFoundError:
             logger.warning(f'File {git_info} not found.')
 
-
     merged_data = {}
     # Iterate over all JSON files in the directory and merge them.
     for filename in os.listdir(git_info_directory):

@@ -17,9 +17,9 @@ from calibration.models import CalibrationFormulation, CalibrationStopCriteria, 
 from calibration.run_util.run_common import submit_job
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
-    ExportResponseSerializer, ErrorResponseSerializer
+    ExportResponseSerializer, ErrorResponseSerializer, LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory, get_single_file
-from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
     get_observational_file_for_job
 from calibration.views import ngen_cal_input
@@ -30,7 +30,7 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request
+    validate_request, get_valid_path, truncate_large_fields
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
     get_forcing_data_from_data_services, get_observational_data_from_data_services
 
@@ -568,3 +568,65 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data
+
+
+@extend_schema(
+    request=LoadCalibrationJobSerializer,
+    responses={
+        200: LoadCalibrationRunResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Load all data for a previously saved calibration"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def load_calibration_run(request: Request) -> Response:
+    """
+    Load all data for a previously saved calibration run.
+
+    :param request: The HTTP request object.
+    :return: A Response object containing the serialized calibration run data.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'load_calibration_run() request from {(cast(CustomUser, request.user)).email}  - {data}')
+
+    validator, error_return = validate_request(LoadCalibrationJobSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    include_gpkg_map = validator.get('include_gpkg_map')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+
+    if error_return:
+        return error_return
+
+    calibration_run_data = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
+
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
+        geopackage_path) else None
+
+    calibration_run_data['num_catchments'] = num_catchments
+
+    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
+                                                           fields_to_truncate=['geopackage_image_url'])
+
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {(cast(CustomUser, request.user)).email} from load_calibration_run() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
+    )
+
+    return Response(response_validator.data)

@@ -9,14 +9,13 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName, GetValidationJobsScope
+from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun, CustomUser
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
-    GetCalibrationDataByIterationResponseSerializer, GetValidationJobsResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
+    GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
-from calibration.views.calibration_landing_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
     get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs
 
@@ -159,58 +158,6 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun, worker_n
                           'iterationmetric_set')
         .order_by('worker_name', 'iteration_num')
     )
-
-
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: GetValidationJobsResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Retrieve validation jobs along with their starting parameter values"
-)
-@api_view(['GET', 'POST'])
-@handle_exceptions
-def get_validation_jobs(request: Request) -> Response:
-    """
-    Retrieves validation jobs for a specific calibration run along with initial parameter values.
-
-    - Handles user authentication and request validation.
-    - Fetches validation jobs linked to a calibration run.
-    - Constructs and validates the response with serialized data.
-
-    :param request: The HTTP request object containing calibration run data.
-    :return: JSON response containing validation jobs or error details.
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_validation_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
-
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
-    if error_return:
-        return error_return
-
-    # Retrieve validation jobs using internal helper
-    validation_jobs = get_validation_jobs_internal(calibration_run_id, detail_level=GetValidationJobsScope.DETAILS)
-
-    response = {'validation_jobs': validation_jobs}
-    response_validator, error_response = validate_response(GetValidationJobsResponseSerializer, response)
-    if error_response:
-        return error_response
-
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_validation_jobs() - {json.dumps(response_validator.data)}')
-    return Response(response_validator.data)
 
 
 @extend_schema(

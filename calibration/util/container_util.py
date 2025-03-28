@@ -35,7 +35,7 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
         logger.info(f"Successfully copied {src_path} to {dest_path}")
         success = True
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error copying file: {e.stderr or str(e)}")  # Print error message
+        logger.error(f"Error copying file: {e.stderr or str(e)}")
     finally:
         # Step 3: Remove the temporary container (always runs, even if copy fails)
         rm_cmd = ["docker", "rm", "-f", container_name]
@@ -126,7 +126,6 @@ def copy_file_from_image(image_name: str, container_name: str, container_file_na
             container_file_name,
             local_file_name
         )
-
     # Only cache if the operation was successful
     if success:
         cache.set(cache_key, success, timeout=0)

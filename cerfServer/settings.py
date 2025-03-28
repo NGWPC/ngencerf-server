@@ -36,8 +36,6 @@ NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
 NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 
-
-
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
@@ -187,7 +185,6 @@ ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameter
 ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
 ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
 
-
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
 FORCING_DATA_DIRS = ['s3://ngwpc-forcing/aorc_2.2',
@@ -267,7 +264,6 @@ SIMULATE_FLAGS = {
     JobType.FORECAST: False,
     JobType.FORECAST_FORCING_DOWNLOAD: False,
 }
-
 
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
@@ -404,6 +400,7 @@ LOGGING = {
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
+
     print("Loaded local_settings.py successfully.")
 except ImportError as e:
     print('local_settings.py not found or could not be imported:', e)
