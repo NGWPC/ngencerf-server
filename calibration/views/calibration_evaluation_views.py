@@ -16,7 +16,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Er
     GetLogNamesResponseSerializer, GetLogRequestSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
-from calibration.views.calibration_landing_views import get_validation_jobs_internal
+from calibration.views.get_jobs_views import get_validation_jobs_internal
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
     get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs
 

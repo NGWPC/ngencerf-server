@@ -1,6 +1,7 @@
 from django.urls import path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
     calibration_evaluation_views, calibration_forecast_views, calibration_swe_views
@@ -14,10 +15,10 @@ urlpatterns = [
     path('calibration/create_and_run_forecast/', calibration_landing_views.create_and_run_forecast, name="createForecastRun"),
     path('calibration/get_footer/', calibration_landing_views.get_footer, name="getFooter"),
     path('calibration/get_git_info/', calibration_landing_views.get_git_info, name="getGitInfo"),
-    path('calibration/get_calibration_jobs/', calibration_landing_views.get_calibration_jobs, name="getCalibrationJobs"),
-    path('calibration/get_calibration_jobs_for_evaluation/', calibration_landing_views.get_calibration_jobs_for_evaluation,
+    path('calibration/get_calibration_jobs/', calibration.views.get_jobs_views.get_calibration_jobs, name="getCalibrationJobs"),
+    path('calibration/get_calibration_jobs_for_evaluation/', calibration.views.get_jobs_views.get_calibration_jobs_for_evaluation,
          name="getCalibrationJobsForEvaluation"),
-    path('calibration/get_calibration_jobs_for_forecast/', calibration_landing_views.get_calibration_jobs_for_forecast,
+    path('calibration/get_calibration_jobs_for_forecast/', calibration.views.get_jobs_views.get_calibration_jobs_for_forecast,
          name="getCalibrationJobsForForecast"),
     path('calibration/get_validation_jobs/', calibration_evaluation_views.get_validation_jobs, name="getValidationJobs"),
     path('calibration/load_calibration_run/', calibration_landing_views.load_calibration_run, name="loadCalibrationRun"),
