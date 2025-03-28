@@ -11,6 +11,7 @@ from calibration.enums_vanilla import NgenEnvironmentEnum
 logger = logging.getLogger(__name__)
 
 
+# noinspection PyTypeChecker
 def copy_file_from_docker_image(image_name: str, container_name: str, src_path: str, dest_path: str) -> bool:
     """
     Copies a file from a Docker image using a temporary container and ensures cleanup.

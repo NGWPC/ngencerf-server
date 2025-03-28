@@ -734,6 +734,9 @@ def get_user_email(request: Request) -> str:
     If both conditions are satisfied, it returns the email address.
     Otherwise, it returns 'Anonymous'.
 
+    We use a function because Pycharm gives a warnings if we use request.user.email directly
+    since we are using a CustomUser object
+
     :param request: The incoming DRF Request object.
     :return: User's email address or 'Anonymous' if not available.
     """

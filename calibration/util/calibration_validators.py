@@ -100,7 +100,7 @@ class ValidationRunSerializer(BaseSerializer):
     validation_run_id = serializers.IntegerField(required=True)
 
 
-# TDOO Do we still need this after we've fully implemented Forecast
+# TODO Do we still need this after we've fully implemented Forecast
 class CalibrationOrValidationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=True)
     validation_run_id = serializers.IntegerField(required=False, allow_null=True)

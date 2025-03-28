@@ -24,7 +24,7 @@ def get_project_root() -> str:
             return current_dir  # Found the project root
         current_dir = os.path.dirname(current_dir)  # Go up one level
 
-    return os.getcwd()  # Fallback if manage.py is not found shouldn't happen)
+    return os.getcwd()  # Fallback if manage.py is not found (shouldn't happen)
 
 
 # Cached project base directory
