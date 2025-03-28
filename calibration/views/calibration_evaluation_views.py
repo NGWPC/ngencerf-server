@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from typing import cast
 
 from django.db.models import F, QuerySet
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -10,14 +9,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
-from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun, CustomUser
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs
+    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
     :return: JSON response with calibration data or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_data_by_iteration() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -128,7 +128,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_data_by_iteration() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10))}'
     )
 
@@ -188,7 +188,7 @@ def get_log_names(request: Request) -> Response:
     :return: JSON response with log names or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_log_names() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
@@ -220,7 +220,7 @@ def get_log_names(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_log_names() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -278,7 +278,7 @@ def get_log(request: Request) -> Response:
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_log() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(GetLogRequestSerializer, data)
     if error_return:
@@ -348,7 +348,7 @@ def get_log(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_log() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

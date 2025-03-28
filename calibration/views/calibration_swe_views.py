@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import time
-from typing import cast
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -15,14 +14,15 @@ from swe_mapping.core import run_swe
 from swe_timeseries import swe_timeseries
 
 from calibration.enums import StatusEnum, ValidationType
-from calibration.models import ValidationRun, CustomUser
+from calibration.models import ValidationRun
 from calibration.util.calibration_validators import GetSnodasImagesRequestSerializer, GetSWEImagesResponseSerializer, \
     ErrorResponseSerializer, ValidationRunSerializer, GetSWETimeseriesDataResponseSerializer
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_netcdf_file, get_validation_output_valid, \
     get_output_validation_iteration_plot_dir, get_output_validation_plot_dir, get_output_validation_run_dir
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, get_validation_run, png_to_base64_url, get_job_description, \
-    validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_log
+    validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_log, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,7 @@ def get_swe_images_by_date(request: Request) -> Response:
     :return: A Response object with SWE image data or an error message.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_swe_images_by_date() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(GetSnodasImagesRequestSerializer, data)
     if error_return:
@@ -238,7 +238,7 @@ def get_swe_images_by_date(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_swe_images_by_date() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["lumped_map", "raw_map", "sim_map"]))}'
     )
 
@@ -270,7 +270,7 @@ def get_swe_timeseries_data(request: Request) -> Response:
     :return: A Response object with SWE timeseries image and data or an error message.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_swe_timeseries_data() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
@@ -308,7 +308,7 @@ def get_swe_timeseries_data(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_swe_timeseries_data() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["swe_timeseries_image", "swe_timeseries_data"], max_length=50))}'
     )
 

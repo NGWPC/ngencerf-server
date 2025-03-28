@@ -1,18 +1,18 @@
 import json
 import logging
-from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, CustomUser
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import SaveFormulationRequestSerializer, \
     ErrorResponseSerializer, SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
+from calibration.views.called_from import get_caller_name
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, get_user_email
 from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ def get_modules(request) -> Response:
     :return: A JSON response with the calibration run ID, status, modules, and module groups.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_modules() request from {(cast(CustomUser, request.user)).email} - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -71,7 +71,7 @@ def get_modules(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from get_modules() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -120,7 +120,7 @@ def save_formulation_tab(request) -> Response:
     :return: A JSON response confirming the update along with any warnings or errors.
     """
     data = request.data
-    logger.debug(f'save_formulation_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
@@ -219,7 +219,7 @@ def save_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_formulation_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

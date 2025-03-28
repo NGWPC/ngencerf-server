@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import shutil
-from typing import cast
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -16,7 +15,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, ForecastCycleEnum
-from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun, CustomUser
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import FooterResponseSerializer, \
     ErrorResponseSerializer, CreateCalibrationRunResponseSerializer, \
@@ -27,8 +26,9 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, create_validation_run_internal, create_forecast_run_internal
+    validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def create_calibration_run(request: Request) -> Response:
     :return: A Response object with the serialized calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'create_calibration_run() request from {(cast(CustomUser, request.user)).email} ')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} ')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -78,7 +78,7 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from create_calibration_run() - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -110,7 +110,7 @@ def create_and_run_validation(request: Request) -> Response:
     :return: JSON response with validation run details or error information.
     """
     data = request.data
-    logger.debug(f'create_and_run_validation() request from {(cast(CustomUser, request.user)).email} ')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} ')
 
     validator, error_return = validate_request(CreateValidationRequestSerializer, data)
     if error_return:
@@ -152,7 +152,7 @@ def create_and_run_validation(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from create_and_run_validation() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -181,7 +181,7 @@ def create_and_run_forecast(request: Request) -> Response:
     :return: JSON response with validation run details or error information.
     """
     data = request.data
-    logger.debug(f'create_and_run_forecast() request from {(cast(CustomUser, request.user)).email} ')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} ')
 
     validator, error_return = validate_request(CreateForecastRequestSerializer, data)
     if error_return:
@@ -213,7 +213,7 @@ def create_and_run_forecast(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from create_and_run_validation() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -239,13 +239,8 @@ def get_footer(request: Request) -> Response:
     :return: A Response object with version and contact information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    user = (
-        request.user.email
-        if getattr(request.user, "is_authenticated", False) and hasattr(request.user, "email")
-        else "Anonymous"
-    )
 
-    logger.debug(f'get_footer() request from {user} - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -262,7 +257,7 @@ def get_footer(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {user} from get_footer() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -288,7 +283,7 @@ def get_git_info(request: Request) -> Response:
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'get_git_info() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -300,7 +295,7 @@ def get_git_info(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_git_info() - {json.dumps(response_validator.data, default=str)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 
@@ -329,7 +324,7 @@ def clone_job(request: Request) -> Response:
     :return: A Response object with the cloned calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'clone_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -365,7 +360,7 @@ def clone_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from clone_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -424,7 +419,7 @@ def delete_jobs(request: Request) -> Response:
     :return: A Response object with the deletion status for each calibration job.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'delete_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunIdList, data)
     if error_return:
@@ -469,7 +464,7 @@ def delete_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from delete_jobs() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -499,7 +494,7 @@ def archive_jobs(request: Request) -> Response:
     :return: A Response object with the archive confirmation.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'archive_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ArchiveJobRequestSerializer, data)
     if error_return:
@@ -554,7 +549,7 @@ def archive_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from archive_jobs() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -614,7 +609,7 @@ def import_job(request: Request) -> Response:
     :return: HTTP response indicating success or error status.
     """
     data = request.data
-    logger.debug(f'import_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ImportSerializer, data)
     if error_return:
@@ -649,5 +644,5 @@ def import_job(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from import_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)

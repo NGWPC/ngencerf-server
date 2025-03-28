@@ -18,6 +18,7 @@ from rest_framework import status
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
 from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -723,3 +724,24 @@ def find_validation_worker_with_matching_log(
     if not matching_worker_name:
         logger.error(f"Could not find worker corresponding to {validation_run}")
     return matching_worker_name
+
+
+def get_user_email(request: Request) -> str:
+    """
+    Returns the email address of the authenticated user associated with the request.
+
+    This function checks whether the user is authenticated and has an 'email' attribute.
+    If both conditions are satisfied, it returns the email address.
+    Otherwise, it returns 'Anonymous'.
+
+    :param request: The incoming DRF Request object.
+    :return: User's email address or 'Anonymous' if not available.
+    """
+    user = request.user
+
+    # Check if the user is authenticated and has an 'email' attribute
+    if getattr(user, "is_authenticated", False) and hasattr(user, "email"):
+        return user.email
+
+    # Fallback if unauthenticated or missing 'email'
+    return "Anonymous"

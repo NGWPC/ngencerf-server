@@ -3,7 +3,7 @@ import logging
 import os
 import re
 from functools import lru_cache
-from typing import Any, cast
+from typing import Any
 
 import pandas as pd
 from django.core.cache import cache
@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
 from calibration.enums_vanilla import JobType
-from calibration.models import CalibrationRun, ValidationRun, ForecastRun, CustomUser
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.caching import get_filtered_plot_definitions
 from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
@@ -24,9 +24,10 @@ from calibration.util.ngen_locations import get_output_calibration_run_dir, get_
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir, \
     get_validation_metrics_valid_iteration_file, get_output_valid_iteration_file, get_forecast_output_dir, get_forecast_output_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url, process_worker_dirs
+    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url, process_worker_dirs, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,7 @@ def get_plot_names(request: Request) -> Response:
     :return: A JSON response with the calibration run ID, list of plot names and descriptions, and run status.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_plot_names() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
@@ -99,7 +100,11 @@ def get_plot_names(request: Request) -> Response:
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'get_plot_names() request from {(cast(CustomUser, request.user)).email}  - {json.dumps(response_validator.data)}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'{json.dumps(response_validator.data)}'
+    )
 
     return Response(response_validator.data)
 
@@ -134,7 +139,7 @@ def get_plot(request: Request) -> Response:
     :raises ResponseError: If the plot cannot be found or an error occurs.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_plot() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(GetPlotRequestSerializer, data)
     if error_return:
@@ -257,7 +262,7 @@ def get_plot(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_plot() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10))}'
     )
 
