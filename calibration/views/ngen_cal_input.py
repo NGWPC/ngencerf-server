@@ -28,7 +28,9 @@ from calibration.views.common import token_ngen, generate_custom_token, SLOTH, f
 
 logger = logging.getLogger(__name__)
 
-config_template = {
+# DO NOT MODIFY THIS TEMPLATE IN-PLACE.
+# Use `copy.deepcopy(CONFIG_TEMPLATE)` to safely create per-thread instances.
+CONFIG_TEMPLATE = {
 
     "General": {
         "calibration_run_id": 0,
@@ -151,7 +153,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         return None, None
 
-    config = copy.deepcopy(config_template)
+    config = copy.deepcopy(CONFIG_TEMPLATE)
     general = config['General']
     calibration = config['Calibration']
     datafile = config['DataFile']
