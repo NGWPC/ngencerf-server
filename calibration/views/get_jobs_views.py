@@ -24,7 +24,7 @@ User = get_user_model()
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetCalibrationJobsRequestSerializer,
     responses={
         200: GetCalibrationJobsForEvaluationResponseSerializer,
         400: OpenApiResponse(
@@ -50,12 +50,17 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, include_validation_data=GetValidationJobsScope.IDS,
-                    run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR, StatusEnum.CANCELLED])
+    include_archived = validator.get('include_archived')
+
+    jobs = get_jobs(request.user,
+                    include_validation_data=GetValidationJobsScope.IDS,
+                    run_status=[StatusEnum.DONE],
+                    include_archived=include_archived
+                    )
 
     response = {'jobs': jobs}
 
@@ -71,7 +76,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetCalibrationJobsRequestSerializer,
     responses={
         200: GetCalibrationJobsResponseSerializer,
         400: OpenApiResponse(
@@ -97,11 +102,16 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, run_status=[StatusEnum.DONE])
+    include_archived = validator.get('include_archived')
+
+    jobs = get_jobs(request.user,
+                    run_status=[StatusEnum.DONE],
+                    include_archived=include_archived
+                    )
 
     response = {'jobs': jobs}
 
