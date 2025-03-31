@@ -220,7 +220,7 @@ NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 # Used only by get_git_info when running on PW
 SINGULARITY_DIR = '/ngencerf/containers'
 
-NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
+NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
@@ -306,13 +306,8 @@ LOGGING = {
         'level': 'DEBUG'
     },
     'formatters': {
-        'prod_format': {
-            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {message}',
-            'datefmt': '%Y-%m-%dT%H:%M:%S',
-            'style': '{',
-        },
         'dev_format': {
-            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {process:d} {thread:d} {message}',
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
             'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
@@ -332,16 +327,6 @@ LOGGING = {
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
-        'file_prod': {
-            'level': 'INFO',
-            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_prod.log'),
-            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
-            'interval': 1,  # Rotate every 1 day
-            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
-            'formatter': 'prod_format',
             'encoding': 'utf-8',
         },
     },
@@ -385,7 +370,7 @@ LOGGING = {
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },

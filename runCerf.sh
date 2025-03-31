@@ -9,24 +9,24 @@ source "$SCRIPT_DIR/cerfserver.env"
 # Use the same directory variable for cerfServer
 cerfServer="$SCRIPT_DIR"
 
-# Redirect stdout and stderr to two log files and the console
-mkdir -p run-logs
-LOGFILE_DEV="run-logs/ngencerf_dev.log"
-LOGFILE_PROD="run-logs/ngencerf_prod.log"
+# Redirect stdout and stderr to a log file and the console
+mkdir -p logs
+LOGFILE_DEV="logs/ngencerf_dev.log"
 
-# Log initial message to both files only
-printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV" "$LOGFILE_PROD"
+# Log initial message to the development log only
+printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV"
 
-exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
+# Redirect stdout and stderr to LOGFILE_DEV
+exec > >(tee -a "$LOGFILE_DEV") 2>&1
 
 # Check for the --load-static flag
 LOAD_STATIC_DATA=false
 for arg in "$@"; do
   case $arg in
     --load-static)
-    LOAD_STATIC_DATA=true
-    shift
-    ;;
+      LOAD_STATIC_DATA=true
+      shift
+      ;;
   esac
 done
 
@@ -104,7 +104,7 @@ run_manage_command() {
     python3 manage.py "$@"
 
     # Restore redirection
-    exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
+    exec > >(tee -a "$LOGFILE_DEV") 2>&1
 }
 
 # Run management commands with proper logging
