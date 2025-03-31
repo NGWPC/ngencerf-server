@@ -212,27 +212,21 @@ def get_jobs(
         to_attr='prefetched_formulations'
     )
 
-    # Fetch calibration runs with optional prefetching of formulations
-    calibration_runs_qs = CalibrationRun.objects.filter(query).annotate(
-        formulation_name=F('user_formulation_name')
-    ).select_related(
-        'gage', 'status', 'objective_function', 'optimization'
-    ).prefetch_related(formulations_prefetch)
-
-    # Fields to include in the response
-    selected_fields = [
-        'id', 'gage__gage_id', 'submit_date', 'formulation_name',
+    calibration_runs_qs = CalibrationRun.objects.filter(query).only(
+        'id', 'gage__gage_id', 'submit_date', 'user_formulation_name',
         'calibration_start_period', 'calibration_end_period',
         'status__name', 'job_genesis', 'created_at',
         'objective_function__name', 'optimization__name',
         'is_archived'
-    ]
+    ).select_related(
+        'gage', 'status', 'objective_function', 'optimization'
+    ).prefetch_related(formulations_prefetch)
 
-    calibration_runs = list(calibration_runs_qs.only(*selected_fields))
+    calibration_runs = list(calibration_runs_qs)
 
     # Retrieve associated formulations
     formulations_map = {
-        run.id: [f.module.name for f in run.prefetched_formulations]
+        run.id: [f.module.name for f in run.prefetched_formulations]  # type: ignore[attr-defined]
         for run in calibration_runs
     }
 
@@ -240,13 +234,13 @@ def get_jobs(
     for run in calibration_runs:
         result = {
             'calibration_run_id': run.id,
-            'gage_id': run.gage.gage_id,
+            'gage_id': run.gage.gage_id if run.gage else None,
             'status': run.status.name,
-            'objective_function': run.objective_function.name,
-            'optimization_algorithm': run.optimization.name,
+            'objective_function': run.objective_function.name if run.objective_function else None,
+            'optimization_algorithm': run.optimization.name if run.optimization else None,
             'is_archived': run.is_archived,
             'submit_date': run.submit_date,
-            'formulation_name': run.formulation_name,
+            'formulation_name': run.user_formulation_name,
             'calibration_start_period': run.calibration_start_period,
             'calibration_end_period': run.calibration_end_period,
             'job_genesis': run.job_genesis,
