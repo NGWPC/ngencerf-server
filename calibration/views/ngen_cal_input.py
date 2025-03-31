@@ -372,6 +372,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
+    print(stop_criteria.value if stop_criteria else None)
+    print('plot', run.save_plot_iteration_frequency)
+    if stop_criteria and run.save_plot_iteration_frequency is not None and (stop_criteria.value < run.save_plot_iteration_frequency):
+        errors.append(f"The plot iteration frequency, {run.save_plot_iteration_frequency}, must be <= the stop criteria (number of iteration) {stop_criteria.value}")
+
     calibration['start_iteration'] = 0  # TODO ????'
 
     if run.streamflow_threshold:
