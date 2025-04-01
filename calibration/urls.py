@@ -101,7 +101,8 @@ urlpatterns = [
     path('calibration/get_swe_timeseries_data/', calibration_swe_views.get_swe_timeseries_data, name="getSweTimeseriesData"),
     
     # Testing
-    path('calibration/process_calibration_output/', calibration_run_views.read_calibration_output, name="processCalibrationOutput"),
+    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
+    path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 
     ##################################
     # Import/Export
