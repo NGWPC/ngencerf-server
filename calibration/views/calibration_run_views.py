@@ -29,8 +29,10 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer, \
     ForecastJobSlurmCallbackRequestSerializer, \
-    ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
+    ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
+    GenericResponseSerializerWithValidator
 from calibration.views import ngen_cal_input
+from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
     get_forecast_forcing_download_run, join_with_or
@@ -328,6 +330,56 @@ def process_calibration_output(request):
 
 
 @extend_schema(
+    request=ValidationRunSerializer,
+    responses={
+        200: GenericResponseSerializerWithValidator,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Process the output of a calibration run"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def process_swe_timeseries(request: Request) -> Response:
+    """
+    This endpoint is mostly for testing, to kick off the processing of the SWE timeseries for a  completed job.
+    Normally generate_swe_ts_data() is called automatically when a job completes.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'process_swe_timeseries() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    validator, error_return = validate_request(ValidationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+
+    run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.DONE])
+
+    if error_return:
+        return error_return
+
+    generate_swe_ts_data(run)
+
+    response = {'message': f"SWE Timeseries processing completed for Validation Job {run.id}",
+                'validation_run_id': run.id,
+                'status': run.status.name}
+
+    response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from process_swe_timeseries() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
     request=ReportIterationSerializer,
     responses={
         200: GenericResponseSerializer,
@@ -509,7 +561,8 @@ def cancel_job(request: Request) -> Response:
         if error_return:
             return error_return
 
-        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user, run_status=list(StatusEnum))
+        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user,
+                                                                       run_status=list(StatusEnum))
         if forcing_error:
             return forcing_error
 

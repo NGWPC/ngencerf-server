@@ -72,7 +72,7 @@ class GenericResponseSerializer(GenericMessageAndStatusResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
-class GenericResponseSerializerWithValidation(GenericResponseSerializer):
+class GenericResponseSerializerWithValidator(GenericMessageAndStatusResponseSerializer):
     validation_run_id = serializers.IntegerField(required=False)
 
 
