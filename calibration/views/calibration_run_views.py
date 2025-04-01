@@ -32,6 +32,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     GenericResponseSerializerWithValidator
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_swe_views import generate_swe_ts_data
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
     get_forecast_forcing_download_run, join_with_or, get_user_email
@@ -352,7 +353,7 @@ def process_swe_timeseries(request: Request) -> Response:
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'process_swe_timeseries() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
     validator, error_return = validate_request(ValidationRunSerializer, data)
     if error_return:
         return error_return
@@ -373,7 +374,7 @@ def process_swe_timeseries(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from process_swe_timeseries() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
