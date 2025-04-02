@@ -10,6 +10,7 @@ from datetime import datetime
 from django.db.models import F, QuerySet
 from django.http import HttpResponse, StreamingHttpResponse, FileResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
+from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -581,11 +582,17 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
     - Streams status updates (e.g., "pending", "done", "error") to the client.
     - Closes the connection once the job is complete or encounters an error.
     - Useful for notifying the UI in real time without polling.
+    - Returns 404 if no zip job has been started.
+
 
     :param request: HTTP request object.
     :param calibration_run_id: The ID of the calibration job being zipped.
     :return: StreamingHttpResponse with real-time status updates.
     """
+
+    if calibration_run_id not in zip_status_map:
+        logger.info(f"get_zip_status called for Calibration Job {calibration_run_id} but no zip job found")
+        return ResponseError(f"No zip job found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
 
     def event_stream():
         start_time = datetime.now()
@@ -603,7 +610,8 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
             if status["status"] in ["done", "error"]:
                 duration = datetime.now() - start_time
                 logger.debug(
-                    f'{get_caller_name()}() streaming complete for {get_user_email(request)} - calibration_run_id={calibration_run_id} - status={status["status"]} - '
+                    f'{get_caller_name()}() streaming complete for {get_user_email(request)} - '
+                    f'calibration_run_id={calibration_run_id} - status={status["status"]} - '
                     f'duration={duration.total_seconds():.2f}s'
                 )
                 break
@@ -655,7 +663,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
 
     status_info = zip_status_map.get(calibration_run_id)
     if not status_info:
-        return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}")
+        return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
 
     if status_info["status"] != "done":
         return ResponseError(f"Zip file for Calibration Job {calibration_run_id} is not ready yet")
