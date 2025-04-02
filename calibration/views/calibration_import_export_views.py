@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import time
-from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -13,9 +12,10 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun, CustomUser
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name
-from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ErrorResponseSerializer, LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
+from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ErrorResponseSerializer, \
+    LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
@@ -27,8 +27,9 @@ from calibration.views.calibration_optimization_views import get_user_optimizati
     write_optimization_inputs
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_parameters, get_time_range, has_user_selected_tuning_parameters
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request, get_valid_path, truncate_large_fields
+    validate_request, get_valid_path, truncate_large_fields, get_user_email
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
     get_forcing_data_from_data_services, get_observational_data_from_data_services
 
@@ -285,7 +286,7 @@ def export_job(request: Request) -> Response:
     :return: Response containing the exported calibration run data or an error.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'export_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -306,7 +307,7 @@ def export_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from export() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -528,7 +529,7 @@ def load_calibration_run(request: Request) -> Response:
     :return: A Response object containing the serialized calibration run data.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_calibration_run() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(LoadCalibrationJobSerializer, data)
     if error_return:
@@ -558,7 +559,7 @@ def load_calibration_run(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email} from load_calibration_run() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
     )
 

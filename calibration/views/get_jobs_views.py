@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import cast, Any
+from typing import Any
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Prefetch, F
@@ -10,11 +10,13 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
-from calibration.models import CustomUser, CalibrationFormulation, CalibrationRun, ValidationRun, IterationParameter, ForecastRun
+from calibration.models import CalibrationFormulation, CalibrationRun, ValidationRun, IterationParameter, ForecastRun
 from calibration.util.calibration_validators import EmptySerializer, GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer
-from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run
+from calibration.views.called_from import get_caller_name
+from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
+    get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ User = get_user_model()
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetCalibrationJobsRequestSerializer,
     responses={
         200: GetCalibrationJobsForEvaluationResponseSerializer,
         400: OpenApiResponse(
@@ -46,14 +48,19 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_evaluation() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, include_validation_data=GetValidationJobsScope.IDS,
-                    run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR, StatusEnum.CANCELLED])
+    include_archived = validator.get('include_archived')
+
+    jobs = get_jobs(request.user,
+                    include_validation_data=GetValidationJobsScope.IDS,
+                    run_status=[StatusEnum.DONE],
+                    include_archived=include_archived
+                    )
 
     response = {'jobs': jobs}
 
@@ -62,14 +69,14 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_jobs_for_evaluation() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
 
 
 @extend_schema(
-    request=EmptySerializer,
+    request=GetCalibrationJobsRequestSerializer,
     responses={
         200: GetCalibrationJobsResponseSerializer,
         400: OpenApiResponse(
@@ -93,13 +100,18 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     :return: JSON response with a list of calibration jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs_for_forecast() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(EmptySerializer, data)
+    validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
         return error_return
 
-    jobs = get_jobs(request.user, run_status=[StatusEnum.DONE])
+    include_archived = validator.get('include_archived')
+
+    jobs = get_jobs(request.user,
+                    run_status=[StatusEnum.DONE],
+                    include_archived=include_archived
+                    )
 
     response = {'jobs': jobs}
 
@@ -108,7 +120,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_jobs_for_forecast() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
@@ -137,7 +149,7 @@ def get_calibration_jobs(request):
     Return all calibration jobs, including archived ones.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_calibration_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(GetCalibrationJobsRequestSerializer, data)
     if error_return:
@@ -149,7 +161,6 @@ def get_calibration_jobs(request):
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
-        include_modules=True,
         include_archived=include_archived
     )
 
@@ -160,7 +171,7 @@ def get_calibration_jobs(request):
         return error_response
 
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_calibration_jobs() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
@@ -170,7 +181,6 @@ def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
         include_validation_data: GetValidationJobsScope = None,
-        include_modules: bool = False,
         include_archived: bool = False
 ) -> list[dict[str, Any]]:
     """
@@ -181,7 +191,6 @@ def get_jobs(
     :param include_validation_data: Determines the level of validation data to include:
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
-    :param include_modules: Whether to include the list of associated modules (Module names).
     :param include_archived: Whether to include archived jobs in the queryset.
     :return: List of calibration jobs with selected fields.
     """
@@ -203,69 +212,51 @@ def get_jobs(
         to_attr='prefetched_formulations'
     )
 
-    # Fetch calibration runs with optional prefetching of formulations
-    calibration_runs_qs = CalibrationRun.objects.filter(query).annotate(
-        formulation_name=F('user_formulation_name')
-    )
-
-    if include_modules:
-        calibration_runs_qs = calibration_runs_qs.prefetch_related(formulations_prefetch)
-
-    # Fields to include in the response
-    selected_fields = [
-        'id', 'gage__gage_id', 'submit_date', 'formulation_name',
+    calibration_runs_qs = CalibrationRun.objects.filter(query).only(
+        'id', 'gage__gage_id', 'submit_date', 'user_formulation_name',
         'calibration_start_period', 'calibration_end_period',
         'status__name', 'job_genesis', 'created_at',
         'objective_function__name', 'optimization__name',
         'is_archived'
-    ]
+    ).select_related(
+        'gage', 'status', 'objective_function', 'optimization'
+    ).prefetch_related(formulations_prefetch)
 
-    calibration_runs = calibration_runs_qs.values(*selected_fields)
+    calibration_runs = list(calibration_runs_qs)
 
-    # If modules are needed, retrieve associated formulations
-    formulations_map = {}
-    if include_modules:
-        formulations = CalibrationFormulation.objects.select_related('module').filter(
-            calibration_run__in=[run["id"] for run in calibration_runs]
-        ).values_list('calibration_run_id', 'module__name')
-
-        # Organize module names by calibration_run_id
-        for run_id, module_name in formulations:
-            formulations_map.setdefault(run_id, []).append(module_name)
+    # Retrieve associated formulations
+    formulations_map = {
+        run.id: [f.module.name for f in run.prefetched_formulations]  # type: ignore[attr-defined]
+        for run in calibration_runs
+    }
 
     results = []
     for run in calibration_runs:
-        # Map fields from the query to the desired response format
-        run_id = run.pop('id')
         result = {
-            'calibration_run_id': run_id,
-            'gage_id': run.pop('gage__gage_id'),
-            'status': run.pop('status__name'),
-            'objective_function': run.pop('objective_function__name'),
-            'optimization_algorithm': run.pop('optimization__name'),
-            'is_archived': run.pop('is_archived'),  # Always include is_archived
-            **run
+            'calibration_run_id': run.id,
+            'gage_id': run.gage.gage_id if run.gage else None,
+            'status': run.status.name,
+            'objective_function': run.objective_function.name if run.objective_function else None,
+            'optimization_algorithm': run.optimization.name if run.optimization else None,
+            'is_archived': run.is_archived,
+            'submit_date': run.submit_date,
+            'formulation_name': run.user_formulation_name,
+            'calibration_start_period': run.calibration_start_period,
+            'calibration_end_period': run.calibration_end_period,
+            'job_genesis': run.job_genesis,
+            'created_at': run.created_at,
+            'modules': formulations_map.get(run.id, [])
         }
-
-        # Add modules if requested
-        if include_modules:
-            result['modules'] = formulations_map.get(run_id, [])
 
         # Include validation IDs and count if requested
         if include_validation_data == GetValidationJobsScope.IDS:
-            validation_ids = get_validation_jobs_internal(
-                calibration_run_id=run_id,
-                detail_level=include_validation_data
-            )
+            validation_ids = get_validation_jobs_internal(run.id, include_validation_data)
             result['validation_run_ids'] = validation_ids
             result['validation_runs'] = len(validation_ids)
 
         # Include detailed validation status if requested
         elif include_validation_data == GetValidationJobsScope.STATUS:
-            result['validations'] = get_validation_jobs_internal(
-                calibration_run_id=run_id,
-                detail_level=include_validation_data
-            )
+            result['validations'] = get_validation_jobs_internal(run.id, include_validation_data)
 
         results.append(result)
 
@@ -372,7 +363,7 @@ def get_validation_jobs(request: Request) -> Response:
     :return: JSON response containing validation jobs or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_validation_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -391,7 +382,7 @@ def get_validation_jobs(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_validation_jobs() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -420,7 +411,7 @@ def get_forecast_jobs(request: Request) -> Response:
     :return: JSON response with validation jobs or error information.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_validation_jobs() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
@@ -444,7 +435,7 @@ def get_forecast_jobs(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_validation_jobs() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)

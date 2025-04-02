@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, cast
+from typing import Any
 
 from django.db import transaction
 from django.db.models import F
@@ -9,12 +9,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from calibration.enums import OptimizationEnum, StatusEnum, MetricEnum
-from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun, CustomUser
+from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request
+from calibration.views.called_from import get_caller_name
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def load_optimization_tab(request) -> Response:
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'load_optimization_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -78,7 +79,7 @@ def load_optimization_tab(request) -> Response:
     response_validator, error_response = validate_response(LoadOptimizationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_optimization_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -151,7 +152,7 @@ def save_optimization_tab(request) -> Response:
     """
     data = request.data
 
-    logger.debug(f'save_optimization_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(SaveOptimizationRequestSerializer, data)
     if error_return:
@@ -207,7 +208,7 @@ def save_optimization_tab(request) -> Response:
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_optimization_tab() - {json.dumps(response_validator.data)}')
+        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
         return Response(response_validator.data)
 
 

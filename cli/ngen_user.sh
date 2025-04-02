@@ -21,10 +21,10 @@ ngen_login() {
     email="${NGEN_EMAIL:-$NGEN_USERNAME}"
 
     if [ -z "$email" ]; then
-        read -p "ngenCerf email: " email
+        read -r -p "ngenCerf email: " email
     fi
     if [ -z "$NGEN_PASSWORD" ]; then
-        read -sp "ngenCerf password: " NGEN_PASSWORD
+        read -r -sp "ngenCerf password: " NGEN_PASSWORD
         echo  # Move to a new line after password input
     fi
 
@@ -68,14 +68,14 @@ ngen_register() {
 
     # Prompt for email if none was provided
     if [ -z "$email" ]; then
-        read -p "Enter a new email for ngenCerf registration: " email
+        read -r -p "Enter a new email for ngenCerf registration: " email
     fi
 
     # Prompt for password twice for confirmation
     while true; do
-        read -sp "Enter a new password for ngenCerf registration: " NGEN_PASSWORD
+        read -r -sp "Enter a new password for ngenCerf registration: " NGEN_PASSWORD
         echo
-        read -sp "Confirm your password: " NGEN_PASSWORD_CONFIRM
+        read -r -sp "Confirm your password: " NGEN_PASSWORD_CONFIRM
         echo
         if [ "$NGEN_PASSWORD" == "$NGEN_PASSWORD_CONFIRM" ]; then
             break
