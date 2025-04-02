@@ -452,14 +452,16 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     return ngen_log_path
 
 
+    
 downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
+
 
 
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def get_calibration_job_zip(request: Request) -> HttpResponse:
     """
-    Zips up all files in the user's working directory for the given calibration_job_id and returns the
+    Zips up all files in the user's working directory for the given calibration_job_id and returns the 
     resulting file as a response to the browser.
 
     :param request: The HTTP request object containing calibration run data.
