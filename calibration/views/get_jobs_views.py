@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Prefetch, F
+from django.db.models import Q, Prefetch
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -14,6 +14,7 @@ from calibration.models import CalibrationFormulation, CalibrationRun, Validatio
 from calibration.util.calibration_validators import EmptySerializer, GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer
+from calibration.views.calibration_evaluation_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
     get_user_email
@@ -245,7 +246,8 @@ def get_jobs(
             'calibration_end_period': run.calibration_end_period,
             'job_genesis': run.job_genesis,
             'created_at': run.created_at,
-            'modules': formulations_map.get(run.id, [])
+            'modules': formulations_map.get(run.id, []),
+            'is_downloadable': StatusEnum.from_name(run.status.name) in downloadable_statuses
         }
 
         # Include validation IDs and count if requested
