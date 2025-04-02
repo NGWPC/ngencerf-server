@@ -1,8 +1,14 @@
+import io
 import json
 import logging
 import os
+import threading
+import time
+import zipfile
+from datetime import datetime
 
 from django.db.models import F, QuerySet
+from django.http import HttpResponse, StreamingHttpResponse, FileResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -12,12 +18,12 @@ from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, ErrorResponseSerializer, \
     GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, ValidationRunSerializer, \
-    GetLogNamesResponseSerializer, GetLogRequestSerializer
+    GetLogNamesResponseSerializer, GetLogRequestSerializer, GenericMessageWithIdResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email
+    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -442,5 +448,242 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
 
     return ngen_log_path
 
-
+    
 downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
+
+
+
+# Track zip status and paths in memory (can also use DB or cache if needed)
+zip_status_map = {}  # calibration_run_id -> {"status": "pending|done|error", "path": "zipfile.zip"}
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: GenericMessageWithIdResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Starts a background process to zip calibration job files. Use `get_zip_status` to track progress."
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def start_zip_for_calibration_job(request: Request) -> Response:
+    """
+    Starts the process to zip calibration job files in a background thread.
+    Returns immediately with a job ID (calibration_run_id).
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+
+    downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
+    if error_return:
+        return error_return
+
+    existing_status = zip_status_map.get(calibration_run_id)
+    if existing_status and existing_status["status"] == "pending":
+        logger.info(f"Zip job already in progress for Calibration Job {calibration_run_id}")
+        return Response({
+            "message": "Zip job already in progress",
+            "status": existing_status["status"],
+            "calibration_run_id": calibration_run_id
+        })
+    # Mark status as pending
+    zip_status_map[calibration_run_id] = {
+        "status": "pending",
+        "path": None,
+        "started_at": datetime.now().isoformat()
+    }
+
+    # Launch zip process in background
+    def zip_job():
+        start_time = datetime.now()
+        try:
+            job_data_dir = run.job_data_dir
+            zip_name = f"{os.path.basename(job_data_dir)}_{run.user_formulation_name}"
+            zip_path = f"/tmp/{zip_name}.zip"
+
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for root, _, files in os.walk(job_data_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arc_name = os.path.relpath(file_path, job_data_dir)
+                        try:
+                            zip_file.write(file_path, arc_name)
+                        except FileNotFoundError:
+                            logger.warning(f"File not found during zipping: {arc_name}")
+
+            # Mark the zip job as complete
+            zip_status_map[calibration_run_id] = {
+                "status": "done",
+                "path": zip_path,
+                "started_at": zip_status_map[calibration_run_id]["started_at"]
+            }
+
+            duration = datetime.now() - start_time
+            logger.info(f"Zip job completed for Calibration Job {run.id} in {duration.total_seconds():.2f} seconds")
+
+        except Exception as e:
+            zip_status_map[calibration_run_id] = {
+                "status": "error",
+                "path": None,
+                "started_at": zip_status_map[calibration_run_id].get("started_at")
+            }
+            duration = datetime.now() - start_time
+            logger.exception(f"Failed to zip Calibration Job {run.id} after {duration.total_seconds():.2f} seconds: {e}")
+
+    threading.Thread(target=zip_job).start()
+
+    response = ({"message": "Zip job started", "calibration_run_id": calibration_run_id})
+
+    response_validator, error_response = validate_response(GenericMessageWithIdResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: OpenApiResponse(description="Server-Sent Events stream with zip job status updates"),
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Streams zip status updates in real time via Server-Sent Events (SSE)"
+)
+@api_view(['GET'])
+@handle_exceptions
+def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse:
+    """
+    SSE (Server-Sent Events) endpoint that streams the status of a background zip job.
+
+    - Streams status updates (e.g., "pending", "done", "error") to the client.
+    - Closes the connection once the job is complete or encounters an error.
+    - Useful for notifying the UI in real time without polling.
+
+    :param request: HTTP request object.
+    :param calibration_run_id: The ID of the calibration job being zipped.
+    :return: StreamingHttpResponse with real-time status updates.
+    """
+
+    def event_stream():
+        start_time = datetime.now()
+        logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} for Calibration Run id {calibration_run_id}')
+
+        # Stream loop: keep checking the job status until it is "done" or "error"
+        while True:
+            # Retrieve the current zip status from in-memory map
+            status = zip_status_map.get(calibration_run_id, {"status": "not_found"})
+
+            # Format the status as an SSE-compatible message
+            yield f"data: {json.dumps(status)}\n\n"
+
+            # If job has finished or failed, stop the stream (connection closes)
+            if status["status"] in ["done", "error"]:
+                duration = datetime.now() - start_time
+                logger.debug(
+                    f'{get_caller_name()}() streaming complete for {get_user_email(request)} - calibration_run_id={calibration_run_id} - status={status["status"]} - '
+                    f'duration={duration.total_seconds():.2f}s'
+                )
+                break
+
+            # Sleep before checking again (keeps CPU usage low and reduces frequency)
+            time.sleep(1)
+
+    # Return a streaming HTTP response using the generator function above
+    return StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+
+
+@extend_schema(
+    request=CalibrationRunSerializer,
+    responses={
+        200: OpenApiResponse(description="ZIP file ready for download"),
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Returns the zipped calibration job if ready. Automatically deletes the file after sending."
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def download_calibration_zip(request: Request) -> FileResponse | Response:
+    """
+    Serves the zipped calibration job data for download after it has been prepared.
+
+    - Extracts calibration_run_id from POST or GET parameters.
+    - Validates that the zip process has completed.
+    - Returns the ZIP file as an attachment if available.
+    - Returns an error response if the file is not ready or missing.
+
+    :param request: The HTTP request object.
+    :return: HTTP response with the ZIP file or a formatted error response.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_response = validate_request(CalibrationRunSerializer, data)
+    if error_response:
+        return error_response
+
+    calibration_run_id = validator.get("calibration_run_id")
+
+    status_info = zip_status_map.get(calibration_run_id)
+    if not status_info:
+        return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}")
+
+    if status_info["status"] != "done":
+        return ResponseError(f"Zip file for Calibration Job {calibration_run_id} is not ready yet")
+
+    zip_path = status_info.get("path")
+    if not zip_path or not os.path.exists(zip_path):
+        return ResponseError(f"Zip file is missing for Calibration Job {calibration_run_id}")
+
+    try:
+        response = FileResponse(open(zip_path, 'rb'), content_type='application/zip')
+        filename = os.path.basename(zip_path)
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+        def cleanup():
+            try:
+                os.remove(zip_path)
+                logger.info(f"Deleted zip file after download: {zip_path}")
+            except Exception as ex:
+                logger.warning(f"Failed to delete zip file {zip_path}: {ex}")
+            zip_status_map.pop(calibration_run_id, None)
+
+        # Hook into response close for cleanup
+        response.close = (lambda original_close=response.close:
+                          lambda: (cleanup(), original_close())[1])()
+
+        logger.debug(f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} from {get_caller_name()}()')
+        return response
+
+    except IOError as e:
+        logger.exception(f"Failed to read zip file for Calibration Job {calibration_run_id}: {e}")
+        return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
