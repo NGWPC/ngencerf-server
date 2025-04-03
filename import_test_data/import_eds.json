@@ -97,7 +97,7 @@
         }
     ],
     "optimization": "DDS",
-    "save_plot_iteration_frequency": 5,
+    "save_plot_iteration_frequency": 2,
     "save_output_iteration": false,
     "stop_criteria": 2
 }
