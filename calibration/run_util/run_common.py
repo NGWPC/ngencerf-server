@@ -18,7 +18,7 @@ from calibration.models.forecast_forcing_download_run import ForecastForcingDown
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
-    get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_file, \
+    get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_path, \
     get_forecast_dir, get_forecast_forcing_config_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
@@ -96,13 +96,15 @@ def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
     Validates the command-line arguments and output file paths for LOCAL and DOCKER environments.
 
     This function ensures that all arguments passed to subprocess-based commands are valid types
-    (str, bytes, or os.PathLike). It raises a TypeError if any invalid argument is encountered.
+    (str, bytes, or os.PathLike) and not None. It raises a TypeError if any invalid argument type
+    is encountered, or a ValueError if any argument value is None.
 
     :param cmd_line_args: A dictionary of command-line arguments where the keys are argument names
                           and the values are their corresponding values.
     :param stdout_file: The path to the file where the job's stdout will be written.
                         It must be a valid path-like object.
     :raises TypeError: If any argument or the stdout file is not a valid type.
+    :raises ValueError: If any argument value is None.
     """
 
     # Define allowed types for clarity
@@ -110,6 +112,10 @@ def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
 
     # Validate each argument in the command-line arguments dictionary
     for key, value in cmd_line_args.items():
+        if value is None:
+            logger.error(f"Argument '{key}' is None, which is not allowed.")
+            raise ValueError(f"Command-line argument '{key}' cannot be None.")
+
         # Check if the value is one of the allowed types
         if not isinstance(value, allowed_types):
             # Log the invalid argument with valid type information
@@ -268,7 +274,8 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
     config_file = get_forecast_forcing_config_file(forecast_forcing_download_run.forecast_run)
-    forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
+    forcing_dir = get_forecast_forcing_download_path(forecast_forcing_download_run.forecast_run)
+    os.makedirs(forcing_dir, exist_ok=True)
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(
@@ -277,7 +284,7 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
             'cycle_name': cycle_name,
             'gpkg_file': gpkg_file,
             'config_file': config_file,
-            'forcing_file': forcing_file
+            'forcing_dir': forcing_dir
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST_FORCING_DOWNLOAD, False)
@@ -293,7 +300,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
 
     :param forecast_run: The ForecastRun object representing the job.
     """
-    forcing_file = get_forecast_forcing_download_file(forecast_run)
+    forcing_dir = get_forecast_forcing_download_path(forecast_run)
     validation_best_input = get_validation_best_input_file(forecast_run.calibration_run)
     forecast_dir = os.path.basename(get_forecast_dir(forecast_run))
     stdout_file = get_forecast_stdout_file(forecast_run)
@@ -301,7 +308,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     execute_job(
         forecast_run,
         {
-            'forcing_file': forcing_file,
+            'forcing_dir': forcing_dir,
             'validation_best_input': validation_best_input,
             'forecast_dir': forecast_dir
         },
