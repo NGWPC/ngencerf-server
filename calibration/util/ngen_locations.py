@@ -303,8 +303,8 @@ def get_forecast_performance_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_performance.log')
 
 
-def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}.nc')
+def get_forecast_forcing_download_path(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}')
 
 
 def get_forecast_temp_dir(forecast_run: ForecastRun) -> str:
