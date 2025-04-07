@@ -451,9 +451,52 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
 
     return ngen_log_path
 
-    
+
 downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
 
+
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_calibration_job_zip(request: Request) -> HttpResponse:
+    """
+    Zips up all files in the user's working directory for the given calibration_job_id and returns the
+    resulting file as a response to the browser.
+
+    :param request: The HTTP request object containing calibration run data.
+    :return: ZIP response containing all files in the user's working directory for the given calibration_job_id
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
+    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
+    if error_return:
+        return error_return
+
+    bytes_io = io.BytesIO()
+    job_data_dir = calibration_run.job_data_dir
+
+    with zipfile.ZipFile(bytes_io, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for root, _, files in os.walk(job_data_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arc_name = os.path.relpath(file_path, job_data_dir)
+                try:
+                    zip_file.write(file_path, arc_name)
+                except FileNotFoundError:
+                    logger.error(f"Unable to read file: {arc_name} while building zip file")
+
+    response = HttpResponse(bytes_io.getvalue(), content_type='application/zip')
+    zip_name = f"{os.path.basename(job_data_dir)}_{calibration_run.user_formulation_name}"
+    response['Content-Disposition'] = f'attachment; filename="{zip_name}.zip"'
+
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
+    return response
 
 
 # Track zip status and paths in memory (can also use DB or cache if needed)
