@@ -452,9 +452,7 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     return ngen_log_path
 
 
-    
 downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
-
 
 
 @api_view(['GET', 'POST'])
@@ -475,7 +473,6 @@ def get_calibration_job_zip(request: Request) -> HttpResponse:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
     if error_return:
         return error_return
@@ -536,7 +533,6 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
 
-    downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
     if error_return:
         return error_return
@@ -624,7 +620,6 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 # - @api_view is part of Django REST Framework (DRF), which handles content negotiation.
 # - For Server-Sent Events (SSE), DRF will return 406 Not Acceptable if the client does not explicitly accept "application/json".
 # - require_GET is a plain Django view decorator, which avoids DRF's automatic content negotiation and lets us stream raw text/event-stream responses cleanly.
-
 @require_GET
 @handle_exceptions
 def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse:
