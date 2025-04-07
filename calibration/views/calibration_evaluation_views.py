@@ -441,3 +441,6 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
     process_worker_dirs(run, check_worker)
 
     return ngen_log_path
+
+
+downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
