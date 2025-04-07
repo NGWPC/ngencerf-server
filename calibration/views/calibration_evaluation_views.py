@@ -9,7 +9,7 @@ from datetime import datetime
 
 from django.conf import settings
 from django.db.models import F, QuerySet
-from django.http import HttpResponse, StreamingHttpResponse, FileResponse
+from django.http import HttpResponse, StreamingHttpResponse, FileResponse, JsonResponse
 from django.views.decorators.http import require_GET
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
@@ -618,28 +618,35 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 )
 # NOTE: We use require_GET instead of @api_view because:
 # - @api_view is part of Django REST Framework (DRF), which handles content negotiation.
-# - For Server-Sent Events (SSE), DRF will return 406 Not Acceptable if the client does not explicitly accept "application/json".
-# - require_GET is a plain Django view decorator, which avoids DRF's automatic content negotiation and lets us stream raw text/event-stream responses cleanly.
+# - For Server-Sent Events (SSE), DRF expects the client to accept "application/json", which causes issues.
+# - If the client sends "text/event-stream", DRF may reject it with a 406 Not Acceptable error.
+# - require_GET is a plain Django view decorator that avoids DRF’s content negotiation and lets us stream raw SSE.
+# - Because this bypasses DRF, we return a JsonResponse directly for errors instead of DRF’s Response.
 @require_GET
 @handle_exceptions
-def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse:
+def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse | JsonResponse:
     """
     SSE (Server-Sent Events) endpoint that streams the status of a background zip job.
 
     - Streams status updates (e.g., "pending", "done", "error") to the client.
     - Closes the connection once the job is complete or encounters an error.
-    - Useful for notifying the UI in real time without polling.
-    - Returns 404 if no zip job has been started.
-    - Does not use @api_view to avoid 406 responses from DRF when SSE is requested.
+    - Returns a JSON error response if no zip job has been started.
+    - Uses require_GET instead of @api_view to support SSE without 406 errors due to DRF content negotiation.
 
     :param request: HTTP request object.
     :param calibration_run_id: The ID of the calibration job being zipped.
-    :return: StreamingHttpResponse with real-time status updates.
+    :return: StreamingHttpResponse with real-time status updates, or JsonResponse if the job is not found.
     """
 
     if calibration_run_id not in zip_status_map:
         logger.info(f"get_zip_status called for Calibration Job {calibration_run_id} but no zip job found")
-        return ResponseError(f"No zip job found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
+        return JsonResponse(
+            {
+                "response_type": "error",
+                "message": f"No zip job found for Calibration Job {calibration_run_id}"
+            },
+            status=404
+        )
 
     def event_stream():
         try:
