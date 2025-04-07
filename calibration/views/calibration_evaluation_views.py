@@ -7,8 +7,10 @@ import time
 import zipfile
 from datetime import datetime
 
+from django.conf import settings
 from django.db.models import F, QuerySet
 from django.http import HttpResponse, StreamingHttpResponse, FileResponse
+from django.views.decorators.http import require_GET
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -573,7 +575,12 @@ def start_zip_for_calibration_job(request: Request) -> Response:
     },
     description="Streams zip status updates in real time via Server-Sent Events (SSE)"
 )
-@api_view(['GET'])
+# NOTE: We use require_GET instead of @api_view because:
+# - @api_view is part of Django REST Framework (DRF), which handles content negotiation.
+# - For Server-Sent Events (SSE), DRF will return 406 Not Acceptable if the client does not explicitly accept "application/json".
+# - require_GET is a plain Django view decorator, which avoids DRF's automatic content negotiation and lets us stream raw text/event-stream responses cleanly.
+
+@require_GET
 @handle_exceptions
 def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse:
     """
@@ -583,7 +590,7 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
     - Closes the connection once the job is complete or encounters an error.
     - Useful for notifying the UI in real time without polling.
     - Returns 404 if no zip job has been started.
-
+    - Does not use @api_view to avoid 406 responses from DRF when SSE is requested.
 
     :param request: HTTP request object.
     :param calibration_run_id: The ID of the calibration job being zipped.
@@ -595,32 +602,45 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
         return ResponseError(f"No zip job found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
 
     def event_stream():
-        start_time = datetime.now()
-        logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} for Calibration Run id {calibration_run_id}')
+        try:
+            start_time = datetime.now()
+            logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} for Calibration Run id {calibration_run_id}')
 
-        # Stream loop: keep checking the job status until it is "done" or "error"
-        while True:
-            # Retrieve the current zip status from in-memory map
-            status = zip_status_map.get(calibration_run_id, {"status": "not_found"})
+            # Stream loop: keep checking the job status until it is "done" or "error"
+            while True:
+                # Retrieve the current zip status from in-memory map
+                status_info = zip_status_map.get(calibration_run_id, {"status": "not_found"})
 
-            # Format the status as an SSE-compatible message
-            yield f"data: {json.dumps(status)}\n\n"
+                # Format the status as an SSE-compatible message
+                yield f"data: {json.dumps(status_info)}\n\n"
 
-            # If job has finished or failed, stop the stream (connection closes)
-            if status["status"] in ["done", "error"]:
-                duration = datetime.now() - start_time
-                logger.debug(
-                    f'{get_caller_name()}() streaming complete for {get_user_email(request)} - '
-                    f'calibration_run_id={calibration_run_id} - status={status["status"]} - '
-                    f'duration={duration.total_seconds():.2f}s'
-                )
-                break
+                # If job has finished or failed, stop the stream (connection closes)
+                if status_info["status"] in ["done", "error"]:
+                    duration = datetime.now() - start_time
+                    logger.debug(
+                        f'{get_caller_name()}() streaming complete for {get_user_email(request)} - '
+                        f'calibration_run_id={calibration_run_id} - status={status_info["status"]} - '
+                        f'duration={duration.total_seconds():.2f}s'
+                    )
+                    break
 
-            # Sleep before checking again (keeps CPU usage low and reduces frequency)
-            time.sleep(1)
+                # Sleep before checking again (keeps CPU usage low and reduces frequency)
+                time.sleep(1)
+        except GeneratorExit:
+            # Happens if the client closes the connection
+            logger.info(f"Client disconnected during SSE stream for run {calibration_run_id}")
+        except Exception as e:
+            logger.exception(f"Unhandled exception in event_stream for {calibration_run_id}: {e}")
 
     # Return a streaming HTTP response using the generator function above
-    return StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+
+    # Add CORS header if Origin is allowed
+    origin = request.headers.get("Origin")
+    if origin in settings.CORS_ALLOWED_ORIGINS:
+        response["Access-Control-Allow-Origin"] = origin
+
+    return response
 
 
 @extend_schema(
