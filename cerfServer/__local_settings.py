@@ -24,7 +24,6 @@ LOGGING['loggers']['calibration']['level'] = 'DEBUG'
 # Regular logging
 LOGGING['root']['level'] = 'INFO'
 
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
