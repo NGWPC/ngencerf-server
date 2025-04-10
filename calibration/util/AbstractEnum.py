@@ -36,7 +36,7 @@ class AbstractEnum(Generic[T], Enum):
         return None
 
     @classmethod
-    def get_aliases(cls) -> dict[Enum, list[str]]:
+    def get_aliases(cls: type[E]) -> dict[E, list[str]]:
         """
         Optionally overridden by subclasses to provide aliases for enum members.
 
