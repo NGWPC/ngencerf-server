@@ -85,6 +85,11 @@ urlpatterns = [
          name="getCalibrationDataByIteration"),
     path('calibration/get_log_names/', calibration_evaluation_views.get_log_names, name="getLogNames"),
     path('calibration/get_log/', calibration_evaluation_views.get_log, name="getLog"),
+    path('calibration/get_calibration_job_zip/', calibration_evaluation_views.get_calibration_job_zip, name="getCalibrationJobZip"),
+    path('calibration/start_zip_for_calibration_job/', calibration_evaluation_views.start_zip_for_calibration_job, name="startZipForCalibrationJob"),
+    path('calibration/get_zip_status/<int:calibration_run_id>/', calibration_evaluation_views.get_zip_status, name="getZipStatus"),
+    path('calibration/download_calibration_zip/', calibration_evaluation_views.download_calibration_zip, name="downloadCalibrationZip"),
+
 
     ##################################
     # Forecast

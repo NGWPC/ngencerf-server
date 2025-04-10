@@ -98,6 +98,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3001",
 ]
 
+# Needed for zip file download
+CORS_EXPOSE_HEADERS = ['Content-Disposition']
+
 ROOT_URLCONF = 'cerfServer.urls'
 
 TEMPLATES = [
