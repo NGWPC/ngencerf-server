@@ -547,4 +547,6 @@ def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> N
     - False if the job has completed successfully so far.
     """
     read_forecast_output(run, failed_so_far)
+    if failed_so_far:
+        return
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
