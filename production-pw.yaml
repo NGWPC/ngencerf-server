@@ -18,7 +18,7 @@ services:
     volumes:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
       - ${NGEN_CAL_DATA_PATH}:/ngencerf/data/
-      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/run-logs/
+      - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
       - ${FORCING_DATA_S3_PATH}:${FORCING_DATA_MOUNT_PATH}
       - ${HF_DATA_S3_PATH}:${HF_DATA_MOUNT_PATH}
       - ${CONTAINER_PATH}:/ngencerf/containers/
