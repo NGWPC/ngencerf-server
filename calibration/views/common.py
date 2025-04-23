@@ -315,8 +315,8 @@ def create_forecast_run_internal(
     return forecast_run
 
 
-token_slurm_scope = 'slurm_callback'
-token_ngen = 'ngen'
+TOKEN_SLURM_SCOPE = 'slurm_callback'
+TOKEN_NGEN_SCOPE = 'ngen'
 
 
 def generate_custom_token(user: User, scope: str) -> str:
@@ -328,8 +328,8 @@ def generate_custom_token(user: User, scope: str) -> str:
     :return: JWT token string.
     """
     access = AccessToken.for_user(user)
-    # Set the expiration to 24 hours from now
-    access.set_exp(lifetime=timedelta(hours=24))
+    # Set the expiration to 7 days from now
+    access.set_exp(lifetime=timedelta(days=7))
 
     # Set our custom scope
     access['scope'] = scope

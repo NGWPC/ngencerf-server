@@ -17,7 +17,7 @@ from calibration.util.calibration_validators import SlurmSubmitCalibrationOrVali
     SlurmSubmitForecastForcingDownloadJobResponse, SlurmSubmitForecastJobResponse
 from calibration.util.file_util import get_single_file
 from calibration.util.ngen_locations import get_geopackage_dir_for_job
-from calibration.views.common import generate_custom_token, token_slurm_scope, get_job_description, validate_response_data
+from calibration.views.common import generate_custom_token, TOKEN_SLURM_SCOPE, get_job_description, validate_response_data
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         )
 
     # Common payload preparation
-    payload['auth_token'] = (None, generate_custom_token(owner, token_slurm_scope))
+    payload['auth_token'] = (None, generate_custom_token(owner, TOKEN_SLURM_SCOPE))
     url = urljoin(settings.SLURM_URL, url_endpoint)
 
     logger.info(f"Submitting Slurm job to {url} with payload: {payload}")

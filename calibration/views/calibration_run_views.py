@@ -34,7 +34,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
+    generate_custom_token, TOKEN_SLURM_SCOPE, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
     get_forecast_forcing_download_run, join_with_or, get_user_email
 from calibration.views.end_of_job_processing import read_calibration_output
 
@@ -695,7 +695,7 @@ def get_job_dir(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def calibration_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a calibration job.
@@ -742,7 +742,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def validation_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a validation job.
@@ -789,7 +789,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a forecast forcing download job.
@@ -837,7 +837,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def forecast_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a forecast job.
@@ -907,7 +907,7 @@ def get_slurm_token(request: Request) -> Response:
     if error_return:
         return error_return
 
-    return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
+    return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange, max_workers=4):
