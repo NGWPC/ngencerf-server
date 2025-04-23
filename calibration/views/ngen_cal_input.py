@@ -24,7 +24,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
-from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
+from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
 
     # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
-    general['auth_token'] = generate_custom_token(run.owner, token_ngen)
+    general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
     # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', errors):
