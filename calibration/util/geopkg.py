@@ -226,14 +226,43 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
 
 
 def main():
-    parser = argparse.ArgumentParser(description="GeoPackage Catchments Extraction Tool")
-    parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
-    parser.add_argument("--layer", type=str, default="divides", help="Layer name containing catchments (default: 'divides')")
+    parser = argparse.ArgumentParser(description="GeoPackage Utility Tool")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # Subcommand for extracting geometry
+    geom_parser = subparsers.add_parser("extract", help="Extract geometry and gage info from a GeoPackage")
+    geom_parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
+    geom_parser.add_argument("--catchment_layer", type=str, default="divides", help="Layer name for catchments (default: 'divides')")
+    geom_parser.add_argument("--gage_layer", type=str, default="hydrolocations", help="Layer name for gages (default: 'hydrolocations')")
+
+    # Subcommand for generating PNG
+    png_parser = subparsers.add_parser("render", help="Generate PNG from selected layers in a GeoPackage")
+    png_parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
+    png_parser.add_argument("png_path", type=str, help="Path to save the generated PNG file")
+    png_parser.add_argument("--layers", nargs="+", default=["nexus", "flowpaths", "flowlines"],
+                            help="Layers to include in the PNG (default: nexus, flowpaths, flowlines)")
+
     args = parser.parse_args()
 
     try:
-        catchments_data = get_geometry_from_gpkg(args.gpkg_path, args.layer)
-        print(json.dumps(catchments_data, indent=4, default=str))
+        if args.command == "extract":
+            result = get_geometry_from_gpkg(
+                gpkg_path=args.gpkg_path,
+                catchment_layer=args.catchment_layer,
+                gage_layer=args.gage_layer,
+            )
+            print(json.dumps(result, indent=4, default=str))
+
+        elif args.command == "render":
+            # Convert list to tuple for lru_cache
+            img = gpkg_to_png_selected_layers(
+                gpkg_path=args.gpkg_path,
+                layers_to_include=tuple(args.layers)
+            )
+            with open(args.png_path, "wb") as f:
+                f.write(img.getvalue())
+            print(f"PNG image saved to: {args.png_path}")
+
     except Exception as e:
         print(f"Error: {e}")
 
