@@ -253,7 +253,7 @@ def get_forcing_data_from_s3(run: CalibrationRun):
 
 def get_module_metadata_from_data_services(run: CalibrationRun,
                                            calibration_formulations: QuerySet[CalibrationFormulation],
-                                           gage_changed: bool = False):
+                                           gage_changed: bool = False) -> list[dict]:
     """
     Retrieves module metadata from Data Services and updates the database with module parameters and output variables.
 
@@ -263,12 +263,14 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
                          - If False: Indicates the modules have changed.
                          - If True: Indicates the gage has changed, and we want to retain the min/max values
                            for existing parameters while updating their initial values.
+    :return A list of dictionaries containing potential errors
     :raises DataServicesException: If required module metadata is missing.
     """
     gage = run.gage
 
     # Collect module names from calibration formulations
     my_module_names_set = list(calibration_formulations.values_list('module__name', flat=True))
+    my_module_names_set[0] = my_module_names_set[0]
 
     # Fetch module metadata from Data Services or use test data
     if settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT[0]:
@@ -302,10 +304,21 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     missing_names = my_module_names_set - eds_module_names
     extra_names = eds_module_names - my_module_names_set
 
-    # Save module parameters and output variables to the database
+    eds_errors = []
+
+    # Save module parameters to the database
     with transaction.atomic():
         for module in module_metadata.get('modules'):
             module_name = module['module_name']
+            # See if we have optional field
+            error = module.get('error')
+            if error:
+                eds_errors.append({
+                    'name': 'parameters',
+                    'message': error,
+                    'status_code': None
+                })
+                continue
 
             if module_name in extra_names:
                 # Ignore any extra names that Data Services sent us
@@ -360,7 +373,7 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     if missing_names:
         raise DataServicesException(f'Response from Data Services is missing entries for: {missing_names}')
 
-    return
+    return eds_errors
 
 
 translation_map = {
