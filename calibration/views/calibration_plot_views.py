@@ -730,7 +730,7 @@ def get_bar_chart_metrics(calibration_run_ids: list[int]) -> dict[int, list[dict
     # Group NWMRetrospectiveMetrics by calibration_run_id
     for metric in nwm_metrics_qs:
         calibration_run_id = metric.calibration_run_id
-        key = (metric.run_type, metric.period)
+        key = ("nwm_retro", metric.period)  # Force run to "nwm_retro" here
         grouped_data[calibration_run_id][key][metric.metric.name] = metric.metric_value
 
     # Convert grouped data to final structure
@@ -739,7 +739,7 @@ def get_bar_chart_metrics(calibration_run_ids: list[int]) -> dict[int, list[dict
     for calibration_run_id, metrics_by_key in grouped_data.items():
         for (run_type, period), metrics in metrics_by_key.items():
             row = {
-                "run": "nwm_retro" if run_type == ValidationType.VALID_CONTROL.value else run_type,
+                "run": run_type,
                 "period": period,
                 **metrics
             }
