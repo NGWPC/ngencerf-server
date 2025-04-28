@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from collections import defaultdict
 from functools import lru_cache
 from typing import Any
 
@@ -20,9 +21,8 @@ from calibration.util.calibration_validators import GetPLotNamesResponseSerializ
     ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
-    get_validation_metrics_valid_best_file, get_validation_metrics_nwm_retrospective_file, get_validation_metrics_valid_control_file, \
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir, \
-    get_validation_metrics_valid_iteration_file, get_output_valid_iteration_file, get_forecast_output_dir, get_forecast_output_file
+    get_output_valid_iteration_file, get_forecast_output_dir, get_forecast_output_file
 from calibration.views.calibration_evaluation_views import get_iterations_for_calibration_job
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
@@ -299,8 +299,6 @@ def determine_plot_location(run: CalibrationRun | ValidationRun | ForecastRun, p
         case 'plot_iteration':
             # TODO Need to return the worker name
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
-            print('worker_dir', worker_dir)
-            print('get_worker_name_from_directory', get_worker_name_from_directory(worker_dir))
             if worker_dir is None:
                 raise CerfException(f'Plots could not be found for {get_job_description(run)}')
             return os.path.join(worker_dir, 'Plot_Iteration')
@@ -436,41 +434,9 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
-            valid_periods = ValidationMetricPeriod.get_names()
-            valid_run_types = ValidationType.get_names()
+            combined_data_by_run = get_bar_chart_metrics([calibration_run.id])
+            combined_data = combined_data_by_run.get(calibration_run.id, [])
 
-            validation_metrics_qs = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
-                validation_run__calibration_run_id=calibration_run.id,
-                run_type__in=valid_run_types,
-                period__in=valid_periods
-            )
-
-            nwm_metrics_qs = NWMRetrospectiveMetrics.objects.select_related('metric').filter(
-                calibration_run_id=calibration_run.id,
-                run_type=ValidationType.VALID_CONTROL.value,  # NWM retro metrics are typically under VALID_CONTROL
-                period__in=valid_periods
-            )
-
-            # Build combined data from both tables
-            combined_data = []
-
-            for metric in validation_metrics_qs:
-                combined_data.append({
-                    "run_type": metric.run_type,
-                    "period": metric.period,
-                    "metric_name": metric.metric.name,
-                    "metric_value": metric.metric_value
-                })
-
-            for metric in nwm_metrics_qs:
-                combined_data.append({
-                    "run_type": metric.run_type,
-                    "period": metric.period,
-                    "metric_name": metric.metric.name,
-                    "metric_value": metric.metric_value
-                })
-
-            # Paginate
             total_count = len(combined_data)
             paginated_data = combined_data[start:start + limit]
 
@@ -716,6 +682,70 @@ def find_worker_with_non_empty_plot_iteration(calibration_run: CalibrationRun) -
     process_worker_dirs(calibration_run, check_worker)
 
     return found_worker_dir
+
+
+def get_bar_chart_metrics(calibration_run_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    """
+    Retrieves ValidationMetrics and NWMRetrospectiveMetrics for a list of calibration_run_ids
+    and organizes the results by calibration_run_id.
+
+    Each calibration_run_id key will map to a list of dictionaries structured like:
+        {
+            "run": run_type,
+            "period": period,
+            "CORR": value,
+            "MAE": value,
+            ...
+        }
+
+    :param calibration_run_ids: List of calibration_run IDs to query.
+    :return: A dictionary where each key is a calibration_run_id and the value is a list of result dictionaries.
+    """
+    valid_periods = ValidationMetricPeriod.get_names()
+    valid_run_types = ValidationType.get_names()
+
+    # Query ValidationMetrics
+    validation_metrics_qs = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
+        validation_run__calibration_run_id__in=calibration_run_ids,
+        run_type__in=valid_run_types,
+        period__in=valid_periods
+    )
+
+    # Query NWMRetrospectiveMetrics
+    nwm_metrics_qs = NWMRetrospectiveMetrics.objects.select_related('metric').filter(
+        calibration_run_id__in=calibration_run_ids,
+        run_type=ValidationType.VALID_CONTROL.value,
+        period__in=valid_periods
+    )
+
+    # Initialize grouped data
+    grouped_data = defaultdict(lambda: defaultdict(dict))
+
+    # Group ValidationMetrics by calibration_run_id
+    for metric in validation_metrics_qs:
+        calibration_run_id = metric.validation_run.calibration_run_id
+        key = (metric.run_type, metric.period)
+        grouped_data[calibration_run_id][key][metric.metric.name] = metric.metric_value
+
+    # Group NWMRetrospectiveMetrics by calibration_run_id
+    for metric in nwm_metrics_qs:
+        calibration_run_id = metric.calibration_run_id
+        key = (metric.run_type, metric.period)
+        grouped_data[calibration_run_id][key][metric.metric.name] = metric.metric_value
+
+    # Convert grouped data to final structure
+    combined_data_by_run = defaultdict(list)
+
+    for calibration_run_id, metrics_by_key in grouped_data.items():
+        for (run_type, period), metrics in metrics_by_key.items():
+            row = {
+                "run": "nwm_retro" if run_type == ValidationType.VALID_CONTROL.value else run_type,
+                "period": period,
+                **metrics
+            }
+            combined_data_by_run[calibration_run_id].append(row)
+
+    return dict(combined_data_by_run)
 
 
 @lru_cache()
