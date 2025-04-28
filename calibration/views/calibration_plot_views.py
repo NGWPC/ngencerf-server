@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType
+from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, ValidationMetricPeriod
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.caching import get_filtered_plot_definitions
@@ -452,22 +452,72 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
                 # Add metrics file for the specific iteration
                 file_paths.append(get_validation_metrics_valid_iteration_file(calibration_run, run.worker_name, run.iteration_num))
 
-            combined_data = []
-            total_count = 0  # Total number of rows across all files
-
-            # Step 1: Read each file, allowing pandas to infer types
+            combined_data_old = []
             for file_path in file_paths:
                 if os.path.exists(file_path):
-                    df = pd.read_csv(file_path, dtype=None)  # Allow pandas to infer types
-                    total_count += len(df)  # Update total_count with the number of rows in the file
-                    combined_data.extend(df.to_dict(orient="records"))  # Append the file's records to the combined data
+                    df = pd.read_csv(file_path, dtype=None)
+                    combined_data_old.extend(df.to_dict(orient="records"))
                 else:
                     logger.warning(f"File not found: {file_path}")
 
-            # Step 2: Apply pagination to the combined data
-            paginated_data = combined_data[start:start + limit]
+            # Step 2: Load new data from the database
+            from calibration.models import ValidationMetrics, NWMRetrospectiveMetrics
 
-            # Step 3: Return the paginated plot data and the total row count
+            valid_periods = [
+                ValidationMetricPeriod.calib.value,
+                ValidationMetricPeriod.valid.value,
+                ValidationMetricPeriod.full.value
+            ]
+
+            # Pull ValidationMetrics
+            validation_metrics_qs = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
+                validation_run__calibration_run_id=calibration_run.id,
+                run_type__in=[
+                    ValidationType.VALID_BEST.value,
+                    ValidationType.VALID_CONTROL.value,
+                    ValidationType.VALID_ITERATION.value  # In case it's a validation iteration
+                ],
+                period__in=valid_periods
+            )
+
+            # Pull NWMRetrospectiveMetrics
+            nwm_metrics_qs = NWMRetrospectiveMetrics.objects.select_related('metric').filter(
+                calibration_run_id=calibration_run.id,
+                run_type=ValidationType.VALID_CONTROL.value,  # NWM retro only has VALID_CONTROL usually
+                period__in=valid_periods
+            )
+
+            combined_data_new = []
+
+            for metric in validation_metrics_qs:
+                combined_data_new.append({
+                    "run_type": metric.run_type,
+                    "period": metric.period,
+                    "metric_name": metric.metric.name,
+                    "metric_value": metric.metric_value
+                })
+
+            for metric in nwm_metrics_qs:
+                combined_data_new.append({
+                    "run_type": metric.run_type,
+                    "period": metric.period,
+                    "metric_name": metric.metric.name,
+                    "metric_value": metric.metric_value
+                })
+
+            # Step 3: Debug - print old and new for verification
+            logger.info("========== OLD (from file) ==========")
+            for item in combined_data_old:
+                logger.info(item)
+
+            logger.info("========== NEW (from database) ==========")
+            for item in combined_data_new:
+                logger.info(item)
+
+            # Step 4: Paginate new combined data
+            total_count = len(combined_data_new)
+            paginated_data = combined_data_new[start:start + limit]
+
             return {'data': paginated_data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.HYDROGRAPH_VALIDATION:
