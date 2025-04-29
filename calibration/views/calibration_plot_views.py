@@ -691,61 +691,75 @@ def get_bar_chart_metrics(calibration_run_ids: list[int]) -> dict[int, list[dict
 
     Each calibration_run_id key will map to a list of dictionaries structured like:
         {
-            "run": run_type,
-            "period": period,
-            "CORR": value,
+            "run": run_type,   # Example: 'valid_best', 'valid_control', or 'nwm_retro'
+            "period": period,  # Example: 'full', 'calib', 'valid'
+            "Corr": value,
             "MAE": value,
             ...
         }
 
-    :param calibration_run_ids: List of calibration_run IDs to query.
+    Field names (e.g., "Corr", "NSELog") match exactly what is stored in the database,
+    including casing.
+
+    :param calibration_run_ids: List of CalibrationRun IDs to query.
     :return: A dictionary where each key is a calibration_run_id and the value is a list of result dictionaries.
     """
     valid_periods = ValidationMetricPeriod.get_names()
     valid_run_types = ValidationType.get_names()
 
-    # Query ValidationMetrics
+    # Query ValidationMetrics (for valid_best and valid_control runs)
     validation_metrics_qs = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
         validation_run__calibration_run_id__in=calibration_run_ids,
         run_type__in=valid_run_types,
         period__in=valid_periods
     )
 
-    # Query NWMRetrospectiveMetrics
+    # Query NWMRetrospectiveMetrics (for nwm_retro runs)
     nwm_metrics_qs = NWMRetrospectiveMetrics.objects.select_related('metric').filter(
         calibration_run_id__in=calibration_run_ids,
-        run_type=ValidationType.VALID_CONTROL.value,
         period__in=valid_periods
     )
 
-    # Initialize grouped data
-    grouped_data = defaultdict(lambda: defaultdict(dict))
+    combined_data_by_run = defaultdict(lambda: defaultdict(dict))
+    all_metric_names = set()
 
-    # Group ValidationMetrics by calibration_run_id
+    # Process ValidationMetrics (valid_best and valid_control)
     for metric in validation_metrics_qs:
         calibration_run_id = metric.validation_run.calibration_run_id
-        key = (metric.run_type, metric.period)
-        grouped_data[calibration_run_id][key][metric.metric.name] = metric.metric_value
+        run = metric.run_type  # 'valid_best' or 'valid_control'
+        period = metric.period
+        metric_name = metric.metric.name  # e.g., 'Corr', 'MAE', etc.
 
-    # Group NWMRetrospectiveMetrics by calibration_run_id
+        combined_data_by_run[calibration_run_id][(run, period)][metric_name] = metric.metric_value
+        all_metric_names.add(metric_name)
+
+    # Process NWMRetrospectiveMetrics (nwm_retro)
     for metric in nwm_metrics_qs:
         calibration_run_id = metric.calibration_run_id
-        key = ("nwm_retro", metric.period)  # Force run to "nwm_retro" here
-        grouped_data[calibration_run_id][key][metric.metric.name] = metric.metric_value
+        run = 'nwm_retro'
+        period = metric.period
+        metric_name = metric.metric.name  # e.g., 'Corr', 'MAE', etc.
 
-    # Convert grouped data to final structure
-    combined_data_by_run = defaultdict(list)
+        combined_data_by_run[calibration_run_id][(run, period)][metric_name] = metric.metric_value
+        all_metric_names.add(metric_name)
 
-    for calibration_run_id, metrics_by_key in grouped_data.items():
-        for (run_type, period), metrics in metrics_by_key.items():
+    # Flatten into final output format
+    final_output = {}
+
+    for calibration_run_id, metrics_by_run_period in combined_data_by_run.items():
+        rows = []
+        for (run, period), metrics in metrics_by_run_period.items():
             row = {
-                "run": run_type,
-                "period": period,
-                **metrics
+                'run': run,
+                'period': period,
             }
-            combined_data_by_run[calibration_run_id].append(row)
+            # Fill all known metric fields, even if missing (set to None)
+            for field in sorted(all_metric_names):
+                row[field] = metrics.get(field, None)
+            rows.append(row)
+        final_output[calibration_run_id] = rows
 
-    return dict(combined_data_by_run)
+    return final_output
 
 
 @lru_cache()
