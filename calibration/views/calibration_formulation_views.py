@@ -183,7 +183,8 @@ def save_formulation_tab(request) -> Response:
         if required_formulations_qs.exists() and run.gage:
             logger.info(f"Fetching metadata for modules: {required_formulations_qs}")
             try:
-                get_module_metadata_from_data_services(run, required_formulations_qs)
+                # Append new errors to the existing list
+                eds_errors.extend(get_module_metadata_from_data_services(run, required_formulations_qs))
             except DataServicesException as e:
                 logger.exception("Error retrieving module parameter data from Data Services")
                 eds_errors.append({
@@ -328,7 +329,7 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
             must_have_modules = conditions.get("must_have", [])
             # Check if any of the required modules are present
             if not any(module in module_names for module in must_have_modules):
-                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
+                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(str(m) for m in must_have_modules)}"
                 logger.warning(msg)
                 messages.append(msg)
                 formulation_validation_json['excluded_modules'].append(
@@ -391,3 +392,5 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], modu
             )
 
         CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
+
+    return None

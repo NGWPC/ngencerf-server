@@ -436,6 +436,7 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
             return {'data': data, 'total_count': total_count}
 
         case PlotDefinitionsEnum.BAR_CHART_METRICS:
+            # TODO I think we should be reading from the ValidationMetrics table, not from the files on disk
             # Files being read:
             # 1. Validation metrics for the "Valid Control" run
             # 2. Validation metrics for the "Valid Best" run

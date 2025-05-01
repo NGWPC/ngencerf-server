@@ -665,7 +665,8 @@ class S3DirectoryValidator(BaseSerializer):
 
 
 class S3FileValidator(BaseSerializer):
-    uri = S3UriField()
+    # TODO We need to allow_null due to EDS error handling.  Need to get EDS to change their data when an error is returned
+    uri = S3UriField(allow_null=True)
 
 
 class SaveFormulationRequestSerializer(BaseSerializer):
@@ -729,6 +730,7 @@ class ModuleMetadataSerializer(BaseSerializer):
     # TODO We are ignoring this so EDS can get rid of it
     output_variables = serializers.JSONField(required=False)
     parameter_file = S3FileValidator(required=True)
+    error = serializers.CharField(required=False)
 
 
 # List of module objects from Data Services containing module parameters and output variables
