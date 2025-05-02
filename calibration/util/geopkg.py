@@ -13,6 +13,30 @@ import matplotlib.pyplot as plt
 # See https://stackoverflow.com/questions/27147300/matplotlib-tcl-asyncdelete-async-handler-deleted-by-the-wrong-thread
 matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)
 
+layer_style_config = {
+    'nexus': {
+        'markersize': 100,
+        'color': 'blue',
+        'plot_method': 'point'
+    },
+    'flowpaths': {
+        'linewidth': 2.0,
+        'linestyle': '--',  # Use ':' for dotted, '--' for dashed
+        'color': 'green',
+        'plot_method': 'line'
+    },
+    'flowlines': {
+        'linewidth': 2.0,
+        'color': 'red',
+        'plot_method': 'line'
+    },
+    'divides': {
+        'linewidth': 2.0,
+        'color': 'black',
+        'plot_method': 'boundary'  # purely informational
+    }
+}
+
 
 def check_file_accessible(file_path: str) -> None:
     """
@@ -94,10 +118,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ..
         layers_to_include = ('nexus', 'flowpaths', 'flowlines')  # Default layers to include
 
     # Initialize the plot
-    fig, ax = plt.subplots(figsize=(10, 10), dpi=200)
-
-    # Track which layers have been labeled
-    labeled_layers = set()
+    fig, ax = plt.subplots(figsize=(15, 13), dpi=300)  # Larger figure and higher resolution
 
     try:
         available_layers = fiona.listlayers(gpkg_path)
@@ -110,33 +131,65 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ..
             divides_gdf = safe_read_gpkg(gpkg_path, layer='divides')
             # Simplify geometries for performance improvement
             divides_gdf['geometry'] = divides_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
-            divides_gdf.boundary.plot(ax=ax, color='black', label='divides' if 'divides' not in labeled_layers else None)
-            labeled_layers.add('divides')
-        except Exception as e:
-            raise RuntimeError(f"Failed to read 'divides' layer from {gpkg_path}. Error: {e}")
 
-    # Define a cycle of colors for the layers
+            # Create boundary GeoDataFrame (Shapely 2.x compatible)
+            boundary_gdf = gpd.GeoDataFrame(
+                geometry=divides_gdf.geometry.boundary,
+                crs=divides_gdf.crs
+            )
+            style = layer_style_config.get('divides', {})
+            color = style.get('color', 'black')
+            linewidth = style.get('linewidth', 1.5)
+
+            boundary_gdf.plot(ax=ax, color=color, linewidth=linewidth)
+        except Exception as e:
+            raise RuntimeError(f"Failed to read or plot 'divides' layer from {gpkg_path}. Error: {e}")
+
+    # Color cycle fallback for layers not in config
     color_cycle = cycle(['blue', 'green', 'red', 'cyan', 'magenta'])
 
     # Plot each requested layer if it exists
-    for layer, color in zip(layers_to_include, color_cycle):
+    for layer in layers_to_include:
         if layer in available_layers:
             try:
                 layer_gdf = safe_read_gpkg(gpkg_path, layer=layer)
-                # Simplify geometries for performance improvement
                 layer_gdf['geometry'] = layer_gdf['geometry'].simplify(tolerance=0.01, preserve_topology=True)
-                # Plot the entire layer at once
-                layer_gdf.plot(ax=ax, color=color, label=layer if layer not in labeled_layers else None)
-                labeled_layers.add(layer)
-            except Exception as e:
-                raise RuntimeError(f"Failed to read '{layer}' layer from {gpkg_path}. Error: {e}")
 
-    # Add a legend explicitly
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles, labels, loc='upper right')
+                style = layer_style_config.get(layer, {})
+                if not style:
+                    print(f"[WARN] No style config for '{layer}'. Using fallback.")
+
+                plot_method = style.get('plot_method', 'line')
+                color = style.get('color', next(color_cycle))
+                linewidth = style.get('linewidth', 1.5)
+                linestyle = style.get('linestyle', '-')
+                markersize = style.get('markersize', 10)
+
+                if plot_method == 'point':
+                    layer_gdf.plot(ax=ax, color=color, markersize=markersize)
+                else:
+                    layer_gdf.plot(ax=ax, color=color, linewidth=linewidth, linestyle=linestyle)
+
+            except Exception as e:
+                raise RuntimeError(f"Failed to read or plot layer '{layer}' from {gpkg_path}. Error: {e}")
 
     # Remove axes for better visualization
     ax.set_axis_off()
+
+    # Add a legend to the upper right
+    # handles, labels = ax.get_legend_handles_labels()
+    # legend = ax.legend(
+    #     handles,
+    #     labels,
+    #     loc='upper right',
+    #     bbox_to_anchor=(1.2, 1),  # tight to corner
+    #     fontsize=16,  # bigger text
+    #     markerscale=2,  # makes line/marker icons bigger
+    #     handlelength=2.5,  # length of line segments in legend
+    #     frameon=True,  # show box
+    #     borderpad=1.2,  # extra space inside box
+    #     labelspacing=1.0  # spacing between entries
+    # )
 
     # Save the plot as a PNG file
     # plt.savefig(png_path, bbox_inches='tight', pad_inches=0.1)
@@ -144,7 +197,13 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ..
 
     # Convert the plot to an in-memory PNG file
     img_buffer = BytesIO()
-    plt.savefig(img_buffer, format='png', bbox_inches='tight', pad_inches=0.1)
+    plt.savefig(
+        img_buffer,
+        format='png',
+        bbox_inches='tight',
+        pad_inches=0.05
+    )
+
     plt.close()
     img_buffer.seek(0)
     return img_buffer
