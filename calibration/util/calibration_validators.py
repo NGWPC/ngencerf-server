@@ -5,7 +5,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName
+    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName, NgenLogging
 
 
 class BaseSerializer(serializers.Serializer):
@@ -892,6 +892,17 @@ class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDo
 
 class GetJobDirResponseSerializer(GenericResponseSerializer):
     data_dir = serializers.CharField(required=True)
+
+
+class RunCalibrationJob(CalibrationRunSerializer):
+    logging_enabled = serializers.BooleanField(required=False, default=True)
+    modules = serializers.DictField(child=serializers.CharField(), required=False)
+
+    def validate_modules(self, value: dict) -> dict:
+        validator = enum_validator(NgenLogging)
+        for module_name, log_level in value.items():
+            validator(log_level)
+        return value
 
 
 ##################################
