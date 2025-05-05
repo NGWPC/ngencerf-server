@@ -299,7 +299,7 @@ def create_ngen_logging_file(run: BaseRun, logging_enabled: bool, modules: dict)
 
     :param run: CalibrationRun or ValidationRun instance.
     :param logging_enabled: Boolean flag to enable or disable logging.
-    :param modules: Dictionary mapping module names to logging levels (e.g., {'ngen': 'DEBUG'}).
+    :param modules: Dictionary mapping module names to logging levels (e.g., {'ngen': 'DEBUG'}), or None.
     :return: Error message string if any unknown modules are provided; otherwise, None.
     """
     formulations = [
@@ -311,13 +311,15 @@ def create_ngen_logging_file(run: BaseRun, logging_enabled: bool, modules: dict)
 
     expected_modules = set(formulations) | {'ngen'}
 
-    # Normalize input keys to lowercase first
-    modules_lower = {k.lower(): v for k, v in modules.items()}
+    modules_lower = {}
+    if modules is not None:
+        # Normalize input keys to lowercase first
+        modules_lower = {k.lower(): v for k, v in modules.items()}
 
-    # Validate after normalization
-    invalid_keys = [orig_key for orig_key in modules.keys() if orig_key.lower() not in expected_modules]
-    if invalid_keys:
-        return f"Invalid modules in logging configuration: {', '.join(invalid_keys)}."
+        # Validate after normalization
+        invalid_keys = [orig_key for orig_key in modules.keys() if orig_key.lower() not in expected_modules]
+        if invalid_keys:
+            return f"Invalid modules in logging configuration: {', '.join(invalid_keys)}."
 
     # Build final logging config
     module_dict = {
