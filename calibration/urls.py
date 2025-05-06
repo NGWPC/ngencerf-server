@@ -42,6 +42,7 @@ urlpatterns = [
     # Plot Definitions tab
     ##################################
     path('calibration/get_plot_names/', calibration_plot_views.get_plot_names, name="getPlotNames"),
+    path('calibration/get_plot_names_for_comparison/', calibration_plot_views.get_plot_names_for_comparison, name="getPlotNamesForComparison"),
     path('calibration/get_plot/', calibration_plot_views.get_plot, name="getPlot"),
     path('calibration/get_plots_for_comparison/', calibration_plot_views.get_plots_for_comparison, name="getPlotsForComparison"),
 
