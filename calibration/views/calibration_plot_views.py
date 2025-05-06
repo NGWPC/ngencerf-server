@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-from pprint import pprint
 import re
 from collections import defaultdict
 from functools import lru_cache
@@ -18,9 +17,10 @@ from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, V
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ValidationMetrics, NWMRetrospectiveMetrics
 from calibration.util.caching import get_filtered_plot_definitions
-from calibration.util.calibration_validators import GetPLotNamesResponseSerializer, \
-    ErrorResponseSerializer, GetPlotRequestSerializer, GetPlotResponseSerializer, \
-    GetPlotsForComparisonRequestSerializer, GetPlotsForComparisonResponseSerializer, CalibrationOrValidationOrForecastRunSerializer
+from calibration.util.calibration_validators import GetPlotNamesResponseSerializer, \
+    GetPlotNamesForComparisonResponseSerializer, ErrorResponseSerializer, GetPlotRequestSerializer, \
+    GetPlotResponseSerializer, GetPlotsForComparisonRequestSerializer, GetPlotsForComparisonResponseSerializer, \
+    CalibrationOrValidationOrForecastRunSerializer
 from calibration.util.ngen_locations import get_output_calibration_run_dir, get_output_validation_plot_dir, get_output_iteration_file, \
     get_output_last_iteration_file, get_output_best_iteration_file, get_observational_file_for_job, get_cost_hist_file, \
     NWM_RETROSPECTIVE_DIR, get_output_valid_control_file, get_output_valid_best_file, get_output_validation_iteration_plot_dir, \
@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=CalibrationOrValidationOrForecastRunSerializer,
     responses={
-        200: GetPLotNamesResponseSerializer,
+        200: GetPlotNamesResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -101,6 +101,64 @@ def get_plot_names(request: Request) -> Response:
     }
 
     response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'{json.dumps(response_validator.data)}'
+    )
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=CalibrationOrValidationOrForecastRunSerializer,
+    responses={
+        200: GetPlotNamesResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get a list of plot names"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_plot_names_for_comparison(request: Request) -> Response:
+    """
+    Retrieves the list of plot names and descriptions that are allowed to be compared across multiple calibration runs.
+
+    :param request: The request containing either POST data or query parameters.
+    :return: A JSON response with the list of plot names and descriptions.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    cached_plot_definitions = PlotDefinitionsEnum.get_choices_with_fields(
+        fields=['name', 'description', 'valid_optimizations', 'job_type', 'location', 'filename_mask', 'timeseries_available']
+    )
+
+    # Filter plots to only include the ones we're explicitly allowing
+    # This is hard coded and not job-dependent for now
+    filtered_plot_definitions = [
+        plot for plot in cached_plot_definitions
+        if (plot['name'] in [PlotDefinitionsEnum.BAR_CHART_METRICS.value])  # Case-insensitive match for plot_name
+    ]
+
+    # Create a list of plot names with descriptions
+    plot_names = [{'name': plot['name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
+                  for plot in filtered_plot_definitions]
+
+    response = {
+        'plot_names': plot_names,
+    }
+
+    response_validator, error_response = validate_response(GetPlotNamesForComparisonResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
@@ -359,9 +417,6 @@ def get_plots_for_comparison(request: Request) -> Response:
                             }
                             plot_data_row.update(row)
                             plot_data.append(plot_data_row)
-                    print('plot_data is:')
-                    pprint(plot_data)
-                    print('end plot_data')
                 case _:
                     # get best validation run
                     for validation_job in get_validation_jobs_internal(run.id, GetValidationJobsScope.STATUS):

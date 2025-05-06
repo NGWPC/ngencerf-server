@@ -619,9 +619,13 @@ class PlotListStaticSerializer(BaseSerializer):
     timeseries_available = serializers.BooleanField(required=True, allow_null=False)
 
 
-class GetPLotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):
+class GetPlotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):
     plot_names = PlotListStaticSerializer(many=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
+
+class GetPlotNamesForComparisonResponseSerializer(BaseSerializer):
+    plot_names = PlotListStaticSerializer(many=True)
 
 
 class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
