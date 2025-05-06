@@ -139,7 +139,7 @@ case "$operation" in
         fi
 
         # Read data from the import file
-        data=$(cat "$argument")
+        data=$(jq -c --argfile payload "$argument" '{data: $payload}')
 
         # Send import request, capture the HTTP status and response
         response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \

@@ -464,6 +464,8 @@ def get_calibration_job_zip(request: Request) -> HttpResponse:
 
     :param request: The HTTP request object containing calibration run data.
     :return: ZIP response containing all files in the user's working directory for the given calibration_job_id
+
+    This is a synchronous endpoint that is not currently used by the UI, but is used by the CLI
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')

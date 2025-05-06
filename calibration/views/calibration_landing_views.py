@@ -576,7 +576,7 @@ def hard_delete(run: CalibrationRun) -> None:
             logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
             for instance in instances:
                 logger.debug(f' - {instance}')
-    
+
         job_data_dir = run.job_data_dir
         run.delete()
         logger.debug(f'Deleting directory {job_data_dir}')
@@ -616,13 +616,22 @@ def import_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    run_after_import = validator.get('run_after_import', False)
+    calibration_run_id = validator.get('calibration_run_id')
+    data = validator.get('data')
+    run_after_import = data.get('run_after_import', False)
 
-    run, messages, fatal_error = import_calibration_run_data(request, validator, JobGenesis.IMPORT)
+    if calibration_run_id:
+        calibration_run, error_return = get_calibration_run(calibration_run_id, request.user)
+        if error_return:
+            return error_return
+    else:
+        calibration_run = None
+
+    run, messages, fatal_error = import_calibration_run_data(request, data, JobGenesis.IMPORT, run=calibration_run)
     if fatal_error:
         return fatal_error
 
-    imported_and_submitted = 'imported'
+    imported_and_submitted = 'updated' if calibration_run_id else 'imported'
 
     # TODO Only run this if there are no other errors
     errors, config_file = ngen_cal_input.ready_to_run(run)
@@ -633,7 +642,7 @@ def import_job(request: Request) -> Response:
             error_response = submit_job(run, config_file=config_file)
             if error_response:
                 return error_response
-            imported_and_submitted = 'imported and submitted'
+            imported_and_submitted = f"{imported_and_submitted} and submitted"
 
     response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
     if messages:

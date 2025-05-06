@@ -1003,7 +1003,7 @@ class ExportResponseSerializer(BaseSerializer):
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
 
 
-class ImportSerializer(BaseSerializer):
+class ImportDataSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(required=False, default=False)
     metadata = serializers.JSONField(required=False)
     gage_id = serializers.CharField(required=False, allow_null=True)
@@ -1034,6 +1034,11 @@ class ImportSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
+
+
+class ImportSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False)
+    data = ImportDataSerializer(required=True)
 
 
 ##################################
