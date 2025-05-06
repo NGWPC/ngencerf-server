@@ -619,9 +619,13 @@ class PlotListStaticSerializer(BaseSerializer):
     timeseries_available = serializers.BooleanField(required=True, allow_null=False)
 
 
-class GetPLotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):
+class GetPlotNamesResponseSerializer(CalibrationOrValidationOrForecastRunSerializer):
     plot_names = PlotListStaticSerializer(many=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
+
+class GetPlotNamesForComparisonResponseSerializer(BaseSerializer):
+    plot_names = PlotListStaticSerializer(many=True)
 
 
 class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
@@ -631,6 +635,11 @@ class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
     start = serializers.IntegerField(required=False, default=0, min_value=0)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
+class GetPlotsForComparisonRequestSerializer(CalibrationRunIdList):
+    plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
+    gage_id = serializers.CharField(required=True)
+    start = serializers.IntegerField(required=False, default=0, min_value=0)
+    limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 class PaginationMetadataSerializer(BaseSerializer):
     start = serializers.IntegerField(required=True)
@@ -647,6 +656,15 @@ class GetPlotResponseSerializer(CalibrationRunSerializer):
     plot_data = serializers.JSONField(required=False)
     pagination_metadata = PaginationMetadataSerializer(required=False)
 
+
+class GetPlotErrorResponseSerializer(BaseSerializer):
+    calibration_run_id = serializers.IntegerField(required=True)
+    message = serializers.CharField(required=True)
+
+
+class GetPlotsForComparisonResponseSerializer(CalibrationRunIdList):
+    plots = GetPlotResponseSerializer(many=True, required=False)
+    errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
 
 ##################################
 # Formulation Tab
