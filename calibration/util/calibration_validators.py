@@ -637,6 +637,7 @@ class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
 
 class GetPlotsForComparisonRequestSerializer(CalibrationRunIdList):
     plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
+    gage_id = serializers.CharField(required=True)
     start = serializers.IntegerField(required=False, default=0, min_value=0)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
