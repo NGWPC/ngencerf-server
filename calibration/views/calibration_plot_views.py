@@ -100,7 +100,7 @@ def get_plot_names(request: Request) -> Response:
         'status': run.status.name
     }
 
-    response_validator, error_response = validate_response(GetPLotNamesResponseSerializer, response)
+    response_validator, error_response = validate_response(GetPlotNamesResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
