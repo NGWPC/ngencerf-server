@@ -347,6 +347,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
+        geopackage_path) else None
+
     #############################
     # Export or Clone Mode
     #############################
@@ -356,7 +362,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'source_calibration_run_id': run.id,
             'source_status': run.status.name,
             'time_range': serialized_time_range,
-            'job_data_dir': resolve_job_data_dir(run)
+            'job_data_dir': resolve_job_data_dir(run),
+            'num_catchments': num_catchments
         }
         calibration_run_data['metadata'] = metadata
 
@@ -407,6 +414,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'longitude': run.gage.longitude,
             'altitude': run.gage.altitude
         } if run.gage else None
+        calibration_run_data['num_catchments'] = num_catchments
         calibration_run_data['status'] = run.status.name
 
         # Generate Geopackage map if requested
@@ -548,14 +556,6 @@ def load_calibration_run(request: Request) -> Response:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
-
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
-    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
-        geopackage_path) else None
-
-    calibration_run_data['num_catchments'] = num_catchments
 
     response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
                                                            fields_to_truncate=['geopackage_image_url'])
