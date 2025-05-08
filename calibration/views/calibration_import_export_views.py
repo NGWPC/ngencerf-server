@@ -25,6 +25,7 @@ from calibration.views.calibration_formulation_views import get_sloth_parameters
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
+from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.called_from import get_caller_name
@@ -354,7 +355,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         metadata = {
             'source_calibration_run_id': run.id,
             'source_status': run.status.name,
-            'time_range': serialized_time_range
+            'time_range': serialized_time_range,
+            'job_data_dir': resolve_job_data_dir(run)
         }
         calibration_run_data['metadata'] = metadata
 
@@ -389,6 +391,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # UI Display Mode (Non-Export)
     #############################
     else:
+        calibration_run_data['job_data_dir'] = resolve_job_data_dir(run)
+
         ui_display_start = time.time()
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['submit_date'] = run.submit_date

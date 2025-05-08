@@ -699,6 +699,7 @@ def cancel_job(request: Request) -> Response:
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
+# TODO Deprecated... remove as soon as UI is updated
 def get_job_dir(request: Request) -> Response:
     """
     Retrieves the directory path where the data for a specific calibration run is stored.
@@ -720,20 +721,11 @@ def get_job_dir(request: Request) -> Response:
     if error_return:
         return error_return
 
-    if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Convert path inside the container to the mapped host path outside the container
-        container_job_data_dir = run.job_data_dir
-        # Ensure the absolute path starts with the old root
-        if not os.path.isabs(container_job_data_dir):
-            raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
-        if not container_job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
-            raise ValueError(f"The path '{container_job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
-
-        # Replace the old root with the new root
-        relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
-        new_job_data_dir = os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
-    else:
-        new_job_data_dir = run.job_data_dir
+    try:
+        new_job_data_dir = resolve_job_data_dir(run)
+    except ValueError as e:
+        logger.error(f"Failed to resolve job data directory for run {run.id}: {e}")
+        return Response({"error": str(e)}, status=400)
 
     response = {
         'message': f"Calibration Job {run.id} data directory is {new_job_data_dir}",
@@ -748,6 +740,31 @@ def get_job_dir(request: Request) -> Response:
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
+
+
+def resolve_job_data_dir(run) -> str:
+    """
+    Resolves the job data directory for the given CalibrationRun object, converting paths if necessary
+    based on the current settings.
+
+    :param run: The CalibrationRun object.
+    :return: The resolved host path to the job data directory as a plain string.
+    :raises ValueError: If the path is not absolute or does not start with the expected root.
+    """
+    container_job_data_dir: str = run.job_data_dir
+
+    if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
+        # Ensure the absolute path starts with the old root
+        if not os.path.isabs(container_job_data_dir):
+            raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
+        if not container_job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
+            raise ValueError(f"The path '{container_job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
+
+        # Replace the old root with the new root
+        relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
+        return os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
+
+    return container_job_data_dir
 
 
 @extend_schema(

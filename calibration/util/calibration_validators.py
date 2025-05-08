@@ -396,6 +396,7 @@ def validate_automatic_validation(value):
 
 class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+    job_data_dir = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
@@ -587,6 +588,7 @@ class LoadGageResponseSerializer(BaseSerializer):
 
 class CreateCalibrationRunResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
+    job_data_dir = serializers.CharField(required=True)
 
 
 class CreateAndRunValidationResponseSerializer(GenericResponseSerializer):
