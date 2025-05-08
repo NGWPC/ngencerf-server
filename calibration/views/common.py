@@ -6,7 +6,6 @@ import os
 import re
 from datetime import timedelta, datetime
 from functools import wraps
-from pathlib import Path
 from typing import Type, Any, Callable, cast
 
 import numpy as np
@@ -238,16 +237,16 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
 
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
-    run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{username}'
+    run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f"{run.id}_{username}")
 
     # Set the job genesis based on the provided genesis or default to JobGenesis.GUI
     run.job_genesis = genesis.value if genesis else JobGenesis.GUI.value
 
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory if it already exists (should not happen in production)
-    if run.job_data_dir.exists():
+    if os.path.exists(run.job_data_dir):
         # Append timestamp to existing directory name to avoid overwriting
-        new_name = run.job_data_dir.with_name(f"{run.job_data_dir.name}_{datetime.now().isoformat()}")
-        run.job_data_dir.rename(new_name)
+        new_name = f"{run.job_data_dir}_{datetime.now().isoformat()}"
+        os.rename(run.job_data_dir, new_name)
 
     # This is always true
     run.automatic_validation = True
@@ -450,14 +449,16 @@ def get_valid_path(source, eds_path, upload_enum, get_path_func):
     :return: The valid path if found; otherwise None.
     """
     job_specific_file = get_path_func()
-    if source:
-        if source == upload_enum.db_instance:
-            # Check job-specific path first
-            if job_specific_file and Path(job_specific_file).exists():
-                return job_specific_file
-        # If not found or source is different, check the EDS path
-        if eds_path and Path(eds_path).exists():
-            return eds_path
+
+    # Check if the source is a user upload
+    if source == upload_enum.db_instance:
+        # Check job-specific path first
+        if job_specific_file and os.path.exists(job_specific_file):
+            return job_specific_file
+
+    # Fall back to the EDS path if the job-specific file is not found
+    if eds_path and os.path.exists(eds_path):
+        return eds_path
 
     return None
 

@@ -26,6 +26,7 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
+from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email
@@ -72,7 +73,7 @@ def create_calibration_run(request: Request) -> Response:
     with transaction.atomic():
         run = create_calibration_run_internal(request.user)
 
-        response = {'message': f'Calibration Job {run.id} created', 'calibration_run_id': run.id}
+        response = {'message': f'Calibration Job {run.id} created', 'calibration_run_id': run.id, 'job_data_dir': resolve_job_data_dir(run)}
 
         response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
         if error_response:
