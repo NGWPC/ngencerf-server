@@ -108,6 +108,7 @@ def get_single_file(source_dir: str):
 
     # If there are no files in the directory, return None.
     if not files:
+        # TODO Should this throw an exception if there is no file?
         return None
 
     if len(files) > 1:
