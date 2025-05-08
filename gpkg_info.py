@@ -105,7 +105,7 @@ def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="GeoPackage Validation Tool")
     parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
-    parser.add_argument("--layer-metadata", type=str, metavar="LAYER_NAME", help="Display metadata for the specified layer")
+    parser.add_argument("--layer", type=str, metavar="LAYER_NAME", help="Display metadata for the specified layer")
 
     args = parser.parse_args()
 
@@ -114,9 +114,9 @@ def main():
         return
 
     try:
-        if args.layer_metadata:
-            print(f"Displaying metadata for layer '{args.layer_metadata}'...")
-            display_layer_metadata(args.gpkg_path, args.layer_metadata)
+        if args.layer:
+            print(f"Displaying metadata for layer '{args.layer}'...")
+            display_layer_metadata(args.gpkg_path, args.layer)
         else:
             print("\nSearching for gage_id in the 'hydrolocations' layer:")
             find_gage_id(args.gpkg_path)
