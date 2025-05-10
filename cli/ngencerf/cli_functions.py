@@ -25,7 +25,7 @@ def get_auth_headers() -> dict:
     }
 
 
-def upload_geopackage_data(geopackage_file: str, calibration_run_id: str):
+def upload_geopackage_data(geopackage_file: str, calibration_run_id: int):
     """
     Uploads a geopackage file for a given calibration run.
 
@@ -49,7 +49,7 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: str):
         check_http_error(response.status_code, response.text, exit_on_error=True)
 
 
-def upload_observational_data(observational_file: str, calibration_run_id: str):
+def upload_observational_data(observational_file: str, calibration_run_id: int):
     """
     Uploads observational data (CSV) for a given calibration run.
 
@@ -69,7 +69,7 @@ def upload_observational_data(observational_file: str, calibration_run_id: str):
         check_http_error(response.status_code, response.text, exit_on_error=True)
 
 
-def upload_forcing_data(forcing_dir: str, calibration_run_id: str):
+def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
     """
     Uploads all files in a directory as forcing data for a given calibration run.
 
@@ -101,7 +101,7 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: str):
             f.close()
 
 
-def download_zip(calibration_run_id: str, output_path: str = None):
+def download_zip(calibration_run_id: int, output_path: str = None):
     """
     Downloads the ZIP archive for a calibration run from the server.
 
@@ -148,7 +148,7 @@ def download_zip(calibration_run_id: str, output_path: str = None):
     print(f"Downloaded ZIP to: {full_path}")
 
 
-def run_job(calibration_run_id: str):
+def run_job(calibration_run_id: int):
     """
     Submits a calibration run for execution.
 
@@ -164,7 +164,7 @@ def run_job(calibration_run_id: str):
     check_http_error(response.status_code, response.text, exit_on_error=True)
 
 
-def delete_job(calibration_run_id: str):
+def delete_job(calibration_run_id: int):
     """
     Deletes an existing calibration run.
 
@@ -180,7 +180,7 @@ def delete_job(calibration_run_id: str):
     check_http_error(response.status_code, response.text, exit_on_error=True)
 
 
-def cancel_job(calibration_run_id: str):
+def cancel_job(calibration_run_id: int):
     """
     Cancels a running calibration job.
 
@@ -245,7 +245,7 @@ def list_jobs():
     print(f"Saved {len(rows)} jobs to {full_path}")
 
 
-def _submit_job_data(job_file: str, calibration_run_id: str | None = None):
+def _submit_job_data(job_file: str, calibration_run_id: int | None = None):
     """
     Submits job data to the import endpoint, used by both import and update.
 
@@ -275,7 +275,7 @@ def import_job(job_file: str):
     _submit_job_data(job_file)
 
 
-def update_job(calibration_run_id: str, job_file: str):
+def update_job(calibration_run_id: int, job_file: str):
     """
     Updates an existing calibration job using a JSON file.
     """
@@ -283,7 +283,7 @@ def update_job(calibration_run_id: str, job_file: str):
     _submit_job_data(job_file, calibration_run_id=calibration_run_id)
 
 
-def handle_export_display(calibration_run_id: str, output: str = None, display: bool = False):
+def handle_export_display(calibration_run_id: int, output: str = None, display: bool = False):
     """
     Exports a calibration job to a file or displays it.
     """
@@ -319,7 +319,7 @@ def handle_export_display(calibration_run_id: str, output: str = None, display: 
         print(f"Exported to {path}")
 
 
-def _pretty_print_job(calibration_run_id: str, data: dict):
+def _pretty_print_job(calibration_run_id: int, data: dict):
     """
     Prints selected fields from the exported calibration job in a structured format.
     """

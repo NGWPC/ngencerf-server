@@ -10,7 +10,26 @@ def check_http_error(http_status: int, response: str, exit_on_error: bool = Fals
         return False
     elif http_status == 400:
         print("Server returned HTTP 400 Bad Request. Response:")
-        _pretty_print_json(response)
+        try:
+            response_json = json.loads(response)
+            response_type = response_json.get("response_type")
+            message = response_json.get("message", "")
+
+            if response_type == "error":
+                print(message)
+            elif response_type == "validation_error":
+                print(message)
+                validation_errors = response_json.get("validation_errors", {})
+                for field, errors in validation_errors.items():
+                    for error in errors:
+                        print(f"{field}: {error}")
+            else:
+                _pretty_print_json(response)
+
+        except json.JSONDecodeError:
+            # Fallback to raw response if JSON parsing fails
+            print(response.strip())
+
         if exit_on_error:
             sys.exit(1)
         return False

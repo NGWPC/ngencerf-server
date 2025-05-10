@@ -194,27 +194,27 @@ def main():
     import_parser.set_defaults(func=lambda args: import_job(job_file=args.input_file))
 
     update_parser = add_parser("update", "Update job from a JSON file")
-    update_parser.add_argument("run_id", help="Calibration run ID")
+    update_parser.add_argument("run_id", type=int, help="Calibration run ID")
     update_parser.add_argument("input_file", help="Path to the JSON file")
     update_parser.set_defaults(func=lambda args: update_job(calibration_run_id=args.run_id, job_file=args.input_file))
 
     observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration run")
-    observation_parser.add_argument("run_id", help="Calibration run ID")
+    observation_parser.add_argument("run_id", type=int, help="Calibration run ID")
     observation_parser.add_argument("csv_file", help="Path to the observational CSV file")
     observation_parser.set_defaults(func=lambda args: upload_observational_data(args.csv_file, args.run_id))
 
     forcing_parser = add_parser("upload-forcing", "Upload a directory of forcing files for a calibration run")
-    forcing_parser.add_argument("run_id", help="Calibration run ID")
+    forcing_parser.add_argument("run_id", type=int, help="Calibration run ID")
     forcing_parser.add_argument("forcing_dir", help="Path to directory containing forcing files")
     forcing_parser.set_defaults(func=lambda args: upload_forcing_data(args.forcing_dir, args.run_id))
 
     gpkg_parser = add_parser("upload-geopkg", "Upload a GPKG file for a calibration run")
-    gpkg_parser.add_argument("run_id", help="Calibration run ID")
+    gpkg_parser.add_argument("run_id", type=int, help="Calibration run ID")
     gpkg_parser.add_argument("gpkg_file", help="Path to the geopackage (.gpkg) file")
     gpkg_parser.set_defaults(func=lambda args: upload_geopackage_data(args.gpkg_file, args.run_id))
 
     export_parser = add_parser("export", "Export job to JSON")
-    export_parser.add_argument("run_id", help="Calibration run ID")
+    export_parser.add_argument("run_id", type=int, help="Calibration run ID")
     export_parser.add_argument("--output", help="Path to save file or directory")
     export_parser.add_argument("--show", action=ParseBoolAction, nargs="?", default=False, help="Also display the job")
     export_parser.set_defaults(func=lambda args: handle_export_display(
@@ -224,7 +224,7 @@ def main():
     ))
 
     show_parser = add_parser("show", "Display job details")
-    show_parser.add_argument("run_id", help="Calibration run ID")
+    show_parser.add_argument("run_id", type=int, help="Calibration run ID")
     show_parser.add_argument("--output", help="Path to save file or directory")
     show_parser.add_argument("--export", action=ParseBoolAction, nargs="?", default=False, help="Also export the job")
     show_parser.set_defaults(func=lambda args: handle_export_display(
@@ -234,22 +234,22 @@ def main():
     ))
 
     run_parser = add_parser("run", "Submit calibration run")
-    run_parser.add_argument("run_id", help="Calibration run ID")
+    run_parser.add_argument("run_id", type=int, help="Calibration run ID")
     run_parser.set_defaults(func=lambda args: run_job(args.run_id))
 
     delete_parser = add_parser("delete", "Delete job")
-    delete_parser.add_argument("run_id", help="Calibration run ID")
+    delete_parser.add_argument("run_id", type=int, help="Calibration run ID")
     delete_parser.set_defaults(func=lambda args: delete_job(args.run_id))
 
     cancel_parser = add_parser("cancel", "Cancel job")
-    cancel_parser.add_argument("run_id", help="Calibration run ID")
+    cancel_parser.add_argument("run_id", type=int, help="Calibration run ID")
     cancel_parser.set_defaults(func=lambda args: cancel_job(args.run_id))
 
     jobs_parser = add_parser("jobs", "List jobs")
     jobs_parser.set_defaults(func=lambda args: list_jobs())
 
     download_parser = add_parser("download", "Download ZIP file for calibration run")
-    download_parser.add_argument("run_id", help="Calibration run ID")
+    download_parser.add_argument("run_id", type=int, help="Calibration run ID")
     download_parser.add_argument("--output", help="Path to save ZIP file or directory")
     download_parser.set_defaults(func=lambda args: download_zip(args.run_id, output_path=args.output or DEFAULT_DOWNLOAD_DIR))
 
