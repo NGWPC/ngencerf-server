@@ -343,8 +343,9 @@ def _pretty_print_job(calibration_run_id: str, data: dict):
 
     print()
     print(f"Setup - Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(f"Job Data directory: {metadata.get('job_data_dir')}")
     print(f"Gage: {data.get('gage_id')}")
-    print(f"Catchments: {metadata.get('catchment_count', '-')}")
+    print(f"Catchments: {metadata.get('num_catchments', '-')}")
     print(f"Forcing Data: {data.get('forcing_source')}")
     print(f"Observational Data: {data.get('observational_source')}")
     print(data.get("description", "").strip())
