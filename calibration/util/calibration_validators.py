@@ -96,8 +96,16 @@ class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
 
+class CalibrationRunIdList(BaseSerializer):
+    calibration_run_ids = serializers.ListSerializer(child=serializers.IntegerField(), required=True)
+
+
 class GetStatusRequestSerializer(CalibrationRunSerializer):
     include_performance_metrics = serializers.BooleanField(required=False, default=False)
+
+
+class GetStatusForComparisonRequestSerializer(CalibrationRunIdList):
+    pass
 
 
 class ValidationRunSerializer(BaseSerializer):
@@ -366,10 +374,6 @@ class ValidationJobsParameter(BaseSerializer):
 
 class LoadCalibrationJobSerializer(CalibrationRunSerializer):
     include_gpkg_map = serializers.BooleanField(required=False, default=True)
-
-
-class CalibrationRunIdList(BaseSerializer):
-    calibration_run_ids = serializers.ListSerializer(child=serializers.IntegerField(), required=True)
 
 
 class JobElement(GenericMessageResponseSerializer):
@@ -844,6 +848,7 @@ class PerformanceMetricsSerializer(BaseSerializer):
 
 
 class CommonStatusFieldsMixin(serializers.Serializer):
+    calibration_run_id = serializers.IntegerField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     run_start = serializers.DateTimeField(required=False, allow_null=True)
@@ -879,6 +884,11 @@ class GetStatusResponseSerializer(GenericResponseSerializer):
     run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
+
+
+class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
+    statuses = CommonStatusFieldsMixin(many=True, required=False)
+    errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
 
 
 class ImportResponseSerializer(GenericResponseSerializer):
