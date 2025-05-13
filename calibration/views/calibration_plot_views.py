@@ -17,7 +17,7 @@ from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, V
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ValidationMetrics, NWMRetrospectiveMetrics
 from calibration.util.caching import get_filtered_plot_definitions
-from calibration.util.calibration_validators import GetPlotNamesResponseSerializer, \
+from calibration.util.calibration_validators import EmptySerializer, GetPlotNamesResponseSerializer, \
     GetPlotNamesForComparisonResponseSerializer, ErrorResponseSerializer, GetPlotRequestSerializer, \
     GetPlotResponseSerializer, GetPlotsForComparisonRequestSerializer, GetPlotsForComparisonResponseSerializer, \
     CalibrationOrValidationOrForecastRunSerializer
@@ -113,9 +113,9 @@ def get_plot_names(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationOrValidationOrForecastRunSerializer,
+    request=EmptySerializer,
     responses={
-        200: GetPlotNamesResponseSerializer,
+        200: GetPlotNamesForComparisonResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -331,9 +331,9 @@ def get_plot(request: Request) -> Response:
 
 
 @extend_schema(
-    request=GetPlotRequestSerializer,
+    request=GetPlotsForComparisonRequestSerializer,
     responses={
-        200: GetPlotResponseSerializer,
+        200: GetPlotsForComparisonResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"

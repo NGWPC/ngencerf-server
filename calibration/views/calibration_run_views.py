@@ -196,9 +196,9 @@ def get_status(request: Request) -> Response:
 
 
 @extend_schema(
-    request=GetStatusRequestSerializer,
+    request=GetStatusForComparisonRequestSerializer,
     responses={
-        200: GetStatusResponseSerializer,
+        200: GetStatusForComparisonResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -214,8 +214,9 @@ def get_status(request: Request) -> Response:
 @handle_exceptions
 def get_status_for_comparison(request: Request) -> Response:
     """
-    Retrieves the status of a calibration job, including associated validation and forecast jobs.
-    Optionally includes performance metrics based on the request parameters.
+    Retrieves the status of multiple calibration jobs, including performance metrics.
+
+    calibration_run_ids should be given as an array.
 
     :param request: HTTP request containing calibration run details.
     :return: JSON response with the status and associated job details.
@@ -242,10 +243,10 @@ def get_status_for_comparison(request: Request) -> Response:
       if error_return:
           calibration_error = {'calibration_run_id': calibration_run.id, 'message': error_return}
       
-      # Conditionally retrieve calibration performance metrics
-      calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status, True) else None
-
       if not calibration_error:
+        # Conditionally retrieve calibration performance metrics
+        calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if calibration_run.status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance] else None
+
         # Prepare the response for this job
         status_response = {
             'calibration_run_id': calibration_run.id,
