@@ -15,6 +15,11 @@ from ngencerf.cli_util import check_http_error
 
 API_BASE = "http://localhost:8000"
 
+# Default download directory (fallbacks to cwd if ~/Downloads is missing)
+DEFAULT_DOWNLOAD_DIR = os.path.expanduser("~/Downloads")
+if not os.path.isdir(DEFAULT_DOWNLOAD_DIR):
+    DEFAULT_DOWNLOAD_DIR = os.getcwd()
+
 
 def get_auth_headers() -> dict:
     """
@@ -46,7 +51,7 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int):
             files=files,
             data=data,
         )
-        check_http_error(response.status_code, response.text, exit_on_error=True)
+        check_http_error(response.status_code, response.text)
 
 
 def upload_observational_data(observational_file: str, calibration_run_id: int):
@@ -66,7 +71,7 @@ def upload_observational_data(observational_file: str, calibration_run_id: int):
             files=files,
             data=data,
         )
-        check_http_error(response.status_code, response.text, exit_on_error=True)
+        check_http_error(response.status_code, response.text)
 
 
 def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
@@ -95,18 +100,18 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
             files=files,
             data={"calibration_run_id": calibration_run_id},
         )
-        check_http_error(response.status_code, response.text, exit_on_error=True)
+        check_http_error(response.status_code, response.text)
     finally:
         for _, (_, f) in files:
             f.close()
 
 
-def download_zip(calibration_run_id: int, output_path: str = None):
+def download_zip(calibration_run_id: int, output_path: str | None = None):
     """
     Downloads the ZIP archive for a calibration run from the server.
 
     :param calibration_run_id: ID of the calibration run to download
-    :param output_path: Optional path to save the ZIP file or directory to save it in
+    :param output_path: Path to save the ZIP file or directory (default: ~/Downloads)
     """
     print(f"Downloading ZIP for calibration run: {calibration_run_id}")
 
@@ -119,33 +124,24 @@ def download_zip(calibration_run_id: int, output_path: str = None):
         stream=True,
     )
 
-    if not check_http_error(response.status_code, response.text, exit_on_error=True):
+    if not check_http_error(response.status_code, response.text):
         return
 
     # Determine filename from Content-Disposition header or use default
     content_disp = response.headers.get("Content-Disposition", "")
-    filename = f"calibration_job_{calibration_run_id}.zip"
+    default_filename = f"calibration_job_{calibration_run_id}.zip"
     if "filename=" in content_disp:
-        filename = content_disp.split("filename=")[-1].strip('"')
+        default_filename = content_disp.split("filename=")[-1].strip('"')
 
-    # Resolve final path
-    if output_path:
-        output_path = os.path.expanduser(os.path.expandvars(output_path))
-        if output_path.endswith(os.sep) or os.path.isdir(output_path):
-            os.makedirs(output_path, exist_ok=True)
-            full_path = os.path.join(output_path, filename)
-        else:
-            full_path = output_path
-    else:
-        full_path = filename
+    final_path = resolve_output_path(output_path, default_filename)
 
     # Save response content to file
-    with open(full_path, "wb") as f:
+    with open(final_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
 
-    print(f"Downloaded ZIP to: {full_path}")
+    print(f"Downloaded ZIP to: {final_path}")
 
 
 def run_job(calibration_run_id: int):
@@ -161,23 +157,41 @@ def run_job(calibration_run_id: int):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text, exit_on_error=True)
+    check_http_error(response.status_code, response.text)
 
 
 def delete_job(calibration_run_id: int):
     """
-    Deletes an existing calibration run.
+    Deletes an existing calibration run, with confirmation.
 
     :param calibration_run_id: ID of the calibration run
     """
-    print(f"Deleting calibration run job {calibration_run_id}")
+    # Display job details before deletion
+    print("\nFetching job details for confirmation...\n")
+
+    # Fetch and display the job details
+    response = handle_export_display(calibration_run_id, display=True)
+
+    # Print the raw response for debugging
+    print("\nRAW RESPONSE:", response)
+
+    # Confirm deletion
+    confirmation = input("\nType 'delete' to confirm the permanent deletion of this calibration run: ").strip()
+    if confirmation.lower() != "delete":
+        print("\nDeletion aborted. The calibration run was not deleted.")
+        return
+
+    # Proceed with deletion
+    print(f"\nDeleting calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
     response = requests.post(
         f"{API_BASE}/calibration/delete_job/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text, exit_on_error=True)
+    check_http_error(response.status_code, response.text)
+
+    print(f"\nCalibration run {calibration_run_id} deleted successfully.")
 
 
 def cancel_job(calibration_run_id: int):
@@ -193,19 +207,23 @@ def cancel_job(calibration_run_id: int):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text, exit_on_error=True)
+    check_http_error(response.status_code, response.text)
 
 
-def list_jobs():
+def list_jobs(output_path: str | None = None):
     """
-    List all calibration jobs and save to a timestamped markdown file.
+    List all calibration jobs and save to a markdown file.
+
+    :param output_path: Path to save the job list (optional)
     """
     print("Fetching calibration jobs...")
     response = requests.post(
         f"{API_BASE}/calibration/get_calibration_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
     )
-    check_http_error(response.status_code, response.text, exit_on_error=True)
+
+    if not check_http_error(response.status_code, response.text):
+        return
 
     jobs = response.json().get("jobs", [])
 
@@ -235,67 +253,89 @@ def list_jobs():
 
     markdown_table = tabulate.tabulate(rows, headers=headers, tablefmt="github")
 
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
-    filename = f"calibration_jobs_{timestamp}.md"
-    full_path = os.path.abspath(filename)
+    path = resolve_output_path(output_path, f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md")
 
-    with open(full_path, "w", encoding="utf-8") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(markdown_table)
 
-    print(f"Saved {len(rows)} jobs to {full_path}")
+    print(f"Saved {len(rows)} jobs to {path}")
 
 
-def _submit_job_data(job_file: str, calibration_run_id: int | None = None):
+def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_after_import: str | None = None):
     """
-    Submits job data to the import endpoint, used by both import and update.
+    Submits job data to the import or update endpoint.
 
     :param job_file: Path to the JSON file
     :param calibration_run_id: Optional calibration_run_id for update
+    :param run_after_import: Optional override for the run_after_import field
     """
+    print(f"Loading job data from: {job_file}")
+
+    # Load the JSON file
     with open(job_file, "r", encoding="utf-8") as f:
         job_data = json.load(f)
 
+    # Override the run_after_import field if specified
+    if run_after_import is not None:
+        print(f"Overriding run_after_import: {run_after_import}")
+        job_data["run_after_import"] = run_after_import
+
+    # Build the payload
     payload = {"data": job_data}
     if calibration_run_id is not None:
         payload["calibration_run_id"] = calibration_run_id
 
+    # Send the modified job data to the server
     response = requests.post(
         f"{API_BASE}/calibration/import/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text, exit_on_error=True)
+
+    check_http_error(response.status_code, response.text)
 
 
-def import_job(job_file: str):
+def import_job(job_file: str, run_after_import: bool | None = None):
     """
     Imports a new job definition from a JSON file.
+
+    :param job_file: Path to the JSON file
+    :param run_after_import: Optional override for the run_after_import field
     """
     print(f"Importing job from: {job_file}")
-    _submit_job_data(job_file)
+    _submit_job_data(job_file, run_after_import=run_after_import)
 
 
-def update_job(calibration_run_id: int, job_file: str):
+def update_job(calibration_run_id: int, job_file: str, run_after_import: bool | None = None):
     """
     Updates an existing calibration job using a JSON file.
+
+    :param calibration_run_id: ID of the calibration run
+    :param job_file: Path to the JSON file
+    :param run_after_import: Optional override for the run_after_import field
     """
     print(f"Updating job {calibration_run_id} from: {job_file}")
-    _submit_job_data(job_file, calibration_run_id=calibration_run_id)
+    _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_import)
 
 
-def handle_export_display(calibration_run_id: int, output: str = None, display: bool = False):
+def handle_export_display(calibration_run_id: int, output_path: str | None = None, display: bool = False):
     """
     Exports a calibration job to a file or displays it.
+
+    :param calibration_run_id: ID of the calibration run to export
+    :param output_path: Path to save the export file (default: ~/Downloads)
+    :param display: Whether to print the job to the console
     """
     payload = {"calibration_run_id": calibration_run_id}
 
+    print(f"Sending request to {API_BASE}/calibration/export/")
     response = requests.post(
         f"{API_BASE}/calibration/export/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
 
-    if not check_http_error(response.status_code, response.text, exit_on_error=True):
+    if not check_http_error(response.status_code, response.text):
         return
 
     data = response.json()
@@ -303,16 +343,9 @@ def handle_export_display(calibration_run_id: int, output: str = None, display: 
     if display:
         _pretty_print_job(calibration_run_id, data)
 
-    if output is not None or not display:
-        default_filename = f"export_{calibration_run_id}.json"
-        output = os.path.expanduser(os.path.expandvars(output or default_filename))
-
-        if output.endswith(os.sep) or (os.path.exists(output) and os.path.isdir(output)):
-            os.makedirs(output, exist_ok=True)
-            path = os.path.join(output, default_filename)
-        else:
-            path = output
-
+    # If --output was used (including the default case), resolve the output path
+    if output_path is not None:
+        path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
@@ -370,3 +403,31 @@ def _pretty_print_job(calibration_run_id: int, data: dict):
     print(f"Tuning Parameters: {len(data.get('parameters', []))}")
     print(f"Calibration Stop Criteria: {data.get('stop_criteria')}")
     print()
+
+
+def resolve_output_path(output_path: str | None, default_filename: str) -> str:
+    """
+    Resolves the final output path for a file, handling directory, relative, and full file paths.
+
+    :param output_path: The provided output path, which can be a directory, relative file name, or full file path.
+    :param default_filename: The default filename to use if output_path is a directory or filename without a path.
+    :return: The resolved full file path.
+    """
+    # Use the default directory if no output path is specified
+    if output_path == "__DEFAULT__" or not output_path:
+        output_path = DEFAULT_DOWNLOAD_DIR
+
+    output_path = os.path.expanduser(os.path.expandvars(output_path))
+
+    # Use the default directory if the path is just a filename
+    if not os.path.isabs(output_path) and not os.path.dirname(output_path):
+        output_path = os.path.join(DEFAULT_DOWNLOAD_DIR, output_path)
+
+    # If the path is a directory, use the default filename
+    if output_path.endswith(os.sep) or os.path.isdir(output_path):
+        os.makedirs(output_path, exist_ok=True)
+        return os.path.join(output_path, default_filename)
+
+    # Ensure the directory exists for full or relative paths
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    return output_path

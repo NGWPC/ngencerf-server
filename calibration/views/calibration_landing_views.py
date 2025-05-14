@@ -602,9 +602,10 @@ def hard_delete(run: CalibrationRun) -> None:
 @api_view(['POST'])
 @handle_exceptions
 def import_job(request: Request) -> Response:
+    # TODO Make a separate update_job endpoint for existing job
     """
-    API endpoint to import a calibration job. It validates input data,
-    imports calibration run data, and optionally submits a job.
+    API endpoint to import (create) a calibration job or update an existing job.
+     It validates input data, imports calibration run data, and optionally submits a job.
 
     :param request: Django HTTP request containing job import data.
     :return: HTTP response indicating success or error status.
