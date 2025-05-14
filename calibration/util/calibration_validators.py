@@ -849,6 +849,7 @@ class PerformanceMetricsSerializer(BaseSerializer):
 
 class CommonStatusFieldsMixin(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=False)
+    formulation_name = serializers.CharField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     run_start = serializers.DateTimeField(required=False, allow_null=True)

@@ -250,6 +250,7 @@ def get_status_for_comparison(request: Request) -> Response:
         # Prepare the response for this job
         status_response = {
             'calibration_run_id': calibration_run.id,
+            'formulation_name': calibration_run.user_formulation_name,
             'status': calibration_run.status.name,
             'submit_date': calibration_run.submit_date,
             'run_start': calibration_run.run_start,
