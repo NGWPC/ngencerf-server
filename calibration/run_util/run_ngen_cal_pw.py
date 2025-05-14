@@ -45,6 +45,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'calibration_run_id': (None, run.id),
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
+            'nprocs': (None, arguments['nprocs'])
         }
         slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, ValidationRun):

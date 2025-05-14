@@ -296,6 +296,8 @@ SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT = 'submit-forecast-forcing-d
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
+MPI_NPROCS = 4
+
 # -----------------------------
 # Logging
 # -----------------------------
@@ -359,6 +361,11 @@ LOGGING = {
             'handlers': ['console', 'file_dev'],
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
+        },
+        'createInput': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
         },
 
         # Add these loggers for 'requests' and 'urllib3'

@@ -18,6 +18,8 @@ static_dirs = [
 
 files = [
     NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'ngen'),
+    PARALLEL_NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'ngen'),
+    PARTITION_GENERATOR_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'partitionGenerator'),
     CFE_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'cfe', 'cmake_build', 'libcfebmi.so'),
     SLOTH_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sloth', 'cmake_build', 'libslothmodel.so'),
     TOPMD_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'topmodel', 'cmake_build', 'libtopmodelbmi.so'),

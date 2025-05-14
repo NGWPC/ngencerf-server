@@ -12,6 +12,7 @@ from django.db.models import F
 from toml import TomlEncoder
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
+from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, get_cached_module_by_name
@@ -20,13 +21,17 @@ from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS
+    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime
+from cerfServer.settings import MPI_NPROCS, NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
+
+# For now, make this a constant, which is used in 2 places.  We need to tell ngen-cal as well as slurm
 
 # DO NOT MODIFY THIS TEMPLATE IN-PLACE.
 # Use `copy.deepcopy(CONFIG_TEMPLATE)` to safely create per-thread instances.
@@ -157,6 +162,15 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     general = config['General']
     calibration = config['Calibration']
     datafile = config['DataFile']
+
+    parallel = {
+        "parallel_ngen_exe": PARALLEL_NGEN_EXE,
+        "partition_generator_exe": PARTITION_GENERATOR_EXE,
+        "nprocs": MPI_NPROCS
+    }
+
+    if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        config['Parallel'] = parallel
 
     errors = []
 
