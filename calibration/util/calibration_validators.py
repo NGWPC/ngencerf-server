@@ -668,8 +668,12 @@ class GetPlotErrorResponseSerializer(BaseSerializer):
     message = serializers.CharField(required=True)
 
 
+class GetPlotForComparisonResponseSerializer(GetPlotResponseSerializer):
+    calibration_run_id = serializers.IntegerField(required=False)
+
+
 class GetPlotsForComparisonResponseSerializer(CalibrationRunIdList):
-    plots = GetPlotResponseSerializer(many=True, required=False)
+    plots = GetPlotForComparisonResponseSerializer(many=True, required=False)
     errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
 
 ##################################
