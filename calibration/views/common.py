@@ -73,19 +73,22 @@ def get_run_instance(
         run = query.get()
     except model.DoesNotExist:
         user_info = f' or is not owned by {cast(CustomUser, user).email}' if user else ''
-        error = f'{model.__name__} {run_id} does not exist{user_info}'
+        model_name = model.__name__.replace("Run", " Job")
+        error = f'{model_name} {run_id} does not exist{user_info}'
         return None, ResponseError(error)
 
     # Explicitly check if the job is archived and include_archived=False
     is_archived = getattr(run, is_archived_field, False)
     if is_archived and not include_archived:
-        error = f'{model.__name__} {run_id} is archived and should be unarchived before additional operations can be performed.'
+        model_name = model.__name__.replace("Run", " Job")
+        error = f'{model_name} {run_id} is archived and should be unarchived before additional operations can be performed.'
         return None, ResponseError(error)
 
     # Check if the status of the run is in the allowed statuses
     if run.status not in allowed_statuses:
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
-        error = (f'{model.__name__} {run_id} is not in an allowed status: '
+        model_name = model.__name__.replace("Run", " Job")
+        error = (f'{model_name} {run_id} is not in an allowed status: '
                  f'{join_with_or(allowed_status_names)}. '
                  f'Current status: {run.status.name}')
         return run, ResponseError(error)
