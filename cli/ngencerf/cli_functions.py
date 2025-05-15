@@ -6,6 +6,7 @@ importing/exporting configurations.
 
 import json
 import os
+from contextlib import ExitStack
 from datetime import datetime
 
 import requests
@@ -51,7 +52,9 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int):
             files=files,
             data=data,
         )
-        check_http_error(response.status_code, response.text)
+        response_json = check_http_error(response.status_code, response.text)
+        if response_json and (message := response_json.get("message")):
+            print(message)
 
 
 def upload_observational_data(observational_file: str, calibration_run_id: int):
@@ -71,7 +74,9 @@ def upload_observational_data(observational_file: str, calibration_run_id: int):
             files=files,
             data=data,
         )
-        check_http_error(response.status_code, response.text)
+        response_json = check_http_error(response.status_code, response.text)
+        if response_json and (message := response_json.get("message")):
+            print(message)
 
 
 def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
@@ -82,28 +87,30 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
     :param calibration_run_id: ID of the calibration run
     """
     print(f"Uploading forcing data from directory: '{forcing_dir}' for calibration_run_id: {calibration_run_id}")
-    files = []
 
-    # Collect files from directory
-    for fname in sorted(os.listdir(forcing_dir)):
-        fpath = os.path.join(forcing_dir, fname)
-        if os.path.isfile(fpath):
-            files.append(('files', (fname, open(fpath, 'rb'))))
+    with ExitStack() as stack:
+        # Collect files from directory
+        files = [
+            ('files', (fname, stack.enter_context(open(os.path.join(forcing_dir, fname), 'rb'))))
+            for fname in sorted(os.listdir(forcing_dir))
+            if os.path.isfile(os.path.join(forcing_dir, fname))
+        ]
 
-    if not files:
-        raise RuntimeError("No forcing data files found to upload.")
+        if not files:
+            print("No forcing data files found to upload.")
+            return
 
-    try:
+        # Send the request
         response = requests.post(
             f"{API_BASE}/calibration/upload_forcing_data/",
             headers=get_auth_headers(),
             files=files,
             data={"calibration_run_id": calibration_run_id},
         )
-        check_http_error(response.status_code, response.text)
-    finally:
-        for _, (_, f) in files:
-            f.close()
+        # Check for errors
+        response_json = check_http_error(response.status_code, response.text)
+        if response_json and (message := response_json.get("message")):
+            print(message)
 
 
 def download_zip(calibration_run_id: int, output_path: str | None = None):
@@ -157,41 +164,84 @@ def run_job(calibration_run_id: int):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text)
+    response_json = check_http_error(response.status_code, response.text)
+    if response_json and (message := response_json.get("message")):
+        print(message)
 
 
-def delete_job(calibration_run_id: int):
+def delete_job(calibration_run_ids: list[int]):
     """
     Deletes an existing calibration run, with confirmation.
 
-    :param calibration_run_id: ID of the calibration run
+    :param calibration_run_ids: A list of one or more calibration run id
     """
-    # Display job details before deletion
-    print("\nFetching job details for confirmation...\n")
+    if len(calibration_run_ids) == 1:
+        # Display job details before deletion
+        print("\nFetching job details for confirmation...\n")
 
-    # Fetch and display the job details
-    response = handle_export_display(calibration_run_id, display=True)
+        # Display the job details
+        handle_export_display(calibration_run_ids[0], display=True)
 
-    # Print the raw response for debugging
-    print("\nRAW RESPONSE:", response)
-
-    # Confirm deletion
-    confirmation = input("\nType 'delete' to confirm the permanent deletion of this calibration run: ").strip()
-    if confirmation.lower() != "delete":
-        print("\nDeletion aborted. The calibration run was not deleted.")
+    try:
+        # Confirm deletion
+        confirmation = input(f"\nType 'delete' to confirm the permanent deletion of calibration jobs {calibration_run_ids}: ").strip()
+        if confirmation.lower() != "delete":
+            print("\nDeletion aborted. The calibration jobs were not deleted.")
+            return
+    except KeyboardInterrupt:
+        print("\n\nDeletion aborted. The calibration jobs were not deleted.")
         return
 
     # Proceed with deletion
-    print(f"\nDeleting calibration run job {calibration_run_id}")
-    payload = {"calibration_run_id": calibration_run_id}
+    print(f"\nDeleting calibration run jobs {calibration_run_ids}")
+    payload = {"calibration_run_ids": calibration_run_ids}
     response = requests.post(
-        f"{API_BASE}/calibration/delete_job/",
+        f"{API_BASE}/calibration/delete_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text)
+    response_json = check_http_error(response.status_code, response.text)
+    if response_json:
+        for job in response_json.get("jobs", []):
+            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
 
-    print(f"\nCalibration run {calibration_run_id} deleted successfully.")
+
+def archive_job(calibration_run_ids: list[int]):
+    """
+    Archive one or more calibration runs.
+
+    :param calibration_run_ids: A list of one or more calibration run id
+    """
+    print(f"Archiving calibration run jobs {calibration_run_ids}")
+    payload = {"calibration_run_ids": calibration_run_ids, "archive": True}
+    response = requests.post(
+        f"{API_BASE}/calibration/archive_jobs/",
+        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload,
+    )
+    response_json = check_http_error(response.status_code, response.text)
+    if response_json:
+        for job in response_json.get("jobs", []):
+            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+
+def unarchive_job(calibration_run_ids: list[int]):
+    """
+    Unarchive one or morea calibration runs.
+
+    :param calibration_run_ids: A list of one or more calibration run id
+    """
+    print(f"Unarchiving calibration run jobs {calibration_run_ids}")
+    payload = {"calibration_run_ids": calibration_run_ids, "archive": False}
+    response = requests.post(
+        f"{API_BASE}/calibration/archive_jobs/",
+        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload,
+    )
+    response_json = check_http_error(response.status_code, response.text)
+    if response_json:
+        for job in response_json.get("jobs", []):
+            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
 
 
 def cancel_job(calibration_run_id: int):
@@ -207,7 +257,9 @@ def cancel_job(calibration_run_id: int):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    check_http_error(response.status_code, response.text)
+    response_json = check_http_error(response.status_code, response.text)
+    if response_json and (message := response_json.get("message")):
+        print(message)
 
 
 def list_jobs(output_path: str | None = None):
@@ -222,11 +274,11 @@ def list_jobs(output_path: str | None = None):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
     )
 
-    if not check_http_error(response.status_code, response.text):
+    response_json = check_http_error(response.status_code, response.text)
+    if not response_json:
         return
 
-    jobs = response.json().get("jobs", [])
-
+    jobs = response_json.get("jobs", [])
     if not jobs:
         print("No jobs found.")
         return
@@ -261,7 +313,7 @@ def list_jobs(output_path: str | None = None):
     print(f"Saved {len(rows)} jobs to {path}")
 
 
-def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_after_import: str | None = None):
+def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_after_import: bool | None = None):
     """
     Submits job data to the import or update endpoint.
 
@@ -292,7 +344,9 @@ def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_a
         json=payload,
     )
 
-    check_http_error(response.status_code, response.text)
+    response_json = check_http_error(response.status_code, response.text)
+    if response_json and (message := response_json.get("message")):
+        print(message)
 
 
 def import_job(job_file: str, run_after_import: bool | None = None):
@@ -335,19 +389,20 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
         json=payload,
     )
 
-    if not check_http_error(response.status_code, response.text):
+    response_json = check_http_error(response.status_code, response.text)
+    if not response_json:
         return
 
     data = response.json()
 
     if display:
-        _pretty_print_job(calibration_run_id, data)
+        _pretty_print_job(calibration_run_id, response_json)
 
     # If --output was used (including the default case), resolve the output path
     if output_path is not None:
         path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(response_json, f, indent=2)
 
         print(f"Exported to {path}")
 

@@ -21,7 +21,7 @@ from ngencerf.cli_functions import (
     upload_observational_data,
     upload_forcing_data,
     upload_geopackage_data,
-    download_zip,
+    download_zip, archive_job, unarchive_job,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
 
@@ -273,8 +273,31 @@ def main():
     run_parser.set_defaults(func=lambda cmd_args: run_job(cmd_args.run_id))
 
     delete_parser = add_parser("delete", "Delete job")
-    delete_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_id))
+    delete_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="+",  # One or more space-separated integers
+        help="One or more calibration run IDs"
+    )
+    delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_ids))
+
+    archive_parser = add_parser("archive", "Archive one or more jobs")
+    archive_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="+",  # One or more space-separated integers
+        help="One or more calibration run IDs"
+    )
+    archive_parser.set_defaults(func=lambda cmd_args: archive_job(cmd_args.run_ids))
+
+    unarchive_parser = add_parser("unarchive", "Unarchive one or more jobs")
+    unarchive_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="+",  # One or more space-separated integers
+        help="One or more calibration run IDs"
+    )
+    unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(cmd_args.run_ids))
 
     cancel_parser = add_parser("cancel", "Cancel job")
     cancel_parser.add_argument("run_id", type=int, help="Calibration run ID")
