@@ -468,7 +468,8 @@ class Command(BaseCommand):
                 "description": "Comparison of metrics from best validation runs for multimple calibration runs",
                 "location": "",
                 "job_type": JobType.COMPARISON.value,
-                "filename_mask": ""
+                "filename_mask": "",
+                "timeseries_available": False
             }
         ]
 
