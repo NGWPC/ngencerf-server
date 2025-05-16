@@ -27,8 +27,9 @@ from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibratio
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer, \
-    ForecastJobSlurmCallbackRequestSerializer, \
+    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, \
+    GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
+    CalibrationOrValidationOrForecastRunSerializer, ForecastJobSlurmCallbackRequestSerializer, \
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
     GenericResponseSerializerWithValidator, RunCalibrationJob
 from calibration.views import ngen_cal_input
@@ -81,43 +82,8 @@ def get_status(request: Request) -> Response:
     if error_return:
         return error_return
 
-    def get_performance_metrics(performance_metrics):
-        """
-        Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
-        """
-        if not performance_metrics:
-            return {field: None for field in [
-                "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
-            ]}
-
-        # Convert numeric fields to kilobytes
-        metrics_dict = model_to_dict(performance_metrics, fields=[
-            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
-        ])
-        # Manually add io_throughput since it's a generated field
-        metrics_dict["io_throughput"] = performance_metrics.io_throughput
-
-        # Convert relevant fields to 'K' units
-        for field in ["max_rss", "max_disk_read", "max_disk_write"]:
-            value = metrics_dict.get(field)
-            if value is not None:  # Only convert non-null values
-                metrics_dict[field] = f"{value:.2f}K"
-
-        # Format io_throughput in 'K/s'
-        io_throughput = metrics_dict.get("io_throughput")
-        if io_throughput is not None:
-            metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
-
-        return metrics_dict
-
-    def should_include_metrics(run_status: Status):
-        """
-        Determines if performance metrics should be included based on job status and request parameters.
-        """
-        return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
-
     # Conditionally retrieve calibration performance metrics
-    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status) else None
+    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status, include_performance_metrics) else None
 
     # Retrieve validation runs with related PerformanceMetrics data
     validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
@@ -162,7 +128,7 @@ def get_status(request: Request) -> Response:
             'run_end': run.run_end,
             'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
-        if should_include_metrics(run.status):
+        if should_include_metrics(run.status, include_performance_metrics):
             validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
         validation_response.append(validation_data)
 
@@ -230,6 +196,87 @@ def get_status(request: Request) -> Response:
 
 
 @extend_schema(
+    request=GetStatusForComparisonRequestSerializer,
+    responses={
+        200: GetStatusForComparisonResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Return the status of a calibration job and associated validation and forecast jobs"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_status_for_comparison(request: Request) -> Response:
+    """
+    Retrieves the status of multiple calibration jobs, including performance metrics.
+
+    calibration_run_ids should be given as an array.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the status and associated job details.
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(GetStatusForComparisonRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_ids = validator.get('calibration_run_ids')
+
+    response = {
+        'calibration_run_ids': calibration_run_ids,
+        'statuses': [],
+        'errors': []
+    }
+
+    for calibration_run_id in calibration_run_ids:
+      calibration_error = None
+
+      calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+      if error_return:
+          calibration_error = {'calibration_run_id': calibration_run.id, 'message': error_return}
+      
+      if not calibration_error:
+        # Conditionally retrieve calibration performance metrics
+        calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if calibration_run.status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance] else None
+
+        # Prepare the response for this job
+        status_response = {
+            'calibration_run_id': calibration_run.id,
+            'formulation_name': calibration_run.user_formulation_name,
+            'status': calibration_run.status.name,
+            'submit_date': calibration_run.submit_date,
+            'run_start': calibration_run.run_start,
+            'run_end': calibration_run.run_end,
+            'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
+        }
+        if calibration_metrics:
+            status_response['performance_metrics'] = calibration_metrics
+        
+        response['statuses'].append(status_response)
+            
+      else:
+          response['errors'].append(calibration_error)
+
+    response_validator, error_response = validate_response(GetStatusForComparisonResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'{json.dumps(response_validator.data)}'
+    )
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
     request=RunCalibrationJob,
     responses={
         200: SubmitCalibrationJobResponseSerializer,
@@ -286,6 +333,42 @@ def run_calibration(request: Request) -> Response:
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
+
+
+def get_performance_metrics(performance_metrics):
+    """
+    Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
+    """
+    if not performance_metrics:
+        return {field: None for field in [
+            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+        ]}
+
+    # Convert numeric fields to kilobytes
+    metrics_dict = model_to_dict(performance_metrics, fields=[
+        "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
+    ])
+    # Manually add io_throughput since it's a generated field
+    metrics_dict["io_throughput"] = performance_metrics.io_throughput
+
+    # Convert relevant fields to 'K' units
+    for field in ["max_rss", "max_disk_read", "max_disk_write"]:
+        value = metrics_dict.get(field)
+        if value is not None:  # Only convert non-null values
+            metrics_dict[field] = f"{value:.2f}K"
+
+    # Format io_throughput in 'K/s'
+    io_throughput = metrics_dict.get("io_throughput")
+    if io_throughput is not None:
+        metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
+
+    return metrics_dict
+
+def should_include_metrics(run_status: Status, include_performance_metrics: bool=False):
+    """
+    Determines if performance metrics should be included based on job status and request parameters.
+    """
+    return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
 
 
 def create_ngen_logging_file(run: BaseRun, logging_enabled: bool, modules: dict) -> str | None:

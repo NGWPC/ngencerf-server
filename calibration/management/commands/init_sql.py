@@ -98,6 +98,10 @@ class Command(BaseCommand):
                   {"name": "CFE-X",
                    "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
                    "groups": ["Rainfall Runoff"]},
+                  {"name": "LSTM",
+                   "description": "description",
+                   "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"],
+                   "is_active": False},
                   {"name": "PET", "description": "description", "groups": ["Evapotranspiration"], "is_active": False},
                   {"name": "TopModel",
                    "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
@@ -458,6 +462,14 @@ class Command(BaseCommand):
                 "location": "forecast_output",
                 "job_type": JobType.FORECAST.value,
                 "filename_mask": "{gage_id}_hydrograph.png"
+            },
+            {
+                "name": "Calibration Metrics",
+                "description": "Comparison of metrics from best validation runs for multimple calibration runs",
+                "location": "",
+                "job_type": JobType.COMPARISON.value,
+                "filename_mask": "",
+                "timeseries_available": False
             }
         ]
 

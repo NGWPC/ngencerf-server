@@ -17,7 +17,7 @@ from calibration.enums import StatusEnum, PlotDefinitionsEnum, ValidationType, V
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ValidationMetrics, NWMRetrospectiveMetrics
 from calibration.util.caching import get_filtered_plot_definitions
-from calibration.util.calibration_validators import GetPlotNamesResponseSerializer, \
+from calibration.util.calibration_validators import EmptySerializer, GetPlotNamesResponseSerializer, \
     GetPlotNamesForComparisonResponseSerializer, ErrorResponseSerializer, GetPlotRequestSerializer, \
     GetPlotResponseSerializer, GetPlotsForComparisonRequestSerializer, GetPlotsForComparisonResponseSerializer, \
     CalibrationOrValidationOrForecastRunSerializer
@@ -113,9 +113,9 @@ def get_plot_names(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationOrValidationOrForecastRunSerializer,
+    request=EmptySerializer,
     responses={
-        200: GetPlotNamesResponseSerializer,
+        200: GetPlotNamesForComparisonResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -147,7 +147,7 @@ def get_plot_names_for_comparison(request: Request) -> Response:
     # This is hard coded and not job-dependent for now
     filtered_plot_definitions = [
         plot for plot in cached_plot_definitions
-        if (plot['name'] in [PlotDefinitionsEnum.BAR_CHART_METRICS.value])  # Case-insensitive match for plot_name
+        if (plot['job_type'] == JobType.COMPARISON.value)
     ]
 
     # Create a list of plot names with descriptions
@@ -331,9 +331,9 @@ def get_plot(request: Request) -> Response:
 
 
 @extend_schema(
-    request=GetPlotRequestSerializer,
+    request=GetPlotsForComparisonRequestSerializer,
     responses={
-        200: GetPlotResponseSerializer,
+        200: GetPlotsForComparisonResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -376,67 +376,69 @@ def get_plots_for_comparison(request: Request) -> Response:
         'errors': []
     }
 
-    # Determine job type and retrieve the appropriate run instance
-    for calibration_run_id in calibration_run_ids:
-        plot_data = None
-        plot_error = None
-        best_run = None
+    cached_plot_definitions = PlotDefinitionsEnum.get_choices_with_fields(
+        fields=['name', 'description', 'valid_optimizations', 'job_type', 'location', 'filename_mask', 'timeseries_available']
+    )
+    
+    # Fetch plot definition if needed for force_include_plot, include_data, or when plot_url is missing
+    plot_definition = None
+    for plot in cached_plot_definitions:
+        if plot['job_type'] == JobType.COMPARISON.value and plot['name'].lower() == plot_name.lower():
+          plot_definition = plot
+          break
+    if not plot_definition:
+        response['errors'].append({
+            'calibration_run_id': calibration_run_ids[0],
+            'message': 'Invalid plot type ' + plot_name + ' requested for Calibration Job ID ' + str(calibration_run_ids[0])
+        })
+    else:
+        plot_enum = PlotDefinitionsEnum(plot_definition['name'])
+        match plot_enum:
+            case PlotDefinitionsEnum.CALIBRATION_METRICS:
+                plot_error = None
 
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
-        if error_return:
-            plot_error = {'calibration_run_id': run.id, 'message': error_return}
-        elif run.gage.gage_id != gage_id:
-            # Gage IDs don't match - still return data for this run, but note this in errors
-            response['errors'].append({
-                'calibration_run_id': run.id,
-                'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id + \
-                    '.\n This does not match the Gage ID requested: ' + gage_id + '.' 
-            })
-        
-        if not plot_error:
-            # Fetch plot definition if needed for force_include_plot, include_data, or when plot_url is missing
-            plot_definition = get_filtered_plot_definitions(run, plot_name=plot_name, first_match=True)
-            if not plot_definition:
-                response['errors'].append({
-                    'calibration_run_id': run.id,
-                    'message': 'Invalid plot type ' + plot_name + ' requested for Calibration Job ID ' + str(run.id)
-                })
+                # plot_data will be returned as an array with three sub-arrays for calib, valid, and full periods
+                plot_data_calib = []
+                plot_data_valid = []
+                plot_data_full = []
 
-            plot_enum = PlotDefinitionsEnum(plot_definition['name'])
-            match plot_enum:
-                case PlotDefinitionsEnum.BAR_CHART_METRICS:
-                    plot_data = []
-                    # For Bar Chart Metrics, we don't need the best run - just pass the Calibration Job ID directly 
-                    # into get_bar_chart_metrics and then filter to get data for the best run only
-                    for row in get_bar_chart_metrics([run.id])[run.id]:
-                        if row['run'] == ValidationType.VALID_BEST.value:
-                            plot_data_row = {
-                                "calibration_run_id": calibration_run_id,
-                                "formulation_name": run.user_formulation_name,
-                                "run_date": run.submit_date.strftime("%Y-%m-%d %H:%M")
-                            }
-                            plot_data_row.update(row)
-                            plot_data.append(plot_data_row)
-                case _:
-                    # get best validation run
-                    for validation_job in get_validation_jobs_internal(run.id, GetValidationJobsScope.STATUS):
-                        if validation_job['validation_type'] == ValidationType.VALID_BEST.value:
-                            best_run, error_return = get_validation_run(validation_job['validation_run_id'], request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
-                            if error_return:
-                                plot_error = {'calibration_run_id': run.id, 'message': error_return}
-                            break
+                # For Calibration Metrics, we don't need the best run - just pass the Calibration Job ID 
+                # directly into get_bar_chart_metrics and then filter to get data for the best run only
+                for calibration_run_id in calibration_run_ids:
+                    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+                    if error_return:
+                        plot_error = {'calibration_run_id': run.id, 'message': error_return}
+                    elif run.gage.gage_id != gage_id:
+                        # Gage IDs don't match - still return data for this run, but note this in errors
+                        response['errors'].append({
+                            'calibration_run_id': run.id,
+                            'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id + \
+                                '.\n This does not match the Gage ID requested: ' + gage_id + '.' 
+                        })
                     
-                    if best_run:
-                        # Retrieve data and total_count from get_plot_data
-                        plot_result = get_plot_data(best_run, plot_definition, start, limit)
-                        plot_data = plot_result.get('data', [])
+                    if plot_error:
+                        response['errors'].append(plot_error)
                     else:
-                        plot_error = {'calibration_run_id': run.id, 'message': 'Unable to find best validation run for Calibration Job ID ' + str(job.id)}
-            
-            if plot_data:
+                        for row in get_bar_chart_metrics([run.id])[run.id]:
+                            if row['run'] == ValidationType.VALID_BEST.value and row['period'] in ['calib','valid','full']:
+                                plot_data_row = {
+                                    "calibration_run_id": calibration_run_id,
+                                    "formulation_name": run.user_formulation_name,
+                                    "run_date": run.submit_date.strftime("%Y-%m-%d %H:%M")
+                                }
+                                plot_data_row.update(row)
+                                if row['period'] == 'calib':
+                                    plot_data_calib.append(plot_data_row)
+                                elif row['period'] == 'valid':
+                                    plot_data_valid.append(plot_data_row)
+                                elif row['period'] == 'full':
+                                    plot_data_full.append(plot_data_row)
+                plot_data = [
+                    {'name': 'calib', 'title': 'Calibration Period Best Run Metrics', 'table_data': plot_data_calib},
+                    {'name': 'valid', 'title': 'Validation Period Best Run Metrics', 'table_data': plot_data_valid},
+                    {'name': 'full', 'title': 'Full Period Best Run Metrics', 'table_data': plot_data_full}
+                ]
                 response['plots'].append({
-                    'calibration_run_id': run.id,
-                    'validation_run_id': best_run.id if best_run else 0,
                     'plot_name': plot_name,
                     'plot_data': replace_nan_and_inf_with_none(plot_data),
                     'pagination_metadata': {
@@ -445,10 +447,62 @@ def get_plots_for_comparison(request: Request) -> Response:
                         'count': len(plot_data)
                     }
                 })
-        if plot_error:
-            response['errors'].append(plot_error)
-        elif not plot_data:
-            response['errors'].append({'calibration_run_id': run.id, 'message': 'Unable to retrieve plot data for Calibration Job ID ' + str(run.id)})
+            case _:
+                # Determine job type and retrieve the appropriate run instance
+                for calibration_run_id in calibration_run_ids:
+                    plot_data = None
+                    plot_error = None
+                    best_run = None
+
+                    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+                    if error_return:
+                        plot_error = {'calibration_run_id': run.id, 'message': error_return}
+                    elif run.gage.gage_id != gage_id:
+                        # Gage IDs don't match - still return data for this run, but note this in errors
+                        response['errors'].append({
+                            'calibration_run_id': run.id,
+                            'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id + \
+                                '.\n This does not match the Gage ID requested: ' + gage_id + '.' 
+                        })
+
+                    if plot_error:
+                        response['errors'].append(plot_error)
+                    else:
+                        # get best validation run
+                        for validation_job in get_validation_jobs_internal(run.id, GetValidationJobsScope.STATUS):
+                            if validation_job['validation_type'] == ValidationType.VALID_BEST.value:
+                                best_run, error_return = get_validation_run(validation_job['validation_run_id'], request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+                                if error_return:
+                                    response['errors'].append({
+                                        'calibration_run_id': run.id, 
+                                        'message': error_return
+                                    })
+                                break
+                        
+                        if best_run:
+                            # Retrieve data and total_count from get_plot_data
+                            plot_result = get_plot_data(best_run, plot_definition, start, limit)
+                            plot_data = plot_result.get('data', [])
+                        else:
+                            plot_error = {'calibration_run_id': run.id, 'message': 'Unable to find best validation run for Calibration Job ID ' + str(job.id)}
+                  
+                        if plot_data:
+                            response['plots'].append({
+                                'calibration_run_id': run.id,
+                                'validation_run_id': best_run.id if best_run else 0,
+                                'plot_name': plot_name,
+                                'plot_data': replace_nan_and_inf_with_none(plot_data),
+                                'pagination_metadata': {
+                                    'start': start,
+                                    'limit': limit,
+                                    'count': len(plot_data)
+                                }
+                            })
+                        else:
+                            response['errors'].append({
+                                'calibration_run_id': run.id, 
+                                'message': 'Unable to retrieve plot data for Calibration Job ID ' + str(run.id)
+                            })
 
 
     # Validate and return response

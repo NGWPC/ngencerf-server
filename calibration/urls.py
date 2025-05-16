@@ -45,7 +45,7 @@ urlpatterns = [
     path('calibration/get_plot_names_for_comparison/', calibration_plot_views.get_plot_names_for_comparison, name="getPlotNamesForComparison"),
     path('calibration/get_plot/', calibration_plot_views.get_plot, name="getPlot"),
     path('calibration/get_plots_for_comparison/', calibration_plot_views.get_plots_for_comparison, name="getPlotsForComparison"),
-
+    
     ##################################
     # Formulation tab
     ##################################
@@ -69,6 +69,7 @@ urlpatterns = [
     # Run tab
     ##################################
     path('calibration/get_status/', calibration_run_views.get_status, name="getStatus"),
+    path('calibration/get_status_for_comparison/', calibration_run_views.get_status_for_comparison, name="getStatusForComparison"),
     path('calibration/run_calibration/', calibration_run_views.run_calibration, name="runCalibration"),
     path('calibration/report_iteration/', calibration_run_views.report_iteration, name="reportIteration"),
     path('calibration/get_iteration/', calibration_run_views.get_iteration, name="getIteration"),
