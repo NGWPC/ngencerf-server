@@ -335,13 +335,13 @@ def main():
     if args.command not in COMMANDS_AUTH_EXEMPT and "ACCESS_TOKEN" not in os.environ:
         ngen_login()
 
-    # Call the appropriate handler
+    # Call the appropriate handler and exit with the returned code
     if hasattr(args, "func"):
-        args.func(args)
+        sys.exit(args.func(args))
     else:
         print(f"No handler found for command: {args.command}")
         parser.print_help()
-        parser.exit(1)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

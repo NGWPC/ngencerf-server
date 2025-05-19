@@ -2,23 +2,24 @@ import json
 import sys
 
 
-def check_http_error(http_status: int, response: str) -> dict | None:
+def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool]:
     """
     Handles HTTP errors, returning the parsed response for 200 status codes,
     and printing appropriate error messages for other status codes.
 
     :param http_status: The HTTP status code returned by the server.
     :param response: The raw response text from the server.
-    :return: Parsed JSON response if the status code is 200, otherwise None.
+    :return: A tuple containing the parsed JSON response (or None) and a boolean indicating success.
     """
     try:
         # Treat 200 as success and return the parsed response
         if http_status == 200:
             try:
-                return json.loads(response)
+                return json.loads(response), True
             except json.JSONDecodeError:
                 print("Warning: Response is not valid JSON.")
-                return None
+                return None, False
+
 
         # Handle 400 Bad Request with specific error handling
         if http_status == 400:
@@ -37,7 +38,7 @@ def check_http_error(http_status: int, response: str) -> dict | None:
             else:
                 _pretty_print_json(response)
 
-            sys.exit(1)
+            return None, False
 
         # Handle all other non-200 status codes
         try:
@@ -50,14 +51,14 @@ def check_http_error(http_status: int, response: str) -> dict | None:
             lines = response.strip().splitlines()
             print("\n".join(lines[:10]) + ("\n..." if len(lines) > 10 else ""))
 
-        sys.exit(1)
+        return None, False
 
     except json.JSONDecodeError:
         # Fallback to raw response if JSON parsing fails at the initial check
         print(f"Error: Server returned HTTP status code {http_status}. Response:")
         lines = response.strip().splitlines()
         print("\n".join(lines[:10]) + ("\n..." if len(lines) > 10 else ""))
-        sys.exit(1)
+        return None, False
 
 
 def _print_validation_errors(errors: dict, prefix: str = "") -> None:

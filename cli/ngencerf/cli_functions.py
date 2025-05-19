@@ -22,21 +22,24 @@ if not os.path.isdir(DEFAULT_DOWNLOAD_DIR):
     DEFAULT_DOWNLOAD_DIR = os.getcwd()
 
 
-def get_auth_headers() -> dict:
+def get_auth_headers() -> dict[str, str]:
     """
     Returns authentication headers using the ACCESS_TOKEN environment variable.
+
+    :returns: Dictionary containing the Authorization header.
     """
     return {
         "Authorization": f"Bearer {os.environ.get('ACCESS_TOKEN', '')}",
     }
 
 
-def upload_geopackage_data(geopackage_file: str, calibration_run_id: int):
+def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int:
     """
     Uploads a geopackage file for a given calibration run.
 
-    :param geopackage_file: Path to the .gpkg file
-    :param calibration_run_id: ID of the calibration run
+    :param geopackage_file: Path to the .gpkg file.
+    :param calibration_run_id: ID of the calibration run.
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Uploading geopackage: {geopackage_file} for calibration_run_id: {calibration_run_id}")
 
@@ -52,17 +55,21 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int):
             files=files,
             data=data,
         )
-        response_json = check_http_error(response.status_code, response.text)
+        response_json, success = check_http_error(response.status_code, response.text)
+        if not success:
+            return 1
         if response_json and (message := response_json.get("message")):
             print(message)
+        return 0
 
 
-def upload_observational_data(observational_file: str, calibration_run_id: int):
+def upload_observational_data(observational_file: str, calibration_run_id: int) -> int:
     """
     Uploads observational data (CSV) for a given calibration run.
 
-    :param observational_file: Path to observational CSV
-    :param calibration_run_id: ID of the calibration run
+    :param observational_file: Path to observational CSV.
+    :param calibration_run_id: ID of the calibration run.
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Uploading observational data: {observational_file} for calibration_run_id: {calibration_run_id}")
     with open(observational_file, "rb") as f:
@@ -74,17 +81,21 @@ def upload_observational_data(observational_file: str, calibration_run_id: int):
             files=files,
             data=data,
         )
-        response_json = check_http_error(response.status_code, response.text)
+        response_json, success = check_http_error(response.status_code, response.text)
+        if not success:
+            return 1
         if response_json and (message := response_json.get("message")):
             print(message)
+        return 0
 
 
-def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
+def upload_forcing_data(forcing_dir: str, calibration_run_id: int) -> int:
     """
     Uploads all files in a directory as forcing data for a given calibration run.
 
-    :param forcing_dir: Path to directory containing forcing files
-    :param calibration_run_id: ID of the calibration run
+    :param forcing_dir: Path to directory containing forcing files.
+    :param calibration_run_id: ID of the calibration run.
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Uploading forcing data from directory: '{forcing_dir}' for calibration_run_id: {calibration_run_id}")
 
@@ -98,7 +109,7 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
 
         if not files:
             print("No forcing data files found to upload.")
-            return
+            return 1
 
         # Send the request
         response = requests.post(
@@ -108,17 +119,21 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int):
             data={"calibration_run_id": calibration_run_id},
         )
         # Check for errors
-        response_json = check_http_error(response.status_code, response.text)
+        response_json, success = check_http_error(response.status_code, response.text)
+        if not success:
+            return 1
         if response_json and (message := response_json.get("message")):
             print(message)
+        return 0
 
 
-def download_zip(calibration_run_id: int, output_path: str | None = None):
+def download_zip(calibration_run_id: int, output_path: str | None = None) -> int:
     """
     Downloads the ZIP archive for a calibration run from the server.
 
-    :param calibration_run_id: ID of the calibration run to download
-    :param output_path: Path to save the ZIP file or directory (default: ~/Downloads)
+    :param calibration_run_id: ID of the calibration run to download.
+    :param output_path: Path to save the ZIP file or directory (default: ~/Downloads).
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Downloading ZIP for calibration run: {calibration_run_id}")
 
@@ -131,8 +146,9 @@ def download_zip(calibration_run_id: int, output_path: str | None = None):
         stream=True,
     )
 
-    if not check_http_error(response.status_code, response.text):
-        return
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
 
     # Determine filename from Content-Disposition header or use default
     content_disp = response.headers.get("Content-Disposition", "")
@@ -149,13 +165,15 @@ def download_zip(calibration_run_id: int, output_path: str | None = None):
                 f.write(chunk)
 
     print(f"Downloaded ZIP to: {final_path}")
+    return 0
 
 
-def run_job(calibration_run_id: int):
+def run_job(calibration_run_id: int) -> int:
     """
     Submits a calibration run for execution.
 
-    :param calibration_run_id: ID of the calibration run
+    :param calibration_run_id: ID of the calibration run.
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Submitting calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
@@ -164,16 +182,20 @@ def run_job(calibration_run_id: int):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if response_json and (message := response_json.get("message")):
         print(message)
+    return 0
 
 
-def delete_job(calibration_run_ids: list[int]):
+def delete_job(calibration_run_ids: list[int]) -> int:
     """
-    Deletes an existing calibration run, with confirmation.
+    Deletes one or more calibration runs, with confirmation.
 
-    :param calibration_run_ids: A list of one or more calibration run id
+    :param calibration_run_ids: A list of one or more calibration run IDs.
+    :returns: 0 on success, 1 on failure.
     """
     if len(calibration_run_ids) == 1:
         # Display job details before deletion
@@ -187,10 +209,10 @@ def delete_job(calibration_run_ids: list[int]):
         confirmation = input(f"\nType 'delete' to confirm the permanent deletion of calibration jobs {calibration_run_ids}: ").strip()
         if confirmation.lower() != "delete":
             print("\nDeletion aborted. The calibration jobs were not deleted.")
-            return
+            return 1
     except KeyboardInterrupt:
         print("\n\nDeletion aborted. The calibration jobs were not deleted.")
-        return
+        return 1
 
     # Proceed with deletion
     print(f"\nDeleting calibration run jobs {calibration_run_ids}")
@@ -200,17 +222,21 @@ def delete_job(calibration_run_ids: list[int]):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if response_json:
         for job in response_json.get("jobs", []):
             print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+    return 0
 
 
-def archive_job(calibration_run_ids: list[int]):
+def archive_job(calibration_run_ids: list[int]) -> int:
     """
-    Archive one or more calibration runs.
+    Archives one or more calibration runs.
 
-    :param calibration_run_ids: A list of one or more calibration run id
+    :param calibration_run_ids: A list of one or more calibration run IDs.
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Archiving calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids, "archive": True}
@@ -219,17 +245,21 @@ def archive_job(calibration_run_ids: list[int]):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if response_json:
         for job in response_json.get("jobs", []):
             print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+    return 0
 
 
-def unarchive_job(calibration_run_ids: list[int]):
+def unarchive_job(calibration_run_ids: list[int]) -> int:
     """
-    Unarchive one or morea calibration runs.
+    Unarchives one or more calibration runs.
 
-    :param calibration_run_ids: A list of one or more calibration run id
+    :param calibration_run_ids: A list of one or more calibration run IDs.
+    :returns: 0 on success, 1 on failure.
     """
     print(f"Unarchiving calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids, "archive": False}
@@ -238,17 +268,21 @@ def unarchive_job(calibration_run_ids: list[int]):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if response_json:
         for job in response_json.get("jobs", []):
             print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+    return 0
 
 
-def cancel_job(calibration_run_id: int):
+def cancel_job(calibration_run_id: int) -> int:
     """
     Cancels a running calibration job.
 
     :param calibration_run_id: ID of the calibration run
+    :return: 0 on success, 1 on failure
     """
     print(f"Cancelling calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
@@ -257,16 +291,20 @@ def cancel_job(calibration_run_id: int):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     )
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if response_json and (message := response_json.get("message")):
         print(message)
+    return 0
 
 
-def list_jobs(output_path: str | None = None):
+def list_jobs(output_path: str | None = None) -> int:
     """
-    List all calibration jobs and save to a markdown file.
+    Lists all calibration jobs and saves them to a markdown file.
 
     :param output_path: Path to save the job list (optional)
+    :return: 0 on success, 1 on failure
     """
     print("Fetching calibration jobs...")
     response = requests.post(
@@ -274,14 +312,16 @@ def list_jobs(output_path: str | None = None):
         headers={**get_auth_headers(), "Content-Type": "application/json"},
     )
 
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if not response_json:
-        return
+        return 0
 
     jobs = response_json.get("jobs", [])
     if not jobs:
         print("No jobs found.")
-        return
+        return 0
 
     rows = []
     for job in jobs:
@@ -311,15 +351,17 @@ def list_jobs(output_path: str | None = None):
         f.write(markdown_table)
 
     print(f"Saved {len(rows)} jobs to {path}")
+    return 0
 
 
-def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_after_import: bool | None = None):
+def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
     """
     Submits job data to the import or update endpoint.
 
     :param job_file: Path to the JSON file
     :param calibration_run_id: Optional calibration_run_id for update
     :param run_after_import: Optional override for the run_after_import field
+    :return: 0 on success, 1 on failure
     """
     print(f"Loading job data from: {job_file}")
 
@@ -344,41 +386,47 @@ def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_a
         json=payload,
     )
 
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if response_json and (message := response_json.get("message")):
         print(message)
+    return 0
 
 
-def import_job(job_file: str, run_after_import: bool | None = None):
+def import_job(job_file: str, run_after_import: bool | None = None) -> int:
     """
     Imports a new job definition from a JSON file.
 
     :param job_file: Path to the JSON file
     :param run_after_import: Optional override for the run_after_import field
+    :return: 0 on success, 1 on failure
     """
     print(f"Importing job from: {job_file}")
-    _submit_job_data(job_file, run_after_import=run_after_import)
+    return _submit_job_data(job_file, run_after_import=run_after_import)
 
 
-def update_job(calibration_run_id: int, job_file: str, run_after_import: bool | None = None):
+def update_job(calibration_run_id: int, job_file: str, run_after_import: bool | None = None) -> int:
     """
     Updates an existing calibration job using a JSON file.
 
     :param calibration_run_id: ID of the calibration run
     :param job_file: Path to the JSON file
     :param run_after_import: Optional override for the run_after_import field
+    :return: 0 on success, 1 on failure
     """
     print(f"Updating job {calibration_run_id} from: {job_file}")
-    _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_import)
+    return _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_import)
 
 
-def handle_export_display(calibration_run_id: int, output_path: str | None = None, display: bool = False):
+def handle_export_display(calibration_run_id: int, output_path: str | None = None, display: bool = False) -> int:
     """
     Exports a calibration job to a file or displays it.
 
     :param calibration_run_id: ID of the calibration run to export
     :param output_path: Path to save the export file (default: ~/Downloads)
     :param display: Whether to print the job to the console
+    :return: 0 on success, 1 on failure
     """
     payload = {"calibration_run_id": calibration_run_id}
 
@@ -389,11 +437,11 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
         json=payload,
     )
 
-    response_json = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
     if not response_json:
-        return
-
-    data = response.json()
+        return 0
 
     if display:
         _pretty_print_job(calibration_run_id, response_json)
@@ -405,17 +453,23 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
             json.dump(response_json, f, indent=2)
 
         print(f"Exported to {path}")
+    return 0
 
 
-def _pretty_print_job(calibration_run_id: int, data: dict):
+def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     """
     Prints selected fields from the exported calibration job in a structured format.
-    """
 
+    :param calibration_run_id: ID of the calibration run
+    :param data: Exported job data
+    """
     def fmt(dt: str | None) -> str:
         """
         Formats an ISO timestamp string in GMT (UTC) to 'YYYY-MM-DD HH:MM'.
         Handles optional 'Z' or '+00:00' suffixes.
+
+        :param dt: ISO timestamp string
+        :return: Formatted timestamp
         """
         if not dt:
             return "-"

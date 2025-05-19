@@ -500,5 +500,5 @@ Here is an example of exported data:
 The format for exported and imported data is the same.  The metadata section on export contains data that, while useful, is not needed for import.
 You can also use the metadata section for your own information, such as comments.  It will be ignored on import.
 
-
+Note from Peter: Need to finish editing this, based on what we have in the current confluence page
 ---
