@@ -159,7 +159,7 @@ def get_gage(request: Request) -> Response:
         return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
     if not gage_dict['station_name']:
-        gage_dict['station_name'] = "<undefined>"
+        gage_dict['station_name'] = "<unknown>"
 
     response_validator, error_response = validate_response(GageSerializer, gage_dict)
     if error_response:
