@@ -2,9 +2,8 @@ FROM registry.sh.nextgenwaterprediction.com/infrastructure/rockylinux/rockylinux
 
 # Install runtime dependencies
 RUN set -eux; \
-    dnf install -y yum-utils; \
+    dnf install -y yum-utils epel-release; \
     dnf config-manager --set-enabled crb; \
-    dnf install -y epel-release; \
     dnf install -y \
         file \
         findutils \
@@ -14,26 +13,30 @@ RUN set -eux; \
         openssl openssl-devel \
         python3.11 python3.11-libs python3.11-devel \
         python3.11-pip \
-        python3.11-setuptools \
-        which; \
+        python3.11-setuptools; \
     dnf clean all
 
+# Configure Git with the GitLab token using BuildKit secret mount
+RUN --mount=type=secret,id=gitlab_token \
+    set -eux; \
+    git config --global url."https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
 
+# Install Python virtual environment
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
-RUN set -eux; \
-	\
-    python3.11 -m venv ${VIRTUAL_ENV}
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
+
+RUN set -eux; \
+    python3.11 -m venv ${VIRTUAL_ENV}; \
+    pip3 install --upgrade pip; \
+    # Lock numpy and netcdf4 versions so t-route doesn't break
+    pip3 install "numpy==1.26.4" "pandas~=2.2.2"
 
 WORKDIR /ngencerf/ngencerf-server/
 
-# Install Python virtual environment
+# Install Python requirements
 COPY requirements.txt .
-
 RUN set -eux; \
-    pip3 install -r requirements.txt ; \
-    # Lock numpy and netcdf4 versions so t-route doesn't break
-    pip3 install "numpy==1.26.4" "pandas~=2.2.2" ; \
+    pip3 install -r requirements.txt; \
     rm --force requirements.txt
 
 ARG CREATE_INPUT_TAG
@@ -42,17 +45,13 @@ ARG CACHE_BUST=1
 # Configure Git with the GitLab token using BuildKit secret mount
 RUN --mount=type=secret,id=gitlab_token \
     set -eux; \
-    \
-    git config --global url."https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"; \
-    \
-    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput" ; \
-    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${RUN_SWE_TAG}#egg=swe_processing&subdirectory=swe_processing" ; \
+    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput"; \
+    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${RUN_SWE_TAG}#egg=swe_processing&subdirectory=swe_processing"; \
     rm --force /root/.gitconfig; \
     pip3 cache purge;
 
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
-# Shoule we move COPY . /ngencerf/ngencerf-server/ to here?  Or up above before the Cache_bust
 
 RUN set -eux; \
     # Get the remote URL from Git configuration
