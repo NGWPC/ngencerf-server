@@ -478,10 +478,6 @@ class GetCalibrationJobsRequestSerializer(BaseSerializer):
 # Gage Tab
 ##################################
 
-class DomainSerializer(BaseSerializer):
-    domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-
-
 class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
