@@ -21,7 +21,8 @@ from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
-    ValidationRunSerializer, GetLogNamesResponseSerializer, GetLogRequestSerializer, GenericMessageWithIdResponseSerializer
+    ValidationRunSerializer, GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
+    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.called_from import get_caller_name
@@ -301,7 +302,7 @@ def get_log(request: Request) -> Response:
     - Supports pagination for large log files.
     - Validates log category and log name.
 
-    :param request: The HTTP request object containing validation run and log information.
+    :param request: The HTTP request object containing calibration/validation run and log information.
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -366,6 +367,9 @@ def get_log(request: Request) -> Response:
     # Count the total number of lines in the file for pagination metadata
     total_lines = sum(1 for _ in open(log_path, 'r'))
 
+    # Get the file size in bytes
+    file_size = os.path.getsize(log_path)
+
     # Read the requested lines from the log file with null replacement
     paginated_lines = []
     with open(log_path, 'r') as file:
@@ -386,11 +390,91 @@ def get_log(request: Request) -> Response:
         'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
         'log_data': paginated_lines,
         'log_path': log_path,
+        'byte_offset': file_size,
         'pagination_metadata': pagination_metadata,
         'status': validation_run.status.name if validation_run else calibration_run.status.name
     }
 
     response_validator, error_response = validate_response(GetLogsResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=GetLogStatusRequestSerializer,
+    responses={
+        200: GetLogStatusResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Retrieve a specific log file with pagination support"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_log_status(request: Request) -> Response:
+    """
+    Checks the status a specific log file to see if it has been updated since it was last requested.
+
+    - Uses byte_offset to compare the size of the last data set retrieved to what is currently in the file/cache.
+
+    :param request: The HTTP request object containing calibration/validation run and log information.
+    :return: JSON response with log file content or error details.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(GetLogStatusRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    validation_run_id = validator.get('validation_run_id')
+    log_path = validator.get('log_path')
+    byte_offset = validator.get('byte_offset')
+
+    if validation_run_id:
+      validation_run, error_return = get_validation_run(
+          validation_run_id,
+          request.user,
+          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+      )
+      if error_return:
+          return error_return
+      calibration_run = validation_run.calibration_run
+    else:
+      calibration_run, error_return = get_calibration_run(
+          calibration_run_id,
+          request.user,
+          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+      )
+      if error_return:
+          return error_return
+      validation_run = None
+    
+    # Check if the log file exists
+    # TO DO: Get this from the cache if it's already been cached
+    if not os.path.exists(log_path):
+        raise CerfException(f"Log file not found: {log_path}")
+
+    # Get the file size in bytes
+    file_size = os.path.getsize(log_path)
+
+    response = {
+        'message': f"log file {log_path} has " + ("changed" if file_size != byte_offset else "not changed"),
+        'file_updated': True if file_size != byte_offset else False,
+        'status': validation_run.status.name if validation_run else calibration_run.status.name
+    }
+
+    response_validator, error_response = validate_response(GetLogStatusResponseSerializer, response)
     if error_response:
         return error_response
 

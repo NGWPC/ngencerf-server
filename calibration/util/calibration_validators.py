@@ -1125,6 +1125,11 @@ class GetLogRequestSerializer(CalibrationOrValidationRunSerializer):
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 
+class GetLogStatusRequestSerializer(CalibrationOrValidationRunSerializer):
+    log_path = serializers.CharField(required=True)
+    byte_offset = serializers.IntegerField(required=True, min_value=0)
+
+
 class LogCategoryDictField(serializers.DictField):
     def __init__(self, **kwargs):
         # Define the child as a ListField for log names
@@ -1152,7 +1157,13 @@ class GetLogsResponseSerializer(GenericMessageResponseSerializer):
     log_data = serializers.ListSerializer(child=serializers.CharField(allow_blank=True), required=True, allow_null=False)
     pagination_metadata = PaginationMetadataSerializer(required=False)
     log_path = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    byte_offset = serializers.IntegerField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=False)
+
+
+class GetLogStatusResponseSerializer(GenericMessageResponseSerializer):
+    file_updated = serializers.BooleanField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
 
 
 ##################################
