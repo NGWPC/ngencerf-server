@@ -409,7 +409,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['gage'] = {
             'gage_id': run.gage.gage_id,
             'agency': run.gage.agency,
-            'station_name': run.gage.station_name,
+            'station_name': run.gage.station_name if run.gage.station_name else "<unknown>",
             'latitude': run.gage.latitude,
             'longitude': run.gage.longitude,
             'altitude': run.gage.altitude
