@@ -341,17 +341,18 @@ def get_log(request: Request) -> Response:
       )
       if error_return:
           return error_return
+      validation_run = None
 
     match log_category:
         case LogCategory.CALIBRATION:
             log_path = get_calibration_log(calibration_run, log_name)
         case LogCategory.VALIDATION:
-            if not validation_run_id:
-              raise CerfException(f"Log category '{log_category.value}' not applicable for calibration run")
-            else:
+            if validation_run:
               log_path = get_validation_log(validation_run, log_name)
+            else:
+              raise CerfException(f"Log category '{log_category.value}' not applicable for calibration run")
         case LogCategory.GLOBAL:
-            if validation_run_id:
+            if validation_run:
               log_path = get_global_log(validation_run, log_name)
             else:
               log_path = get_global_log(calibration_run, log_name)
@@ -385,7 +386,8 @@ def get_log(request: Request) -> Response:
         'message': f"{log_category.value.capitalize()} {log_name.value} log file retrieved",
         'log_data': paginated_lines,
         'log_path': log_path,
-        'pagination_metadata': pagination_metadata
+        'pagination_metadata': pagination_metadata,
+        'status': validation_run.status.name if validation_run else calibration_run.status.name
     }
 
     response_validator, error_response = validate_response(GetLogsResponseSerializer, response)
