@@ -925,10 +925,6 @@ class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDo
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class GetJobDirResponseSerializer(GenericResponseSerializer):
-    data_dir = serializers.CharField(required=True)
-
-
 class RunCalibrationJob(CalibrationRunSerializer):
     logging_enabled = serializers.BooleanField(required=False, default=True)
     modules = serializers.DictField(child=serializers.CharField(), required=False)

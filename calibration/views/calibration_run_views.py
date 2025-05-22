@@ -27,7 +27,7 @@ from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibratio
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, \
+    GetStatusRequestSerializer, GetStatusResponseSerializer, \
     GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
     CalibrationOrValidationOrForecastRunSerializer, ForecastJobSlurmCallbackRequestSerializer, \
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
@@ -83,7 +83,8 @@ def get_status(request: Request) -> Response:
         return error_return
 
     # Conditionally retrieve calibration performance metrics
-    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status, include_performance_metrics) else None
+    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status,
+                                                                                                                 include_performance_metrics) else None
 
     # Retrieve validation runs with related PerformanceMetrics data
     validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
@@ -237,33 +238,34 @@ def get_status_for_comparison(request: Request) -> Response:
     }
 
     for calibration_run_id in calibration_run_ids:
-      calibration_error = None
+        calibration_error = None
 
-      calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
-      if error_return:
-          calibration_error = {'calibration_run_id': calibration_run.id, 'message': error_return}
-      
-      if not calibration_error:
-        # Conditionally retrieve calibration performance metrics
-        calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if calibration_run.status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance] else None
+        calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+        if error_return:
+            calibration_error = {'calibration_run_id': calibration_run.id, 'message': error_return}
 
-        # Prepare the response for this job
-        status_response = {
-            'calibration_run_id': calibration_run.id,
-            'formulation_name': calibration_run.user_formulation_name,
-            'status': calibration_run.status.name,
-            'submit_date': calibration_run.submit_date,
-            'run_start': calibration_run.run_start,
-            'run_end': calibration_run.run_end,
-            'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
-        }
-        if calibration_metrics:
-            status_response['performance_metrics'] = calibration_metrics
-        
-        response['statuses'].append(status_response)
-            
-      else:
-          response['errors'].append(calibration_error)
+        if not calibration_error:
+            # Conditionally retrieve calibration performance metrics
+            calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if calibration_run.status in [
+                StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance] else None
+
+            # Prepare the response for this job
+            status_response = {
+                'calibration_run_id': calibration_run.id,
+                'formulation_name': calibration_run.user_formulation_name,
+                'status': calibration_run.status.name,
+                'submit_date': calibration_run.submit_date,
+                'run_start': calibration_run.run_start,
+                'run_end': calibration_run.run_end,
+                'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
+            }
+            if calibration_metrics:
+                status_response['performance_metrics'] = calibration_metrics
+
+            response['statuses'].append(status_response)
+
+        else:
+            response['errors'].append(calibration_error)
 
     response_validator, error_response = validate_response(GetStatusForComparisonResponseSerializer, response)
     if error_response:
@@ -364,7 +366,8 @@ def get_performance_metrics(performance_metrics):
 
     return metrics_dict
 
-def should_include_metrics(run_status: Status, include_performance_metrics: bool=False):
+
+def should_include_metrics(run_status: Status, include_performance_metrics: bool = False):
     """
     Determines if performance metrics should be included based on job status and request parameters.
     """
@@ -758,66 +761,6 @@ def cancel_job(request: Request) -> Response:
         'status': run.status.name  # type: ignore[attr-defined]
     }
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
-    if error_response:
-        return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
-
-    return Response(response_validator.data)
-
-
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: GetJobDirResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Return the directory where a jobs data is stored"
-)
-@api_view(['GET', 'POST'])
-@handle_exceptions
-# TODO Deprecated... remove as soon as UI is updated
-def get_job_dir(request: Request) -> Response:
-    """
-    Retrieves the directory path where the data for a specific calibration run is stored.
-
-    :param request: HTTP request containing calibration run details.
-    :return: JSON response with the data directory path.
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-
-    run, error_return = get_calibration_run(calibration_run_id, request.user,
-                                            run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
-    if error_return:
-        return error_return
-
-    try:
-        new_job_data_dir = resolve_job_data_dir(run)
-    except ValueError as e:
-        logger.error(f"Failed to resolve job data directory for run {run.id}: {e}")
-        return Response({"error": str(e)}, status=400)
-
-    response = {
-        'message': f"Calibration Job {run.id} data directory is {new_job_data_dir}",
-        'calibration_run_id': run.id,
-        'data_dir': new_job_data_dir,
-        'status': run.status.name
-    }
-
-    response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
