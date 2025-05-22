@@ -31,3 +31,6 @@ postgres_db.override.env
 /git_info
 
 *.egg-info
+cli/build
+cli/dist
+ngencerf.spec

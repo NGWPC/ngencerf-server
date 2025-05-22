@@ -453,11 +453,11 @@ def get_valid_path(source, eds_path, upload_enum, get_path_func):
     """
     job_specific_file = get_path_func()
 
-    # Check if the source is a user upload
-    if source == upload_enum.db_instance:
-        # Check job-specific path first
-        if job_specific_file and os.path.exists(job_specific_file):
-            return job_specific_file
+    # job_specific_file is there, then always use it
+    # If it's not there, then use the EDS file
+
+    if job_specific_file and os.path.exists(job_specific_file):
+        return job_specific_file
 
     # Fall back to the EDS path if the job-specific file is not found
     if eds_path and os.path.exists(eds_path):

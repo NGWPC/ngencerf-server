@@ -37,18 +37,19 @@ from calibration.views.data_services import DataServicesException, get_module_me
 logger = logging.getLogger(__name__)
 
 
-def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) \
-        -> tuple[CalibrationRun | None, dict | None, ResponseError]:
+def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis, run: CalibrationRun = None) -> tuple[
+    CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
     :param request: Django HTTP request with user details.
     :param calibration_run_data: Dictionary with calibration run data.
     :param genesis: Enum value indicating the origin of the job.
+    :param run: Optional CalibrationRun to update.  If None, a new CalibrationRun is created.
     :return: Tuple containing CalibrationRun instance, messages, and optional ResponseError.
     """
     with transaction.atomic():
-        run = create_calibration_run_internal(request.user, genesis)
+        run = run if run else create_calibration_run_internal(request.user, genesis)
 
         errors = []
         eds_errors = []

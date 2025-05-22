@@ -362,6 +362,7 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
         raise  # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
+    return None
 
 
 def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> Response | None:
