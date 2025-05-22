@@ -262,7 +262,10 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         )
 
     logger.info('Generating SWE timeseries data')
-    generate_swe_ts_data(validation_run)
+    try:
+        generate_swe_ts_data(validation_run)
+    except Exception as e:
+        logger.error(f'Failed to generate SWE timeseries data: {e}')
 
 
 # Function to process iterations for all workers in a run

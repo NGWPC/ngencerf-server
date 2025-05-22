@@ -1,4 +1,7 @@
+import logging
 import os
+import sqlite3
+import traceback
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
@@ -7,6 +10,16 @@ import fiona
 import geopandas as gpd
 import matplotlib
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
+logging.getLogger("pyogrio._io").setLevel(logging.WARNING)
+if not logging.getLogger().hasHandlers():
+    # We're likely running outside Django — configure basic logging to stderr
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
 
 # See https://stackoverflow.com/questions/27147300/matplotlib-tcl-asyncdelete-async-handler-deleted-by-the-wrong-thread
 matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)
@@ -139,7 +152,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ..
 
                 style = layer_style_config.get(layer, {})
                 if not style:
-                    print(f"[WARN] No style config for '{layer}'. Using fallback.")
+                    logger.warning(f"No style config for '{layer}'. Using fallback.")
 
                 plot_method = style.get('plot_method', 'line')
                 color = style.get('color', next(color_cycle))
@@ -263,40 +276,107 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     }
 
 
-def normalize_gpkg(gpkg_path: str, output_path: str):
+def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = False):
     """
-    Reproject all spatial layers in a GeoPackage to EPSG:4326,
-    but only if they are not already in EPSG:5070.
-    Non-spatial layers are skipped with a warning.
+    Normalize a GeoPackage file.
+
+    This function:
+    - Reprojects all spatial layers to EPSG:4326 (WGS84) unless they are already in EPSG:5070
+    - Copies all non-spatial tables as-is using raw SQLite operations
+    - Overwrites the output file if it already exists
+    - If output_path is a directory (explicitly or by detection), saves the output using the same filename as gpkg_path
+    - If output_path is a file and does not end with '.gpkg', appends the extension
 
     :param gpkg_path: Path to the source GeoPackage file.
-    :param output_path: Path to the output GeoPackage file.
+    :param output_path: Path to the output directory or output file.
+    :param output_is_dir: If True, force output_path to be interpreted as a directory, even if it does not exist.
     """
+    input_filename = os.path.basename(gpkg_path)
+
+    # Determine final output file path
+    if output_is_dir or (os.path.exists(output_path) and os.path.isdir(output_path)):
+        if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
+        output_path = os.path.join(output_path, input_filename)
+    elif not output_path.lower().endswith(".gpkg"):
+        logger.warning(f"Output path '{output_path}' does not end with '.gpkg'. Appending '.gpkg'.")
+        output_path += ".gpkg"
+
+    logger.info(f'Normalizing {gpkg_path} to {output_path}')
+    if os.path.exists(output_path):
+        logger.info(f"Overwriting existing file: {output_path}")
+        os.remove(output_path)
+
     layers = list_layers(gpkg_path)
-    print("Layers:", layers)
 
+    spatial_layers = []
+    non_spatial_layers = []
+
+    # First pass: identify spatial vs non-spatial and write spatial layers
     for layer_name in layers:
-        gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
-
-        # Skip non-spatial layers
-        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
-            print(f"[WARNING] Layer '{layer_name}' is non-spatial and will be skipped.")
+        try:
+            gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
+        except Exception as e:
+            logger.error(f"Could not read layer '{layer_name}': {e}")
+            traceback.print_exc()
             continue
 
+        # Detect whether it's non-spatial
+        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
+            non_spatial_layers.append(layer_name)
+            continue
+
+        # Reproject or copy as-is
         if gdf.crs is None:
-            print(f"[WARNING] Layer '{layer_name}' has no CRS. Saving without reprojection.")
+            logger.warning(f"Layer '{layer_name}' has no CRS. Saving as-is.")
             gdf_out = gdf
         elif gdf.crs.to_epsg() == 5070:
-            print(f"[INFO] Layer '{layer_name}' is already in EPSG:5070. Saving as-is.")
+            logger.info(f"Layer '{layer_name}' is already in EPSG:5070. Saving as-is.")
             gdf_out = gdf
         else:
-            print(f"[INFO] Reprojecting layer '{layer_name}' from EPSG:{gdf.crs.to_epsg()} to EPSG:4326.")
+            logger.info(f"Reprojecting layer '{layer_name}' from EPSG:{gdf.crs.to_epsg()} to EPSG:4326.")
             gdf_out = gdf.to_crs(epsg=4326)
 
-        # Write to the output GeoPackage
         gdf_out.to_file(output_path, layer=layer_name, driver="GPKG")
+        spatial_layers.append(layer_name)
 
-    print(f"Normalized GeoPackage written to: {output_path}")
+    # Second pass: copy non-spatial tables using SQLite
+    with sqlite3.connect(gpkg_path) as src_conn, sqlite3.connect(output_path) as dst_conn:
+        for table in non_spatial_layers:
+            logger.info(f"Copying non-spatial table '{table}'")
+            try:
+                copy_non_spatial_table_one(table, src_conn, dst_conn)
+            except Exception as e:
+                logger.error(f"Failed to copy non-spatial table '{table}': {e}")
+                traceback.print_exc()
+
+    logger.info(f"\nNormalized GeoPackage written to: {output_path}")
+
+
+def copy_non_spatial_table_one(table_name: str, src_conn: sqlite3.Connection, dst_conn: sqlite3.Connection):
+    """
+    Copy a single non-spatial table from src to dst SQLite connections.
+    """
+    src_cursor = src_conn.cursor()
+    dst_cursor = dst_conn.cursor()
+
+    # Create table
+    # noinspection SqlResolve
+    src_cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?;", (table_name,))
+    create_stmt = src_cursor.fetchone()
+    if not create_stmt:
+        logger.warning("Table '{table_name}' not found in source.")
+        return
+
+    dst_cursor.execute(create_stmt[0])
+
+    # Copy rows
+    rows = src_cursor.execute(f'SELECT * FROM "{table_name}";').fetchall()
+    if rows:
+        placeholders = ", ".join(["?"] * len(rows[0]))
+        dst_cursor.executemany(f"INSERT INTO '{table_name}'VALUES ({placeholders});", rows)
+
+    dst_conn.commit()
 
 
 def list_layers(gpkg_path: str) -> list[str]:
@@ -328,16 +408,16 @@ def find_gage_id(gpkg_path: str, layer_name: str = "hydrolocations", field_name:
     try:
         layers = list_layers(gpkg_path)
         if layer_name not in layers:
-            print(f"Layer '{layer_name}' not found in the GeoPackage.")
+            logger.info(f"Layer '{layer_name}' not found in the GeoPackage.")
             return []
 
         gdf = gpd.read_file(gpkg_path, layer=layer_name)
         if field_name in gdf.columns:
             gage_ids = gdf[field_name].astype(str).unique().tolist()
-            print(f"Found gage_id(s) in layer '{layer_name}': {gage_ids}")
+            logger.info(f"Found gage_id(s) in layer '{layer_name}': {gage_ids}")
             return gage_ids
         else:
-            print(f"Field '{field_name}' not found in layer '{layer_name}'.")
+            logger.info(f"Field '{field_name}' not found in layer '{layer_name}'.")
             return []
     except Exception as e:
         raise RuntimeError(f"Error while searching for gage_id in layer '{layer_name}': {e}")
@@ -375,17 +455,18 @@ def find_catchments(gpkg_path: str, target_layers: list[str] = ["divides", "catc
         layers = list_layers(gpkg_path)
         for layer in target_layers:
             if layer in layers:
-                print(f"\nChecking for catchments in layer '{layer}':")
+                logger.info(f"\nChecking for catchments in layer '{layer}':")
                 catchments = validate_catchments_in_layer(gpkg_path, layer)
                 if catchments:
-                    print(f"  Found {len(catchments)} catchments in layer '{layer}'.")
-                    print(f"  Catchments: {', '.join(catchments)}")
+                    logger.info(f"  Found {len(catchments)} catchments in layer '{layer}'.")
+                    logger.info(f"  Catchments: {', '.join(catchments)}")
                     return
                 else:
-                    print(f"  No catchments found in layer '{layer}'.")
-        print("\nNo catchments found in the specified layers.")
+                    logger.info(f"  No catchments found in layer '{layer}'.")
+        logger.info("\nNo catchments found in the specified layers.")
     except Exception as e:
-        print(f"Error while searching for catchments: {e}")
+        logger.info(f"Error while searching for catchments: {e}")
+        traceback.print_exc()
 
 
 def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
@@ -399,9 +480,9 @@ def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
     """
     try:
         gdf = gpd.read_file(gpkg_path, layer=layer_name)
-        print(f"Layer '{layer_name}' metadata:")
-        print(gdf.info())
-        print("\nSample data:")
-        print(gdf.head())
+        logger.info(f"Layer '{layer_name}' metadata:")
+        logger.info(gdf.info())
+        logger.info("\nSample data:")
+        logger.info(gdf.head())
     except Exception as e:
         raise RuntimeError(f"Failed to read metadata for layer '{layer_name}': {e}")

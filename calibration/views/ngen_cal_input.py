@@ -16,8 +16,8 @@ from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, get_cached_module_by_name
-from calibration.util.file_util import get_single_file, copy_file_to_directory
-from calibration.util.geopkg import get_geometry_from_gpkg
+from calibration.util.file_util import get_single_file
+from calibration.util.geopkg import get_geometry_from_gpkg, normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
@@ -85,8 +85,8 @@ CONFIG_TEMPLATE = {
         # Iteration interval to save plots
         # This entry is optional and specified with the default value.
         "save_plot_iter_freq": 0,
-        "streamflow_threshold": 0,
-        "peak_flow_threshold": 0,
+        "streamflow_threshold": 0.0,
+        "peak_flow_threshold": 0.0,
         "station_name": "",
 
         # Snow Water equivalent output - Only True for snow models
@@ -158,7 +158,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         return None, None
 
-    config = copy.deepcopy(CONFIG_TEMPLATE)
+    config: dict[str, dict[str, str | int | float | bool]] = copy.deepcopy(CONFIG_TEMPLATE)
+
     general = config['General']
     calibration = config['Calibration']
     datafile = config['DataFile']
@@ -247,9 +248,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                     errors.append('Geopackage data must be uploaded')
             else:
                 if run.geopackage_eds_file_path:
-                    # For data from Data Services, copy to job-specific location
+                    # For data from Data Services, normalize the CRS and copy to job-specific location
                     try:
-                        copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                        normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
+                        # copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None
 
