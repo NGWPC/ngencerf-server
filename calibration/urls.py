@@ -79,6 +79,7 @@ urlpatterns = [
     path('calibration/forecast_forcing_download_job_slurm_callback/', calibration_run_views.forecast_forcing_download_job_slurm_callback,
          name="forecastForcingDownloadJobSlurmCallback"),
     path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
+    path('calibration/update_mpi_rules/', calibration_run_views.update_mpi_rules, name="updateMPIRules"),
 
     ##################################
     # Evaluation

@@ -31,7 +31,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
     CalibrationOrValidationOrForecastRunSerializer, ForecastJobSlurmCallbackRequestSerializer, \
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
-    GenericResponseSerializerWithValidator, RunCalibrationJob
+    GenericResponseSerializerWithValidator, RunCalibrationJob, MPINodesRulesSerializer, MPINodesRulesResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.called_from import get_caller_name
@@ -530,6 +530,37 @@ def process_swe_timeseries(request: Request) -> Response:
                 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def update_mpi_rules(request: Request) -> Response:
+    """
+    Undocumented endpoint for updating the MPI rules
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+    validator, error_return = validate_request(MPINodesRulesSerializer, data)
+    if error_return:
+        return error_return
+
+    mpi_rules = validator.get('mpi_rules')
+    if mpi_rules:
+        ngen_cal_input.MPI_NODE_RULES = mpi_rules
+
+    message = "Updated MPI Rules" if mpi_rules else "Current MPI Rules"
+    response = {
+        'message': message,
+        'mpi_rules': ngen_cal_input.MPI_NODE_RULES
+    }
+
+    response_validator, error_response = validate_response(MPINodesRulesResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')

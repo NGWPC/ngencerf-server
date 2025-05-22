@@ -296,8 +296,6 @@ SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT = 'submit-forecast-forcing-d
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 
-MPI_NPROCS = 4
-
 # -----------------------------
 # Logging
 # -----------------------------

@@ -24,7 +24,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
-from cerfServer.settings import NgenEnvironmentEnum, MPI_NPROCS
+from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
 
@@ -214,7 +214,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file, 'nprocs': str(MPI_NPROCS)},
+        {'input_file': input_file, 'nprocs': str(calibration_run.mpi_nprocs)},
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
@@ -252,6 +252,7 @@ def run_validation_job(validation_run: ValidationRun) -> None:
         # For running local, we need to leave these out
         cmd_line_args['worker_name'] = validation_run.worker_name
         cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
+    cmd_line_args['nprocs'] = str(validation_run.calibration_run.mpi_nprocs)
     execute_job(
         validation_run,
         cmd_line_args,
