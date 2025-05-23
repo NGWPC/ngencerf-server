@@ -21,7 +21,7 @@ from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
-    ValidationRunSerializer, GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
+    GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
     GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
@@ -208,36 +208,36 @@ def get_log_names(request: Request) -> Response:
     validation_run_id = validator.get('validation_run_id')
 
     if validation_run_id:
-      validation_run, error_return = get_validation_run(
-          validation_run_id,
-          request.user,
-          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
-      )
-      if error_return:
-          return error_return
-      calibration_run=validation_run.calibration_run
-      
-      # Define available log categories and names
-      log_names = [
-          {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
-          {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
-          {LogCategory.GLOBAL.value: ['ngen']},
-      ]
+        validation_run, error_return = get_validation_run(
+            validation_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = validation_run.calibration_run
+
+        # Define available log categories and names
+        log_names = [
+            {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
+            {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
+            {LogCategory.GLOBAL.value: ['ngen']},
+        ]
     else:
-      calibration_run, error_return = get_calibration_run(
-          calibration_run_id,
-          request.user,
-          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
-      )
-      if error_return:
-          return error_return
-      
-      # Define available log categories and names
-      log_names = [
-          {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
-          {LogCategory.GLOBAL.value: ['ngen']},
-      ]
-    
+        calibration_run, error_return = get_calibration_run(
+            calibration_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+
+        # Define available log categories and names
+        log_names = [
+            {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
+            {LogCategory.GLOBAL.value: ['ngen']},
+        ]
+
     # Include forecast logs if applicable
     if ForecastRun.objects.filter(calibration_run=calibration_run).exists():
         log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
@@ -326,47 +326,47 @@ def get_log(request: Request) -> Response:
         raise CerfException(str(e))
 
     if validation_run_id:
-      validation_run, error_return = get_validation_run(
-          validation_run_id,
-          request.user,
-          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
-      )
-      if error_return:
-          return error_return
-      calibration_run = validation_run.calibration_run
+        validation_run, error_return = get_validation_run(
+            validation_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = validation_run.calibration_run
     else:
-      calibration_run, error_return = get_calibration_run(
-          calibration_run_id,
-          request.user,
-          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
-      )
-      if error_return:
-          return error_return
-      validation_run = None
+        calibration_run, error_return = get_calibration_run(
+            calibration_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        validation_run = None
 
     match log_category:
         case LogCategory.CALIBRATION:
             log_path = get_calibration_log(calibration_run, log_name)
         case LogCategory.VALIDATION:
             if validation_run:
-              log_path = get_validation_log(validation_run, log_name)
+                log_path = get_validation_log(validation_run, log_name)
             else:
-              raise CerfException(f"Log category '{log_category.value}' not applicable for calibration run")
+                raise CerfException(f"Log category '{log_category.value}' not applicable for calibration run")
         case LogCategory.GLOBAL:
             if validation_run:
-              log_path = get_global_log(validation_run, log_name)
+                log_path = get_global_log(validation_run, log_name)
             else:
-              log_path = get_global_log(calibration_run, log_name)
+                log_path = get_global_log(calibration_run, log_name)
         case _:
             raise CerfException(f"Unknown log category '{log_category.value}'")
 
     # Check if the log file exists
     if not os.path.exists(log_path):
         raise CerfException(f"Log file not found: {log_path}")
-    
+
     # Get the file size in bytes
     file_size = os.path.getsize(log_path)
-    
+
     # Count the total number of lines in the file for pagination metadata
     total_lines = sum(1 for _ in open(log_path, 'r'))
 
@@ -381,12 +381,12 @@ def get_log(request: Request) -> Response:
                     # Replace null characters in each line and prepend to list so that we get them in reverse order
                     paginated_lines.insert(0, line.replace('\x00', ' '))
             else:
-              # Read lines in order normally from start to start + limit
-              if start <= current_line_number < start + limit:
-                  # Replace null characters in each line
-                  paginated_lines.append(line.replace('\x00', ' '))
-              if current_line_number >= start + limit:
-                  break
+                # Read lines in order normally from start to start + limit
+                if start <= current_line_number < start + limit:
+                    # Replace null characters in each line
+                    paginated_lines.append(line.replace('\x00', ' '))
+                if current_line_number >= start + limit:
+                    break
 
     pagination_metadata = {
         'start': start,
@@ -450,24 +450,24 @@ def get_log_status(request: Request) -> Response:
     byte_offset = validator.get('byte_offset')
 
     if validation_run_id:
-      validation_run, error_return = get_validation_run(
-          validation_run_id,
-          request.user,
-          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
-      )
-      if error_return:
-          return error_return
-      calibration_run = validation_run.calibration_run
+        validation_run, error_return = get_validation_run(
+            validation_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = validation_run.calibration_run
     else:
-      calibration_run, error_return = get_calibration_run(
-          calibration_run_id,
-          request.user,
-          run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
-      )
-      if error_return:
-          return error_return
-      validation_run = None
-    
+        calibration_run, error_return = get_calibration_run(
+            calibration_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        validation_run = None
+
     # Check if the log file exists
     # TO DO: Get this from the cache if it's already been cached
     if not os.path.exists(log_path):
