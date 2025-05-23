@@ -62,7 +62,7 @@ def save_credentials_to_env_file(email: str, password: str):
 
 def ngen_login():
     """
-    Logs in to the NGEN API, storing ACCESS_TOKEN in the environment.
+    Logs in to the NGEN API, storing ACCESS_TOKEN in the environment file.
 
     If NGEN_EMAIL and NGEN_PASSWORD are not set, the user is prompted.
     Credentials are saved to ~/.ngencerf_env for reuse.
@@ -81,15 +81,13 @@ def ngen_login():
     response = requests.post(LOGIN_ENDPOINT, json=payload)
 
     if response.status_code != 200:
-        check_http_error(response.status_code, response.text, exit_on_error=True)
+        check_http_error(response.status_code, response.text)
         return
 
     access_token = response.json().get("access")
     if access_token:
-        os.environ["ACCESS_TOKEN"] = access_token
-        os.environ["NGEN_EMAIL"] = email
-        os.environ["NGEN_PASSWORD"] = password
         save_credentials_to_env_file(email, password)
+        save_to_env_file("ACCESS_TOKEN", access_token)
         print(f"{email} login successful.\n")
     else:
         print("Login succeeded, but access token missing.")
@@ -117,5 +115,5 @@ def ngen_register(optional_email: str = None):
     }
 
     response = requests.post(REGISTER_ENDPOINT, json=payload)
-    if check_http_error(response.status_code, response.text, exit_on_error=True):
+    if check_http_error(response.status_code, response.text):
         print(f"User '{email}' registered successfully.")
