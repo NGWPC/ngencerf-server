@@ -1121,7 +1121,7 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
 class GetLogRequestSerializer(CalibrationOrValidationRunSerializer):
     log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
     log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
-    start = serializers.IntegerField(required=False, default=0, min_value=0)
+    start = serializers.IntegerField(required=False, default=0, min_value=-1)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 

@@ -363,22 +363,30 @@ def get_log(request: Request) -> Response:
     # Check if the log file exists
     if not os.path.exists(log_path):
         raise CerfException(f"Log file not found: {log_path}")
-
-    # Count the total number of lines in the file for pagination metadata
-    total_lines = sum(1 for _ in open(log_path, 'r'))
-
+    
     # Get the file size in bytes
     file_size = os.path.getsize(log_path)
+    
+    # Count the total number of lines in the file for pagination metadata
+    total_lines = sum(1 for _ in open(log_path, 'r'))
 
     # Read the requested lines from the log file with null replacement
     paginated_lines = []
     with open(log_path, 'r') as file:
         for current_line_number, line in enumerate(file):
-            if start <= current_line_number < start + limit:
-                # Replace null characters in each line
-                paginated_lines.append(line.replace('\x00', ' '))
-            if current_line_number >= start + limit:
-                break
+            if start == -1:
+                # If a parameter is passed indicating that the job is still running, ignore "start" value and return
+                # {limit} lines from the end of the file in reverse order. Treat that as though it were the entire file.
+                if current_line_number >= total_lines - limit:
+                    # Replace null characters in each line and prepend to list so that we get them in reverse order
+                    paginated_lines.insert(0, line.replace('\x00', ' '))
+            else:
+              # Read lines in order normally from start to start + limit
+              if start <= current_line_number < start + limit:
+                  # Replace null characters in each line
+                  paginated_lines.append(line.replace('\x00', ' '))
+              if current_line_number >= start + limit:
+                  break
 
     pagination_metadata = {
         'start': start,
