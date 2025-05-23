@@ -214,7 +214,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file},
+        {'input_file': input_file, 'nprocs': str(calibration_run.mpi_nprocs)},
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
@@ -252,6 +252,7 @@ def run_validation_job(validation_run: ValidationRun) -> None:
         # For running local, we need to leave these out
         cmd_line_args['worker_name'] = validation_run.worker_name
         cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
+    cmd_line_args['nprocs'] = str(validation_run.calibration_run.mpi_nprocs)
     execute_job(
         validation_run,
         cmd_line_args,

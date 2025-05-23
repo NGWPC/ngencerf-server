@@ -12,6 +12,7 @@ from django.db.models import F
 from toml import TomlEncoder
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
+from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, get_cached_module_by_name
@@ -20,13 +21,17 @@ from calibration.util.geopkg import get_geometry_from_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS
+    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime
+from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
+
+# For now, make this a constant, which is used in 2 places.  We need to tell ngen-cal as well as slurm
 
 # DO NOT MODIFY THIS TEMPLATE IN-PLACE.
 # Use `copy.deepcopy(CONFIG_TEMPLATE)` to safely create per-thread instances.
@@ -158,12 +163,19 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     calibration = config['Calibration']
     datafile = config['DataFile']
 
+    parallel = {
+        "parallel_ngen_exe": PARALLEL_NGEN_EXE,
+        "partition_generator_exe": PARTITION_GENERATOR_EXE,
+        "nprocs": None
+    }
+
     errors = []
 
     # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
     general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
+    catchments = None
     # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
@@ -246,7 +258,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                     datafile['hydrofab_file'] = geopackage_file
 
             if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
-                logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
+                catchments = list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())
+                logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
@@ -373,7 +386,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
         calibration['number_iteration'] = stop_criteria.value
 
     if stop_criteria and run.save_plot_iteration_frequency is not None and (stop_criteria.value < run.save_plot_iteration_frequency):
-        errors.append(f"The plot iteration frequency, {run.save_plot_iteration_frequency}, must be <= the stop criteria (number of iteration) {stop_criteria.value}")
+        errors.append(
+            f"The plot iteration frequency, {run.save_plot_iteration_frequency}, must be <= the stop criteria (number of iteration) {stop_criteria.value}")
 
     calibration['start_iteration'] = 0  # TODO ????'
 
@@ -439,6 +453,13 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
         if not param_error and build:
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, datafile['calib_parameter_file'])
+
+    if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        config['Parallel'] = parallel
+        if catchments:
+            nprocs = get_mpi_nodes(len(catchments))
+            parallel['nprocs'] = nprocs
+            run.mpi_nprocs = nprocs
 
     run.status = StatusEnum.SAVED.db_instance if errors else StatusEnum.READY.db_instance
 
@@ -535,3 +556,24 @@ def is_missing(value: Any, field_name: str, errors: list[str], custom_error: str
         errors.append(custom_error if custom_error else f"{field_name} must be specified")
         return True
     return False
+
+
+# Global table of MPI rules.  Can be updated dynamically with endpoint
+# Each pair represents [max_catchments, num_nodes]
+MPI_NODE_RULES = [
+    [10, 1],
+    [50, 2],
+    [500, 4],
+    [-1, 8]
+]
+
+
+def get_mpi_nodes(num_catchments: int) -> int:
+    mpi_nodes = 1
+    for max_catchments, nodes in MPI_NODE_RULES:
+        if max_catchments == -1 or num_catchments <= max_catchments:
+            mpi_nodes = nodes
+            break
+
+    logger.info(f'{num_catchments} catchments using {mpi_nodes} nodes')
+    return mpi_nodes

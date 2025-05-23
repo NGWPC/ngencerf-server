@@ -641,11 +641,13 @@ class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
     start = serializers.IntegerField(required=False, default=0, min_value=0)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
+
 class GetPlotsForComparisonRequestSerializer(CalibrationRunIdList):
     plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
     gage_id = serializers.CharField(required=True)
     start = serializers.IntegerField(required=False, default=0, min_value=0)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
+
 
 class PaginationMetadataSerializer(BaseSerializer):
     start = serializers.IntegerField(required=True)
@@ -675,6 +677,7 @@ class GetPlotForComparisonResponseSerializer(GetPlotResponseSerializer):
 class GetPlotsForComparisonResponseSerializer(CalibrationRunIdList):
     plots = GetPlotForComparisonResponseSerializer(many=True, required=False)
     errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
+
 
 ##################################
 # Formulation Tab
@@ -934,6 +937,54 @@ class RunCalibrationJob(CalibrationRunSerializer):
         for module_name, log_level in value.items():
             validator(log_level)
         return value
+
+
+def get_mpi_rules_field(required: bool = True) -> serializers.ListField:
+    return serializers.ListField(
+        required=required,
+        allow_null=not required,
+        child=serializers.ListField(
+            child=serializers.IntegerField(),
+            min_length=2,
+            max_length=2
+        )
+    )
+
+
+class MPINodesRulesSerializer(BaseSerializer):
+    mpi_rules = get_mpi_rules_field(required=False)
+
+    def validate_mpi_rules(self, value):
+        if value in (None, []):
+            # Accept empty input for GET-style query (no validation needed)
+            return value
+
+        previous_threshold = -1
+        for i, rule in enumerate(value):
+            max_catchments, num_nodes = rule
+
+            if max_catchments < -1:
+                raise serializers.ValidationError(f"Invalid threshold {max_catchments} at index {i}")
+
+            if num_nodes < 1:
+                raise serializers.ValidationError(f"Number of nodes must be ≥ 1 at index {i}")
+
+            if i < len(value) - 1:
+                if max_catchments == -1:
+                    raise serializers.ValidationError(f"-1 (infinite) threshold must only appear as the last rule (index {i})")
+                if max_catchments <= previous_threshold:
+                    raise serializers.ValidationError(f"Thresholds must be strictly increasing (problem at index {i})")
+
+            previous_threshold = max_catchments
+
+        if value[-1][0] != -1:
+            raise serializers.ValidationError("The final rule must have max_catchments = -1 to cover all cases")
+
+        return value
+
+
+class MPINodesRulesResponseSerializer(GenericMessageResponseSerializer):
+    mpi_rules = get_mpi_rules_field(required=False)
 
 
 ##################################
