@@ -21,14 +21,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, NgenLogging
 from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun, CustomUser
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
+from calibration.util.caching import get_cached_modules_with_groups
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
 from calibration.util.ngen_locations import get_forecast_dir, get_ngen_stdout_log_filename, get_output_calibration_run_dir, \
-    get_output_validation_run_dir
+    get_output_validation_run_dir, get_ngen_logging_file, get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,7 @@ def create_validation_run_internal(
     """
     validation_type = validation_type or ValidationType.VALID_ITERATION
 
+    iteration_object = None
     if validation_type == ValidationType.VALID_ITERATION:
         if iteration_id is None:
             raise CerfException(f"Values must be supplied for both iteration_id")
@@ -280,8 +282,6 @@ def create_validation_run_internal(
             iteration_object = Iteration.objects.filter(calibration_run=calibration_run, id=iteration_id).get()
         except Iteration.DoesNotExist:
             raise CerfException(f"Cannot find Iteration Id {iteration_id} for Calibration Job {calibration_run.id}")
-    else:
-        iteration_object = None
 
     validation_run = ValidationRun.objects.create(status=StatusEnum.SAVED.db_instance,
                                                   calibration_run=calibration_run,
@@ -440,6 +440,7 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
+# TODO Fix me
 # Get the valid path for a file that can come from Data Services or user-upload
 def get_valid_path(source, eds_path, upload_enum, get_path_func):
     """
@@ -752,3 +753,74 @@ def get_user_email(request: Request) -> str:
 
     # Fallback if unauthenticated or missing 'email'
     return "Anonymous"
+
+
+def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict) -> str | None:
+    """
+    Creates a JSON logging configuration file for a calibration or validation run,
+    and a symbolic link pointing to it using a consistent base name.
+
+    The file includes a dictionary of module names mapped to logging levels. Each module used
+    by the run (plus 'ngen') is assigned a level, defaulting to NgenLogging.INFO unless
+    overridden by the provided modules argument. Module names are matched case-insensitively.
+
+    :param run: CalibrationRun or ValidationRun instance.
+    :param logging_enabled: Boolean flag to enable or disable logging.
+    :param modules: Dictionary mapping module names to logging levels (e.g., {'ngen': 'DEBUG'}), or None.
+    :return: Error message string if any unknown modules are provided; otherwise, None.
+    """
+
+    # 1) Create default file
+    # TODO Check that this is the list of modules
+    valid_modules = [m.name.lower() for m in get_cached_modules_with_groups().values()]
+
+    expected_modules = set(valid_modules) | {'ngen'}
+    print('expected_modules', expected_modules)
+
+    # Build default logging config
+    module_dict = {
+        module_name: NgenLogging.INFO.value
+        for module_name in expected_modules
+    }
+
+    # Create default logging config
+    ngen_logging = {
+        "logging_enabled": True,
+        "modules": module_dict
+    }
+
+    # 2) Supplement with import
+
+    # TODO Check if there's an logging_config_import
+    print('create_ngen_logging_file checking for import file')
+    logging_config_import_file = get_ngen_logging_file(run, import_flag=True)
+    print('found import file', logging_config_import_file)
+    logging_config_import = {}
+    if os.path.exists(logging_config_import_file):
+        with open(logging_config_import_file, "r") as f:
+            logging_config_import = json.load(f)
+            print('logging_config_import', logging_config_import)
+
+            ngen_logging['logging_enabled'] = logging_config_import['logging_enabled']
+            for m in logging_config_import.get('modules', {}):
+                ngen_logging['modules'][m] = logging_config_import['modules'][m]
+
+    # 3) Supplement with passed logging_config
+    if logging_config_param:
+        for m in logging_config_param.get('modules', {}):
+            ngen_logging['modules'][m] = logging_config_param['modules'][m]
+
+    print('final ngen_logging', ngen_logging)
+
+    # Write the JSON file
+    logging_config_path = get_ngen_logging_file(run, import_flag=False)
+    with open(logging_config_path, "w") as f:
+        json.dump(ngen_logging, f, indent=4)
+
+    # Create/overwrite the symbolic link
+    symlink_path = os.path.join(run.job_data_dir, f'{get_ngen_logging_basename()}.json')
+    if os.path.islink(symlink_path) or os.path.exists(symlink_path):
+        os.remove(symlink_path)
+    os.symlink(logging_config_path, symlink_path)
+
+    return None

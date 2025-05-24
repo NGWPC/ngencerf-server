@@ -19,7 +19,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ex
 from calibration.util.file_util import copy_directory, copy_file_to_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
-    get_observational_file_for_job
+    get_observational_file_for_job, get_ngen_logging_file
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, SLOTH, add_sloth_parameters, validate_formulation
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
@@ -253,6 +253,19 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
+        #############################
+        # Logging
+        #############################
+        # TODO This is import_calibration_run_data
+        logging_config = calibration_run_data.get('logging_config')
+        print(f'import_calibration_run_data: logging_config from import {logging_config}')
+
+        # Create a logging_config_import file with the imported data
+        logging_config_path = get_ngen_logging_file(run, import_flag=True)
+        with open(logging_config_path, 'w') as f:
+            json.dump(logging_config, f, indent=4)
+        print('successfully saved logging config import file')
+
         run.save()
     messages = {}
     if errors:
@@ -368,13 +381,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         }
         calibration_run_data['metadata'] = metadata
 
-        # Not supporting this flag right now until Data Services is ready.
-        # calibration_run_data['run_after_import'] = False
+        calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)  # type: ignore
 
-        # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
+        # For export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
 
         if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
@@ -392,6 +404,15 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
             calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
                 user_uploaded_forcing_dir) else None
+
+        # TODO This is load_calibration_run_data for handling export
+        logging_config_file = get_ngen_logging_file(run, import_flag=True)
+        if not os.path.exists(logging_config_file):
+            logging_config_file = get_ngen_logging_file(run, import_flag=False)
+            if os.path.exists(logging_config_file):
+                with open(logging_config_file, 'r') as f:
+                    logging_config = json.load(f)
+                    calibration_run_data['logging_config'] = logging_config
 
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
