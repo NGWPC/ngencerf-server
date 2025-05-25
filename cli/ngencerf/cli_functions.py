@@ -363,8 +363,6 @@ def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_a
     :param run_after_import: Optional override for the run_after_import field
     :return: 0 on success, 1 on failure
     """
-    print(f"Loading job data from: {job_file}")
-
     # Load the JSON file
     with open(job_file, "r", encoding="utf-8") as f:
         job_data = json.load(f)
@@ -406,17 +404,17 @@ def import_job(job_file: str, run_after_import: bool | None = None) -> int:
     return _submit_job_data(job_file, run_after_import=run_after_import)
 
 
-def update_job(calibration_run_id: int, job_file: str, run_after_import: bool | None = None) -> int:
+def update_job(calibration_run_id: int, job_file: str, run_after_update: bool | None = None) -> int:
     """
     Updates an existing calibration job using a JSON file.
 
     :param calibration_run_id: ID of the calibration run
     :param job_file: Path to the JSON file
-    :param run_after_import: Optional override for the run_after_import field
+    :param run_after_update: Optional override for the run_after_import field
     :return: 0 on success, 1 on failure
     """
     print(f"Updating job {calibration_run_id} from: {job_file}")
-    return _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_import)
+    return _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_update)
 
 
 def handle_export_display(calibration_run_id: int, output_path: str | None = None, display: bool = False) -> int:
