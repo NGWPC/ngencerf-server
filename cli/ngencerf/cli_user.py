@@ -86,6 +86,9 @@ def ngen_login():
 
     access_token = response.json().get("access")
     if access_token:
+        os.environ["ACCESS_TOKEN"] = access_token
+        os.environ["NGEN_EMAIL"] = email
+        os.environ["NGEN_PASSWORD"] = password
         save_credentials_to_env_file(email, password)
         save_to_env_file("ACCESS_TOKEN", access_token)
         print(f"{email} login successful.\n")
