@@ -256,15 +256,14 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         #############################
         # Logging
         #############################
-        # TODO This is import_calibration_run_data
+        # Get logging_config which has been imported from json
         logging_config = calibration_run_data.get('logging_config')
-        print(f'import_calibration_run_data: logging_config from import {logging_config}')
 
-        # Create a logging_config_import file with the imported data
-        logging_config_path = get_ngen_logging_file(run, import_flag=True)
-        with open(logging_config_path, 'w') as f:
-            json.dump(logging_config, f, indent=4)
-        print('successfully saved logging config import file')
+        if logging_config:
+            # Create a logging_config_import file with the imported data
+            logging_config_path = get_ngen_logging_file(run, import_flag=True)
+            with open(logging_config_path, 'w') as f:
+                json.dump(logging_config, f, indent=4)
 
         run.save()
     messages = {}
@@ -405,7 +404,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
                 user_uploaded_forcing_dir) else None
 
-        # TODO This is load_calibration_run_data for handling export
+        # Export the logging data.  Start with any imported data
+        # The use the run-time logging, if this job has been run
         logging_config_file = get_ngen_logging_file(run, import_flag=True)
         if not os.path.exists(logging_config_file):
             logging_config_file = get_ngen_logging_file(run, import_flag=False)

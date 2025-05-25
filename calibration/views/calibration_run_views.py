@@ -310,7 +310,6 @@ def run_calibration(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     logging_config = validator.get('logging_config')
-    print('logging_config', logging_config)
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:

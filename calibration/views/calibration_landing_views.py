@@ -641,7 +641,6 @@ def import_job(request: Request) -> Response:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
             # create_ngen_logging_file(run, {}, create_import_file=True)
-            print('Calling submit_job from import_job')
             error_response = submit_job(run)
             if error_response:
                 return error_response

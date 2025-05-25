@@ -335,10 +335,7 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
     :return: A DRF Response instance if there is an issue; otherwise, None on success.
     """
     # Special handling for calibration jobs
-    print('submit_job', logging_config)
-
     if isinstance(run, CalibrationRun):
-        print(f'submit_job calling create_ngen_logging_file with {logging_config}')
         error_message = create_ngen_logging_file(run, logging_config)
         if error_message:
             return ResponseError(error_message)
