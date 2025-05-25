@@ -455,7 +455,8 @@ def find_catchments(gpkg_path: str, target_layers: list[str] = ["divides", "catc
         layers = list_layers(gpkg_path)
         for layer in target_layers:
             if layer in layers:
-                logger.info(f"\nChecking for catchments in layer '{layer}':")
+                logger.info('')
+                logger.info(f"Checking for catchments in layer '{layer}':")
                 catchments = validate_catchments_in_layer(gpkg_path, layer)
                 if catchments:
                     logger.info(f"  Found {len(catchments)} catchments in layer '{layer}'.")

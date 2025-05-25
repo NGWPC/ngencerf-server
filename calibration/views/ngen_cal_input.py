@@ -149,7 +149,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     Prepares the configuration and validates the run instance for readiness.
 
     :param run: The CalibrationRun instance to be validated and prepared.
-    :param build: Whether to create directories and build configuration files.
+    :param build: Whether to do final preparations for running the job -- create directories and build configuration files.
     :return: A tuple containing a list of errors (if any) and the path to the config file (if created).
     """
     logger.info(called_from())
@@ -247,7 +247,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                 else:
                     errors.append('Geopackage data must be uploaded')
             else:
-                if run.geopackage_eds_file_path:
+                if run.geopackage_eds_file_path and build:
                     # For data from Data Services, normalize the CRS and copy to job-specific location
                     try:
                         normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
