@@ -78,7 +78,7 @@ def _print_validation_errors(errors: dict, prefix: str = "") -> None:
                 else:
                     print(f"{prefix}{field}: {error}")
         else:
-            print(f"{prefix}{field}: {error}")
+            print(f"{prefix}{field}: {error_list}")
 
 
 def _pretty_print_json(response: str, suppress_html: bool = False):
