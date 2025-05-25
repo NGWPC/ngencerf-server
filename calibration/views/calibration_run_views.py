@@ -309,19 +309,21 @@ def run_calibration(request: Request) -> Response:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    logging_enabled = validator.get('logging_enabled')
-    modules = validator.get('modules')
+    logging_config = validator.get('logging_config')
+    print('logging_config', logging_config)
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
-    error_response = submit_job(run, logging_config={'logging_enabled': logging_enabled, 'modules': modules})
+    error_response = submit_job(run, logging_config=logging_config)
     if error_response:
         return error_response
 
-    response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name, 'submit_date': run.submit_date}
+    response = {'message': f'Calibration Job {run.id} has been submitted',
+                'calibration_run_id': calibration_run_id,
+                'status': run.status.name,
+                'submit_date': run.submit_date}
 
     response_validator, error_return = validate_response(SubmitCalibrationJobResponseSerializer, response)
     if error_return:

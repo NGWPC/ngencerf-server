@@ -138,7 +138,7 @@ class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
 
     def validate(self, data):
         """
-        Ensure that only one of calibration_run_id, validation_run_id, or forecast_run_id is specified.
+        Ensure that only one of calibration_run_id, validation_run_id or forecast_run_id is specified.
         """
         calibration_run_id = data.get('calibration_run_id')
         validation_run_id = data.get('validation_run_id')
@@ -925,7 +925,7 @@ class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDo
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class LoggingConfigMixin(serializers.Serializer):
+class LoggingConfigSerializer(BaseSerializer):
     logging_enabled = serializers.BooleanField(required=False, default=True)
     modules = serializers.DictField(child=serializers.CharField(), default=[])
 
@@ -963,8 +963,8 @@ class LoggingConfigMixin(serializers.Serializer):
         return normalized
 
 
-class RunCalibrationJob(LoggingConfigMixin, CalibrationRunSerializer):
-    pass
+class RunCalibrationJob(CalibrationRunSerializer):
+    logging_config = LoggingConfigSerializer(required=False)
 
 
 def get_mpi_rules_field(required: bool = True) -> serializers.ListField:
@@ -1046,10 +1046,6 @@ class GetForecastJobsResponseSerializer(BaseSerializer):
 ##################################
 # Import/Export
 ##################################
-
-
-class LoggingConfigSerializer(LoggingConfigMixin, BaseSerializer):
-    pass
 
 
 # All fields are required, so that the user can see what is missing.
