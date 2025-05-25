@@ -87,32 +87,25 @@ class SmartArgumentParser(argparse.ArgumentParser):
         self.exit(2)
 
 
-class ParseBoolAction(argparse.Action):
+def str_to_bool(value):
     """
-    Custom argparse action to parse boolean flags.
+    Convert a string representation of truth to True or False.
 
-    Supports usage like:
-        --flag              → True
-        --flag true         → True
-        --flag false        → False
+    True values are 'true', 't', '1', 'yes', 'y'.
+    False values are 'false', 'f', '0', 'no', 'n'.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not a recognized boolean string.
     """
-
-    def __init__(self, option_strings, dest, nargs=None, **kwargs):
-        if nargs is not None and nargs != '?':
-            raise ValueError("nargs must be '?' to allow optional value")
-        super().__init__(option_strings, dest, nargs='?', **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        if values is None:
-            setattr(namespace, self.dest, True)
-        else:
-            val = values.lower()
-            if val in {"true", "1", "yes", "y"}:
-                setattr(namespace, self.dest, True)
-            elif val in {"false", "0", "no", "n"}:
-                setattr(namespace, self.dest, False)
-            else:
-                raise argparse.ArgumentError(self, f"Invalid boolean value: '{values}'")
+    if isinstance(value, bool):
+        return value
+    val = value.lower()
+    if val in {'true', '1', 'yes', 'y'}:
+        return True
+    elif val in {'false', '0', 'no', 'n'}:
+        return False
+    else:
+        raise argparse.ArgumentTypeError(f"Invalid boolean value: '{value}'")
 
 
 # Commands that do not require authentication
@@ -184,15 +177,17 @@ def main():
         return subparser
 
     # Registering all the subcommands
-    import_parser = add_parser("import", "Import JSON job file")
+    import_parser = add_parser("import", "Create job from a JSON file")
     import_parser.add_argument("input_file", help="Path to the JSON file")
     import_parser.add_argument(
         "--run", "-r",
         dest="run_after_import",
         nargs="?",
-        action=ParseBoolAction,
+        type=str_to_bool,
         const=True,  # Default to True if specified without a value
-        help="Override the run_after_import field in the JSON file (default: true if specified without a value)"
+        default=False,
+        help="Override the run_after_import field in the JSON file. "
+             "Use '--run' for True, '--run true' or '--run false' to set explicitly."
     )
     import_parser.set_defaults(func=lambda cmd_args: import_job(
         job_file=cmd_args.input_file,
@@ -204,16 +199,18 @@ def main():
     update_parser.add_argument("input_file", help="Path to the JSON file")
     update_parser.add_argument(
         "--run", "-r",
-        dest="run_after_import",
+        dest="run_after_update",
         nargs="?",
-        action=ParseBoolAction,
+        type=str_to_bool,
         const=True,  # Default to True if specified without a value
-        help="Override the run_after_import field in the JSON file (default: true if specified without a value)"
+        default=False,
+        help="Override the run_after_import field in the JSON file. "
+             "Use '--run' for True, '--run true' or '--run false' to set explicitly."
     )
     update_parser.set_defaults(func=lambda cmd_args: update_job(
         calibration_run_id=cmd_args.run_id,
         job_file=cmd_args.input_file,
-        run_after_import=cmd_args.run_after_import
+        run_after_update=cmd_args.run_after_update
     ))
 
     observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration run")
@@ -242,10 +239,12 @@ def main():
     )
     export_parser.add_argument(
         "--show", "-s",
-        action=ParseBoolAction,
+        dest="show",
         nargs="?",
+        const=True,
         default=False,
-        help="Also display the job"
+        type=str_to_bool,
+        help="Also display the job (default: False)"
     )
     export_parser.set_defaults(func=lambda cmd_args: handle_export_display(
         calibration_run_id=cmd_args.run_id,
@@ -333,7 +332,11 @@ def main():
 
     # Authenticate if needed
     if args.command not in COMMANDS_AUTH_EXEMPT and "ACCESS_TOKEN" not in os.environ:
-        ngen_login()
+        try:
+            ngen_login()
+        except Exception as e:
+            print('Error communicating with server')
+            sys.exit(1)
 
     # Call the appropriate handler and exit with the returned code
     if hasattr(args, "func"):
