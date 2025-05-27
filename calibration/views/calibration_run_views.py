@@ -1191,7 +1191,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             # Log the original start and end ranges in this chunk, including line numbers
             chunk_start = chunk['dateTime'].min()
             chunk_end = chunk['dateTime'].max()
-            logger.info(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
+            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
 
             # Skip chunks that are entirely before the time range
             if chunk_end < start_datetime:

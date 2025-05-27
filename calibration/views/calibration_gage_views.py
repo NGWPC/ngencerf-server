@@ -82,25 +82,39 @@ def load_gage_tab(request: Request) -> Response:
     forcing_source_values = ForcingSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     observational_source_values = ObservationalSourceEnum.get_choices_with_fields(fields=['name', 'description'])
     geopackage_source_values = GeopackageSourceEnum.get_choices_with_fields(fields=['name', 'description'])
-    domain_values = DomainEnum.get_choices_with_fields(fields=['name', 'description'])
+    domain_values = [
+        {
+            **item,
+            'name': item['name'].replace('_', ' ')
+        }
+        for item in DomainEnum.get_choices_with_fields(fields=['name', 'description'])
+    ]
 
     # Retrieve cached gages with necessary fields
     gages = [{
         'gage_id': gage.get('gage_id'),
         'headwater_calibration': gage.get('headwater_calibration'),
         'nws_id': gage.get('nws_id'),
-        'domain': gage.get('domain')
+        'domain': gage.get('domain').replace('_', ' ') if gage.get('domain') else None
     } for gage in get_cached_gages().values()]
 
     ngen_cal_input.ready_to_run(run)
 
-    response = {'calibration_run_id': run.id,
-                'status': run.status.name,
-                'domain_values': domain_values,
-                'forcing_source_values': forcing_source_values,
-                'observational_source_values': observational_source_values,
-                'geopackage_source_values': geopackage_source_values,
-                'gages': gages}
+    domain_values = [
+        {**item, 'name': item['name'].replace('_', ' ')}
+        for item in domain_values
+    ]
+
+    response = {
+        'calibration_run_id': run.id,
+        'status': run.status.name,
+        'domain_values': domain_values,
+        'forcing_source_values': forcing_source_values,
+        'observational_source_values': observational_source_values,
+        'geopackage_source_values': geopackage_source_values,
+        'gages': gages
+    }
+
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
     response_validator, error_response = validate_response(
@@ -154,6 +168,7 @@ def get_gage(request: Request) -> Response:
 
     gage_id = validator.get('gage_id')
     gage_dict = get_gage_by_id(gage_id)
+    print(f"Gage dict: {gage_dict}")
 
     if not gage_dict:
         return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
@@ -250,7 +265,8 @@ def save_gage_tab(request: Request):
                                          lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
-        num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
+        num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
+            geopackage_path) else None
 
         # Process observational source and delete user-uploaded file if necessary
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
@@ -615,7 +631,8 @@ def upload_geopackage_data(request: Request) -> Response:
                                      lambda: get_single_file(get_geopackage_dir_for_job(run)))
     geopackage_image_url = get_geopackage_image_url(geopackage_path) if return_geopackage_url else None
 
-    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
+        geopackage_path) else None
 
     with transaction.atomic():
         run.save()

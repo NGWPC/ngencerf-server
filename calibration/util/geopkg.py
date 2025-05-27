@@ -1,6 +1,7 @@
-import argparse
-import json
+import logging
 import os
+import sqlite3
+import traceback
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
@@ -9,6 +10,16 @@ import fiona
 import geopandas as gpd
 import matplotlib
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
+logging.getLogger("pyogrio._io").setLevel(logging.WARNING)
+if not logging.getLogger().hasHandlers():
+    # We're likely running outside Django — configure basic logging to stderr
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
 
 # See https://stackoverflow.com/questions/27147300/matplotlib-tcl-asyncdelete-async-handler-deleted-by-the-wrong-thread
 matplotlib.use('Agg')  # Use a backend that doesn't require a display (like for generating images)
@@ -57,12 +68,23 @@ def check_file_accessible(file_path: str) -> None:
 
 def safe_read_gpkg(gpkg_path: str, layer: str = None) -> gpd.GeoDataFrame:
     """
-    Safely reads a layer from a GeoPackage file, providing detailed error messages.
+    Read a specific layer from a GeoPackage file with detailed error handling.
 
-    :param gpkg_path: Path to the GeoPackage file.
-    :param layer: Name of the layer to read (reads default layer if None).
-    :return: GeoDataFrame containing the layer data.
-    :raises RuntimeError: If reading fails due to corruption, invalid format, or missing drivers.
+    This function wraps GeoPandas' `read_file()` to provide informative diagnostics
+    when file reading fails due to reasons such as:
+      - Missing file or layer
+      - Corrupted or invalid GeoPackage
+      - Missing required drivers
+      - Invalid geometry or projection data
+
+    :param gpkg_path: Path to the GeoPackage (.gpkg) file.
+    :param layer: Optional name of the layer to read. If None, the default layer is loaded.
+    :return: A GeoDataFrame containing the requested layer's features and attributes.
+    :raises RuntimeError: If the file cannot be opened or parsed, with context such as:
+                          - Whether the file exists
+                          - File size (if available)
+                          - List of available layers (if accessible)
+                          - Underlying exception details
     """
     try:
         return gpd.read_file(gpkg_path, layer=layer)
@@ -73,33 +95,9 @@ def safe_read_gpkg(gpkg_path: str, layer: str = None) -> gpd.GeoDataFrame:
             f"Failed to read '{layer}' layer from {gpkg_path}. Possible issues:\n"
             f"  - File exists: {os.path.exists(gpkg_path)}\n"
             f"  - File size: {os.path.getsize(gpkg_path) if os.path.exists(gpkg_path) else 'N/A'} bytes\n"
-            f"  - Available layers: {fiona.listlayers(gpkg_path) if os.path.exists(gpkg_path) else 'N/A'}\n"
+            f"  - Available layers: {list_layers(gpkg_path) if os.path.exists(gpkg_path) else 'N/A'}\n"
             f"Error details: {e}"
         )
-
-
-def gpkg_to_png(gpkg_path: str, png_path: str, layer: str = None) -> None:
-    """
-    Generates a PNG image from a specific layer in a GeoPackage.
-
-    :param gpkg_path: Path to the GeoPackage file.
-    :param png_path: Path where the generated PNG file will be saved.
-    :param layer: Name of the layer to visualize, or None to visualize all layers.
-    :raises FileNotFoundError: If the GeoPackage file does not exist.
-    """
-    check_file_accessible(gpkg_path)
-    gdf = safe_read_gpkg(gpkg_path, layer)
-
-    # Plot the GeoDataFrame
-    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-    gdf.plot(ax=ax, cmap='viridis')
-
-    # Remove axes for better visualization
-    ax.set_axis_off()
-
-    # Save the plot as a PNG file
-    plt.savefig(png_path, bbox_inches='tight', pad_inches=0.1)
-    plt.close()
 
 
 @lru_cache()
@@ -120,10 +118,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ..
     # Initialize the plot
     fig, ax = plt.subplots(figsize=(15, 13), dpi=300)  # Larger figure and higher resolution
 
-    try:
-        available_layers = fiona.listlayers(gpkg_path)
-    except Exception as e:
-        raise RuntimeError(f"Failed to retrieve layers from GeoPackage: {gpkg_path}. Error: {e}")
+    available_layers = list_layers(gpkg_path)
 
     # Plot the divides layer (outline) if it exists
     if 'divides' in available_layers:
@@ -157,7 +152,7 @@ def gpkg_to_png_selected_layers(gpkg_path: str, layers_to_include: tuple[str, ..
 
                 style = layer_style_config.get(layer, {})
                 if not style:
-                    print(f"[WARN] No style config for '{layer}'. Using fallback.")
+                    logger.warning(f"No style config for '{layer}'. Using fallback.")
 
                 plot_method = style.get('plot_method', 'line')
                 color = style.get('color', next(color_cycle))
@@ -232,10 +227,7 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     check_file_accessible(gpkg_path)
 
     # List all layers to verify the requested layers exist
-    try:
-        available_layers = fiona.listlayers(gpkg_path)
-    except Exception as e:
-        raise RuntimeError(f"Failed to retrieve layers from GeoPackage: {gpkg_path}. Error: {e}")
+    available_layers = list_layers(gpkg_path)
 
     if catchment_layer not in available_layers:
         raise ValueError(f"Catchment layer '{catchment_layer}' not found. Available layers: {available_layers}")
@@ -284,47 +276,214 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description="GeoPackage Utility Tool")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = False):
+    """
+    Normalize a GeoPackage file.
 
-    # Subcommand for extracting geometry
-    geom_parser = subparsers.add_parser("extract", help="Extract geometry and gage info from a GeoPackage")
-    geom_parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
-    geom_parser.add_argument("--catchment_layer", type=str, default="divides", help="Layer name for catchments (default: 'divides')")
-    geom_parser.add_argument("--gage_layer", type=str, default="hydrolocations", help="Layer name for gages (default: 'hydrolocations')")
+    This function:
+    - Reprojects all spatial layers to EPSG:4326 (WGS84) unless they are already in EPSG:5070
+    - Copies all non-spatial tables as-is using raw SQLite operations
+    - Overwrites the output file if it already exists
+    - If output_path is a directory (explicitly or by detection), saves the output using the same filename as gpkg_path
+    - If output_path is a file and does not end with '.gpkg', appends the extension
 
-    # Subcommand for generating PNG
-    png_parser = subparsers.add_parser("render", help="Generate PNG from selected layers in a GeoPackage")
-    png_parser.add_argument("gpkg_path", type=str, help="Path to the GeoPackage file")
-    png_parser.add_argument("png_path", type=str, help="Path to save the generated PNG file")
-    png_parser.add_argument("--layers", nargs="+", default=["nexus", "flowpaths", "flowlines"],
-                            help="Layers to include in the PNG (default: nexus, flowpaths, flowlines)")
+    :param gpkg_path: Path to the source GeoPackage file.
+    :param output_path: Path to the output directory or output file.
+    :param output_is_dir: If True, force output_path to be interpreted as a directory, even if it does not exist.
+    """
+    input_filename = os.path.basename(gpkg_path)
 
-    args = parser.parse_args()
+    # Determine final output file path
+    if output_is_dir or (os.path.exists(output_path) and os.path.isdir(output_path)):
+        if not os.path.exists(output_path):
+            os.makedirs(output_path, exist_ok=True)
+        output_path = os.path.join(output_path, input_filename)
+    elif not output_path.lower().endswith(".gpkg"):
+        logger.warning(f"Output path '{output_path}' does not end with '.gpkg'. Appending '.gpkg'.")
+        output_path += ".gpkg"
 
+    logger.info(f'Normalizing {gpkg_path} to {output_path}')
+    if os.path.exists(output_path):
+        logger.info(f"Overwriting existing file: {output_path}")
+        os.remove(output_path)
+
+    layers = list_layers(gpkg_path)
+
+    spatial_layers = []
+    non_spatial_layers = []
+
+    # First pass: identify spatial vs non-spatial and write spatial layers
+    for layer_name in layers:
+        try:
+            gdf = safe_read_gpkg(gpkg_path, layer=layer_name)
+        except Exception as e:
+            logger.error(f"Could not read layer '{layer_name}': {e}")
+            traceback.print_exc()
+            continue
+
+        # Detect whether it's non-spatial
+        if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
+            non_spatial_layers.append(layer_name)
+            continue
+
+        # Reproject or copy as-is
+        if gdf.crs is None:
+            logger.warning(f"Layer '{layer_name}' has no CRS. Saving as-is.")
+            gdf_out = gdf
+        elif gdf.crs.to_epsg() == 5070:
+            logger.info(f"Layer '{layer_name}' is already in EPSG:5070. Saving as-is.")
+            gdf_out = gdf
+        else:
+            logger.info(f"Reprojecting layer '{layer_name}' from EPSG:{gdf.crs.to_epsg()} to EPSG:4326.")
+            gdf_out = gdf.to_crs(epsg=4326)
+
+        gdf_out.to_file(output_path, layer=layer_name, driver="GPKG")
+        spatial_layers.append(layer_name)
+
+    # Second pass: copy non-spatial tables using SQLite
+    with sqlite3.connect(gpkg_path) as src_conn, sqlite3.connect(output_path) as dst_conn:
+        for table in non_spatial_layers:
+            logger.info(f"Copying non-spatial table '{table}'")
+            try:
+                copy_non_spatial_table_one(table, src_conn, dst_conn)
+            except Exception as e:
+                logger.error(f"Failed to copy non-spatial table '{table}': {e}")
+                traceback.print_exc()
+
+    logger.info(f"\nNormalized GeoPackage written to: {output_path}")
+
+
+def copy_non_spatial_table_one(table_name: str, src_conn: sqlite3.Connection, dst_conn: sqlite3.Connection):
+    """
+    Copy a single non-spatial table from src to dst SQLite connections.
+    """
+    src_cursor = src_conn.cursor()
+    dst_cursor = dst_conn.cursor()
+
+    # Create table
+    # noinspection SqlResolve
+    src_cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?;", (table_name,))
+    create_stmt = src_cursor.fetchone()
+    if not create_stmt:
+        logger.warning("Table '{table_name}' not found in source.")
+        return
+
+    dst_cursor.execute(create_stmt[0])
+
+    # Copy rows
+    rows = src_cursor.execute(f'SELECT * FROM "{table_name}";').fetchall()
+    if rows:
+        placeholders = ", ".join(["?"] * len(rows[0]))
+        dst_cursor.executemany(f"INSERT INTO '{table_name}'VALUES ({placeholders});", rows)
+
+    dst_conn.commit()
+
+
+def list_layers(gpkg_path: str) -> list[str]:
+    """
+    Retrieve all layer names from a GeoPackage file.
+
+    :param gpkg_path: Path to the GeoPackage (.gpkg) file.
+    :return: A list of layer names available in the file.
+    :raises RuntimeError: If the file cannot be opened or read as a GeoPackage.
+    """
     try:
-        if args.command == "extract":
-            result = get_geometry_from_gpkg(
-                gpkg_path=args.gpkg_path,
-                catchment_layer=args.catchment_layer,
-                gage_layer=args.gage_layer,
-            )
-            print(json.dumps(result, indent=4, default=str))
-
-        elif args.command == "render":
-            # Convert list to tuple for lru_cache
-            img = gpkg_to_png_selected_layers(
-                gpkg_path=args.gpkg_path,
-                layers_to_include=tuple(args.layers)
-            )
-            with open(args.png_path, "wb") as f:
-                f.write(img.getvalue())
-            print(f"PNG image saved to: {args.png_path}")
-
+        return fiona.listlayers(gpkg_path)
+    except fiona.errors.DriverError as e:
+        raise RuntimeError(f"Could not open GeoPackage '{gpkg_path}'. It may be corrupted or not a valid file. Error: {e}")
     except Exception as e:
-        print(f"Error: {e}")
+        raise RuntimeError(f"Unexpected error listing layers in '{gpkg_path}': {e}")
 
 
-if __name__ == "__main__":
-    main()
+def find_gage_id(gpkg_path: str, layer_name: str = "hydrolocations", field_name: str = "hl_uri") -> list[str]:
+    """
+    Extract unique gage IDs from a specified layer and field in the GeoPackage.
+
+    :param gpkg_path: Path to the GeoPackage file.
+    :param layer_name: Layer expected to contain gage IDs (default is 'hydrolocations').
+    :param field_name: Field in the layer that contains gage IDs (default is 'hl_uri').
+    :return: List of unique gage ID strings, or an empty list if not found.
+    :raises RuntimeError: If the layer cannot be read.
+    """
+    try:
+        layers = list_layers(gpkg_path)
+        if layer_name not in layers:
+            logger.info(f"Layer '{layer_name}' not found in the GeoPackage.")
+            return []
+
+        gdf = gpd.read_file(gpkg_path, layer=layer_name)
+        if field_name in gdf.columns:
+            gage_ids = gdf[field_name].astype(str).unique().tolist()
+            logger.info(f"Found gage_id(s) in layer '{layer_name}': {gage_ids}")
+            return gage_ids
+        else:
+            logger.info(f"Field '{field_name}' not found in layer '{layer_name}'.")
+            return []
+    except Exception as e:
+        raise RuntimeError(f"Error while searching for gage_id in layer '{layer_name}': {e}")
+
+
+def validate_catchments_in_layer(gpkg_path: str, layer_name: str) -> list[str]:
+    """
+    Extract catchment identifiers from a layer that contains a 'divide_id' column.
+
+    :param gpkg_path: Path to the GeoPackage file.
+    :param layer_name: Name of the layer to inspect.
+    :return: List of catchment IDs as strings, or an empty list if the field is not present.
+    :raises RuntimeError: If the layer cannot be read.
+    """
+    try:
+        gdf = gpd.read_file(gpkg_path, layer=layer_name)
+
+        if 'divide_id' in gdf.columns:
+            return gdf['divide_id'].astype(str).tolist()
+        else:
+            return []
+    except Exception as e:
+        raise RuntimeError(f"Failed to validate catchments in layer '{layer_name}': {e}")
+
+
+def find_catchments(gpkg_path: str, target_layers: list[str] = ["divides", "catchments", "watersheds"]) -> None:
+    """
+    Search for catchment geometries across a set of likely layer names and print findings.
+
+    :param gpkg_path: Path to the GeoPackage file.
+    :param target_layers: Ordered list of candidate layer names to inspect for catchments.
+    :return: None. Prints results to stdout.
+    """
+    try:
+        layers = list_layers(gpkg_path)
+        for layer in target_layers:
+            if layer in layers:
+                logger.info('')
+                logger.info(f"Checking for catchments in layer '{layer}':")
+                catchments = validate_catchments_in_layer(gpkg_path, layer)
+                if catchments:
+                    logger.info(f"  Found {len(catchments)} catchments in layer '{layer}'.")
+                    logger.info(f"  Catchments: {', '.join(catchments)}")
+                    return
+                else:
+                    logger.info(f"  No catchments found in layer '{layer}'.")
+        logger.info("\nNo catchments found in the specified layers.")
+    except Exception as e:
+        logger.info(f"Error while searching for catchments: {e}")
+        traceback.print_exc()
+
+
+def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
+    """
+    Print metadata and a sample of records from a specific layer.
+
+    :param gpkg_path: Path to the GeoPackage file.
+    :param layer_name: Name of the layer to inspect.
+    :return: None. Outputs metadata and data sample to stdout.
+    :raises RuntimeError: If the layer cannot be loaded.
+    """
+    try:
+        gdf = gpd.read_file(gpkg_path, layer=layer_name)
+        logger.info(f"Layer '{layer_name}' metadata:")
+        logger.info(gdf.info())
+        logger.info("\nSample data:")
+        logger.info(gdf.head())
+    except Exception as e:
+        raise RuntimeError(f"Failed to read metadata for layer '{layer_name}': {e}")
