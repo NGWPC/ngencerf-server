@@ -55,43 +55,51 @@ generate_git_info() {
 if [ "${CERF_VENV}" != "Docker" ]; then
     # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
-       # shellcheck disable=SC1090
-       source "$cerfServer/${CERF_VENV}/bin/activate"
+        VENV_PATH="$cerfServer/${CERF_VENV}"
 
-       # Install all requirements
-       echo "Installing requirements.txt"
-       pip install --upgrade pip
-       pip install -r requirements.txt
+        # Create the virtual environment if it doesn't exist
+        if [ ! -d "$VENV_PATH" ]; then
+            echo "Virtual environment not found at $VENV_PATH. Creating it..."
+            python3 -m venv "$VENV_PATH"
+        fi
 
-       # Doing a pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
-       NGEN_CAL_BRANCH='development'
-       NGEN_FORCING_BRANCH='development'
+        # shellcheck disable=SC1090
+        source "$VENV_PATH/bin/activate"
+
+        # Install all requirements
+        echo "Installing requirements.txt"
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+        # Doing a pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
+        NGEN_CAL_BRANCH='development'
+        NGEN_FORCING_BRANCH='development'
 #       NGEN_CAL_BRANCH='129809ac'
 #       NGEN_FORCING_BRANCH='xxxx'
-       echo
-       echo "Installing createInput"
-       if pip show "createInput" > /dev/null 2>&1; then
-           # Package is installed, reinstall without dependencies
-           pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
-       else
-           # Package is not installed, install with dependencies
-           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
-       fi
+        echo
+        echo "Installing createInput"
+        if pip show "createInput" > /dev/null 2>&1; then
+            # Package is installed, reinstall without dependencies
+            pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+        else
+            # Package is not installed, install with dependencies
+            pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+        fi
 
-       echo
-       echo "Installing swe_mapping"
-       if pip show "swe_mapping" > /dev/null 2>&1; then
-           # Package is installed, reinstall without dependencies
-           pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
-       else
-           # Package is not installed, install with dependencies
-           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
-       fi
+        echo
+        echo "Installing swe_mapping"
+        if pip show "swe_mapping" > /dev/null 2>&1; then
+            # Package is installed, reinstall without dependencies
+            pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
+        else
+            # Package is not installed, install with dependencies
+            pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
+        fi
 
-       generate_git_info
+        generate_git_info
     else
-       echo "CERF_VENV is not set. Please set the virtual environment variable."
-       exit 1
+        echo "CERF_VENV is not set. Please set the virtual environment variable."
+        exit 1
     fi
 fi
 
