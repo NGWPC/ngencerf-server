@@ -52,6 +52,11 @@ RUN --mount=type=secret,id=gitlab_token \
     rm -f /root/.gitconfig && \
     pip3 cache purge
 
+COPY cli /ngencerf/ngencerf-server/cli
+
+# Build CLI executable in cli/dist
+RUN cli/build_cli.sh
+
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
 
