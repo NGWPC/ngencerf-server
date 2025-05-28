@@ -33,6 +33,28 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
+def about() -> int:
+    """
+    Fetch and display git information from the calibration server in a formatted manner.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    response = requests.post(
+        f"{API_BASE}/calibration/get_git_info/",
+        headers=get_auth_headers()
+    )
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
+    if response_json and (git_info := response_json.get("git_info")):
+        for component, info in git_info.items():
+            print(f"\nComponent: {component}")
+            for key, value in info.items():
+                print(f"  {key.replace('_', ' ').capitalize()}: {value}")
+    return 0
+
+
 def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int:
     """
     Uploads a geopackage file for a given calibration run.
