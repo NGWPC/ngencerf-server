@@ -13,11 +13,47 @@ cerfServer="$SCRIPT_DIR"
 mkdir -p logs
 LOGFILE_DEV="logs/ngencerf_dev.log"
 
+# Ensure the virtual environment exists and is activated
+ensure_virtualenv() {
+    if [ -n "${CERF_VENV}" ] && [ "${CERF_VENV}" != "Docker" ]; then
+        VENV_PATH="$cerfServer/${CERF_VENV}"
+
+        if [ ! -d "$VENV_PATH" ]; then
+            echo "Virtual environment not found at $VENV_PATH. Creating it..."
+            python3 -m venv "$VENV_PATH"
+        fi
+
+        # shellcheck disable=SC1090
+        source "$VENV_PATH/bin/activate"
+    fi
+}
+
+
 # Log initial message to the development log only
 printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV"
 
 # Redirect stdout and stderr to LOGFILE_DEV
 exec > >(tee -a "$LOGFILE_DEV") 2>&1
+
+# Function to run Django management commands without logging redirection
+run_manage_command() {
+    echo "Running $*"
+    # Temporarily disable redirection
+    exec >/dev/tty 2>/dev/tty
+
+    python3 manage.py "$@"
+
+    # Restore redirection
+    exec > >(tee -a "$LOGFILE_DEV") 2>&1
+}
+
+# Special case: `manage` command
+if [ "$1" == "manage" ]; then
+    shift
+    ensure_virtualenv  # Activates and creates virtualenv if needed
+    run_manage_command "$@"
+    exit $?
+fi
 
 # Check for the --load-static flag
 LOAD_STATIC_DATA=false
@@ -55,16 +91,7 @@ generate_git_info() {
 if [ "${CERF_VENV}" != "Docker" ]; then
     # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
-        VENV_PATH="$cerfServer/${CERF_VENV}"
-
-        # Create the virtual environment if it doesn't exist
-        if [ ! -d "$VENV_PATH" ]; then
-            echo "Virtual environment not found at $VENV_PATH. Creating it..."
-            python3 -m venv "$VENV_PATH"
-        fi
-
-        # shellcheck disable=SC1090
-        source "$VENV_PATH/bin/activate"
+        ensure_virtualenv  # Activates and creates virtualenv if needed
 
         # Install all requirements
         echo "Installing requirements.txt"
@@ -102,18 +129,6 @@ if [ "${CERF_VENV}" != "Docker" ]; then
         exit 1
     fi
 fi
-
-# Function to run Django management commands without logging redirection
-run_manage_command() {
-    echo "Running $*"
-    # Temporarily disable redirection
-    exec >/dev/tty 2>/dev/tty
-
-    python3 manage.py "$@"
-
-    # Restore redirection
-    exec > >(tee -a "$LOGFILE_DEV") 2>&1
-}
 
 # Run management commands with proper logging
 run_manage_command migrate
