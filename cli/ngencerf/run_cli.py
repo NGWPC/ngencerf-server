@@ -21,7 +21,7 @@ from ngencerf.cli_functions import (
     upload_observational_data,
     upload_forcing_data,
     upload_geopackage_data,
-    download_zip, archive_job, unarchive_job,
+    download_zip, archive_job, unarchive_job, about,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
 
@@ -177,56 +177,41 @@ def main():
         return subparser
 
     # Registering all the subcommands
-    import_parser = add_parser("import", "Create job from a JSON file")
-    import_parser.add_argument("input_file", help="Path to the JSON file")
-    import_parser.add_argument(
-        "--run", "-r",
-        dest="run_after_import",
-        nargs="?",
-        type=str_to_bool,
-        const=True,  # Default to True if specified without a value
-        default=False,
-        help="Override the run_after_import field in the JSON file. "
-             "Use '--run' for True, '--run true' or '--run false' to set explicitly."
+    about_parser = add_parser("about", "Shows releases of the various server components")
+    about_parser.set_defaults(func=lambda cmd_args: about())
+
+    archive_parser = add_parser("archive", "Archive one or more jobs")
+    archive_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="+",  # One or more space-separated integers
+        help="One or more calibration run IDs"
     )
-    import_parser.set_defaults(func=lambda cmd_args: import_job(
-        job_file=cmd_args.input_file,
-        run_after_import=cmd_args.run_after_import
-    ))
+    archive_parser.set_defaults(func=lambda cmd_args: archive_job(cmd_args.run_ids))
 
-    update_parser = add_parser("update", "Update job from a JSON file")
-    update_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    update_parser.add_argument("input_file", help="Path to the JSON file")
-    update_parser.add_argument(
-        "--run", "-r",
-        dest="run_after_update",
-        nargs="?",
-        type=str_to_bool,
-        const=True,  # Default to True if specified without a value
-        default=False,
-        help="Override the run_after_import field in the JSON file. "
-             "Use '--run' for True, '--run true' or '--run false' to set explicitly."
+    cancel_parser = add_parser("cancel", "Cancel job")
+    cancel_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    cancel_parser.set_defaults(func=lambda cmd_args: cancel_job(cmd_args.run_id))
+
+    delete_parser = add_parser("delete", "Delete job")
+    delete_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="+",  # One or more space-separated integers
+        help="One or more calibration run IDs"
     )
-    update_parser.set_defaults(func=lambda cmd_args: update_job(
-        calibration_run_id=cmd_args.run_id,
-        job_file=cmd_args.input_file,
-        run_after_update=cmd_args.run_after_update
-    ))
+    delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_ids))
 
-    observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration run")
-    observation_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    observation_parser.add_argument("csv_file", help="Path to the observational CSV file")
-    observation_parser.set_defaults(func=lambda cmd_args: upload_observational_data(cmd_args.csv_file, cmd_args.run_id))
-
-    forcing_parser = add_parser("upload-forcing", "Upload a directory of forcing files for a calibration run")
-    forcing_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    forcing_parser.add_argument("forcing_dir", help="Path to directory containing forcing files")
-    forcing_parser.set_defaults(func=lambda cmd_args: upload_forcing_data(cmd_args.forcing_dir, cmd_args.run_id))
-
-    gpkg_parser = add_parser("upload-geopkg", "Upload a GPKG file for a calibration run")
-    gpkg_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    gpkg_parser.add_argument("gpkg_file", help="Path to the geopackage (.gpkg) file")
-    gpkg_parser.set_defaults(func=lambda cmd_args: upload_geopackage_data(cmd_args.gpkg_file, cmd_args.run_id))
+    download_parser = add_parser("download", "Download ZIP file for calibration run")
+    download_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    download_parser.add_argument(
+        "--output", "-o",
+        dest="output_path",
+        nargs="?",
+        const="__DEFAULT__",  # Use the sentinel value
+        help="Path to save ZIP file or directory (optional output path)"
+    )
+    download_parser.set_defaults(func=lambda cmd_args: download_zip(cmd_args.run_id, output_path=cmd_args.output_path))
 
     export_parser = add_parser("export", "Export job to JSON")
     export_parser.add_argument("run_id", type=int, help="Calibration run ID")
@@ -252,6 +237,56 @@ def main():
         display=cmd_args.show
     ))
 
+    forcing_parser = add_parser("upload-forcing", "Upload a directory of forcing files for a calibration run")
+    forcing_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    forcing_parser.add_argument("forcing_dir", help="Path to directory containing forcing files")
+    forcing_parser.set_defaults(func=lambda cmd_args: upload_forcing_data(cmd_args.forcing_dir, cmd_args.run_id))
+
+    gpkg_parser = add_parser("upload-geopkg", "Upload a GPKG file for a calibration run")
+    gpkg_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    gpkg_parser.add_argument("gpkg_file", help="Path to the geopackage (.gpkg) file")
+    gpkg_parser.set_defaults(func=lambda cmd_args: upload_geopackage_data(cmd_args.gpkg_file, cmd_args.run_id))
+
+    import_parser = add_parser("import", "Create job from a JSON file")
+    import_parser.add_argument("input_file", help="Path to the JSON file")
+    import_parser.add_argument(
+        "--run", "-r",
+        dest="run_after_import",
+        nargs="?",
+        type=str_to_bool,
+        const=True,  # Default to True if specified without a value
+        default=False,
+        help="Override the run_after_import field in the JSON file. "
+             "Use '--run' for True, '--run true' or '--run false' to set explicitly."
+    )
+    import_parser.set_defaults(func=lambda cmd_args: import_job(
+        job_file=cmd_args.input_file,
+        run_after_import=cmd_args.run_after_import
+    ))
+
+    jobs_parser = add_parser("jobs", "List jobs")
+    jobs_parser.add_argument(
+        "--output", "-o",
+        dest="output_path",
+        nargs="?",
+        const="__DEFAULT__",
+        help="Path to save the job list (optional output path)"
+    )
+    jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(output_path=cmd_args.output_path))
+
+    observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration run")
+    observation_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    observation_parser.add_argument("csv_file", help="Path to the observational CSV file")
+    observation_parser.set_defaults(func=lambda cmd_args: upload_observational_data(cmd_args.csv_file, cmd_args.run_id))
+
+    register_parser = add_parser("register", "Register new user")
+    register_parser.add_argument("email", nargs="?", help="Email address")
+    register_parser.set_defaults(func=lambda cmd_args: ngen_register(cmd_args.email))
+
+    run_parser = add_parser("run", "Submit calibration run")
+    run_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    run_parser.set_defaults(func=lambda cmd_args: run_job(cmd_args.run_id))
+
     show_parser = add_parser("show", "Display job details")
     show_parser.add_argument("run_id", type=int, help="Calibration run ID")
     show_parser.add_argument(
@@ -267,28 +302,6 @@ def main():
         display=True
     ))
 
-    run_parser = add_parser("run", "Submit calibration run")
-    run_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    run_parser.set_defaults(func=lambda cmd_args: run_job(cmd_args.run_id))
-
-    delete_parser = add_parser("delete", "Delete job")
-    delete_parser.add_argument(
-        "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration run IDs"
-    )
-    delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_ids))
-
-    archive_parser = add_parser("archive", "Archive one or more jobs")
-    archive_parser.add_argument(
-        "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration run IDs"
-    )
-    archive_parser.set_defaults(func=lambda cmd_args: archive_job(cmd_args.run_ids))
-
     unarchive_parser = add_parser("unarchive", "Unarchive one or more jobs")
     unarchive_parser.add_argument(
         "run_ids",
@@ -298,34 +311,24 @@ def main():
     )
     unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(cmd_args.run_ids))
 
-    cancel_parser = add_parser("cancel", "Cancel job")
-    cancel_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    cancel_parser.set_defaults(func=lambda cmd_args: cancel_job(cmd_args.run_id))
-
-    jobs_parser = add_parser("jobs", "List jobs")
-    jobs_parser.add_argument(
-        "--output", "-o",
-        dest="output_path",
+    update_parser = add_parser("update", "Update job from a JSON file")
+    update_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    update_parser.add_argument("input_file", help="Path to the JSON file")
+    update_parser.add_argument(
+        "--run", "-r",
+        dest="run_after_update",
         nargs="?",
-        const="__DEFAULT__",
-        help="Path to save the job list (optional output path)"
+        type=str_to_bool,
+        const=True,  # Default to True if specified without a value
+        default=False,
+        help="Override the run_after_import field in the JSON file. "
+             "Use '--run' for True, '--run true' or '--run false' to set explicitly."
     )
-    jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(output_path=cmd_args.output_path))
-
-    download_parser = add_parser("download", "Download ZIP file for calibration run")
-    download_parser.add_argument("run_id", type=int, help="Calibration run ID")
-    download_parser.add_argument(
-        "--output", "-o",
-        dest="output_path",
-        nargs="?",
-        const="__DEFAULT__",  # Use the sentinel value
-        help="Path to save ZIP file or directory (optional output path)"
-    )
-    download_parser.set_defaults(func=lambda cmd_args: download_zip(cmd_args.run_id, output_path=cmd_args.output_path))
-
-    register_parser = add_parser("register", "Register new user")
-    register_parser.add_argument("email", nargs="?", help="Email address")
-    register_parser.set_defaults(func=lambda cmd_args: ngen_register(cmd_args.email))
+    update_parser.set_defaults(func=lambda cmd_args: update_job(
+        calibration_run_id=cmd_args.run_id,
+        job_file=cmd_args.input_file,
+        run_after_update=cmd_args.run_after_update
+    ))
 
     # Parse arguments and execute the selected command
     args = parser.parse_args()
