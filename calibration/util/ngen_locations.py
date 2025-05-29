@@ -5,7 +5,7 @@ from typing import Literal
 from django.conf import settings
 
 from calibration.enums import ValidationType
-from calibration.models import CalibrationRun, ForecastRun
+from calibration.models import CalibrationRun, ForecastRun, ValidationRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ static_dirs = [
 files = [
     NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'ngen'),
     PARALLEL_NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'ngen'),
-    PARTITION_GENERATOR_EXE := os.path.join(settings.BASE_DIR,  'partitionGenerator'),
+    PARTITION_GENERATOR_EXE := os.path.join(settings.BASE_DIR, 'partitionGenerator'),
     CFE_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'cfe', 'cmake_build', 'libcfebmi.so'),
     SLOTH_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sloth', 'cmake_build', 'libslothmodel.so'),
     TOPMD_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'topmodel', 'cmake_build', 'libtopmodelbmi.so'),
@@ -349,3 +349,14 @@ def get_validation_metrics_nwm_retrospective_file(run: CalibrationRun) -> str:
 
 def get_validation_metrics_valid_iteration_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_metrics_valid_{worker_name}_iter{iteration_num}.csv")
+
+
+def get_ngen_logging_basename() -> str:
+    return "ngen_logging"
+
+
+def get_ngen_logging_file(run: CalibrationRun | ValidationRun, import_flag: bool = False) -> str:
+    calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
+    job_type = run.__class__.__name__.removesuffix('Run').lower()
+    file_name = f"{get_ngen_logging_basename()}_{job_type}_{run.id}{'_import' if import_flag else ''}.json"
+    return os.path.join(calibration_run.job_data_dir, file_name)

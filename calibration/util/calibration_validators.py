@@ -6,6 +6,7 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName, NgenLogging
+from calibration.util.caching import get_cached_modules_with_groups
 
 
 class BaseSerializer(serializers.Serializer):
@@ -137,7 +138,7 @@ class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
 
     def validate(self, data):
         """
-        Ensure that only one of calibration_run_id, validation_run_id, or forecast_run_id is specified.
+        Ensure that only one of calibration_run_id, validation_run_id or forecast_run_id is specified.
         """
         calibration_run_id = data.get('calibration_run_id')
         validation_run_id = data.get('validation_run_id')
@@ -924,15 +925,46 @@ class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDo
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class RunCalibrationJob(CalibrationRunSerializer):
+class LoggingConfigSerializer(BaseSerializer):
     logging_enabled = serializers.BooleanField(required=False, default=True)
-    modules = serializers.DictField(child=serializers.CharField(), required=False)
+    modules = serializers.DictField(child=serializers.CharField(), default=[])
 
     def validate_modules(self, value: dict) -> dict:
+        """
+        Lowercase all module names and validate:
+        - Keys (module names) must match known modules (case-insensitive),
+          or be the special case 'ngen'
+        - Values must be valid log levels from NgenLogging
+
+        Returns a new dict with all lowercase keys.
+        """
         validator = enum_validator(NgenLogging)
+
+        valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
+        valid_modules.add('ngen')  # Special case
+
+        errors = {}
+        normalized = {}
+
         for module_name, log_level in value.items():
-            validator(log_level)
-        return value
+            lowered_name = module_name.lower()
+            if lowered_name not in valid_modules:
+                errors[module_name] = f"Invalid module name: '{module_name}'"
+                continue
+            try:
+                validator(log_level)
+                normalized[lowered_name] = log_level
+            except ValueError as e:
+                errors[module_name] = f"Invalid log level for module '{module_name}': {e}"
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return normalized
+
+
+class RunCalibrationJob(CalibrationRunSerializer):
+    logging_config = LoggingConfigSerializer(required=False)
 
 
 def get_mpi_rules_field(required: bool = True) -> serializers.ListField:
@@ -1014,6 +1046,8 @@ class GetForecastJobsResponseSerializer(BaseSerializer):
 ##################################
 # Import/Export
 ##################################
+
+
 # All fields are required, so that the user can see what is missing.
 # Any objects will be set to an empty object, {} or []
 # Booleans will default to False
@@ -1044,6 +1078,7 @@ class ExportResponseSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
+    logging_config = LoggingConfigSerializer(required=False)
 
 
 class ImportDataSerializer(BaseSerializer):
@@ -1077,6 +1112,7 @@ class ImportDataSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
+    logging_config = LoggingConfigSerializer(required=False)
 
 
 class ImportSerializer(BaseSerializer):
