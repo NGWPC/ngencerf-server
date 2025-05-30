@@ -507,12 +507,14 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     metadata = data.get("metadata", {})
 
     print()
-    print(f"Setup - Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(f"Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(f"Status: {metadata.get('source_status')}")
     print(f"Job Data directory: {metadata.get('job_data_dir')}")
     print(f"Gage: {data.get('gage_id')}")
     print(f"Catchments: {metadata.get('num_catchments', '-')}")
-    print(f"Forcing Data: {data.get('forcing_source')}")
-    print(f"Observational Data: {data.get('observational_source')}")
+    print(f"Forcing Source: {data.get('forcing_source')}")
+    print(f"Observational Source: {data.get('observational_source')}")
+    print(f"Geopackage Source: {data.get('geopackage_source')}")
     print(data.get("description", "").strip())
     print()
 
