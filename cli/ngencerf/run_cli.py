@@ -178,7 +178,15 @@ def main():
 
     # Registering all the subcommands
     about_parser = add_parser("about", "Shows releases of the various server components")
-    about_parser.set_defaults(func=lambda cmd_args: about())
+    about_parser.add_argument(
+        "--output", "-o",
+        dest="output_path",
+        nargs="?",
+        const="__DEFAULT__",  # Use the sentinel value
+        default="__DEFAULT__",
+        help="Path to save the 'about' output (optional output path)"
+    )
+    about_parser.set_defaults(func=lambda cmd_args: about(output_path=cmd_args.output_path))
 
     archive_parser = add_parser("archive", "Archive one or more jobs")
     archive_parser.add_argument(
@@ -297,7 +305,6 @@ def main():
         dest="output_path",
         nargs="?",
         const="__DEFAULT__",  # Use a sentinel value
-        default="__DEFAULT__",
         help="Export job details to a file (optional output path)"
     )
     show_parser.set_defaults(func=lambda cmd_args: handle_export_display(

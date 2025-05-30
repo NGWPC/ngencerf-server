@@ -16,12 +16,6 @@ from ngencerf.cli_util import check_http_error
 
 API_BASE = "http://localhost:8000"
 
-# Default download directory (fallbacks to cwd if ~/Downloads is missing)
-DEFAULT_DOWNLOAD_DIR = os.path.expanduser("~/Downloads")
-if not os.path.isdir(DEFAULT_DOWNLOAD_DIR):
-    DEFAULT_DOWNLOAD_DIR = os.getcwd()
-
-
 def get_auth_headers() -> dict[str, str]:
     """
     Returns authentication headers using the ACCESS_TOKEN environment variable.
@@ -33,7 +27,7 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
-def about() -> int:
+def about(output_path: str | None = None) -> int:
     """
     Fetch and display git information from the calibration server in a formatted manner.
 
@@ -47,11 +41,13 @@ def about() -> int:
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
+
+    final_path = resolve_output_path(output_path, "about_ngencerf.json")
     if response_json and (git_info := response_json.get("git_info")):
-        for component, info in git_info.items():
-            print(f"\nComponent: {component}")
-            for key, value in info.items():
-                print(f"  {key.replace('_', ' ').capitalize()}: {value}")
+        with open(final_path, "w", encoding="utf-8") as f:
+            json.dump(git_info, f, indent=2)
+
+    print(f"ngenCerf 'about' info saved to {final_path}")
     return 0
 
 
@@ -474,7 +470,6 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
         _pretty_print_job(calibration_run_id, response_json)
 
     # If --output was used (including the default case), resolve the output path
-    print('output_path', output_path)
     if output_path is not None:
         path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
         with open(path, "w", encoding="utf-8") as f:
@@ -550,21 +545,27 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
     :param default_filename: The default filename to use if output_path is a directory or filename without a path.
     :return: The resolved full file path.
     """
-    # Use the default directory if no output path is specified
-    if output_path == "__DEFAULT__" or not output_path:
-        output_path = DEFAULT_DOWNLOAD_DIR
+    # Determine the base directory
+    if output_path is None or output_path == "__DEFAULT__":
+        base_dir = os.getcwd()
+        output_path = os.path.join(base_dir, default_filename)
+    else:
+        print("using output ", output_path)
+        # Expand user and environment variables
+        output_path = os.path.expanduser(os.path.expandvars(output_path))
 
-    output_path = os.path.expanduser(os.path.expandvars(output_path))
+        # If output_path is a directory, append the default filename
+        if os.path.isdir(output_path) or output_path.endswith(os.sep):
+            print('output is directory')
+            os.makedirs(output_path, exist_ok=True)
+            output_path = os.path.join(output_path, default_filename)
+        else:
+            # If output_path is just a filename, prepend current working directory
+            dir_name = os.path.dirname(output_path)
+            if not dir_name:
+                output_path = os.path.join(os.getcwd(), output_path)
+            else:
+                # Ensure the directory exists for the specified file path
+                os.makedirs(dir_name, exist_ok=True)
 
-    # Use the default directory if the path is just a filename
-    if not os.path.isabs(output_path) and not os.path.dirname(output_path):
-        output_path = os.path.join(DEFAULT_DOWNLOAD_DIR, output_path)
-
-    # If the path is a directory, use the default filename
-    if output_path.endswith(os.sep) or os.path.isdir(output_path):
-        os.makedirs(output_path, exist_ok=True)
-        return os.path.join(output_path, default_filename)
-
-    # Ensure the directory exists for full or relative paths
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     return output_path
