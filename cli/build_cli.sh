@@ -25,7 +25,7 @@ pip install --upgrade pip
 pip install pyinstaller
 
 echo "==> Installing build dependencies from pyproject.toml..."
-pip install -e .
+pip install .
 
 echo "Virtual environment: $VIRTUAL_ENV"
 

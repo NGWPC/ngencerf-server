@@ -779,6 +779,9 @@ def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config
         }
         This is currently only provided by the UI when calling run_calibration_job.
     """
+    if not logging_config_param:
+        logging_config_param = {}
+
     # Get all valid module names in lowercase, plus special-case 'ngen'
     valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
     valid_modules.add('ngen')

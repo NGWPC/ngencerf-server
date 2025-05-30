@@ -386,8 +386,15 @@ def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_a
     :return: 0 on success, 1 on failure
     """
     # Load the JSON file
-    with open(job_file, "r", encoding="utf-8") as f:
-        job_data = json.load(f)
+    try:
+        with open(job_file, "r", encoding="utf-8") as f:
+            job_data = json.load(f)
+    except FileNotFoundError:
+        print(f"{job_file} does not exist")
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON file {job_file}: {e}")
+        return 1
 
     # Override the run_after_import field if specified
     if run_after_import is not None:
@@ -467,6 +474,7 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
         _pretty_print_job(calibration_run_id, response_json)
 
     # If --output was used (including the default case), resolve the output path
+    print('output_path', output_path)
     if output_path is not None:
         path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
         with open(path, "w", encoding="utf-8") as f:

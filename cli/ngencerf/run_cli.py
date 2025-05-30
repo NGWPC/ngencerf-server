@@ -209,6 +209,7 @@ def main():
         dest="output_path",
         nargs="?",
         const="__DEFAULT__",  # Use the sentinel value
+        default="__DEFAULT__",
         help="Path to save ZIP file or directory (optional output path)"
     )
     download_parser.set_defaults(func=lambda cmd_args: download_zip(cmd_args.run_id, output_path=cmd_args.output_path))
@@ -220,6 +221,7 @@ def main():
         dest="output_path",
         nargs="?",
         const="__DEFAULT__",  # Use the sentinel value
+        default="__DEFAULT__",
         help="Path to save file or directory (optional output path)"
     )
     export_parser.add_argument(
@@ -270,6 +272,7 @@ def main():
         dest="output_path",
         nargs="?",
         const="__DEFAULT__",
+        default="__DEFAULT__",
         help="Path to save the job list (optional output path)"
     )
     jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(output_path=cmd_args.output_path))
@@ -294,6 +297,7 @@ def main():
         dest="output_path",
         nargs="?",
         const="__DEFAULT__",  # Use a sentinel value
+        default="__DEFAULT__",
         help="Export job details to a file (optional output path)"
     )
     show_parser.set_defaults(func=lambda cmd_args: handle_export_display(
