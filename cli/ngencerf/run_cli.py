@@ -265,7 +265,7 @@ def main():
         nargs="?",
         type=str_to_bool,
         const=True,  # Default to True if specified without a value
-        default=False,
+        default=None,
         help="Override the run_after_import field in the JSON file. "
              "Use '--run' for True, '--run true' or '--run false' to set explicitly."
     )
@@ -331,7 +331,7 @@ def main():
         nargs="?",
         type=str_to_bool,
         const=True,  # Default to True if specified without a value
-        default=False,
+        default=None,
         help="Override the run_after_import field in the JSON file. "
              "Use '--run' for True, '--run true' or '--run false' to set explicitly."
     )
@@ -349,7 +349,7 @@ def main():
         try:
             ngen_login()
         except Exception as e:
-            print('Error communicating with server')
+            print(f'Error communicating with server - {e}')
             sys.exit(1)
 
     # Call the appropriate handler and exit with the returned code

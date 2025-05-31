@@ -16,6 +16,7 @@ from ngencerf.cli_util import check_http_error
 
 API_BASE = "http://localhost:8000"
 
+
 def get_auth_headers() -> dict[str, str]:
     """
     Returns authentication headers using the ACCESS_TOKEN environment variable.
@@ -363,12 +364,12 @@ def list_jobs(output_path: str | None = None) -> int:
 
     markdown_table = tabulate.tabulate(rows, headers=headers, tablefmt="github")
 
-    path = resolve_output_path(output_path, f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md")
+    final_path = resolve_output_path(output_path, f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md")
 
-    with open(path, "w", encoding="utf-8") as f:
+    with open(final_path, "w", encoding="utf-8") as f:
         f.write(markdown_table)
 
-    print(f"Saved {len(rows)} jobs to {path}")
+    print(f"Saved {len(rows)} jobs to {final_path}")
     return 0
 
 
@@ -453,7 +454,6 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     """
     payload = {"calibration_run_id": calibration_run_id}
 
-    print(f"Sending request to {API_BASE}/calibration/export/")
     response = requests.post(
         f"{API_BASE}/calibration/export/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
@@ -469,13 +469,11 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     if display:
         _pretty_print_job(calibration_run_id, response_json)
 
-    # If --output was used (including the default case), resolve the output path
-    if output_path is not None:
-        path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(response_json, f, indent=2)
+    final_path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
+    with open(final_path, "w", encoding="utf-8") as f:
+        json.dump(response_json, f, indent=2)
 
-        print(f"Exported to {path}")
+    print(f"Job {calibration_run_id} exported to {final_path}")
     return 0
 
 
@@ -486,6 +484,7 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     :param calibration_run_id: ID of the calibration run
     :param data: Exported job data
     """
+
     def fmt(dt: str | None) -> str:
         """
         Formats an ISO timestamp string in GMT (UTC) to 'YYYY-MM-DD HH:MM'.
@@ -552,13 +551,11 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
         base_dir = os.getcwd()
         output_path = os.path.join(base_dir, default_filename)
     else:
-        print("using output ", output_path)
         # Expand user and environment variables
         output_path = os.path.expanduser(os.path.expandvars(output_path))
 
         # If output_path is a directory, append the default filename
         if os.path.isdir(output_path) or output_path.endswith(os.sep):
-            print('output is directory')
             os.makedirs(output_path, exist_ok=True)
             output_path = os.path.join(output_path, default_filename)
         else:
