@@ -259,16 +259,11 @@ class SaveTuningParametersSerializer(BaseSerializer):
         # Only validate ranges if minimum, maximum, and initial_value are provided
         min_val = data.get('minimum')
         max_val = data.get('maximum')
-        initial = data.get('initial_value')
 
         if min_val is not None and max_val is not None:
             if min_val > max_val:
                 raise serializers.ValidationError(
                     f"Minimum ({min_val}) must be less than maximum ({max_val}) for parameter {data['name']} in module {data['module']}"
-                )
-            if initial is not None and not (min_val <= initial <= max_val):
-                raise serializers.ValidationError(
-                    f"Value {initial} must be between minimum ({min_val:.10f}) and maximum ({max_val:.10f}) for parameter {data['name']} in module {data['module']}"
                 )
 
         return data
@@ -1087,14 +1082,11 @@ class ImportDataSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    # forcing_eds_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    # observational_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    # geopackage_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
