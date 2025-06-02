@@ -360,6 +360,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
+        'createInput': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {

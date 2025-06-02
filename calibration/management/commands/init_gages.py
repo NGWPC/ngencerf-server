@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 domains = list(Domain.objects.only('id', 'name').values('id', 'name'))
 alaska_domain = DomainEnum.get_instance('Alaska')
 hawaii_domain = DomainEnum.get_instance('Hawaii')
-puerto_rico_domain = DomainEnum.get_instance('Puerto Rico')
+puerto_rico_domain = DomainEnum.get_instance('Puerto_Rico')
 conus_domain = DomainEnum.get_instance('CONUS')
 
 rfc_dict = {rfc['name']: rfc['id'] for rfc in list(Rfc.objects.only('id', 'name').values('id', 'name'))}

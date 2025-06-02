@@ -60,6 +60,9 @@ def run_job_local(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str,
     else:
         raise ValueError(f"Unsupported run type: {type(run).__name__} (run id: {getattr(run, 'id', 'N/A')})")
 
+    # Remove nprocs
+    cmd_line_args.pop('nprocs', None)
+
     # Construct the shell script path based on the execution environment
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.LOCAL:
         spawn_command = [settings.RUNTIME_INFO.get(script_cmd)[1]]

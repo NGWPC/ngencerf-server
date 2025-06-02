@@ -640,7 +640,8 @@ def import_job(request: Request) -> Response:
     if run_after_import and not errors:
         errors, config_file = ngen_cal_input.ready_to_run(run)
         if not errors:
-            error_response = submit_job(run, config_file=config_file)
+            # create_ngen_logging_file(run, {}, create_import_file=True)
+            error_response = submit_job(run)
             if error_response:
                 return error_response
             imported_and_submitted = f"{imported_and_submitted} and submitted"

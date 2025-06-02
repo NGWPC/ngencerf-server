@@ -17,10 +17,9 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, NgenLogging
+from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun, CalibrationRun, CalibrationFormulation
-from calibration.models.base_run import BaseRun
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
@@ -31,7 +30,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
     CalibrationOrValidationOrForecastRunSerializer, ForecastJobSlurmCallbackRequestSerializer, \
     ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
-    GenericResponseSerializerWithValidator, RunCalibrationJob
+    GenericResponseSerializerWithValidator, RunCalibrationJob, MPINodesRulesSerializer, MPINodesRulesResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.called_from import get_caller_name
@@ -310,23 +309,20 @@ def run_calibration(request: Request) -> Response:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
-    logging_enabled = validator.get('logging_enabled')
-    modules = validator.get('modules')
+    logging_config = validator.get('logging_config')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
-    error_message = create_ngen_logging_file(run, logging_enabled, modules)
-    if error_message:
-        return ResponseError(error_message)
-
-    error_response = submit_job(run)
+    error_response = submit_job(run, logging_config=logging_config)
     if error_response:
         return error_response
 
-    response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name, 'submit_date': run.submit_date}
+    response = {'message': f'Calibration Job {run.id} has been submitted',
+                'calibration_run_id': calibration_run_id,
+                'status': run.status.name,
+                'submit_date': run.submit_date}
 
     response_validator, error_return = validate_response(SubmitCalibrationJobResponseSerializer, response)
     if error_return:
@@ -372,68 +368,6 @@ def should_include_metrics(run_status: Status, include_performance_metrics: bool
     Determines if performance metrics should be included based on job status and request parameters.
     """
     return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
-
-
-def create_ngen_logging_file(run: BaseRun, logging_enabled: bool, modules: dict) -> str | None:
-    """
-    Creates a JSON logging configuration file for a calibration or validation run,
-    and a symbolic link pointing to it using a consistent base name.
-
-    The file includes a dictionary of module names mapped to logging levels. Each module used
-    by the run (plus 'ngen') is assigned a level, defaulting to NgenLogging.INFO unless
-    overridden by the provided modules argument. Module names are matched case-insensitively.
-
-    :param run: CalibrationRun or ValidationRun instance.
-    :param logging_enabled: Boolean flag to enable or disable logging.
-    :param modules: Dictionary mapping module names to logging levels (e.g., {'ngen': 'DEBUG'}), or None.
-    :return: Error message string if any unknown modules are provided; otherwise, None.
-    """
-    formulations = [
-        name.lower()
-        for name in CalibrationFormulation.objects
-        .filter(calibration_run=run)
-        .values_list('module__name', flat=True)
-    ]
-
-    expected_modules = set(formulations) | {'ngen'}
-
-    modules_lower = {}
-    if modules is not None:
-        # Normalize input keys to lowercase first
-        modules_lower = {k.lower(): v for k, v in modules.items()}
-
-        # Validate after normalization
-        invalid_keys = [orig_key for orig_key in modules.keys() if orig_key.lower() not in expected_modules]
-        if invalid_keys:
-            return f"Invalid modules in logging configuration: {', '.join(invalid_keys)}."
-
-    # Build final logging config
-    module_dict = {
-        module: modules_lower.get(module, NgenLogging.INFO.value)
-        for module in expected_modules
-    }
-
-    ngen_logging = {
-        "logging_enabled": logging_enabled,
-        "modules": module_dict
-    }
-
-    job_type = 'calibration' if isinstance(run, CalibrationRun) else 'validation'
-    base_name = "ngen_logging"
-    file_name = f'{base_name}_{job_type}_{run.id}.json'
-    full_path = os.path.join(run.job_data_dir, file_name)
-
-    # Write the JSON file
-    with open(full_path, "w") as f:
-        json.dump(ngen_logging, f, indent=4)
-
-    # Create/overwrite the symbolic link
-    symlink_path = os.path.join(run.job_data_dir, f'{base_name}.json')
-    if os.path.islink(symlink_path) or os.path.exists(symlink_path):
-        os.remove(symlink_path)
-    os.symlink(file_name, symlink_path)
-
-    return None
 
 
 @extend_schema(
@@ -530,6 +464,37 @@ def process_swe_timeseries(request: Request) -> Response:
                 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def update_mpi_rules(request: Request) -> Response:
+    """
+    Undocumented endpoint for updating the MPI rules
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+    validator, error_return = validate_request(MPINodesRulesSerializer, data)
+    if error_return:
+        return error_return
+
+    mpi_rules = validator.get('mpi_rules')
+    if mpi_rules:
+        ngen_cal_input.MPI_NODE_RULES = mpi_rules
+
+    message = "Updated MPI Rules" if mpi_rules else "Current MPI Rules"
+    response = {
+        'message': message,
+        'mpi_rules': ngen_cal_input.MPI_NODE_RULES
+    }
+
+    response_validator, error_response = validate_response(MPINodesRulesResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
@@ -1160,7 +1125,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             # Log the original start and end ranges in this chunk, including line numbers
             chunk_start = chunk['dateTime'].min()
             chunk_end = chunk['dateTime'].max()
-            logger.info(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
+            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
 
             # Skip chunks that are entirely before the time range
             if chunk_end < start_datetime:

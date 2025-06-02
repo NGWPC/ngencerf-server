@@ -106,6 +106,14 @@ class DomainEnum(AbstractEnum):
     Domain Enum with database synchronization.
     """
 
+    PUERTO_RICO = 'Puerto_Rico'
+
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.PUERTO_RICO: ['Puerto Rico', 'Puerto_Rico']
+        }
+
     @classmethod
     def get_model(cls) -> Type[Domain]:
         return Domain

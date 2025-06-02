@@ -6,6 +6,7 @@ from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
     OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastCycleEnum, LogCategory, LogName, NgenLogging
+from calibration.util.caching import get_cached_modules_with_groups
 
 
 class BaseSerializer(serializers.Serializer):
@@ -137,7 +138,7 @@ class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
 
     def validate(self, data):
         """
-        Ensure that only one of calibration_run_id, validation_run_id, or forecast_run_id is specified.
+        Ensure that only one of calibration_run_id, validation_run_id or forecast_run_id is specified.
         """
         calibration_run_id = data.get('calibration_run_id')
         validation_run_id = data.get('validation_run_id')
@@ -258,16 +259,11 @@ class SaveTuningParametersSerializer(BaseSerializer):
         # Only validate ranges if minimum, maximum, and initial_value are provided
         min_val = data.get('minimum')
         max_val = data.get('maximum')
-        initial = data.get('initial_value')
 
         if min_val is not None and max_val is not None:
             if min_val > max_val:
                 raise serializers.ValidationError(
                     f"Minimum ({min_val}) must be less than maximum ({max_val}) for parameter {data['name']} in module {data['module']}"
-                )
-            if initial is not None and not (min_val <= initial <= max_val):
-                raise serializers.ValidationError(
-                    f"Value {initial} must be between minimum ({min_val:.10f}) and maximum ({max_val:.10f}) for parameter {data['name']} in module {data['module']}"
                 )
 
         return data
@@ -478,10 +474,6 @@ class GetCalibrationJobsRequestSerializer(BaseSerializer):
 # Gage Tab
 ##################################
 
-class DomainSerializer(BaseSerializer):
-    domain = serializers.CharField(required=True, validators=[enum_validator(DomainEnum)])
-
-
 class GageIdSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=True, allow_blank=False)
 
@@ -641,11 +633,13 @@ class GetPlotRequestSerializer(CalibrationOrValidationOrForecastRunSerializer):
     start = serializers.IntegerField(required=False, default=0, min_value=0)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
+
 class GetPlotsForComparisonRequestSerializer(CalibrationRunIdList):
     plot_name = serializers.CharField(required=True, allow_null=False, validators=[enum_validator(PlotDefinitionsEnum)])
     gage_id = serializers.CharField(required=True)
     start = serializers.IntegerField(required=False, default=0, min_value=0)
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
+
 
 class PaginationMetadataSerializer(BaseSerializer):
     start = serializers.IntegerField(required=True)
@@ -675,6 +669,7 @@ class GetPlotForComparisonResponseSerializer(GetPlotResponseSerializer):
 class GetPlotsForComparisonResponseSerializer(CalibrationRunIdList):
     plots = GetPlotForComparisonResponseSerializer(many=True, required=False)
     errors = serializers.ListField(required=False, child=GetPlotErrorResponseSerializer(required=True))
+
 
 ##################################
 # Formulation Tab
@@ -925,15 +920,94 @@ class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDo
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class RunCalibrationJob(CalibrationRunSerializer):
+class LoggingConfigSerializer(BaseSerializer):
     logging_enabled = serializers.BooleanField(required=False, default=True)
-    modules = serializers.DictField(child=serializers.CharField(), required=False)
+    modules = serializers.DictField(child=serializers.CharField(), default=[])
 
     def validate_modules(self, value: dict) -> dict:
+        """
+        Lowercase all module names and validate:
+        - Keys (module names) must match known modules (case-insensitive),
+          or be the special case 'ngen'
+        - Values must be valid log levels from NgenLogging
+
+        Returns a new dict with all lowercase keys.
+        """
         validator = enum_validator(NgenLogging)
+
+        valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
+        valid_modules.add('ngen')  # Special case
+
+        errors = {}
+        normalized = {}
+
         for module_name, log_level in value.items():
-            validator(log_level)
+            lowered_name = module_name.lower()
+            if lowered_name not in valid_modules:
+                errors[module_name] = f"Invalid module name: '{module_name}'"
+                continue
+            try:
+                validator(log_level)
+                normalized[lowered_name] = log_level
+            except ValueError as e:
+                errors[module_name] = f"Invalid log level for module '{module_name}': {e}"
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return normalized
+
+
+class RunCalibrationJob(CalibrationRunSerializer):
+    logging_config = LoggingConfigSerializer(required=False)
+
+
+def get_mpi_rules_field(required: bool = True) -> serializers.ListField:
+    return serializers.ListField(
+        required=required,
+        allow_null=not required,
+        child=serializers.ListField(
+            child=serializers.IntegerField(),
+            min_length=2,
+            max_length=2
+        )
+    )
+
+
+class MPINodesRulesSerializer(BaseSerializer):
+    mpi_rules = get_mpi_rules_field(required=False)
+
+    def validate_mpi_rules(self, value):
+        if value in (None, []):
+            # Accept empty input for GET-style query (no validation needed)
+            return value
+
+        previous_threshold = -1
+        for i, rule in enumerate(value):
+            max_catchments, num_nodes = rule
+
+            if max_catchments < -1:
+                raise serializers.ValidationError(f"Invalid threshold {max_catchments} at index {i}")
+
+            if num_nodes < 1:
+                raise serializers.ValidationError(f"Number of nodes must be ≥ 1 at index {i}")
+
+            if i < len(value) - 1:
+                if max_catchments == -1:
+                    raise serializers.ValidationError(f"-1 (infinite) threshold must only appear as the last rule (index {i})")
+                if max_catchments <= previous_threshold:
+                    raise serializers.ValidationError(f"Thresholds must be strictly increasing (problem at index {i})")
+
+            previous_threshold = max_catchments
+
+        if value[-1][0] != -1:
+            raise serializers.ValidationError("The final rule must have max_catchments = -1 to cover all cases")
+
         return value
+
+
+class MPINodesRulesResponseSerializer(GenericMessageResponseSerializer):
+    mpi_rules = get_mpi_rules_field(required=False)
 
 
 ##################################
@@ -967,6 +1041,8 @@ class GetForecastJobsResponseSerializer(BaseSerializer):
 ##################################
 # Import/Export
 ##################################
+
+
 # All fields are required, so that the user can see what is missing.
 # Any objects will be set to an empty object, {} or []
 # Booleans will default to False
@@ -997,6 +1073,7 @@ class ExportResponseSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=True, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
+    logging_config = LoggingConfigSerializer(required=False)
 
 
 class ImportDataSerializer(BaseSerializer):
@@ -1005,14 +1082,11 @@ class ImportDataSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    # forcing_eds_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    # observational_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    # geopackage_eds_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
@@ -1030,6 +1104,7 @@ class ImportDataSerializer(BaseSerializer):
     save_plot_iteration_frequency = serializers.IntegerField(min_value=1, required=False, allow_null=True)
     save_output_iteration = serializers.BooleanField(required=False, allow_null=False, default=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True, min_value=2)
+    logging_config = LoggingConfigSerializer(required=False)
 
 
 class ImportSerializer(BaseSerializer):

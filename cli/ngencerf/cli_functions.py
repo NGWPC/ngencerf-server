@@ -16,11 +16,6 @@ from ngencerf.cli_util import check_http_error
 
 API_BASE = "http://localhost:8000"
 
-# Default download directory (fallbacks to cwd if ~/Downloads is missing)
-DEFAULT_DOWNLOAD_DIR = os.path.expanduser("~/Downloads")
-if not os.path.isdir(DEFAULT_DOWNLOAD_DIR):
-    DEFAULT_DOWNLOAD_DIR = os.getcwd()
-
 
 def get_auth_headers() -> dict[str, str]:
     """
@@ -31,6 +26,30 @@ def get_auth_headers() -> dict[str, str]:
     return {
         "Authorization": f"Bearer {os.environ.get('ACCESS_TOKEN', '')}",
     }
+
+
+def about(output_path: str | None = None) -> int:
+    """
+    Fetch and display git information from the calibration server in a formatted manner.
+
+    Returns:
+        int: Exit code (0 for success, 1 for failure).
+    """
+    response = requests.post(
+        f"{API_BASE}/calibration/get_git_info/",
+        headers=get_auth_headers()
+    )
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
+
+    final_path = resolve_output_path(output_path, "about_ngencerf.json")
+    if response_json and (git_info := response_json.get("git_info")):
+        with open(final_path, "w", encoding="utf-8") as f:
+            json.dump(git_info, f, indent=2)
+
+    print(f"ngenCerf 'about' info saved to {final_path}")
+    return 0
 
 
 def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int:
@@ -345,12 +364,12 @@ def list_jobs(output_path: str | None = None) -> int:
 
     markdown_table = tabulate.tabulate(rows, headers=headers, tablefmt="github")
 
-    path = resolve_output_path(output_path, f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md")
+    final_path = resolve_output_path(output_path, f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md")
 
-    with open(path, "w", encoding="utf-8") as f:
+    with open(final_path, "w", encoding="utf-8") as f:
         f.write(markdown_table)
 
-    print(f"Saved {len(rows)} jobs to {path}")
+    print(f"Saved {len(rows)} jobs to {final_path}")
     return 0
 
 
@@ -363,11 +382,16 @@ def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_a
     :param run_after_import: Optional override for the run_after_import field
     :return: 0 on success, 1 on failure
     """
-    print(f"Loading job data from: {job_file}")
-
     # Load the JSON file
-    with open(job_file, "r", encoding="utf-8") as f:
-        job_data = json.load(f)
+    try:
+        with open(job_file, "r", encoding="utf-8") as f:
+            job_data = json.load(f)
+    except FileNotFoundError:
+        print(f"{job_file} does not exist")
+        return 1
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON file {job_file}: {e}")
+        return 1
 
     # Override the run_after_import field if specified
     if run_after_import is not None:
@@ -406,17 +430,17 @@ def import_job(job_file: str, run_after_import: bool | None = None) -> int:
     return _submit_job_data(job_file, run_after_import=run_after_import)
 
 
-def update_job(calibration_run_id: int, job_file: str, run_after_import: bool | None = None) -> int:
+def update_job(calibration_run_id: int, job_file: str, run_after_update: bool | None = None) -> int:
     """
     Updates an existing calibration job using a JSON file.
 
     :param calibration_run_id: ID of the calibration run
     :param job_file: Path to the JSON file
-    :param run_after_import: Optional override for the run_after_import field
+    :param run_after_update: Optional override for the run_after_import field
     :return: 0 on success, 1 on failure
     """
     print(f"Updating job {calibration_run_id} from: {job_file}")
-    return _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_import)
+    return _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_update)
 
 
 def handle_export_display(calibration_run_id: int, output_path: str | None = None, display: bool = False) -> int:
@@ -430,7 +454,6 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     """
     payload = {"calibration_run_id": calibration_run_id}
 
-    print(f"Sending request to {API_BASE}/calibration/export/")
     response = requests.post(
         f"{API_BASE}/calibration/export/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
@@ -446,13 +469,11 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     if display:
         _pretty_print_job(calibration_run_id, response_json)
 
-    # If --output was used (including the default case), resolve the output path
-    if output_path is not None:
-        path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(response_json, f, indent=2)
+    final_path = resolve_output_path(output_path, f"export_{calibration_run_id}.json")
+    with open(final_path, "w", encoding="utf-8") as f:
+        json.dump(response_json, f, indent=2)
 
-        print(f"Exported to {path}")
+    print(f"Job {calibration_run_id} exported to {final_path}")
     return 0
 
 
@@ -463,6 +484,7 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     :param calibration_run_id: ID of the calibration run
     :param data: Exported job data
     """
+
     def fmt(dt: str | None) -> str:
         """
         Formats an ISO timestamp string in GMT (UTC) to 'YYYY-MM-DD HH:MM'.
@@ -484,12 +506,14 @@ def _pretty_print_job(calibration_run_id: int, data: dict) -> None:
     metadata = data.get("metadata", {})
 
     print()
-    print(f"Setup - Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(f"Calibration Job ID {metadata.get('source_calibration_run_id', calibration_run_id)}")
+    print(f"Status: {metadata.get('source_status')}")
     print(f"Job Data directory: {metadata.get('job_data_dir')}")
     print(f"Gage: {data.get('gage_id')}")
     print(f"Catchments: {metadata.get('num_catchments', '-')}")
-    print(f"Forcing Data: {data.get('forcing_source')}")
-    print(f"Observational Data: {data.get('observational_source')}")
+    print(f"Forcing Source: {data.get('forcing_source')}")
+    print(f"Observational Source: {data.get('observational_source')}")
+    print(f"Geopackage Source: {data.get('geopackage_source')}")
     print(data.get("description", "").strip())
     print()
 
@@ -522,21 +546,25 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
     :param default_filename: The default filename to use if output_path is a directory or filename without a path.
     :return: The resolved full file path.
     """
-    # Use the default directory if no output path is specified
-    if output_path == "__DEFAULT__" or not output_path:
-        output_path = DEFAULT_DOWNLOAD_DIR
+    # Determine the base directory
+    if output_path is None or output_path == "__DEFAULT__":
+        base_dir = os.getcwd()
+        output_path = os.path.join(base_dir, default_filename)
+    else:
+        # Expand user and environment variables
+        output_path = os.path.expanduser(os.path.expandvars(output_path))
 
-    output_path = os.path.expanduser(os.path.expandvars(output_path))
+        # If output_path is a directory, append the default filename
+        if os.path.isdir(output_path) or output_path.endswith(os.sep):
+            os.makedirs(output_path, exist_ok=True)
+            output_path = os.path.join(output_path, default_filename)
+        else:
+            # If output_path is just a filename, prepend current working directory
+            dir_name = os.path.dirname(output_path)
+            if not dir_name:
+                output_path = os.path.join(os.getcwd(), output_path)
+            else:
+                # Ensure the directory exists for the specified file path
+                os.makedirs(dir_name, exist_ok=True)
 
-    # Use the default directory if the path is just a filename
-    if not os.path.isabs(output_path) and not os.path.dirname(output_path):
-        output_path = os.path.join(DEFAULT_DOWNLOAD_DIR, output_path)
-
-    # If the path is a directory, use the default filename
-    if output_path.endswith(os.sep) or os.path.isdir(output_path):
-        os.makedirs(output_path, exist_ok=True)
-        return os.path.join(output_path, default_filename)
-
-    # Ensure the directory exists for full or relative paths
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     return output_path

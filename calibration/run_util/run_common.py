@@ -21,7 +21,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_path, \
     get_forecast_dir, get_forecast_forcing_config_file
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
+from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, create_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from cerfServer.settings import NgenEnvironmentEnum
@@ -214,7 +214,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file},
+        {'input_file': input_file, 'nprocs': str(calibration_run.mpi_nprocs)},
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
@@ -252,6 +252,7 @@ def run_validation_job(validation_run: ValidationRun) -> None:
         # For running local, we need to leave these out
         cmd_line_args['worker_name'] = validation_run.worker_name
         cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
+    cmd_line_args['nprocs'] = str(validation_run.calibration_run.mpi_nprocs)
     execute_job(
         validation_run,
         cmd_line_args,
@@ -317,9 +318,11 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
-def submit_job(run: BaseRun, config_file=None) -> Response | None:
+def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response | None:
     """
     Submit a job after setting initial status and submission date.
+
+    logging_config comes from the run_calibration_job endpoint
 
     The specific job execution function is determined based on the job type
     and executed accordingly.
@@ -333,6 +336,9 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
     """
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
+        error_message = create_ngen_logging_file(run, logging_config)
+        if error_message:
+            return ResponseError(error_message)
         response = prepare_calibration_job(run, config_file)
         if response:
             return response

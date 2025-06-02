@@ -21,14 +21,15 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, NgenLogging
 from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun, CustomUser
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
+from calibration.util.caching import get_cached_modules_with_groups
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
 from calibration.util.ngen_locations import get_forecast_dir, get_ngen_stdout_log_filename, get_output_calibration_run_dir, \
-    get_output_validation_run_dir
+    get_output_validation_run_dir, get_ngen_logging_file, get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +273,7 @@ def create_validation_run_internal(
     """
     validation_type = validation_type or ValidationType.VALID_ITERATION
 
+    iteration_object = None
     if validation_type == ValidationType.VALID_ITERATION:
         if iteration_id is None:
             raise CerfException(f"Values must be supplied for both iteration_id")
@@ -280,8 +282,6 @@ def create_validation_run_internal(
             iteration_object = Iteration.objects.filter(calibration_run=calibration_run, id=iteration_id).get()
         except Iteration.DoesNotExist:
             raise CerfException(f"Cannot find Iteration Id {iteration_id} for Calibration Job {calibration_run.id}")
-    else:
-        iteration_object = None
 
     validation_run = ValidationRun.objects.create(status=StatusEnum.SAVED.db_instance,
                                                   calibration_run=calibration_run,
@@ -440,6 +440,7 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
+# TODO Fix me
 # Get the valid path for a file that can come from Data Services or user-upload
 def get_valid_path(source, eds_path, upload_enum, get_path_func):
     """
@@ -752,3 +753,71 @@ def get_user_email(request: Request) -> str:
 
     # Fallback if unauthenticated or missing 'email'
     return "Anonymous"
+
+
+def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict) -> None:
+    """
+    Create a JSON logging configuration file for a calibration or validation run, and a symbolic
+    link pointing to it using a consistent base name.
+
+    The generated config includes:
+    - All valid modules (based on cached definitions)
+    - A special module 'ngen'
+    - Default log levels set to INFO, unless overridden
+
+    Overrides are applied in this order:
+    1. A previously imported logging config file, if it exists
+    2. The provided `logging_config_param` dictionary
+
+    All module names are treated case-insensitively and stored in lowercase in the output.
+
+    :param run: A CalibrationRun or ValidationRun instance for which to create the logging config.
+    :param logging_config_param: A dictionary with optional overrides, e.g.:
+        {
+            "logging_enabled": False,
+            "modules": {"cfe-s": "DEBUG"}
+        }
+        This is currently only provided by the UI when calling run_calibration_job.
+    """
+    if not logging_config_param:
+        logging_config_param = {}
+
+    # Get all valid module names in lowercase, plus special-case 'ngen'
+    valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
+    valid_modules.add('ngen')
+
+    # Default all modules to INFO level
+    module_levels = {name: NgenLogging.INFO.value for name in valid_modules}
+    logging_enabled = True  # default
+
+    # Apply overrides from an imported config file, if it exists
+    # This occurs during 'import' or 'update' operations
+    import_path = get_ngen_logging_file(run, import_flag=True)
+    if os.path.exists(import_path):
+        with open(import_path, "r") as f:
+            imported = json.load(f)
+            logging_enabled = imported.get("logging_enabled", logging_enabled)
+            for name, level in imported.get("modules", {}).items():
+                module_levels[name.lower()] = level
+
+    # Apply overrides from the provided logging_config_param (used by UI during run_calibration_job)
+    logging_enabled = logging_config_param.get("logging_enabled", logging_enabled)
+    for name, level in logging_config_param.get("modules", {}).items():
+        module_levels[name.lower()] = level
+
+    # Build final logging config
+    ngen_logging = {
+        "logging_enabled": logging_enabled,
+        "modules": module_levels
+    }
+
+    # Write logging config to disk
+    output_path = get_ngen_logging_file(run, import_flag=False)
+    with open(output_path, "w") as f:
+        json.dump(ngen_logging, f, indent=4)
+
+    # Replace or create a symbolic link with a consistent name
+    symlink_path = os.path.join(run.job_data_dir, f'{get_ngen_logging_basename()}.json')
+    if os.path.islink(symlink_path) or os.path.exists(symlink_path):
+        os.remove(symlink_path)
+    os.symlink(output_path, symlink_path)
