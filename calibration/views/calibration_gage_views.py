@@ -90,7 +90,7 @@ def load_gage_tab(request: Request) -> Response:
         for item in DomainEnum.get_choices_with_fields(fields=['name', 'description'])
     ]
 
-    # Retrieve cached gages with necessary fields
+    # Retrieve cached active gages with necessary fields
     gages = [{
         'gage_id': gage.get('gage_id'),
         'headwater_calibration': gage.get('headwater_calibration'),

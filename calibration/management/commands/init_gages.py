@@ -173,6 +173,24 @@ class Command(BaseCommand):
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - PR.csv', puerto_rico_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - HI.csv', hawaii_domain)
 
+        # Deactivate gages.  This one should be done last
+        with (data_dir / 'inactive_gages.csv').open() as file:
+            inactive_count = 0
+            for raw in file:
+                line = raw.strip()
+                # Skip empty lines or comments
+                if not line or line.startswith('#'):
+                    continue
+
+                gage_id = line
+                if gage_id in gages:
+                    gages[gage_id]['is_active'] = False
+                    inactive_count += 1
+                else:
+                    logger.warning(f"Could not find gage_id '{gage_id}' in loaded gages for deactivation")
+
+            logger.info(f'Processed {inactive_count} inactive gages from {file.name}.')
+
         logger.info('')
         logger.info('Creating objects.... this will take a minute or two')
         row_num = 0
