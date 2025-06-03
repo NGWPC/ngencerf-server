@@ -5,7 +5,7 @@ from typing import Literal
 from django.conf import settings
 
 from calibration.enums import ValidationType
-from calibration.models import CalibrationRun, ForecastRun, ValidationRun
+from calibration.models import CalibrationRun, ForecastRun, ValidationRun, ForecastForcingDownloadRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -329,6 +329,26 @@ def get_validation_special_performance_file(run: CalibrationRun,
                                             validation_type: Literal[ValidationType.VALID_BEST, ValidationType.VALID_CONTROL]) -> str:
     validation_type_str = validation_type.value.split('_')[1].lower()
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
+
+
+def get_calibration_git_info_file(run: CalibrationRun):
+    return os.path.join(get_output_calibration_run_dir(run), f"git_info_calibration.json")
+
+
+def get_validation_special_git_info_file(run: ValidationRun):
+    return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{run.validation_type}.json")
+
+
+def get_validation_iteration_git_info_file(run: ValidationRun, worker_name: str, iteration_num: int):
+    return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{worker_name}_iter{iteration_num}.json")
+
+
+def get_forecast_download_git_info_file(forecast_forcing_download_run: ForecastForcingDownloadRun):
+    return os.path.join(get_forecast_dir(forecast_forcing_download_run.forecast_run), "git_info_forecast_download.json")
+
+
+def get_forecast_git_info_file(forecast_run: ForecastRun):
+    return os.path.join(get_forecast_dir(forecast_run), "git_info_forecast.json")
 
 
 def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:
