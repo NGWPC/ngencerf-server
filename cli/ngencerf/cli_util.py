@@ -30,6 +30,9 @@ def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool
             # Handle known response types separately
             if response_type == "error":
                 print(response_json.get("message", "Unknown error occurred."))
+                validation_errors = response_json.get("validation_errors")
+                if validation_errors:
+                    _print_validation_errors(validation_errors)
             elif response_type == "validation_error":
                 message = response_json.get("message", "Validation error occurred.")
                 print(message)
@@ -61,24 +64,30 @@ def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool
         return None, False
 
 
-def _print_validation_errors(errors: dict, prefix: str = "") -> None:
+def _print_validation_errors(errors: dict|list, prefix: str = "") -> None:
     """
     Recursively prints validation errors, handling both field-specific and nested errors.
     """
-    for field, error_list in errors.items():
-        # Handle nested dictionaries
-        if isinstance(error_list, dict):
-            _print_validation_errors(error_list, prefix=f"{prefix}{field}.")
-        # Handle lists of errors
-        elif isinstance(error_list, list):
-            for error in error_list:
-                # Handle nested error objects like ErrorDetail
-                if isinstance(error, dict):
-                    _print_validation_errors(error, prefix=f"{prefix}{field}.")
-                else:
-                    print(f"{prefix}{field}: {error}")
-        else:
-            print(f"{prefix}{field}: {error_list}")
+    if isinstance(errors, dict):
+        for field, error_list in errors.items():
+            # Handle nested dictionaries
+            if isinstance(error_list, dict):
+                _print_validation_errors(error_list, prefix=f"{prefix}{field}.")
+            # Handle lists of errors
+            elif isinstance(error_list, list):
+                for error in error_list:
+                    # Handle nested error objects like ErrorDetail
+                    if isinstance(error, dict):
+                        _print_validation_errors(error, prefix=f"{prefix}{field}.")
+                    else:
+                        print(f"{prefix}{field}: {error}")
+            else:
+                print(f"{prefix}{field}: {error_list}")
+    elif isinstance(errors, list):
+        for error in errors:
+            print(f"{prefix}{error}")
+    else:
+        print(f"{prefix}{errors}")
 
 
 def _pretty_print_json(response: str, suppress_html: bool = False):

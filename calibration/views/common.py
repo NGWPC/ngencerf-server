@@ -755,7 +755,7 @@ def get_user_email(request: Request) -> str:
     return "Anonymous"
 
 
-def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict) -> None:
+def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict = None) -> None:
     """
     Create a JSON logging configuration file for a calibration or validation run, and a symbolic
     link pointing to it using a consistent base name.
