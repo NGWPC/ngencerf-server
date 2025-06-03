@@ -115,7 +115,10 @@ RUN --mount=type=secret,id=gitlab_token \
 COPY cli /ngencerf/ngencerf-server/cli
 
 # Build CLI executable in cli/dist
-RUN cli/build_cli.sh
+RUN set -eux && \
+    cli/build_cli.sh && \
+    mkdir cli/bin && \
+    cp cli/dist/ngencerf cli/bin/ngencerf
 
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
