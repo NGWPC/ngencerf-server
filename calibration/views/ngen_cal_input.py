@@ -6,6 +6,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
+import pandas as pd
 import toml
 from datetimerange import DateTimeRange
 from django.db.models import F
@@ -191,16 +192,24 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                 # Check if forcing data has been uploaded
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
+                elif build:
+                    # Validate uploaded data
+                    errors += validate_csv_directory(forcing_dir)
+
             elif build:
                 # For non-uploaded data, subset the forcing data by time range
                 source_dir = run.forcing_eds_dir_path
                 if source_dir:
-                    subset_directory_by_time_range(
-                        source_dir,
-                        forcing_dir,
-                        DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                      max(run.calibration_end_period, run.validation_end_period))
-                    )
+                    # Validate each file in EDS forcing dir before subsetting
+                    errors += validate_csv_directory(source_dir)
+
+                    if not errors:
+                        subset_directory_by_time_range(
+                            source_dir,
+                            forcing_dir,
+                            DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                          max(run.calibration_end_period, run.validation_end_period))
+                        )
 
             datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -214,24 +223,30 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                 user_uploaded_observational_file = get_single_file(observational_dir)
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
-                else:
+                elif build:
+                    # Validate user-uploaded file before renaming
+                    errors += validate_csv_file(user_uploaded_observational_file, is_observational=True)
+
                     # Rename the observational file if necessary
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_observational_file != observational_file:
                         logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
                         os.rename(user_uploaded_observational_file, observational_file)
             elif build:
-                # For non-uploaded data, subset the observational data by time range
+                # Validate subsetted observational file
                 source_file = run.observational_eds_file_path
+                # For non-uploaded data, subset the observational data by time range
                 if source_file:
-                    subset_by_time_range(
-                        source_file,
-                        observational_file,
-                        DateTimeRange(
-                            min(run.calibration_start_period, run.validation_start_period),
-                            max(run.calibration_end_period, run.validation_end_period)
+                    errors += validate_csv_file(source_file, is_observational=True)
+                    if not errors:
+                        subset_by_time_range(
+                            source_file,
+                            observational_file,
+                            DateTimeRange(
+                                min(run.calibration_start_period, run.validation_start_period),
+                                max(run.calibration_end_period, run.validation_end_period)
+                            )
                         )
-                    )
 
             datafile['obs_dir'] = observational_dir
 
@@ -579,3 +594,92 @@ def get_mpi_nodes(num_catchments: int) -> int:
 
     logger.info(f'{num_catchments} catchments using {mpi_nodes} nodes')
     return mpi_nodes
+
+
+# This is really not a good place for this type of validation.  It takes a long time and is repeated even if this
+# Forcing or Observation data has been validated before
+# We really need to do validation of the data outside of the server.  This is static data that can just be validated in one fell swoop.
+# Ngen should also be updated to issue more readable and understandable error messages when it comes across bad data.
+def validate_csv_file(path: str, is_observational: bool) -> list[str]:
+    """
+    Validates a forcing or observational CSV file for structure and numeric value expectations.
+
+    :param path: Path to the CSV file.
+    :param is_observational: Whether this is observational (2-column) or forcing (9-column) data.
+    :return: A list of validation error strings.
+    """
+    data_type = 'observational' if is_observational else 'forcing'
+    logger.info(f"Validating {data_type} file {path}")
+    errors = []
+    expected_columns = 2 if is_observational else 9
+    rows = []
+
+    # Check column count on each row manually first
+    try:
+        with open(path, newline='') as f:
+            reader = csv.reader(f)
+            for i, row in enumerate(reader, start=1):
+
+                # Simulate malformed row by dropping a column from row 2
+                # if i == 2:
+                #     row = row[:-1]  # remove last column to simulate structural error
+
+                if len(row) != expected_columns:
+                    errors.append(f"{path}: Row {i} has {len(row)} columns, expected {expected_columns}")
+                    logger.error(errors)
+                    # Only report the first structural error to avoid duplication
+                    return errors
+
+                rows.append(row)
+    except Exception as e:
+        return [f"{path}: Failed to read CSV (structural check): {e}"]
+
+    if len(rows) < 2:
+        return [f"{path}: File does not contain data rows"]
+
+    if len(rows[0]) != expected_columns:
+        return [f"{path}: Header has {len(rows[0])} columns, expected {expected_columns}"]
+
+    # Now read the file fully with pandas for per-column type checking
+    try:
+        df = pd.DataFrame(rows[1:], columns=rows[0])  # Assumes header is first row
+        df = df.reset_index(drop=True)  # Ensure numeric row indices
+    except Exception as e:
+        return [f"{os.path.basename(path)}: Failed to read CSV: {e}"]
+
+    # Inject bad value to simulate an error
+    # df.iloc[0, 1] = "not_a_number"
+
+    # Validate all value columns (non-timestamp)
+    value_columns = df.columns[1:]
+    for row_number, (_, row) in enumerate(df.iterrows(), start=2):  # start=2 = header + 1-indexed
+        for col in value_columns:
+            try:
+                float(row[col])
+            except (ValueError, TypeError):
+                errors.append(f"{path}: Row {row_number}, column '{col}' must be numeric (value='{row[col]}')")
+
+    return errors
+
+
+def validate_csv_directory(dir_path: str) -> list[str]:
+    """
+    Validates all forcing CSV files in a directory using validate_csv_file.
+    Groups errors by file for easier debugging.
+
+    :param dir_path: Path to the directory.
+    :return: List of all error messages across files.
+    """
+    if not os.path.isdir(dir_path):
+        return [f"{dir_path} is not a directory"]
+
+    errors = []
+    for f in sorted(os.listdir(dir_path)):
+        full_path = os.path.join(dir_path, f)
+        if os.path.isfile(full_path) and f.lower().endswith(".csv"):
+            file_errors = validate_csv_file(full_path, is_observational=False)
+            if file_errors:
+                logger.error(file_errors)
+                errors.extend(file_errors)
+
+    return errors

@@ -1,8 +1,8 @@
-Django~=5.2
+Django~=5.2.2
 djangorestframework~=3.16
 djangorestframework-simplejwt~=5.5.0
 geopandas~=1.0.1
-matplotlib~=3.10.1
+matplotlib~=3.10.3
 fiona~=1.10.1
 shapely~=2.1.0
 toml~=0.10.2
