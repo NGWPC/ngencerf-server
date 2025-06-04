@@ -1,9 +1,8 @@
-FROM registry.sh.nextgenwaterprediction.com/infrastructure/rockylinux/rockylinux:latest
+FROM rockylinux:8
 
 # Install runtime dependencies
 RUN set -eux && \
     dnf install -y yum-utils epel-release && \
-    dnf config-manager --set-enabled crb && \
     dnf install -y \
         file \
         findutils \
