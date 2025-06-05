@@ -10,10 +10,17 @@ source "$SCRIPT_DIR/cerfserver.env"
 cerfServer="$SCRIPT_DIR"
 
 # Redirect stdout and stderr to a log file and the console
-mkdir -p logs
-LOGFILE_DEV="logs/ngencerf_dev.log"
+mkdir -p "$cerfServer/logs"
+LOGFILE_DEV="$cerfServer/logs/ngencerf_dev.log"
+printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV"
+exec > >(tee -a "$LOGFILE_DEV") 2>&1
 
-# Ensure the virtual environment exists and is activated
+#=======================================================================
+# Function: ensure_virtualenv
+#   - If CERF_VENV is empty or “Docker”, do nothing
+#   - If the directory "$cerfServer/$CERF_VENV" does not exist, create it.
+#   - Activate that venv so “python3” and “pip” later refer to the venv.
+#=======================================================================
 ensure_virtualenv() {
     if [ -n "${CERF_VENV}" ] && [ "${CERF_VENV}" != "Docker" ]; then
         VENV_PATH="$cerfServer/${CERF_VENV}"
@@ -28,26 +35,29 @@ ensure_virtualenv() {
     fi
 }
 
-
-# Log initial message to the development log only
-printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV"
-
 # Redirect stdout and stderr to LOGFILE_DEV
 exec > >(tee -a "$LOGFILE_DEV") 2>&1
 
-# Function to run Django management commands without logging redirection
+#=======================================================================
+# Function: run_manage_command
+#   - Temporarily “un-redirects” stdout/stderr so you can see Django output.
+#   - Runs “python3 $SCRIPT_DIR/manage.py <args…>” (which will use the venv’s python).
+#   - Then re-redirects stdout/stderr back to the logfile.
+#=======================================================================
 run_manage_command() {
-    echo "Running $*"
+    echo "Running manage.py $*"
     # Temporarily disable redirection
     exec >/dev/tty 2>/dev/tty
 
-    python3 manage.py "$@"
+    python3 "$SCRIPT_DIR/manage.py" "$@"
 
     # Restore redirection
     exec > >(tee -a "$LOGFILE_DEV") 2>&1
 }
 
-# Special case: `manage` command
+#=======================================================================
+# Special case: if the first argument is “manage”, just run manage.py <args>
+#=======================================================================
 if [ "$1" == "manage" ]; then
     shift
     ensure_virtualenv  # Activates and creates virtualenv if needed
@@ -55,7 +65,9 @@ if [ "$1" == "manage" ]; then
     exit $?
 fi
 
-# Check for the --load-static flag
+#=======================================================================
+# Parse “--load-static” flag (if present), then shift it away
+#=======================================================================
 LOAD_STATIC_DATA=false
 for arg in "$@"; do
   case $arg in
@@ -96,7 +108,7 @@ if [ "${CERF_VENV}" != "Docker" ]; then
         # Install all requirements
         echo "Installing requirements.txt"
         pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r "$SCRIPT_DIR/requirements.txt"
 
         # Doing a pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
         NGEN_CAL_BRANCH='development'
