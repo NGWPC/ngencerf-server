@@ -27,7 +27,7 @@ ensure_virtualenv() {
 
         if [ ! -d "$VENV_PATH" ]; then
             echo "Virtual environment not found at $VENV_PATH. Creating it..."
-            python3 -m venv "$VENV_PATH"
+            python3.11 -m venv "$VENV_PATH"
         fi
 
         # shellcheck disable=SC1090
@@ -41,7 +41,7 @@ exec > >(tee -a "$LOGFILE_DEV") 2>&1
 #=======================================================================
 # Function: run_manage_command
 #   - Temporarily “un-redirects” stdout/stderr so you can see Django output.
-#   - Runs “python3 $SCRIPT_DIR/manage.py <args…>” (which will use the venv’s python).
+#   - Runs “python $SCRIPT_DIR/manage.py <args…>” (which will use the venv’s python).
 #   - Then re-redirects stdout/stderr back to the logfile.
 #=======================================================================
 run_manage_command() {
@@ -49,7 +49,7 @@ run_manage_command() {
     # Temporarily disable redirection
     exec >/dev/tty 2>/dev/tty
 
-    python3 "$SCRIPT_DIR/manage.py" "$@"
+    python "$SCRIPT_DIR/manage.py" "$@"
 
     # Restore redirection
     exec > >(tee -a "$LOGFILE_DEV") 2>&1
@@ -171,7 +171,7 @@ echo "Starting server"
 # Restore original stdout and stderr before starting the server
 exec >/dev/tty 2>/dev/tty
 
-python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
 
 if [ -n "${CERF_VENV}" ]; then
     deactivate
