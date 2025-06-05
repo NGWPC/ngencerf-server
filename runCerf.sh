@@ -143,7 +143,10 @@ if [ "${CERF_VENV}" != "Docker" ]; then
 fi
 
 # Run management commands with proper logging
-run_manage_command migrate
+if ! run_manage_command migrate; then
+  echo "migrate failed"
+  exit 1
+fi
 
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
 if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
@@ -152,18 +155,31 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
 
     run_manage_command createsuperuser_docker --noinput --password admin --email admin@nextgenwaterprediction.com
     echo
-    run_manage_command init_sql
+    if ! run_manage_command init_sql; then
+      echo "init_sql failed"
+      exit 1
+    fi
+
     echo
-    run_manage_command init_gages
+    if ! run_manage_command init_gages; then
+      echo "init_gages failed"
+      exit 1
+    fi
 
     touch "${CERF_LOAD_STATIC_DATA}"
 else
     # Run this every time, since sometimes there are updates and it is very quick
-    run_manage_command init_sql
+    if ! run_manage_command init_sql; then
+      echo "init_sql failed"
+      exit 1
+    fi
 fi
 
 echo
-run_manage_command pre_start
+if ! run_manage_command pre_start; then
+  echo "pre_start failed"
+  exit 1
+fi
 
 echo
 echo "Starting server"
