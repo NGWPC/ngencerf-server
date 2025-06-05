@@ -24,6 +24,7 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Sa
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
+from calibration.views.calibration_formulation_views import have_LSTM
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
     get_valid_path, format_datetime, get_user_email
@@ -256,6 +257,9 @@ def save_tuning_tab(request: Request) -> Response:
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
+
+    if have_LSTM(run) and parameters:
+        return ResponseError('You cannot specify parameters when using LSTM')
 
     run.automatic_validation = automatic_validation
 

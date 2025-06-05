@@ -129,15 +129,17 @@ def save_formulation_tab(request) -> Response:
 
     new_module_names = set(validator.get('modules'))
     calibration_run_id = validator.get('calibration_run_id')
-    user_formulation_name = validator.get('formulation_name')
     use_sloth = validator.get('use_sloth')
     sloth_parameters = validator.get('sloth_parameters')
+    have_lstm = 'LSTM' in new_module_names
+    if have_lstm and (sloth_parameters or use_sloth):
+        return ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
-    run.user_formulation_name = user_formulation_name
+    run.user_formulation_name = validator.get('formulation_name')
 
     # Validate modules and formulation constraints
     error_message = validate_modules(new_module_names)
@@ -315,6 +317,36 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
 
+    # Prepare containers for fatal vs. non-fatal messages
+    fatal_errors: list[str] = []
+    nonfatal_errors: list[str] = []
+
+    # --- Special case: if LSTM is present, enforce LSTM-specific rules and skip the rest ---
+    if "LSTM" in module_names:
+        if len(module_names) > 2:
+            # More than two modules with LSTM is not allowed
+            fatal_errors.append("LSTM cannot be combined with more than one other module.")
+            return fatal_errors, nonfatal_errors
+
+        if len(module_names) < 2:
+            # LSTM alone (no other module) is not allowed
+            fatal_errors.append(
+                "When LSTM is specified, exactly one other Routing module must be included."
+            )
+            return fatal_errors, nonfatal_errors
+
+        # At this point, len(module_names) == 2 and one of them is LSTM
+        other_name = next(name for name in module_names if name != "LSTM")
+        other_module = get_cached_module_by_name(other_name)
+        other_groups = [g.name for g in other_module.groups.all()]
+        if "Routing" not in other_groups:
+            fatal_errors.append(
+                f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
+            )
+        return fatal_errors, nonfatal_errors
+
+    # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
+
     # Count how many selected modules belong to each group
     group_defs = formulation_validations["formulation_rules"]["group_requirements"]
     group_counts = {grp_name: 0 for grp_name in group_defs}
@@ -328,17 +360,13 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
             if group.name in group_counts:  # Only count groups that are in the group_requirements
                 group_counts[group.name] += 1
 
-    # Prepare containers for fatal vs. non-fatal errors
-    fatal_errors: list[str] = []
-    nonfatal_errors: list[str] = []
-
     # 1) Check module_exclusions
     excl_defs = formulation_validations["formulation_rules"].get("module_exclusions", {})
     for excluded_module, rules in excl_defs.items():
         if excluded_module in module_names:
             must_have_modules = rules.get("must_have", [])
             # Check if any of the required modules are present
-            if not any(module in module_names for module in must_have_modules):
+            if not any(m in module_names for m in must_have_modules):
                 msg = (
                     f"{excluded_module} module cannot exist without one of: "
                     f"{', '.join(str(m) for m in must_have_modules)}"
@@ -400,3 +428,9 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], modu
         CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
     return None
+
+
+def have_LSTM(run: CalibrationRun) -> bool:
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+    module_names = {formulation.module.name for formulation in formulations}
+    return 'LSTM' in module_names

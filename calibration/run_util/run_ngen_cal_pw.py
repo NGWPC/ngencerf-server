@@ -86,9 +86,9 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun."
         )
 
+    url = urljoin(settings.SLURM_URL, url_endpoint)
     # Common payload preparation
     payload['auth_token'] = (None, generate_custom_token(owner, TOKEN_SLURM_SCOPE))
-    url = urljoin(settings.SLURM_URL, url_endpoint)
 
     logger.info(f"Submitting Slurm job to {url} with payload: {payload}")
     response = requests.post(url, files=payload)
@@ -191,7 +191,7 @@ def cancel_slurm_job(run: BaseRun) -> bool:
     logger.info(f"Cancelling slurm job {run.slurm_job_id} for {job_description}")
 
     url = urljoin(settings.SLURM_URL, settings.SLURM_CANCEL_JOB_ENDPOINT)
-    payload = {'slurm_job_id': (None, run.slurm_job_id)}
+    payload = {'slurm_job_id': (None, str(run.slurm_job_id))}
 
     logger.info(f'Slurm cancel-job payload to {url}: {payload}')
     response = requests.post(url, files=payload)

@@ -195,6 +195,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     general['calibration_run_id'] = run.id
     general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
+    have_LSTM_flag = have_LSTM(run)
+
     catchments = None
     # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', error_object):
@@ -345,10 +347,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
-    if not is_missing(run.objective_function, 'Objective function', error_object):
+    if not is_missing(run.objective_function, 'Objective function', errors_object, have_LSTM=have_LSTM_flag):
         calibration['objective_function'] = run.objective_function.name.lower()
 
-    if not is_missing(run.optimization, 'Optimization', error_object):
+    if not is_missing(run.optimization, 'Optimization', errors_object, have_LSTM=have_LSTM_flag):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         # Validate if all inputs are provided
@@ -370,7 +372,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         if all_input_names:
             error_object.add_warning(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', error_object):
+    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', error_object, have_LSTM=have_LSTM_flag):
         calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
 
     # This field is not required from user
@@ -379,7 +381,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', error_object):
+    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', errors_object, have_LSTM=have_LSTM_flag):
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
@@ -438,7 +440,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                   .select_related('calibration_formulation__module')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__module__name')))
 
-    if not params:
+    if not params and not have_LSTM_flag:
         error_object.add_warning("At least one parameter must be specified")
     else:
         param_error = False
@@ -557,7 +559,8 @@ def is_missing(value: Any, label: str, report: ErrorReport) -> bool:
     :return: True if the value is None, False otherwise.
     """
     if value is None:
-        report.add_warning(f'{label} is required')
+        if not have_LSTM:
+        	report.add_warning(f'{label} is required')
         return True
     return False
 

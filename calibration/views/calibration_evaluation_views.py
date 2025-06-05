@@ -483,7 +483,7 @@ def get_log_status(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def get_calibration_log(calibration_run: CalibrationRun, log_name: LogName):
+def get_calibration_log(calibration_run: CalibrationRun, log_name: LogName) -> str:
     """
     Retrieves the appropriate log file for a given calibration run.
 
@@ -502,7 +502,7 @@ def get_calibration_log(calibration_run: CalibrationRun, log_name: LogName):
     raise CerfException(f'Invalid log name: {log_name}')
 
 
-def get_validation_log(validation_run: ValidationRun, log_name: LogName):
+def get_validation_log(validation_run: ValidationRun, log_name: LogName) -> str:
     """
     Fetches the appropriate log file for a specific validation run.
 
@@ -534,10 +534,10 @@ def get_validation_log(validation_run: ValidationRun, log_name: LogName):
     if log_name == LogName.NGEN_STDOUT:
         return find_ngen_stdout_log(validation_run)
 
-    raise CerfException(f'Invalid log name: {log_name}')
+    raise CerfException(f'Invalid log_name: {log_name}')
 
 
-def get_global_log(run: CalibrationRun | ValidationRun, log_name: LogName):
+def get_global_log(run: CalibrationRun | ValidationRun, log_name: LogName) -> str:
     """
     Retrieves the global log file, if applicable.
 
