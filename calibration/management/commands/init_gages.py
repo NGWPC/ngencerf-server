@@ -52,7 +52,9 @@ class Command(BaseCommand):
             # need to get a user that is guaranteed to be there, such as admin
             user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
-            logger.error('Admin user does not exist.')
+            logger.error('********************************')
+            logger.error('** Admin user does not exist. **')
+            logger.error('********************************')
             sys.exit(1)
 
         logger.info(f"In init_gages: email: {cast(CustomUser, user).email}")
