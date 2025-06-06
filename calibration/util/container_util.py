@@ -27,10 +27,12 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
     try:
         # Step 1: Create a temporary container
         create_cmd = ["docker", "create", "--name", container_name, image_name]
+        logger.debug(create_cmd)
         subprocess.run(create_cmd, check=True, capture_output=True, text=True)
 
         # Step 2: Copy the file from the container
         copy_cmd = ["docker", "cp", f"{container_name}:{src_path}", dest_path]
+        logger.debug(copy_cmd)
         subprocess.run(copy_cmd, check=True)
 
         logger.info(f"Successfully copied {src_path} to {dest_path}")
