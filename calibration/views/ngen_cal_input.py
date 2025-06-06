@@ -48,13 +48,13 @@ CONFIG_TEMPLATE = {
     },
 
     "Calibration": {
-        "optimization_algorithm": "",
+        "optimization_algorithm": None,
         "swarm_size": 0,
         "c1": 0,
         "c2": 0,
         "w": 0,
         "r": 0,
-        "objective_function": "",
+        "objective_function": None,
         "start_iteration": 0,
         "number_iteration": 0,
         # Whether restart calibration from the stopped iteration
@@ -113,11 +113,13 @@ CONFIG_TEMPLATE = {
         "lasam_bmi_dir": "",
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
+        "lstm_bmi_dir": "",
 
         # Static file
         "noah_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'noah-owp-modular'),
         "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
         "lasam_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lasam'),
+        "lstm_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lstm'),
 
         # Parquet file - base on domain
         "attributes_file": "",

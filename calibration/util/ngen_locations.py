@@ -69,9 +69,11 @@ def check_files():
 
 # Construct the directory where the Input/Output is
 def get_gage_dir(run: CalibrationRun) -> str:
+    objective_function_name = run.objective_function.name if run.objective_function else 'None'
+    optimization_name = run.optimization.name if run.optimization else 'None'
     return os.path.join(
         run.job_data_dir,
-        f"{run.objective_function.name.lower()}_{run.optimization.name.lower()}",
+        f"{objective_function_name.lower()}_{optimization_name.lower()}",
         run.user_formulation_name,
         run.gage.gage_id
     )

@@ -55,6 +55,8 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             f"geopackage_eds_file_path: {self.geopackage_eds_file_path}, "
             f"forcing_eds_dir_path: {self.forcing_eds_dir_path}, "
             f"observational_eds_file_path: {self.observational_eds_file_path}, "
+            f"objective_function.name: {self.objective_function.name}, "
+            f"optimization.name: {self.optimization.name}, "
             f"status.name: {self.status.name}, "
             f"is_archived: {self.is_archived}"
         )
