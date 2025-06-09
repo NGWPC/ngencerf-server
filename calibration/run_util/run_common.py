@@ -350,7 +350,7 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
         with transaction.atomic():
             # Set submission date and status
             run.submit_date = datetime.now(timezone.utc)
-            run.status = StatusEnum.RUNNING.db_instance
+            run.status = StatusEnum.SUBMITTED.db_instance
             run.save(update_fields=['submit_date', 'status'])
 
         # Determine the appropriate job execution function
@@ -476,7 +476,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
                 submit_job(best_validation_run)
 
 
-def run_generic_job_callback(
+def run_generic_job_end_callback(
         run: BaseRun,
         status: Future | SlurmStatusEnum,
         check_if_failed: Callable[[BaseRun, Future | SlurmStatusEnum], bool],

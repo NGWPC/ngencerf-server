@@ -128,7 +128,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
+        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
@@ -377,19 +377,22 @@ def has_running_associated_jobs(run: CalibrationRun) -> str | None:
     :return: A message indicating if the job or its associated jobs are running, or None if there are no running jobs.
     """
     # Check if the calibration run itself is running
-    if run.status == StatusEnum.RUNNING.db_instance:
+    if run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
         return f'Calibration Job {run.id} is running. Cannot proceed while the job is running.'
 
     # Check if any associated validation jobs are running
-    if ValidationRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+    if ValidationRun.objects.filter(calibration_run=run,
+                                    status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
         return f'Calibration Job {run.id} has associated validation jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forecast jobs are running
-    if ForecastRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+    if ForecastRun.objects.filter(calibration_run=run,
+                                  status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
         return f'Calibration Job {run.id} has associated forecast jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forcing download jobs are running
-    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run,
+                                                 status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
         return f'Calibration Job {run.id} has associated forcing download jobs that are still running. Cannot proceed until they are completed.'
 
     # No running jobs found

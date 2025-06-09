@@ -158,7 +158,8 @@ def delete_forecast_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    if run.status == StatusEnum.RUNNING.db_instance or run.forcing_download_run.status == StatusEnum.RUNNING.db_instance:
+    if (run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance] or
+            run.forcing_download_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]):
         return ResponseError(f'Forecast Job {run.id} is running.  Cannot delete a running job')
 
     run_id = run.id

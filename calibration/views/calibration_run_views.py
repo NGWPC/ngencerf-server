@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -36,7 +37,7 @@ from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, TOKEN_SLURM_SCOPE, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
-    get_forecast_forcing_download_run, join_with_or, get_user_email
+    get_forecast_forcing_download_run, join_with_or, get_user_email, get_job_description
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -178,12 +179,13 @@ def get_status(request: Request) -> Response:
         response['performance_metrics'] = calibration_metrics
 
     # Add error messages if applicable
-    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
+    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
         if messages:
             response['errors'] = messages.get('errors')
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'],
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response,
+                                                           fields_to_truncate=['validations', 'forecasts'],
                                                            max_length=10)
     if error_response:
         return error_response
@@ -613,8 +615,8 @@ def get_iteration(request: Request) -> Response:
 
     # Allow status Ready for UI polling immediately after submission.
     run, error_return = get_calibration_run(calibration_run_id, request.user,
-                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED,
-                                                        StatusEnum.SERVER_ERROR])
+                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE,
+                                                        StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
@@ -672,10 +674,10 @@ def cancel_job(request: Request) -> Response:
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
         run_type = JobType.CALIBRATION.value
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED])
     elif validation_run_id:
         run_type = JobType.VALIDATION.value
-        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING])
+        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED])
     else:
         # Retrieve the ForecastForcingDownloadRun regardless of its status,
         # using the provided forecast_run_id to get the forcing download run.
@@ -684,34 +686,37 @@ def cancel_job(request: Request) -> Response:
         if error_return:
             return error_return
 
-        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user,
-                                                                       run_status=list(StatusEnum))
+        forecast_forcing_download_run, forcing_error = get_forecast_forcing_download_run(
+            forecast_run_unfiltered.forcing_download_run.id,
+            request.user,
+            run_status=list(StatusEnum)
+        )
         if forcing_error:
             return forcing_error
 
         # Check the status of the forcing download run.
-        if forcing_run.status == StatusEnum.RUNNING.db_instance:
+        if forecast_forcing_download_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
             # Forcing download run is running: cancel it.
-            run = forcing_run
+            run = forecast_forcing_download_run
             # Call it a Forecast job and not Forcing Download
             run_type = JobType.FORECAST.value
-        elif forcing_run.status == StatusEnum.DONE.db_instance:
+        elif forecast_forcing_download_run.status == StatusEnum.DONE.db_instance:
             # Forcing download run is done.
             # Retrieve the forecast run from the forcing run.
-            forecast_run = forcing_run.forecast_run
-            if forecast_run.status == StatusEnum.RUNNING.db_instance:
+            forecast_run = forecast_forcing_download_run.forecast_run
+            if forecast_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
                 run = forecast_run
                 run_type = JobType.FORECAST.value
 
             else:
                 error = (f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
-                         f'{StatusEnum.RUNNING.value}. '
+                         f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
                          f'Current status: {forecast_run.status.name}')
                 return ResponseError(error)
         else:
-            error = (f'{ForecastForcingDownloadRun.__name__} {forcing_run.id} is not in an allowed status: '
-                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.DONE.value])}. '
-                     f'Current status: {forcing_run.status.name}')
+            error = (f'{ForecastForcingDownloadRun.__name__} {forecast_forcing_download_run.id} is not in an allowed status: '
+                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value, StatusEnum.DONE.value])}. '
+                     f'Current status: {forecast_forcing_download_run.status.name}')
             return ResponseError(error)
 
     if not cancel_job_common(run):
@@ -783,26 +788,12 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-    job_status = validator.get('job_status')
-
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_calibration_job_callback_pw(calibration_run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
+    return handle_slurm_callback(
+        request,
+        CalibrationJobSlurmCallbackRequestSerializer,
+        get_calibration_run,
+        run_calibration_job_callback_pw
+    )
 
 
 @extend_schema(
@@ -830,26 +821,12 @@ def validation_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    validation_run_id = validator.get('validation_run_id')
-    job_status = validator.get('job_status')
-
-    validation_run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_validation_job_callback_pw(validation_run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
+    return handle_slurm_callback(
+        request,
+        ValidationJobSlurmCallbackRequestSerializer,
+        get_validation_run,
+        run_validation_job_callback_pw
+    )
 
 
 @extend_schema(
@@ -877,27 +854,12 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
-    job_status = validator.get('job_status')
-
-    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None,
-                                                                                    run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
+    return handle_slurm_callback(
+        request,
+        ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
+        get_forecast_forcing_download_run,
+        run_forecast_forcing_download_job_callback_pw
+    )
 
 
 @extend_schema(
@@ -925,25 +887,56 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
+    return handle_slurm_callback(
+        request,
+        ForecastJobSlurmCallbackRequestSerializer,
+        get_forecast_run,
+        run_forecast_job_callback_pw
+    )
+
+
+def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_end_callback_fn) -> Response:
+    """
+    Common handler for Slurm callback endpoints for any run type that inherits from BaseRun.
+
+    :param request: The incoming HTTP request.
+    :param serializer_class: The serializer used for validating the incoming data.
+    :param get_run_fn: A function that returns the correct run object given its ID.
+    :param job_end_callback_fn: A function that handles the job completion logic.
+    :return: HTTP 202 Response or error Response.
+    """
     data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
+    validator, error_return = validate_request(serializer_class, data)
     if error_return:
         return error_return
 
-    forecast_run_id = validator.get('forecast_run_id')
-    job_status = validator.get('job_status')
-
-    forecast_run, error_return = get_forecast_run(forecast_run_id, None, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
+    run_id = validator.get(next(k for k in validator.keys() if k.endswith("_id")))
+    job_status = validator.get("job_status")
     slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_job_callback_pw(forecast_run, slurm_status)
+
+    # If Slurm is reporting that the job is now starting, we expect to be in Submitted status
+    # For any other status changes, we should be Running or Submitted.  We allow Submitted just in case
+    #  1) The job doesn't properly transition to Running
+    #  2) To allow a submitted job to be canceled
+    expected_status = [StatusEnum.SUBMITTED] if slurm_status == SlurmStatusEnum.STARTING else [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+
+    run, error_return = get_run_fn(run_id, None, run_status=expected_status)
+    if error_return:
+        return error_return
+
+    if slurm_status == SlurmStatusEnum.STARTING:
+        logger.info(f'{get_job_description(run)} is starting')
+        run.status = StatusEnum.RUNNING.db_instance
+        run.run_start = datetime.now(timezone.utc)
+        run.save(update_fields=["status", "run_start"])
+    else:
+        # Job has ended
+        logger.info(f'{get_job_description(run)} is ending')
+        job_end_callback_fn(run, slurm_status)
 
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
     return Response(status=status.HTTP_202_ACCEPTED)
 
 
