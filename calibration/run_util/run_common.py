@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import subprocess
@@ -16,10 +17,12 @@ from calibration.models import CalibrationRun, ValidationRun, Iteration, Forecas
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.file_util import get_single_file
+from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_path, \
-    get_forecast_dir, get_forecast_forcing_config_file
+    get_forecast_dir, get_forecast_forcing_config_file, get_validation_iteration_git_info_file, get_forecast_download_git_info_file, \
+    get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, create_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
@@ -322,8 +325,6 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
     """
     Submit a job after setting initial status and submission date.
 
-    logging_config comes from the run_calibration_job endpoint
-
     The specific job execution function is determined based on the job type
     and executed accordingly.
 
@@ -332,13 +333,12 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
 
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.) to submit.
     :param config_file: Optional configuration file for CalibrationRun preparation.
+    :param logging_config: Optional logging configuration for CalibrationRun preparation.
     :return: A DRF Response instance if there is an issue; otherwise, None on success.
     """
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
-        error_message = create_ngen_logging_file(run, logging_config)
-        if error_message:
-            return ResponseError(error_message)
+        create_ngen_logging_file(run, logging_config)
         response = prepare_calibration_job(run, config_file)
         if response:
             return response
@@ -352,12 +352,22 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
 
         # Determine the appropriate job execution function
         if isinstance(run, CalibrationRun):
+            create_git_info(get_calibration_git_info_file(run))
             run_calibration_job(run)
         elif isinstance(run, ValidationRun):
+            if (run.validation_type != ValidationType.VALID_ITERATION.value):
+                create_git_info(get_validation_special_git_info_file(run))
+            else:
+                create_git_info(get_validation_iteration_git_info_file(run, run.worker_name, run.iteration_num))
+
             run_validation_job(run)
         elif isinstance(run, ForecastForcingDownloadRun):
+            create_git_info(get_forecast_download_git_info_file(run))
+
             run_forecast_forcing_download_job(run)
         elif isinstance(run, ForecastRun):
+            create_git_info(get_forecast_git_info_file(run))
+
             run_forecast_job(run)
         else:
             raise CerfException(f"Unsupported run type: {type(run).__name__}")
@@ -369,6 +379,14 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
     return None
+
+
+def create_git_info(git_info_file: str) -> None:
+    logger.info("Writing git info to", git_info_file)
+    git_info_data = get_git_info_internal()
+    os.makedirs(os.path.dirname(git_info_file), exist_ok=True)
+    with open(git_info_file, 'w') as f:
+        f.write(json.dumps(git_info_data, indent=4))
 
 
 def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> Response | None:

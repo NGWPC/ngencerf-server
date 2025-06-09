@@ -13,7 +13,7 @@ from calibration.util.file_util import copy_file
 logger = logging.getLogger(__name__)
 
 
-def get_git_info_internal():
+def get_git_info_internal() -> dict[str, dict[str, str]]:
     """
     Gather Git information from multiple sources, merge the JSON files, and transform each component
     so that only the desired fields are retained. The transformation rules are:
@@ -83,7 +83,7 @@ def get_git_info_internal():
         except FileNotFoundError:
             logger.warning(f'File {git_info} not found.')
 
-    merged_data = {}
+    merged_data: dict[str, dict[str, str]] = {}
     # Iterate over all JSON files in the directory and merge them.
     for filename in os.listdir(git_info_directory):
         if filename.endswith('.json'):
@@ -107,7 +107,7 @@ def get_git_info_internal():
     return transformed_data
 
 
-def transform_component(component_git_info):
+def transform_component(component_git_info) -> dict[str, str]:
     """
     Transform a single component dictionary to include only selected Git fields in a specific order:
       - Always include 'release', 'build_date', and 'commit_hash' (in that order).
@@ -116,7 +116,7 @@ def transform_component(component_git_info):
     :param component_git_info: A dictionary containing Git information for a component.
     :return: A new dictionary with only the desired fields.
     """
-    new_comp = {}
+    new_comp: dict[str, str] = {}
 
     tags = component_git_info.get("tags", "").strip()
     if tags == "":
@@ -174,7 +174,7 @@ GIT_INFO_FILE = 'ngencerf-server_git_info.json'
 
 
 @cache
-def load_git_info(git_info_file: str):
+def load_git_info(git_info_file: str) -> dict[str, dict[str, str]] | None:
     """
     Load and transform Git information from a JSON file.
 
@@ -187,7 +187,7 @@ def load_git_info(git_info_file: str):
       3. If the JSON content is malformed, log an error and return None.
       4. If the parsed content is empty, log an error and return None.
       5. Transform each component in the parsed JSON using `transform_component()`.
-      6. Return the transformed Git information as a dictionary.
+      6. Return the transformed Git information as a dictionary, or None on failure.
 
     :param git_info_file: Path to the JSON file containing Git information.
     :return: A dictionary with transformed Git metadata, or None if an error occurs.
@@ -212,7 +212,7 @@ def load_git_info(git_info_file: str):
     return transformed_git_info
 
 
-def print_git_info(git_info_file: str):
+def print_git_info(git_info_file: str) -> None:
     """
     Read the specified git_info JSON file, transform its contents, and log all key/value pairs recursively.
 
@@ -226,7 +226,7 @@ def print_git_info(git_info_file: str):
         recursive_print(git_info)
 
 
-def print_git_info_all():
+def print_git_info_all() -> None:
     """
     Convenience function to print Git information from multiple JSON files.
     """
