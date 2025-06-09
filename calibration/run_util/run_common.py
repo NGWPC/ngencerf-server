@@ -382,7 +382,7 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
 
 
 def create_git_info(git_info_file: str) -> None:
-    logger.info("Writing git info to", git_info_file)
+    logger.info(f"Writing git info to {git_info_file}")
     git_info_data = get_git_info_internal()
     os.makedirs(os.path.dirname(git_info_file), exist_ok=True)
     with open(git_info_file, 'w') as f:
