@@ -181,7 +181,7 @@ def get_status(request: Request) -> Response:
     if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
         if messages:
-            response['errors'] = messages
+            response['errors'] = messages.get('errors')
 
     response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'],
                                                            max_length=10)

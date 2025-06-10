@@ -497,19 +497,22 @@ def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
     return truncated_data
 
 
-def ResponseError(message, response_type='error', validation_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
+def ResponseError(message, response_type='error', validation_errors=None, fatal_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
     """
     Return a standardized error response, with optional validation errors.
 
     :param message: The error message to include.
     :param response_type: The type of error (default is 'error').
     :param validation_errors: Optional validation errors to include.
+    :param fatal_errors: Optional fatal errors to include which causes the job to fail
     :param http_status: The HTTP status code for the response (default is 400).
     :return: A formatted Response object with the error details.
     """
     response = {'response_type': response_type, 'message': message}
     if validation_errors:
         response['validation_errors'] = validation_errors
+    if fatal_errors:
+        response['fatal_errors'] = fatal_errors
     serializer = ErrorResponseSerializer(response)
     logger.error(serializer.data)
     return Response(serializer.data, status=http_status)

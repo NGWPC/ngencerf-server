@@ -344,17 +344,18 @@ def clone_job(request: Request) -> Response:
 
     # Set the new status to Saved and then we check it
     new_run.status = StatusEnum.SAVED.db_instance
-    ready_to_run_messages = None
+    errors = None
     if new_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         ready_to_run_messages, _ = ngen_cal_input.ready_to_run(new_run)
+        errors = ready_to_run_messages.get('errors')
 
     # noinspection PyUnresolvedReferences
     response = {'message': f'Calibration Job {run.id} has been cloned to Calibration Job {new_run.id}',
                 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
     # I agree that the message handling got out of hand
-    if ready_to_run_messages:
-        response['errors'] = ready_to_run_messages
+    if errors:
+        response['errors'] = errors
     if messages:
         response.setdefault('errors', []).extend(messages)
 
@@ -634,7 +635,7 @@ def import_job(request: Request) -> Response:
 
     imported_and_submitted = 'updated' if calibration_run_id else 'imported'
 
-    # TODO Only run this if there are no other errors
+    # TODO What is going on here?  Why are we calling ready_to_run twice?
     errors, config_file = ngen_cal_input.ready_to_run(run)
 
     if run_after_import and not errors:
@@ -650,7 +651,7 @@ def import_job(request: Request) -> Response:
     if messages:
         response['messages'] = messages
     if errors:
-        response['errors'] = errors
+        response['errors'] = errors.get('errors')
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
