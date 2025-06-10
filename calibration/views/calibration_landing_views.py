@@ -338,9 +338,9 @@ def clone_job(request: Request) -> Response:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, messages, errors = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
-    if errors:
-        return errors
+    new_run, response_dict, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
+    if fatal_error:
+        return fatal_error
 
     # Set the new status to Saved and then we check it
     new_run.status = StatusEnum.SAVED.db_instance
