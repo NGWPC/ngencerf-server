@@ -1266,18 +1266,6 @@ class GetSWETimeseriesDataResponseSerializer(GenericMessageResponseSerializer):
 ##################################
 # Slurm
 ##################################
-class SlurmSubmitCalibrationOrValidationJobResponse(BaseSerializer):
+class SlurmSubmitResponseSerializer(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
-    ngen_cal_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
-    ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
 
-
-class SlurmSubmitForecastForcingDownloadJobResponse(BaseSerializer):
-    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
-    ngen_forcing_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
-
-
-class SlurmSubmitForecastJobResponse(BaseSerializer):
-    slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
-    ngen_forecast_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
-    ngen_commit_hash = serializers.CharField(required=True, allow_null=False, allow_blank=False)
