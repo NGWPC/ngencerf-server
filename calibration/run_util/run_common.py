@@ -339,8 +339,11 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
         create_ngen_logging_file(run, logging_config)
-        response = prepare_calibration_job(run, config_file)
+        fatal, response = prepare_calibration_job(run, config_file)
         if response:
+            if fatal:
+                run.status = StatusEnum.FAILED.db_instance
+                run.save(update_fields=['status'])
             return response
 
     try:
@@ -355,7 +358,7 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
             create_git_info(get_calibration_git_info_file(run))
             run_calibration_job(run)
         elif isinstance(run, ValidationRun):
-            if (run.validation_type != ValidationType.VALID_ITERATION.value):
+            if run.validation_type != ValidationType.VALID_ITERATION.value:
                 create_git_info(get_validation_special_git_info_file(run))
             else:
                 create_git_info(get_validation_iteration_git_info_file(run, run.worker_name, run.iteration_num))
@@ -373,7 +376,9 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
             raise CerfException(f"Unsupported run type: {type(run).__name__}")
     except Exception as e:
         # Handle failures by marking the job as FAILED
-        run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
+        run.status = StatusEnum.FAILED.db_instance
+        run.save(update_fields=['status'])
+
         logger.exception(f'Exception submitting {get_job_description(run)} - {str(e)}')
         raise  # Re-raise the exception
 
@@ -389,7 +394,7 @@ def create_git_info(git_info_file: str) -> None:
         f.write(json.dumps(git_info_data, indent=4))
 
 
-def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> Response | None:
+def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> tuple[bool, Response | None]:
     """
     Prepare input files and validate readiness for a calibration job.
 
@@ -398,14 +403,20 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
 
     :param calibration_run: The CalibrationRun object to prepare.
     :param config_file: Optional configuration file to use instead of generating one.
-    :return: A DRF Response instance if there is an issue; otherwise, None on success.
+    :return: A tuple (fatal_error: bool, Response). If preparation is successful, returns (False, None).
+             If there are validation errors, returns (bool, Response).
     """
     # If a config file is passed, validation can be skipped
     if not config_file:
-        messages, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
+        error_object, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
 
-        if messages:
-            return ResponseError(f'Calibration Job {calibration_run.id} is not ready', validation_errors=messages)
+        if error_object['errors'] or error_object['fatal']:
+            fatal_error = bool(error_object['fatal'])
+            return fatal_error, ResponseError(
+                f'Calibration Job {calibration_run.id} is not ready',
+                validation_errors=error_object['errors'],
+                fatal_errors=error_object['fatal']
+            )
 
     try:
         logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
@@ -416,7 +427,7 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
         raise CerfException(f'Exception during create_input - {str(e)}') from e
 
     logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
-    return None
+    return False, None
 
 
 def create_and_submit_validation_control(calibration_run: CalibrationRun) -> None:

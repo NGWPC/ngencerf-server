@@ -316,7 +316,7 @@ def export_job(request: Request) -> Response:
 
     errors, _ = ngen_cal_input.ready_to_run(run)
     if errors:
-        calibration_run_data['metadata']['errors'] = errors
+        calibration_run_data['metadata']['errors'] = errors.get('errors')
 
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:

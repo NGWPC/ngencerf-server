@@ -145,13 +145,29 @@ CONFIG_TEMPLATE = {
 }
 
 
-def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | None, str | None]:
+def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, list[str]] | None, str | None]:
     """
-    Prepares the configuration and validates the run instance for readiness.
+    Validate the given CalibrationRun and prepare it for execution.
 
-    :param run: The CalibrationRun instance to be validated and prepared.
-    :param build: Whether to do final preparations for running the job -- create directories and build configuration files.
-    :return: A tuple containing a list of errors (if any) and the path to the config file (if created).
+    This function checks for missing or invalid configuration in the CalibrationRun
+    and optionally builds necessary input files and directories if `build=True`.
+
+    It returns a dictionary of validation issues (`errors` and `fatal`), along with
+    the path to the generated configuration file if applicable.
+
+    - `errors`: Problems the user can fix. These prevent the job from being marked as ready.
+    - `fatal`: Critical issues such as structural problems in uploaded files. These may
+               require intervention beyond user correction (e.g., broken CSV format).
+
+    The job status is updated to:
+    - `READY` if no issues are found,
+    - `SAVED` if there are non-fatal issues.
+
+    :param run: The CalibrationRun instance to validate and prepare.
+    :param build: If True, generate configuration files and other runtime input artifacts.
+    :return: A tuple (error_object, config_file_path):
+             - error_object: dict with 'errors' and 'fatal' lists, or None if status check fails.
+             - config_file_path: Path to the generated config file if build is successful, else None.
     """
     logger.info(called_from())
 
@@ -171,7 +187,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
         "nprocs": None
     }
 
+    # Errors prevent the job from running, but the user can fix the problem
     errors = []
+    # Fatal errors cause the job to fail
+    fatal = []
+    error_object = {'errors': errors, 'fatal': fatal}
 
     # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
@@ -194,16 +214,19 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                     errors.append('Forcing data must be uploaded')
                 elif build:
                     # Validate uploaded data
-                    errors += validate_csv_directory(forcing_dir)
+                    fatal += validate_csv_directory(forcing_dir)
 
             elif build:
                 # For non-uploaded data, subset the forcing data by time range
                 source_dir = run.forcing_eds_dir_path
                 if source_dir:
                     # Validate each file in EDS forcing dir before subsetting
-                    errors += validate_csv_directory(source_dir)
+                    fatal += validate_csv_directory(source_dir)
+                    print(run.calibration_start_period, run.validation_start_period)
 
-                    if not errors:
+                    if (not (errors or fatal)
+                            and run.calibration_start_period and run.calibration_end_period
+                            and run.validation_start_period and run.validation_end_period):
                         subset_directory_by_time_range(
                             source_dir,
                             forcing_dir,
@@ -225,7 +248,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                     errors.append('Observational data must be uploaded')
                 elif build:
                     # Validate user-uploaded file before renaming
-                    errors += validate_csv_file(user_uploaded_observational_file, is_observational=True)
+                    fatal += validate_csv_file(user_uploaded_observational_file, is_observational=True)
 
                     # Rename the observational file if necessary
                     # If the user uploaded it with the proper name, no need to rename
@@ -237,8 +260,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
                 source_file = run.observational_eds_file_path
                 # For non-uploaded data, subset the observational data by time range
                 if source_file:
-                    errors += validate_csv_file(source_file, is_observational=True)
-                    if not errors:
+                    fatal += validate_csv_file(source_file, is_observational=True)
+                    if (not (errors or fatal)
+                            and run.calibration_start_period and run.calibration_end_period
+                            and run.validation_start_period and run.validation_end_period):
                         subset_by_time_range(
                             source_file,
                             observational_file,
@@ -483,9 +508,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     run.save()
 
     # Only build the config file if there are no errors and build is True
-    config_file = build_config(config, job_data_dir) if build and not errors else None
+    config_file = build_config(config, job_data_dir) if build and not (errors or fatal) else None
 
-    return errors, config_file
+    return error_object, config_file
 
 
 def write_parameter_files(params: list[dict[str, str | float]], parameter_dir: str) -> None:
