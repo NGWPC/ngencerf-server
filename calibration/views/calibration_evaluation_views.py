@@ -368,25 +368,18 @@ def get_log(request: Request) -> Response:
     file_size = os.path.getsize(log_path)
 
     # Count the total number of lines in the file for pagination metadata
-    total_lines = sum(1 for _ in open(log_path, 'r'))
+    with open(log_path, 'r') as f:
+        total_lines = sum(1 for _ in f)
 
     # Read the requested lines from the log file with null replacement
-    paginated_lines = []
     with open(log_path, 'r') as file:
-        for current_line_number, line in enumerate(file):
-            if start == -1:
-                # If a parameter is passed indicating that the job is still running, ignore "start" value and return
-                # {limit} lines from the end of the file in reverse order. Treat that as though it were the entire file.
-                if current_line_number >= total_lines - limit:
-                    # Replace null characters in each line and prepend to list so that we get them in reverse order
-                    paginated_lines.insert(0, line.replace('\x00', ' '))
-            else:
-                # Read lines in order normally from start to start + limit
-                if start <= current_line_number < start + limit:
-                    # Replace null characters in each line
-                    paginated_lines.append(line.replace('\x00', ' '))
-                if current_line_number >= start + limit:
-                    break
+        all_lines = [line.replace('\x00', ' ') for line in file]
+
+    if start == -1:
+        # Just get the last 'limit' lines
+        paginated_lines = all_lines[-limit:]
+    else:
+        paginated_lines = all_lines[start:start + limit]
 
     pagination_metadata = {
         'start': start,
@@ -506,6 +499,8 @@ def get_calibration_log(calibration_run: CalibrationRun, log_name: LogName):
     elif log_name == LogName.NGEN_CAL_STDOUT:
         return get_calibration_stdout_file(calibration_run)
 
+    raise CerfException(f'Invalid log name: {log_name}')
+
 
 def get_validation_log(validation_run: ValidationRun, log_name: LogName):
     """
@@ -539,6 +534,8 @@ def get_validation_log(validation_run: ValidationRun, log_name: LogName):
     if log_name == LogName.NGEN_STDOUT:
         return find_ngen_stdout_log(validation_run)
 
+    raise CerfException(f'Invalid log name: {log_name}')
+
 
 def get_global_log(run: CalibrationRun | ValidationRun, log_name: LogName):
     """
@@ -552,6 +549,8 @@ def get_global_log(run: CalibrationRun | ValidationRun, log_name: LogName):
     """
     if log_name == LogName.NGEN:
         return get_ngen_log_path(run if isinstance(run, CalibrationRun) else run.calibration_run)
+    
+    raise CerfException(f'Invalid log name: {log_name}')
 
 
 def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
