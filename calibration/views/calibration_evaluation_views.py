@@ -120,7 +120,8 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
 
     response = {
         'message': f'Calibration Job {run.id}, data retrieved',
-        'objective_function_metric': run.objective_function.name,
+        # Will be none for LSTM
+        'objective_function_metric': run.objective_function.name if run.objective_function else None,
         'iteration_data': iteration_data,
         'retrospective_data': retrospective_data
     }

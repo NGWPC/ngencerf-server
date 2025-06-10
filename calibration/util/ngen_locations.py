@@ -333,11 +333,11 @@ def get_validation_special_performance_file(run: CalibrationRun,
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
 
 
-def get_calibration_git_info_file(run: CalibrationRun):
+def get_calibration_git_info_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_calibration_run_dir(run), f"git_info_calibration.json")
 
 
-def get_validation_special_git_info_file(run: ValidationRun):
+def get_validation_special_git_info_file(run: ValidationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{run.validation_type}.json")
 
 
@@ -345,11 +345,11 @@ def get_validation_iteration_git_info_file(run: ValidationRun, worker_name: str,
     return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{worker_name}_iter{iteration_num}.json")
 
 
-def get_forecast_download_git_info_file(forecast_forcing_download_run: ForecastForcingDownloadRun):
+def get_forecast_download_git_info_file(forecast_forcing_download_run: ForecastForcingDownloadRun) -> str:
     return os.path.join(get_forecast_dir(forecast_forcing_download_run.forecast_run), "git_info_forecast_download.json")
 
 
-def get_forecast_git_info_file(forecast_run: ForecastRun):
+def get_forecast_git_info_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), "git_info_forecast.json")
 
 

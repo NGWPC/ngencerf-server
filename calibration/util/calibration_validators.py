@@ -406,7 +406,8 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
-    formulation_warning = serializers.JSONField(required=False)
+    formulation_errors = serializers.JSONField(required=False)
+    formulation_warnings = serializers.JSONField(required=False)
     parameters_selected = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
@@ -1177,7 +1178,7 @@ class RetrospectiveData(BaseSerializer):
 
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
-    objective_function_metric = serializers.CharField(required=True)
+    objective_function_metric = serializers.CharField(required=True, allow_null=True)
     iteration_data = CalibrationDataByIteration(many=True, required=True)
     retrospective_data = RetrospectiveData(many=True, required=True)
 
