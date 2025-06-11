@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import codecs
 import os
 import re
-from datetime import timedelta
+from datetime import timedelta, datetime
 from enum import StrEnum, auto
 
 from dotenv import load_dotenv
@@ -31,15 +31,10 @@ version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
 load_dotenv(version_path)
 
-VERSION = os.getenv("CERFSERVER_VERSION", "<unknown>")
-DATE = os.getenv("CERFSERVER_DATE", "<unknown>")
-COMMIT_HASH = os.getenv("CERFSERVER_COMMIT", "<unknown>")
 NGENCERF_VERSION = os.getenv("NGENCERF_VERSION", "<unknown>")
-# dotenv doesn't handle Unicode escaping
-NGENCERF_VERSION = codecs.decode(NGENCERF_VERSION, "unicode_escape")
 NGENCERF_DATE = os.getenv("NGENCERF_DATE", "<unknown>")
-
-CONTACT_EMAIL = 'support@ngencerf.com'
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "<unknown>")
+NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
@@ -102,6 +97,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:3001",
 ]
+
+# Needed for zip file download
+CORS_EXPOSE_HEADERS = ['Content-Disposition']
 
 ROOT_URLCONF = 'cerfServer.urls'
 
@@ -190,7 +188,6 @@ ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameter
 ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
 ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
 
-
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
 FORCING_DATA_DIRS = ['s3://ngwpc-forcing/aorc_2.2',
@@ -226,7 +223,7 @@ NGEN_CAL_DATA_PATH = os.getenv('NGEN_CAL_DATA_PATH', NGEN_CAL_MOUNT_POINT)
 # Used only by get_git_info when running on PW
 SINGULARITY_DIR = '/ngencerf/containers'
 
-NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'run-logs')
+NGEN_LOGGING_DIR = os.path.join(BASE_DIR, 'logs')
 print(f"Logging files will be created in {NGEN_LOGGING_DIR}")
 os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
@@ -271,7 +268,6 @@ SIMULATE_FLAGS = {
     JobType.FORECAST_FORCING_DOWNLOAD: False,
 }
 
-
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
     ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
@@ -313,13 +309,8 @@ LOGGING = {
         'level': 'DEBUG'
     },
     'formatters': {
-        'prod_format': {
-            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {message}',
-            'datefmt': '%Y-%m-%dT%H:%M:%S',
-            'style': '{',
-        },
         'dev_format': {
-            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {process:d} {thread:d} {message}',
+            'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
             'datefmt': '%Y-%m-%dT%H:%M:%S',
             'style': '{',
         },
@@ -339,16 +330,6 @@ LOGGING = {
             'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'dev_format',
-            'encoding': 'utf-8',
-        },
-        'file_prod': {
-            'level': 'INFO',
-            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',  # Use TimedRotatingFileHandler
-            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_prod.log'),
-            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
-            'interval': 1,  # Rotate every 1 day
-            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
-            'formatter': 'prod_format',
             'encoding': 'utf-8',
         },
     },
@@ -379,6 +360,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
+        'createInput': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
@@ -392,7 +378,7 @@ LOGGING = {
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'calibration': {
-            'handlers': ['console', 'file_dev', 'file_prod'],
+            'handlers': ['console', 'file_dev'],
             'level': 'DEBUG',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
@@ -407,6 +393,7 @@ LOGGING = {
 # This needs to be at the end of settings.py
 try:
     from .local_settings import *
+
     print("Loaded local_settings.py successfully.")
 except ImportError as e:
     print('local_settings.py not found or could not be imported:', e)

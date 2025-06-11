@@ -41,6 +41,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     ngen_commit_hash = models.CharField(max_length=50, null=True)
     ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
     is_archived = models.BooleanField(default=False)
+    mpi_nprocs = models.IntegerField(null=True)
 
     class Meta:
         db_table = 'calibration_run'

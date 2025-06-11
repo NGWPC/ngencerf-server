@@ -1,3 +1,4 @@
+import copy
 import csv
 import logging
 import os
@@ -5,29 +6,37 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
+import pandas as pd
 import toml
 from datetimerange import DateTimeRange
 from django.db.models import F
 from toml import TomlEncoder
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
+from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, get_cached_module_by_name
-from calibration.util.file_util import get_single_file, copy_file_to_directory
-from calibration.util.geopkg import get_geometry_from_gpkg
+from calibration.util.file_util import get_single_file
+from calibration.util.geopkg import get_geometry_from_gpkg, normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \
-    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS
+    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE
 from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
-from calibration.views.common import token_ngen, generate_custom_token, SLOTH, format_datetime
+from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime
+from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
 
-config_template = {
+# For now, make this a constant, which is used in 2 places.  We need to tell ngen-cal as well as slurm
+
+# DO NOT MODIFY THIS TEMPLATE IN-PLACE.
+# Use `copy.deepcopy(CONFIG_TEMPLATE)` to safely create per-thread instances.
+CONFIG_TEMPLATE = {
 
     "General": {
         "calibration_run_id": 0,
@@ -77,8 +86,8 @@ config_template = {
         # Iteration interval to save plots
         # This entry is optional and specified with the default value.
         "save_plot_iter_freq": 0,
-        "streamflow_threshold": 0,
-        "peak_flow_threshold": 0,
+        "streamflow_threshold": 0.0,
+        "peak_flow_threshold": 0.0,
         "station_name": "",
 
         # Snow Water equivalent output - Only True for snow models
@@ -136,13 +145,29 @@ config_template = {
 }
 
 
-def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | None, str | None]:
+def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, list[str]] | None, str | None]:
     """
-    Prepares the configuration and validates the run instance for readiness.
+    Validate the given CalibrationRun and prepare it for execution.
 
-    :param run: The CalibrationRun instance to be validated and prepared.
-    :param build: Whether to create directories and build configuration files.
-    :return: A tuple containing a list of errors (if any) and the path to the config file (if created).
+    This function checks for missing or invalid configuration in the CalibrationRun
+    and optionally builds necessary input files and directories if `build=True`.
+
+    It returns a dictionary of validation issues (`errors` and `fatal`), along with
+    the path to the generated configuration file if applicable.
+
+    - `errors`: Problems the user can fix. These prevent the job from being marked as ready.
+    - `fatal`: Critical issues such as structural problems in uploaded files. These may
+               require intervention beyond user correction (e.g., broken CSV format).
+
+    The job status is updated to:
+    - `READY` if no issues are found,
+    - `SAVED` if there are non-fatal issues.
+
+    :param run: The CalibrationRun instance to validate and prepare.
+    :param build: If True, generate configuration files and other runtime input artifacts.
+    :return: A tuple (error_object, config_file_path):
+             - error_object: dict with 'errors' and 'fatal' lists, or None if status check fails.
+             - config_file_path: Path to the generated config file if build is successful, else None.
     """
     logger.info(called_from())
 
@@ -150,17 +175,29 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
     if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         return None, None
 
-    config = dict(config_template)
+    config: dict[str, dict[str, str | int | float | bool]] = copy.deepcopy(CONFIG_TEMPLATE)
+
     general = config['General']
     calibration = config['Calibration']
     datafile = config['DataFile']
 
+    parallel = {
+        "parallel_ngen_exe": PARALLEL_NGEN_EXE,
+        "partition_generator_exe": PARTITION_GENERATOR_EXE,
+        "nprocs": None
+    }
+
+    # Errors prevent the job from running, but the user can fix the problem
     errors = []
+    # Fatal errors cause the job to fail
+    fatal = []
+    error_object = {'errors': errors, 'fatal': fatal}
 
     # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
-    general['auth_token'] = generate_custom_token(run.owner, token_ngen)
+    general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
+    catchments = None
     # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', errors):
         general['basin'] = run.gage.gage_id
@@ -168,75 +205,103 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
 
         # Determine the source of the forcing data (user-uploaded or EDS)
         if not is_missing(run.forcing_source, 'Forcing source', errors):
+            forcing_dir = get_forcing_dir_for_job(run)
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance
+
             if is_forcing_upload:
                 # Check if forcing data has been uploaded
-                forcing_dir = get_forcing_dir_for_job(run)
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
+                elif build:
+                    # Validate uploaded data
+                    fatal += validate_csv_directory(forcing_dir)
+
             elif build:
                 # For non-uploaded data, subset the forcing data by time range
                 source_dir = run.forcing_eds_dir_path
                 if source_dir:
-                    subset_directory_by_time_range(
-                        source_dir,
-                        get_forcing_dir_for_job(run),
-                        DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                      max(run.calibration_end_period, run.validation_end_period))
-                    )
+                    # Validate each file in EDS forcing dir before subsetting
+                    fatal += validate_csv_directory(source_dir)
+                    print(run.calibration_start_period, run.validation_start_period)
 
-        datafile['forcing_dir'] = get_forcing_dir_for_job(run)
+                    if (not (errors or fatal)
+                            and run.calibration_start_period and run.calibration_end_period
+                            and run.validation_start_period and run.validation_end_period):
+                        subset_directory_by_time_range(
+                            source_dir,
+                            forcing_dir,
+                            DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
+                                          max(run.calibration_end_period, run.validation_end_period))
+                        )
+
+            datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
         # Determine the source of observational data (user-uploaded or EDS)
         if not is_missing(run.observational_source, 'Observational source', errors):
+            observational_dir = get_observational_dir_for_job(run)
+            observational_file = get_observational_file_for_job(run)
             is_observational_upload = run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance
+
             if is_observational_upload:
-                user_uploaded_observational_file = get_single_file(get_observational_dir_for_job(run))
+                user_uploaded_observational_file = get_single_file(observational_dir)
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
-                else:
-                    # Rename the observational file if necessary
-                    observational_file_for_job_path = get_observational_file_for_job(run)
-                    # If the user uploaded it with the proper name, no need to rename
-                    if user_uploaded_observational_file != observational_file_for_job_path:
-                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file_for_job_path}")
-                        os.rename(user_uploaded_observational_file, observational_file_for_job_path)
-            elif build:
-                # For non-uploaded data, subset the observational data by time range
-                source_file = run.observational_eds_file_path
-                if source_file:
-                    subset_by_time_range(
-                        source_file,
-                        get_observational_file_for_job(run),
-                        DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                      max(run.calibration_end_period, run.validation_end_period))
-                    )
+                elif build:
+                    # Validate user-uploaded file before renaming
+                    fatal += validate_csv_file(user_uploaded_observational_file, is_observational=True)
 
-        datafile['obs_dir'] = get_observational_dir_for_job(run)
+                    # Rename the observational file if necessary
+                    # If the user uploaded it with the proper name, no need to rename
+                    if user_uploaded_observational_file != observational_file:
+                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
+                        os.rename(user_uploaded_observational_file, observational_file)
+            elif build:
+                # Validate subsetted observational file
+                source_file = run.observational_eds_file_path
+                # For non-uploaded data, subset the observational data by time range
+                if source_file:
+                    fatal += validate_csv_file(source_file, is_observational=True)
+                    if (not (errors or fatal)
+                            and run.calibration_start_period and run.calibration_end_period
+                            and run.validation_start_period and run.validation_end_period):
+                        subset_by_time_range(
+                            source_file,
+                            observational_file,
+                            DateTimeRange(
+                                min(run.calibration_start_period, run.validation_start_period),
+                                max(run.calibration_end_period, run.validation_end_period)
+                            )
+                        )
+
+            datafile['obs_dir'] = observational_dir
 
         if not is_missing(run.geopackage_source, 'Geopackage source', errors):
             geopackage_dir = get_geopackage_dir_for_job(run)
             is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
 
             if is_geopackage_upload:
-                user_uploaded_geopackage_file = get_single_file(geopackage_dir)
-                if user_uploaded_geopackage_file:
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
                     # For user uploads, use the job-specific location directly
-                    datafile['hydrofab_file'] = user_uploaded_geopackage_file
+                    datafile['hydrofab_file'] = geopackage_file
                 else:
                     errors.append('Geopackage data must be uploaded')
             else:
-                if run.geopackage_eds_file_path:
-                    # For data from Data Services copy to job-specific location
+                if run.geopackage_eds_file_path and build:
+                    # For data from Data Services, normalize the CRS and copy to job-specific location
                     try:
-                        copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                        normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
+                        # copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None
 
-                    datafile['hydrofab_file'] = get_single_file(geopackage_dir)
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
+                    datafile['hydrofab_file'] = geopackage_file
 
             if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
-                logger.info(f"Catchments from {datafile['hydrofab_file']} file are {list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())}")
+                catchments = list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())
+                logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
@@ -362,6 +427,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
+    if stop_criteria and run.save_plot_iteration_frequency is not None and (stop_criteria.value < run.save_plot_iteration_frequency):
+        errors.append(
+            f"The plot iteration frequency, {run.save_plot_iteration_frequency}, must be <= the stop criteria (number of iteration) {stop_criteria.value}")
+
     calibration['start_iteration'] = 0  # TODO ????'
 
     if run.streamflow_threshold:
@@ -427,14 +496,21 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[list[str] | 
             datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
             write_parameter_files(params, datafile['calib_parameter_file'])
 
+    if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        config['Parallel'] = parallel
+        if catchments:
+            nprocs = get_mpi_nodes(len(catchments))
+            parallel['nprocs'] = nprocs
+            run.mpi_nprocs = nprocs
+
     run.status = StatusEnum.SAVED.db_instance if errors else StatusEnum.READY.db_instance
 
     run.save()
 
     # Only build the config file if there are no errors and build is True
-    config_file = build_config(config, job_data_dir) if build and not errors else None
+    config_file = build_config(config, job_data_dir) if build and not (errors or fatal) else None
 
-    return errors, config_file
+    return error_object, config_file
 
 
 def write_parameter_files(params: list[dict[str, str | float]], parameter_dir: str) -> None:
@@ -522,3 +598,113 @@ def is_missing(value: Any, field_name: str, errors: list[str], custom_error: str
         errors.append(custom_error if custom_error else f"{field_name} must be specified")
         return True
     return False
+
+
+# Global table of MPI rules.  Can be updated dynamically with endpoint
+# Each pair represents [max_catchments, num_nodes]
+MPI_NODE_RULES = [
+    [10, 1],
+    [50, 2],
+    [500, 4],
+    [-1, 8]
+]
+
+
+def get_mpi_nodes(num_catchments: int) -> int:
+    mpi_nodes = 1
+    for max_catchments, nodes in MPI_NODE_RULES:
+        if max_catchments == -1 or num_catchments <= max_catchments:
+            mpi_nodes = nodes
+            break
+
+    logger.info(f'{num_catchments} catchments using {mpi_nodes} nodes')
+    return mpi_nodes
+
+
+# This is really not a good place for this type of validation.  It takes a long time and is repeated even if this
+# Forcing or Observation data has been validated before
+# We really need to do validation of the data outside of the server.  This is static data that can just be validated in one fell swoop.
+# Ngen should also be updated to issue more readable and understandable error messages when it comes across bad data.
+def validate_csv_file(path: str, is_observational: bool) -> list[str]:
+    """
+    Validates a forcing or observational CSV file for structure and numeric value expectations.
+
+    :param path: Path to the CSV file.
+    :param is_observational: Whether this is observational (2-column) or forcing (9-column) data.
+    :return: A list of validation error strings.
+    """
+    data_type = 'observational' if is_observational else 'forcing'
+    logger.info(f"Validating {data_type} file {path}")
+    errors = []
+    expected_columns = 2 if is_observational else 9
+    rows = []
+
+    # Check column count on each row manually first
+    try:
+        with open(path, newline='') as f:
+            reader = csv.reader(f)
+            for i, row in enumerate(reader, start=1):
+
+                # Simulate malformed row by dropping a column from row 2
+                # if i == 2:
+                #     row = row[:-1]  # remove last column to simulate structural error
+
+                if len(row) != expected_columns:
+                    errors.append(f"{path}: Row {i} has {len(row)} columns, expected {expected_columns}")
+                    logger.error(errors)
+                    # Only report the first structural error to avoid duplication
+                    return errors
+
+                rows.append(row)
+    except Exception as e:
+        return [f"{path}: Failed to read CSV (structural check): {e}"]
+
+    if len(rows) < 2:
+        return [f"{path}: File does not contain data rows"]
+
+    if len(rows[0]) != expected_columns:
+        return [f"{path}: Header has {len(rows[0])} columns, expected {expected_columns}"]
+
+    # Now read the file fully with pandas for per-column type checking
+    try:
+        df = pd.DataFrame(rows[1:], columns=rows[0])  # Assumes header is first row
+        df = df.reset_index(drop=True)  # Ensure numeric row indices
+    except Exception as e:
+        return [f"{os.path.basename(path)}: Failed to read CSV: {e}"]
+
+    # Inject bad value to simulate an error
+    # df.iloc[0, 1] = "not_a_number"
+
+    # Validate all value columns (non-timestamp)
+    value_columns = df.columns[1:]
+    for row_number, (_, row) in enumerate(df.iterrows(), start=2):  # start=2 = header + 1-indexed
+        for col in value_columns:
+            try:
+                float(row[col])
+            except (ValueError, TypeError):
+                errors.append(f"{path}: Row {row_number}, column '{col}' must be numeric (value='{row[col]}')")
+
+    return errors
+
+
+def validate_csv_directory(dir_path: str) -> list[str]:
+    """
+    Validates all forcing CSV files in a directory using validate_csv_file.
+    Groups errors by file for easier debugging.
+
+    :param dir_path: Path to the directory.
+    :return: List of all error messages across files.
+    """
+    if not os.path.isdir(dir_path):
+        return [f"{dir_path} is not a directory"]
+
+    errors = []
+    for f in sorted(os.listdir(dir_path)):
+        full_path = os.path.join(dir_path, f)
+        if os.path.isfile(full_path) and f.lower().endswith(".csv"):
+            file_errors = validate_csv_file(full_path, is_observational=False)
+            if file_errors:
+                logger.error(file_errors)
+                errors.extend(file_errors)
+
+    return errors

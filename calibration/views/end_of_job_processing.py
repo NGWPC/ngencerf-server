@@ -261,7 +261,11 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
             expected_run_type=expected_run_type
         )
 
-    generate_swe_ts_data(validation_run)
+    logger.info('Generating SWE timeseries data')
+    try:
+        generate_swe_ts_data(validation_run)
+    except Exception as e:
+        logger.error(f'Failed to generate SWE timeseries data: {e}')
 
 
 # Function to process iterations for all workers in a run
@@ -586,8 +590,8 @@ def read_last_line(filename: str) -> str:
     :param filename: The path to the file.
     :return: The last line of the file as a string.
     """
-    with open(filename, 'rb') as file:
-        return deque(file, maxlen=1).pop().decode().strip()
+    with open(filename, 'r', encoding='utf-8') as file:
+        return deque(file, maxlen=1).pop().strip()
 
 
 # Function to count the number of rows in a CSV file

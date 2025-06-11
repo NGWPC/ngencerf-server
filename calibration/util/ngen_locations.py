@@ -5,7 +5,7 @@ from typing import Literal
 from django.conf import settings
 
 from calibration.enums import ValidationType
-from calibration.models import CalibrationRun, ForecastRun
+from calibration.models import CalibrationRun, ForecastRun, ValidationRun, ForecastForcingDownloadRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -18,6 +18,8 @@ static_dirs = [
 
 files = [
     NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'ngen'),
+    PARALLEL_NGEN_EXE := os.path.join(settings.NGEN_REPO_ROOT, 'cmake_build', 'ngen'),
+    PARTITION_GENERATOR_EXE := os.path.join(settings.BASE_DIR, 'partitionGenerator'),
     CFE_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'cfe', 'cmake_build', 'libcfebmi.so'),
     SLOTH_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sloth', 'cmake_build', 'libslothmodel.so'),
     TOPMD_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'topmodel', 'cmake_build', 'libtopmodelbmi.so'),
@@ -303,8 +305,8 @@ def get_forecast_performance_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), 'forecast_performance.log')
 
 
-def get_forecast_forcing_download_file(forecast_run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}.nc')
+def get_forecast_forcing_download_path(forecast_run: ForecastRun) -> str:
+    return os.path.join(get_forecast_dir(forecast_run), f'forecast_forcing_{forecast_run.id}')
 
 
 def get_forecast_temp_dir(forecast_run: ForecastRun) -> str:
@@ -329,6 +331,26 @@ def get_validation_special_performance_file(run: CalibrationRun,
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
 
 
+def get_calibration_git_info_file(run: CalibrationRun):
+    return os.path.join(get_output_calibration_run_dir(run), f"git_info_calibration.json")
+
+
+def get_validation_special_git_info_file(run: ValidationRun):
+    return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{run.validation_type}.json")
+
+
+def get_validation_iteration_git_info_file(run: ValidationRun, worker_name: str, iteration_num: int):
+    return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{worker_name}_iter{iteration_num}.json")
+
+
+def get_forecast_download_git_info_file(forecast_forcing_download_run: ForecastForcingDownloadRun):
+    return os.path.join(get_forecast_dir(forecast_forcing_download_run.forecast_run), "git_info_forecast_download.json")
+
+
+def get_forecast_git_info_file(forecast_run: ForecastRun):
+    return os.path.join(get_forecast_dir(forecast_run), "git_info_forecast.json")
+
+
 def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_metrics_valid_best.csv")
 
@@ -347,3 +369,14 @@ def get_validation_metrics_nwm_retrospective_file(run: CalibrationRun) -> str:
 
 def get_validation_metrics_valid_iteration_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"{run.gage.gage_id}_metrics_valid_{worker_name}_iter{iteration_num}.csv")
+
+
+def get_ngen_logging_basename() -> str:
+    return "ngen_logging"
+
+
+def get_ngen_logging_file(run: CalibrationRun | ValidationRun, import_flag: bool = False) -> str:
+    calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
+    job_type = run.__class__.__name__.removesuffix('Run').lower()
+    file_name = f"{get_ngen_logging_basename()}_{job_type}_{run.id}{'_import' if import_flag else ''}.json"
+    return os.path.join(calibration_run.job_data_dir, file_name)

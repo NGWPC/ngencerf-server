@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import time
-from typing import cast
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -13,107 +12,44 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
-from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun, CustomUser
-from calibration.run_util.run_common import submit_job
+from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name
-from calibration.util.calibration_validators import CalibrationRunSerializer, ImportResponseSerializer, ImportSerializer, \
-    ExportResponseSerializer, ErrorResponseSerializer
+from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ErrorResponseSerializer, \
+    LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
 from calibration.util.file_util import copy_directory, copy_file_to_directory, get_single_file
-from calibration.util.geopkg import gpkg_to_png_selected_layers
+from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_dir_for_job, get_geopackage_dir_for_job, \
-    get_observational_file_for_job
+    get_observational_file_for_job, get_ngen_logging_file
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, SLOTH, add_sloth_parameters, validate_formulation
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
+from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_parameters, get_time_range, has_user_selected_tuning_parameters
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request
+    validate_request, get_valid_path, truncate_large_fields, get_user_email
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
     get_forcing_data_from_data_services, get_observational_data_from_data_services
 
 logger = logging.getLogger(__name__)
 
 
-@extend_schema(
-    request=ImportSerializer,
-    responses={
-        200: ImportResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Import a job"
-)
-@api_view(['POST'])
-@handle_exceptions
-def import_job(request: Request) -> Response:
-    """
-    API endpoint to import a calibration job. It validates input data,
-    imports calibration run data, and optionally submits a job.
-
-    :param request: Django HTTP request containing job import data.
-    :return: HTTP response indicating success or error status.
-    """
-    data = request.data
-    logger.debug(f'import_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
-
-    validator, error_return = validate_request(ImportSerializer, data)
-    if error_return:
-        return error_return
-
-    run_after_import = validator.get('run_after_import', False)
-
-    run, messages, fatal_error = import_calibration_run_data(request, validator, JobGenesis.IMPORT)
-    if fatal_error:
-        return fatal_error
-
-    imported_and_submitted = 'imported'
-
-    # TODO Only run this if there are no other errors
-    errors, config_file = ngen_cal_input.ready_to_run(run)
-
-    if run_after_import and not errors:
-        errors, config_file = ngen_cal_input.ready_to_run(run)
-        if not errors:
-            error_response = submit_job(run, config_file=config_file)
-            if error_response:
-                return error_response
-            imported_and_submitted = 'imported and submitted'
-
-    response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
-    if messages:
-        response['messages'] = messages
-    if errors:
-        response['errors'] = errors
-
-    response_validator, error_response = validate_response(ImportResponseSerializer, response)
-    if error_response:
-        return error_response
-
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from import_job() - {json.dumps(response_validator.data)}')
-    return Response(response_validator.data)
-
-
-def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis) \
-        -> tuple[CalibrationRun | None, dict | None, ResponseError]:
+def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis, run: CalibrationRun = None) -> tuple[
+    CalibrationRun | None, dict | None, ResponseError]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
     :param request: Django HTTP request with user details.
     :param calibration_run_data: Dictionary with calibration run data.
     :param genesis: Enum value indicating the origin of the job.
+    :param run: Optional CalibrationRun to update.  If None, a new CalibrationRun is created.
     :return: Tuple containing CalibrationRun instance, messages, and optional ResponseError.
     """
     with transaction.atomic():
-        run = create_calibration_run_internal(request.user, genesis)
+        run = run if run else create_calibration_run_internal(request.user, genesis)
 
         errors = []
         eds_errors = []
@@ -317,6 +253,18 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             # I'm assuming for now that there is just one CalibrationStopCriteria for this run, but that might change in the future
             CalibrationStopCriteria.objects.update_or_create(calibration_run=run, defaults={"value": stop_criteria})
 
+        #############################
+        # Logging
+        #############################
+        # Get logging_config which has been imported from json
+        logging_config = calibration_run_data.get('logging_config')
+
+        if logging_config:
+            # Create a logging_config_import file with the imported data
+            logging_config_path = get_ngen_logging_file(run, import_flag=True)
+            with open(logging_config_path, 'w') as f:
+                json.dump(logging_config, f, indent=4)
+
         run.save()
     messages = {}
     if errors:
@@ -352,7 +300,7 @@ def export_job(request: Request) -> Response:
     :return: Response containing the exported calibration run data or an error.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'export_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -368,12 +316,12 @@ def export_job(request: Request) -> Response:
 
     errors, _ = ngen_cal_input.ready_to_run(run)
     if errors:
-        calibration_run_data['metadata']['errors'] = errors
+        calibration_run_data['metadata']['errors'] = errors.get('errors')
 
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from export() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -412,6 +360,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
+    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
+                                     GeopackageSourceEnum.UPLOAD,
+                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
+        geopackage_path) else None
+
     #############################
     # Export or Clone Mode
     #############################
@@ -420,17 +374,18 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         metadata = {
             'source_calibration_run_id': run.id,
             'source_status': run.status.name,
-            'time_range': serialized_time_range
+            'time_range': serialized_time_range,
+            'job_data_dir': resolve_job_data_dir(run),
+            'num_catchments': num_catchments
         }
         calibration_run_data['metadata'] = metadata
 
-        # Not supporting this flag right now until Data Services is ready.
-        # calibration_run_data['run_after_import'] = False
+        calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)  # type: ignore
 
-        # Foe export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
+        # For export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
 
         if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
             user_uploaded_geopackage_file = get_single_file(get_geopackage_dir_for_job(run))
@@ -449,12 +404,24 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
                 user_uploaded_forcing_dir) else None
 
+        # Export the logging data.  Start with any imported data
+        # The use the run-time logging, if this job has been run
+        logging_config_file = get_ngen_logging_file(run, import_flag=True)
+        if not os.path.exists(logging_config_file):
+            logging_config_file = get_ngen_logging_file(run, import_flag=False)
+            if os.path.exists(logging_config_file):
+                with open(logging_config_file, 'r') as f:
+                    logging_config = json.load(f)
+                    calibration_run_data['logging_config'] = logging_config
+
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
     #############################
     # UI Display Mode (Non-Export)
     #############################
     else:
+        calibration_run_data['job_data_dir'] = resolve_job_data_dir(run)
+
         ui_display_start = time.time()
         calibration_run_data['calibration_run_id'] = run.id
         calibration_run_data['submit_date'] = run.submit_date
@@ -464,11 +431,12 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['gage'] = {
             'gage_id': run.gage.gage_id,
             'agency': run.gage.agency,
-            'station_name': run.gage.station_name,
+            'station_name': run.gage.station_name if run.gage.station_name else "<unknown>",
             'latitude': run.gage.latitude,
             'longitude': run.gage.longitude,
             'altitude': run.gage.altitude
         } if run.gage else None
+        calibration_run_data['num_catchments'] = num_catchments
         calibration_run_data['status'] = run.status.name
 
         # Generate Geopackage map if requested
@@ -568,3 +536,57 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data
+
+
+@extend_schema(
+    request=LoadCalibrationJobSerializer,
+    responses={
+        200: LoadCalibrationRunResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Load all data for a previously saved calibration"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def load_calibration_run(request: Request) -> Response:
+    """
+    Load all data for a previously saved calibration run.
+
+    :param request: The HTTP request object.
+    :return: A Response object containing the serialized calibration run data.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(LoadCalibrationJobSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_id = validator.get('calibration_run_id')
+    include_gpkg_map = validator.get('include_gpkg_map')
+
+    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+
+    if error_return:
+        return error_return
+
+    calibration_run_data = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
+
+    response_validator, error_response = validate_response(LoadCalibrationRunResponseSerializer, calibration_run_data,
+                                                           fields_to_truncate=['geopackage_image_url'])
+
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
+    )
+
+    return Response(response_validator.data)

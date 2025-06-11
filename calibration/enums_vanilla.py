@@ -22,3 +22,4 @@ class JobType(StrEnum):
     VALIDATION = 'validation'
     FORECAST = 'forecast'
     FORECAST_FORCING_DOWNLOAD = 'forecast_forcing_download'
+    COMPARISON = 'comparison'

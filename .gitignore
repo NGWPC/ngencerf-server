@@ -29,3 +29,8 @@ postgres_db.override.env
 .load_static
 *git_info.json
 /git_info
+
+*.egg-info
+cli/build
+cli/dist
+ngencerf.spec

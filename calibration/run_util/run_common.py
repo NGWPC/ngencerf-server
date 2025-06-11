@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import subprocess
@@ -16,12 +17,14 @@ from calibration.models import CalibrationRun, ValidationRun, Iteration, Forecas
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.file_util import get_single_file
+from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
-    get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_file, \
-    get_forecast_dir, get_forecast_forcing_config_file
+    get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_path, \
+    get_forecast_dir, get_forecast_forcing_config_file, get_validation_iteration_git_info_file, get_forecast_download_git_info_file, \
+    get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description
+from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, create_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from cerfServer.settings import NgenEnvironmentEnum
@@ -96,13 +99,15 @@ def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
     Validates the command-line arguments and output file paths for LOCAL and DOCKER environments.
 
     This function ensures that all arguments passed to subprocess-based commands are valid types
-    (str, bytes, or os.PathLike). It raises a TypeError if any invalid argument is encountered.
+    (str, bytes, or os.PathLike) and not None. It raises a TypeError if any invalid argument type
+    is encountered, or a ValueError if any argument value is None.
 
     :param cmd_line_args: A dictionary of command-line arguments where the keys are argument names
                           and the values are their corresponding values.
     :param stdout_file: The path to the file where the job's stdout will be written.
                         It must be a valid path-like object.
     :raises TypeError: If any argument or the stdout file is not a valid type.
+    :raises ValueError: If any argument value is None.
     """
 
     # Define allowed types for clarity
@@ -110,6 +115,10 @@ def validate_cmd_args(cmd_line_args: dict[str, str], stdout_file: str) -> None:
 
     # Validate each argument in the command-line arguments dictionary
     for key, value in cmd_line_args.items():
+        if value is None:
+            logger.error(f"Argument '{key}' is None, which is not allowed.")
+            raise ValueError(f"Command-line argument '{key}' cannot be None.")
+
         # Check if the value is one of the allowed types
         if not isinstance(value, allowed_types):
             # Log the invalid argument with valid type information
@@ -208,7 +217,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file},
+        {'input_file': input_file, 'nprocs': str(calibration_run.mpi_nprocs)},
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
@@ -246,6 +255,7 @@ def run_validation_job(validation_run: ValidationRun) -> None:
         # For running local, we need to leave these out
         cmd_line_args['worker_name'] = validation_run.worker_name
         cmd_line_args['iteration_num'] = str(validation_run.iteration_num)
+    cmd_line_args['nprocs'] = str(validation_run.calibration_run.mpi_nprocs)
     execute_job(
         validation_run,
         cmd_line_args,
@@ -268,7 +278,8 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
     gpkg_file = get_single_file(get_geopackage_dir_for_job(forecast_forcing_download_run.forecast_run.calibration_run))
     cycle_name = forecast_forcing_download_run.forecast_run.cycle.internal_name
     config_file = get_forecast_forcing_config_file(forecast_forcing_download_run.forecast_run)
-    forcing_file = get_forecast_forcing_download_file(forecast_forcing_download_run.forecast_run)
+    forcing_dir = get_forecast_forcing_download_path(forecast_forcing_download_run.forecast_run)
+    os.makedirs(forcing_dir, exist_ok=True)
     stdout_file = get_forecast_forcing_download_stdout_file(forecast_forcing_download_run.forecast_run)
 
     execute_job(
@@ -277,7 +288,7 @@ def run_forecast_forcing_download_job(forecast_forcing_download_run: ForecastFor
             'cycle_name': cycle_name,
             'gpkg_file': gpkg_file,
             'config_file': config_file,
-            'forcing_file': forcing_file
+            'forcing_dir': forcing_dir
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.FORECAST_FORCING_DOWNLOAD, False)
@@ -293,7 +304,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
 
     :param forecast_run: The ForecastRun object representing the job.
     """
-    forcing_file = get_forecast_forcing_download_file(forecast_run)
+    forcing_dir = get_forecast_forcing_download_path(forecast_run)
     validation_best_input = get_validation_best_input_file(forecast_run.calibration_run)
     forecast_dir = os.path.basename(get_forecast_dir(forecast_run))
     stdout_file = get_forecast_stdout_file(forecast_run)
@@ -301,7 +312,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     execute_job(
         forecast_run,
         {
-            'forcing_file': forcing_file,
+            'forcing_dir': forcing_dir,
             'validation_best_input': validation_best_input,
             'forecast_dir': forecast_dir
         },
@@ -310,7 +321,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
-def submit_job(run: BaseRun, config_file=None) -> Response | None:
+def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response | None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -322,12 +333,17 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
 
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.) to submit.
     :param config_file: Optional configuration file for CalibrationRun preparation.
+    :param logging_config: Optional logging configuration for CalibrationRun preparation.
     :return: A DRF Response instance if there is an issue; otherwise, None on success.
     """
     # Special handling for calibration jobs
     if isinstance(run, CalibrationRun):
-        response = prepare_calibration_job(run, config_file)
+        create_ngen_logging_file(run, logging_config)
+        fatal, response = prepare_calibration_job(run, config_file)
         if response:
+            if fatal:
+                run.status = StatusEnum.FAILED.db_instance
+                run.save(update_fields=['status'])
             return response
 
     try:
@@ -339,25 +355,46 @@ def submit_job(run: BaseRun, config_file=None) -> Response | None:
 
         # Determine the appropriate job execution function
         if isinstance(run, CalibrationRun):
+            create_git_info(get_calibration_git_info_file(run))
             run_calibration_job(run)
         elif isinstance(run, ValidationRun):
+            if run.validation_type != ValidationType.VALID_ITERATION.value:
+                create_git_info(get_validation_special_git_info_file(run))
+            else:
+                create_git_info(get_validation_iteration_git_info_file(run, run.worker_name, run.iteration_num))
+
             run_validation_job(run)
         elif isinstance(run, ForecastForcingDownloadRun):
+            create_git_info(get_forecast_download_git_info_file(run))
+
             run_forecast_forcing_download_job(run)
         elif isinstance(run, ForecastRun):
+            create_git_info(get_forecast_git_info_file(run))
+
             run_forecast_job(run)
         else:
             raise CerfException(f"Unsupported run type: {type(run).__name__}")
     except Exception as e:
         # Handle failures by marking the job as FAILED
-        run.__class__.objects.filter(id=run.id).update(status=StatusEnum.FAILED.db_instance)
+        run.status = StatusEnum.FAILED.db_instance
+        run.save(update_fields=['status'])
+
         logger.exception(f'Exception submitting {get_job_description(run)} - {str(e)}')
         raise  # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
+    return None
 
 
-def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> Response | None:
+def create_git_info(git_info_file: str) -> None:
+    logger.info(f"Writing git info to {git_info_file}")
+    git_info_data = get_git_info_internal()
+    os.makedirs(os.path.dirname(git_info_file), exist_ok=True)
+    with open(git_info_file, 'w') as f:
+        f.write(json.dumps(git_info_data, indent=4))
+
+
+def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> tuple[bool, Response | None]:
     """
     Prepare input files and validate readiness for a calibration job.
 
@@ -366,14 +403,20 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
 
     :param calibration_run: The CalibrationRun object to prepare.
     :param config_file: Optional configuration file to use instead of generating one.
-    :return: A DRF Response instance if there is an issue; otherwise, None on success.
+    :return: A tuple (fatal_error: bool, Response). If preparation is successful, returns (False, None).
+             If there are validation errors, returns (bool, Response).
     """
     # If a config file is passed, validation can be skipped
     if not config_file:
-        messages, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
+        error_object, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
 
-        if messages:
-            return ResponseError(f'Calibration Job {calibration_run.id} is not ready', validation_errors=messages)
+        if error_object['errors'] or error_object['fatal']:
+            fatal_error = bool(error_object['fatal'])
+            return fatal_error, ResponseError(
+                f'Calibration Job {calibration_run.id} is not ready',
+                validation_errors=error_object['errors'],
+                fatal_errors=error_object['fatal']
+            )
 
     try:
         logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
@@ -384,7 +427,7 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
         raise CerfException(f'Exception during create_input - {str(e)}') from e
 
     logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
-    return None
+    return False, None
 
 
 def create_and_submit_validation_control(calibration_run: CalibrationRun) -> None:
@@ -540,4 +583,6 @@ def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> N
     - False if the job has completed successfully so far.
     """
     read_forecast_output(run, failed_so_far)
+    if failed_so_far:
+        return
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.

@@ -6,7 +6,6 @@ import os
 import re
 from datetime import timedelta, datetime
 from functools import wraps
-from pathlib import Path
 from typing import Type, Any, Callable, cast
 
 import numpy as np
@@ -18,17 +17,19 @@ from rest_framework import status
 from rest_framework.decorators import permission_classes
 from rest_framework.exceptions import ValidationError, ParseError
 from rest_framework.permissions import BasePermission
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
-from calibration.enums import StatusEnum, ValidationType, JobGenesis
+from calibration.enums import StatusEnum, ValidationType, JobGenesis, NgenLogging
 from calibration.models import CalibrationRun, ValidationRun, Status, ForecastCycle, ForecastRun, CustomUser
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
+from calibration.util.caching import get_cached_modules_with_groups
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
 from calibration.util.ngen_locations import get_forecast_dir, get_ngen_stdout_log_filename, get_output_calibration_run_dir, \
-    get_output_validation_run_dir
+    get_output_validation_run_dir, get_ngen_logging_file, get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
 
@@ -73,19 +74,22 @@ def get_run_instance(
         run = query.get()
     except model.DoesNotExist:
         user_info = f' or is not owned by {cast(CustomUser, user).email}' if user else ''
-        error = f'{model.__name__} {run_id} does not exist{user_info}'
+        model_name = model.__name__.replace("Run", " Job")
+        error = f'{model_name} {run_id} does not exist{user_info}'
         return None, ResponseError(error)
 
     # Explicitly check if the job is archived and include_archived=False
     is_archived = getattr(run, is_archived_field, False)
     if is_archived and not include_archived:
-        error = f'{model.__name__} {run_id} is archived and should be unarchived before additional operations can be performed.'
+        model_name = model.__name__.replace("Run", " Job")
+        error = f'{model_name} {run_id} is archived and should be unarchived before additional operations can be performed.'
         return None, ResponseError(error)
 
     # Check if the status of the run is in the allowed statuses
     if run.status not in allowed_statuses:
         allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
-        error = (f'{model.__name__} {run_id} is not in an allowed status: '
+        model_name = model.__name__.replace("Run", " Job")
+        error = (f'{model_name} {run_id} is not in an allowed status: '
                  f'{join_with_or(allowed_status_names)}. '
                  f'Current status: {run.status.name}')
         return run, ResponseError(error)
@@ -237,16 +241,16 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
 
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
-    run.job_data_dir = Path(settings.NGEN_CAL_RUN_DIR) / f'{run.id}_{username}'
+    run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f"{run.id}_{username}")
 
     # Set the job genesis based on the provided genesis or default to JobGenesis.GUI
     run.job_genesis = genesis.value if genesis else JobGenesis.GUI.value
 
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory if it already exists (should not happen in production)
-    if run.job_data_dir.exists():
+    if os.path.exists(run.job_data_dir):
         # Append timestamp to existing directory name to avoid overwriting
-        new_name = run.job_data_dir.with_name(f"{run.job_data_dir.name}_{datetime.now().isoformat()}")
-        run.job_data_dir.rename(new_name)
+        new_name = f"{run.job_data_dir}_{datetime.now().isoformat()}"
+        os.rename(run.job_data_dir, new_name)
 
     # This is always true
     run.automatic_validation = True
@@ -269,6 +273,7 @@ def create_validation_run_internal(
     """
     validation_type = validation_type or ValidationType.VALID_ITERATION
 
+    iteration_object = None
     if validation_type == ValidationType.VALID_ITERATION:
         if iteration_id is None:
             raise CerfException(f"Values must be supplied for both iteration_id")
@@ -277,8 +282,6 @@ def create_validation_run_internal(
             iteration_object = Iteration.objects.filter(calibration_run=calibration_run, id=iteration_id).get()
         except Iteration.DoesNotExist:
             raise CerfException(f"Cannot find Iteration Id {iteration_id} for Calibration Job {calibration_run.id}")
-    else:
-        iteration_object = None
 
     validation_run = ValidationRun.objects.create(status=StatusEnum.SAVED.db_instance,
                                                   calibration_run=calibration_run,
@@ -314,8 +317,8 @@ def create_forecast_run_internal(
     return forecast_run
 
 
-token_slurm_scope = 'slurm_callback'
-token_ngen = 'ngen'
+TOKEN_SLURM_SCOPE = 'slurm_callback'
+TOKEN_NGEN_SCOPE = 'ngen'
 
 
 def generate_custom_token(user: User, scope: str) -> str:
@@ -327,8 +330,8 @@ def generate_custom_token(user: User, scope: str) -> str:
     :return: JWT token string.
     """
     access = AccessToken.for_user(user)
-    # Set the expiration to 24 hours from now
-    access.set_exp(lifetime=timedelta(hours=24))
+    # Set the expiration to 7 days from now
+    access.set_exp(lifetime=timedelta(days=7))
 
     # Set our custom scope
     access['scope'] = scope
@@ -437,6 +440,7 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
+# TODO Fix me
 # Get the valid path for a file that can come from Data Services or user-upload
 def get_valid_path(source, eds_path, upload_enum, get_path_func):
     """
@@ -449,14 +453,16 @@ def get_valid_path(source, eds_path, upload_enum, get_path_func):
     :return: The valid path if found; otherwise None.
     """
     job_specific_file = get_path_func()
-    if source:
-        if source == upload_enum.db_instance:
-            # Check job-specific path first
-            if job_specific_file and Path(job_specific_file).exists():
-                return job_specific_file
-        # If not found or source is different, check the EDS path
-        if eds_path and Path(eds_path).exists():
-            return eds_path
+
+    # job_specific_file is there, then always use it
+    # If it's not there, then use the EDS file
+
+    if job_specific_file and os.path.exists(job_specific_file):
+        return job_specific_file
+
+    # Fall back to the EDS path if the job-specific file is not found
+    if eds_path and os.path.exists(eds_path):
+        return eds_path
 
     return None
 
@@ -491,19 +497,22 @@ def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
     return truncated_data
 
 
-def ResponseError(message, response_type='error', validation_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
+def ResponseError(message, response_type='error', validation_errors=None, fatal_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
     """
     Return a standardized error response, with optional validation errors.
 
     :param message: The error message to include.
     :param response_type: The type of error (default is 'error').
     :param validation_errors: Optional validation errors to include.
+    :param fatal_errors: Optional fatal errors to include which causes the job to fail
     :param http_status: The HTTP status code for the response (default is 400).
     :return: A formatted Response object with the error details.
     """
     response = {'response_type': response_type, 'message': message}
     if validation_errors:
         response['validation_errors'] = validation_errors
+    if fatal_errors:
+        response['fatal_errors'] = fatal_errors
     serializer = ErrorResponseSerializer(response)
     logger.error(serializer.data)
     return Response(serializer.data, status=http_status)
@@ -723,3 +732,95 @@ def find_validation_worker_with_matching_log(
     if not matching_worker_name:
         logger.error(f"Could not find worker corresponding to {validation_run}")
     return matching_worker_name
+
+
+def get_user_email(request: Request) -> str:
+    """
+    Returns the email address of the authenticated user associated with the request.
+
+    This function checks whether the user is authenticated and has an 'email' attribute.
+    If both conditions are satisfied, it returns the email address.
+    Otherwise, it returns 'Anonymous'.
+
+    We use a function because Pycharm gives a warnings if we use request.user.email directly
+    since we are using a CustomUser object
+
+    :param request: The incoming DRF Request object.
+    :return: User's email address or 'Anonymous' if not available.
+    """
+    user = request.user
+
+    # Check if the user is authenticated and has an 'email' attribute
+    if getattr(user, "is_authenticated", False) and hasattr(user, "email"):
+        return user.email
+
+    # Fallback if unauthenticated or missing 'email'
+    return "Anonymous"
+
+
+def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict = None) -> None:
+    """
+    Create a JSON logging configuration file for a calibration or validation run, and a symbolic
+    link pointing to it using a consistent base name.
+
+    The generated config includes:
+    - All valid modules (based on cached definitions)
+    - A special module 'ngen'
+    - Default log levels set to INFO, unless overridden
+
+    Overrides are applied in this order:
+    1. A previously imported logging config file, if it exists
+    2. The provided `logging_config_param` dictionary
+
+    All module names are treated case-insensitively and stored in lowercase in the output.
+
+    :param run: A CalibrationRun or ValidationRun instance for which to create the logging config.
+    :param logging_config_param: A dictionary with optional overrides, e.g.:
+        {
+            "logging_enabled": False,
+            "modules": {"cfe-s": "DEBUG"}
+        }
+        This is currently only provided by the UI when calling run_calibration_job.
+    """
+    if not logging_config_param:
+        logging_config_param = {}
+
+    # Get all valid module names in lowercase, plus special-case 'ngen'
+    valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
+    valid_modules.add('ngen')
+
+    # Default all modules to INFO level
+    module_levels = {name: NgenLogging.INFO.value for name in valid_modules}
+    logging_enabled = True  # default
+
+    # Apply overrides from an imported config file, if it exists
+    # This occurs during 'import' or 'update' operations
+    import_path = get_ngen_logging_file(run, import_flag=True)
+    if os.path.exists(import_path):
+        with open(import_path, "r") as f:
+            imported = json.load(f)
+            logging_enabled = imported.get("logging_enabled", logging_enabled)
+            for name, level in imported.get("modules", {}).items():
+                module_levels[name.lower()] = level
+
+    # Apply overrides from the provided logging_config_param (used by UI during run_calibration_job)
+    logging_enabled = logging_config_param.get("logging_enabled", logging_enabled)
+    for name, level in logging_config_param.get("modules", {}).items():
+        module_levels[name.lower()] = level
+
+    # Build final logging config
+    ngen_logging = {
+        "logging_enabled": logging_enabled,
+        "modules": module_levels
+    }
+
+    # Write logging config to disk
+    output_path = get_ngen_logging_file(run, import_flag=False)
+    with open(output_path, "w") as f:
+        json.dump(ngen_logging, f, indent=4)
+
+    # Replace or create a symbolic link with a consistent name
+    symlink_path = os.path.join(run.job_data_dir, f'{get_ngen_logging_basename()}.json')
+    if os.path.islink(symlink_path) or os.path.exists(symlink_path):
+        os.remove(symlink_path)
+    os.symlink(output_path, symlink_path)

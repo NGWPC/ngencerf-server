@@ -3,7 +3,6 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import cast
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -20,20 +19,24 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun, CustomUser
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
-    GetJobDirResponseSerializer, GetStatusRequestSerializer, GetStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer, \
-    ForecastJobSlurmCallbackRequestSerializer, \
-    ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer
+    GetStatusRequestSerializer, GetStatusResponseSerializer, \
+    GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
+    CalibrationOrValidationOrForecastRunSerializer, ForecastJobSlurmCallbackRequestSerializer, \
+    ForecastForcingDownloadJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
+    GenericResponseSerializerWithValidator, RunCalibrationJob, MPINodesRulesSerializer, MPINodesRulesResponseSerializer
 from calibration.views import ngen_cal_input
+from calibration.views.calibration_swe_views import generate_swe_ts_data
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
-    generate_custom_token, token_slurm_scope, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
-    get_forecast_forcing_download_run, join_with_or
+    generate_custom_token, TOKEN_SLURM_SCOPE, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
+    get_forecast_forcing_download_run, join_with_or, get_user_email
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -65,7 +68,7 @@ def get_status(request: Request) -> Response:
     :return: JSON response with the status and associated job details.
     """
     data = request.data
-    logger.debug(f'get_status() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(GetStatusRequestSerializer, data)
     if error_return:
@@ -78,43 +81,9 @@ def get_status(request: Request) -> Response:
     if error_return:
         return error_return
 
-    def get_performance_metrics(performance_metrics):
-        """
-        Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
-        """
-        if not performance_metrics:
-            return {field: None for field in [
-                "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
-            ]}
-
-        # Convert numeric fields to kilobytes
-        metrics_dict = model_to_dict(performance_metrics, fields=[
-            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
-        ])
-        # Manually add io_throughput since it's a generated field
-        metrics_dict["io_throughput"] = performance_metrics.io_throughput
-
-        # Convert relevant fields to 'K' units
-        for field in ["max_rss", "max_disk_read", "max_disk_write"]:
-            value = metrics_dict.get(field)
-            if value is not None:  # Only convert non-null values
-                metrics_dict[field] = f"{value:.2f}K"
-
-        # Format io_throughput in 'K/s'
-        io_throughput = metrics_dict.get("io_throughput")
-        if io_throughput is not None:
-            metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
-
-        return metrics_dict
-
-    def should_include_metrics(run_status: Status):
-        """
-        Determines if performance metrics should be included based on job status and request parameters.
-        """
-        return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
-
     # Conditionally retrieve calibration performance metrics
-    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status) else None
+    calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if should_include_metrics(calibration_run.status,
+                                                                                                                 include_performance_metrics) else None
 
     # Retrieve validation runs with related PerformanceMetrics data
     validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
@@ -159,7 +128,7 @@ def get_status(request: Request) -> Response:
             'run_end': run.run_end,
             'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
         }
-        if should_include_metrics(run.status):
+        if should_include_metrics(run.status, include_performance_metrics):
             validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
         validation_response.append(validation_data)
 
@@ -212,14 +181,14 @@ def get_status(request: Request) -> Response:
     if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
         messages, _ = ngen_cal_input.ready_to_run(calibration_run)
         if messages:
-            response['errors'] = messages
+            response['errors'] = messages.get('errors')
 
     response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'],
                                                            max_length=10)
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {(cast(CustomUser, request.user)).email}  from get_status() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10))}'
     )
 
@@ -227,7 +196,89 @@ def get_status(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=GetStatusForComparisonRequestSerializer,
+    responses={
+        200: GetStatusForComparisonResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Return the status of a calibration job and associated validation and forecast jobs"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_status_for_comparison(request: Request) -> Response:
+    """
+    Retrieves the status of multiple calibration jobs, including performance metrics.
+
+    calibration_run_ids should be given as an array.
+
+    :param request: HTTP request containing calibration run details.
+    :return: JSON response with the status and associated job details.
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(GetStatusForComparisonRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_ids = validator.get('calibration_run_ids')
+
+    response = {
+        'calibration_run_ids': calibration_run_ids,
+        'statuses': [],
+        'errors': []
+    }
+
+    for calibration_run_id in calibration_run_ids:
+        calibration_error = None
+
+        calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+        if error_return:
+            calibration_error = {'calibration_run_id': calibration_run.id, 'message': error_return}
+
+        if not calibration_error:
+            # Conditionally retrieve calibration performance metrics
+            calibration_metrics = get_performance_metrics(calibration_run.performance_metrics) if calibration_run.status in [
+                StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance] else None
+
+            # Prepare the response for this job
+            status_response = {
+                'calibration_run_id': calibration_run.id,
+                'formulation_name': calibration_run.user_formulation_name,
+                'status': calibration_run.status.name,
+                'submit_date': calibration_run.submit_date,
+                'run_start': calibration_run.run_start,
+                'run_end': calibration_run.run_end,
+                'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
+            }
+            if calibration_metrics:
+                status_response['performance_metrics'] = calibration_metrics
+
+            response['statuses'].append(status_response)
+
+        else:
+            response['errors'].append(calibration_error)
+
+    response_validator, error_response = validate_response(GetStatusForComparisonResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'{json.dumps(response_validator.data)}'
+    )
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=RunCalibrationJob,
     responses={
         200: SubmitCalibrationJobResponseSerializer,
         400: OpenApiResponse(
@@ -251,29 +302,72 @@ def run_calibration(request: Request) -> Response:
     :return: JSON response indicating job submission status.
     """
     data = request.data
-    logger.debug(f'run_calibration() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
+    validator, error_return = validate_request(RunCalibrationJob, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
+    logging_config = validator.get('logging_config')
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
-    error_response = submit_job(run)
+    error_response = submit_job(run, logging_config=logging_config)
     if error_response:
         return error_response
 
-    response = {'message': f'Calibration Job {run.id} has been submitted', 'calibration_run_id': calibration_run_id,
-                'status': run.status.name, 'submit_date': run.submit_date}
+    response = {'message': f'Calibration Job {run.id} has been submitted',
+                'calibration_run_id': calibration_run_id,
+                'status': run.status.name,
+                'submit_date': run.submit_date}
 
-    response_validator, error_response = validate_response(SubmitCalibrationJobResponseSerializer, response)
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email} from run_calibration() - {json.dumps(response_validator.data)}')
+    response_validator, error_return = validate_response(SubmitCalibrationJobResponseSerializer, response)
+    if error_return:
+        return error_return
+
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
+
+
+def get_performance_metrics(performance_metrics):
+    """
+    Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
+    """
+    if not performance_metrics:
+        return {field: None for field in [
+            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+        ]}
+
+    # Convert numeric fields to kilobytes
+    metrics_dict = model_to_dict(performance_metrics, fields=[
+        "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
+    ])
+    # Manually add io_throughput since it's a generated field
+    metrics_dict["io_throughput"] = performance_metrics.io_throughput
+
+    # Convert relevant fields to 'K' units
+    for field in ["max_rss", "max_disk_read", "max_disk_write"]:
+        value = metrics_dict.get(field)
+        if value is not None:  # Only convert non-null values
+            metrics_dict[field] = f"{value:.2f}K"
+
+    # Format io_throughput in 'K/s'
+    io_throughput = metrics_dict.get("io_throughput")
+    if io_throughput is not None:
+        metrics_dict["io_throughput"] = f"{io_throughput:.2f}K/s"
+
+    return metrics_dict
+
+
+def should_include_metrics(run_status: Status, include_performance_metrics: bool = False):
+    """
+    Determines if performance metrics should be included based on job status and request parameters.
+    """
+    return include_performance_metrics and run_status in [StatusEnum.DONE.db_instance, StatusEnum.FAILED.db_instance]
 
 
 @extend_schema(
@@ -301,7 +395,7 @@ def process_calibration_output(request):
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
 
-    logger.debug(f'process_calibration_output() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
         return error_return
@@ -322,7 +416,88 @@ def process_calibration_output(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from process_calibration_output() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=ValidationRunSerializer,
+    responses={
+        200: GenericResponseSerializerWithValidator,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Process the output of a calibration run"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def process_swe_timeseries(request: Request) -> Response:
+    """
+    This endpoint is mostly for testing, to kick off the processing of the SWE timeseries for a  completed job.
+    Normally generate_swe_ts_data() is called automatically when a job completes.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+    validator, error_return = validate_request(ValidationRunSerializer, data)
+    if error_return:
+        return error_return
+
+    validation_run_id = validator.get('validation_run_id')
+
+    run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.DONE])
+
+    if error_return:
+        return error_return
+
+    generate_swe_ts_data(run)
+
+    response = {'message': f"SWE Timeseries processing completed for Validation Job {run.id}",
+                'validation_run_id': run.id,
+                'status': run.status.name}
+
+    response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def update_mpi_rules(request: Request) -> Response:
+    """
+    Undocumented endpoint for updating the MPI rules
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+    validator, error_return = validate_request(MPINodesRulesSerializer, data)
+    if error_return:
+        return error_return
+
+    mpi_rules = validator.get('mpi_rules')
+    if mpi_rules:
+        ngen_cal_input.MPI_NODE_RULES = mpi_rules
+
+    message = "Updated MPI Rules" if mpi_rules else "Current MPI Rules"
+    response = {
+        'message': message,
+        'mpi_rules': ngen_cal_input.MPI_NODE_RULES
+    }
+
+    response_validator, error_response = validate_response(MPINodesRulesResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -354,7 +529,7 @@ def report_iteration(request):
     :return: JSON response indicating the success of the operation.
     """
     data = request.data
-    logger.debug(f'report_iteration() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ReportIterationSerializer, data)
     if error_return:
@@ -398,7 +573,7 @@ def report_iteration(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from report_iteration() - {json.dumps(response_validator.data)}')
+        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
         return Response(response_validator.data)
 
@@ -428,7 +603,7 @@ def get_iteration(request: Request) -> Response:
     :return: JSON response with the current iteration details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_iteration() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -454,7 +629,7 @@ def get_iteration(request: Request) -> Response:
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_iteration() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -484,7 +659,7 @@ def cancel_job(request: Request) -> Response:
     :return: A Response indicating the cancellation result.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'cancel_job() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
     if error_return:
@@ -509,7 +684,8 @@ def cancel_job(request: Request) -> Response:
         if error_return:
             return error_return
 
-        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user, run_status=list(StatusEnum))
+        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user,
+                                                                       run_status=list(StatusEnum))
         if forcing_error:
             return forcing_error
 
@@ -552,52 +728,23 @@ def cancel_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from cancel_job() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
 
-@extend_schema(
-    request=CalibrationRunSerializer,
-    responses={
-        200: GetJobDirResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Return the directory where a jobs data is stored"
-)
-@api_view(['GET', 'POST'])
-@handle_exceptions
-def get_job_dir(request: Request) -> Response:
+def resolve_job_data_dir(run) -> str:
     """
-    Retrieves the directory path where the data for a specific calibration run is stored.
+    Resolves the job data directory for the given CalibrationRun object, converting paths if necessary
+    based on the current settings.
 
-    :param request: HTTP request containing calibration run details.
-    :return: JSON response with the data directory path.
+    :param run: The CalibrationRun object.
+    :return: The resolved host path to the job data directory as a plain string.
+    :raises ValueError: If the path is not absolute or does not start with the expected root.
     """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_job_dir() request from {(cast(CustomUser, request.user)).email}  - {data}')
-
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-
-    run, error_return = get_calibration_run(calibration_run_id, request.user,
-                                            run_status=[StatusEnum.DONE, StatusEnum.RUNNING, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
-    if error_return:
-        return error_return
+    container_job_data_dir: str = run.job_data_dir
 
     if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Convert path inside the container to the mapped host path outside the container
-        container_job_data_dir = run.job_data_dir
         # Ensure the absolute path starts with the old root
         if not os.path.isabs(container_job_data_dir):
             raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
@@ -606,23 +753,9 @@ def get_job_dir(request: Request) -> Response:
 
         # Replace the old root with the new root
         relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
-        new_job_data_dir = os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
-    else:
-        new_job_data_dir = run.job_data_dir
+        return os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
 
-    response = {
-        'message': f"Calibration Job {run.id} data directory is {new_job_data_dir}",
-        'calibration_run_id': run.id,
-        'data_dir': new_job_data_dir,
-        'status': run.status.name
-    }
-
-    response_validator, error_response = validate_response(GetJobDirResponseSerializer, response)
-    if error_response:
-        return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from get_job_dir() - {json.dumps(response_validator.data)}')
-
-    return Response(response_validator.data)
+    return container_job_data_dir
 
 
 @extend_schema(
@@ -642,7 +775,7 @@ def get_job_dir(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def calibration_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a calibration job.
@@ -651,7 +784,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'calibration_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -667,7 +800,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_calibration_job_callback_pw(calibration_run, slurm_status)
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from calibration_job_slurm_callback()')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -689,7 +822,7 @@ def calibration_job_slurm_callback(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def validation_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a validation job.
@@ -698,7 +831,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'validation_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -714,7 +847,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_validation_job_callback_pw(validation_run, slurm_status)
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from validation_job_slurm_callback()')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -736,7 +869,7 @@ def validation_job_slurm_callback(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a forecast forcing download job.
@@ -745,7 +878,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'forecast_forcing_download_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -762,7 +895,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from forecast_forcing_download_job_slurm_callback()')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -784,7 +917,7 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
 )
 @api_view(['POST'])
 @handle_exceptions
-@auth_scope_required(token_slurm_scope)
+@auth_scope_required(TOKEN_SLURM_SCOPE)
 def forecast_job_slurm_callback(request: Request) -> Response:
     """
     Handles a callback from Slurm to update the status of a forecast job.
@@ -793,7 +926,7 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     :return: HTTP 202 response indicating the callback was processed.
     """
     data = request.data
-    logger.debug(f'forecast_job_slurm_callback() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
     if error_return:
@@ -809,7 +942,7 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     slurm_status = SlurmStatusEnum(job_status)
     run_forecast_job_callback_pw(forecast_run, slurm_status)
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from forecast_job_slurm_callback()')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
 
     return Response(status=status.HTTP_202_ACCEPTED)
 
@@ -848,13 +981,13 @@ def get_slurm_token(request: Request) -> Response:
     :return: JSON response containing the generated token.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'get_slurm_token() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
         return error_return
 
-    return Response({'access': generate_custom_token(request.user, token_slurm_scope)})
+    return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
 
 
 def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange, max_workers=4):
@@ -992,7 +1125,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             # Log the original start and end ranges in this chunk, including line numbers
             chunk_start = chunk['dateTime'].min()
             chunk_end = chunk['dateTime'].max()
-            logger.info(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
+            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
 
             # Skip chunks that are entirely before the time range
             if chunk_end < start_datetime:

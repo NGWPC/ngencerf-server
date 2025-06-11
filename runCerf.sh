@@ -9,36 +9,84 @@ source "$SCRIPT_DIR/cerfserver.env"
 # Use the same directory variable for cerfServer
 cerfServer="$SCRIPT_DIR"
 
-# Redirect stdout and stderr to two log files and the console
-mkdir -p run-logs
-LOGFILE_DEV="run-logs/ngencerf_dev.log"
-LOGFILE_PROD="run-logs/ngencerf_prod.log"
+# Redirect stdout and stderr to a log file and the console
+mkdir -p "$cerfServer/logs"
+LOGFILE_DEV="$cerfServer/logs/ngencerf_dev.log"
+printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV"
+exec > >(tee -a "$LOGFILE_DEV") 2>&1
 
-# Log initial message to both files only
-printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV" "$LOGFILE_PROD"
+#=======================================================================
+# Function: ensure_virtualenv
+#   - If CERF_VENV is empty or “Docker”, do nothing
+#   - If the directory "$cerfServer/$CERF_VENV" does not exist, create it.
+#   - Activate that venv so “python3” and “pip” later refer to the venv.
+#=======================================================================
+ensure_virtualenv() {
+    if [ -n "${CERF_VENV}" ] && [ "${CERF_VENV}" != "Docker" ]; then
+        VENV_PATH="$cerfServer/${CERF_VENV}"
 
-exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
+        if [ ! -d "$VENV_PATH" ]; then
+            echo "Virtual environment not found at $VENV_PATH. Creating it..."
+            python3.11 -m venv "$VENV_PATH"
+        fi
 
-# Check for the --load-static flag
+        # shellcheck disable=SC1090
+        source "$VENV_PATH/bin/activate"
+    fi
+}
+
+# Redirect stdout and stderr to LOGFILE_DEV
+exec > >(tee -a "$LOGFILE_DEV") 2>&1
+
+#=======================================================================
+# Function: run_manage_command
+#   - Temporarily “un-redirects” stdout/stderr so you can see Django output.
+#   - Runs “python $SCRIPT_DIR/manage.py <args…>” (which will use the venv’s python).
+#   - Then re-redirects stdout/stderr back to the logfile.
+#=======================================================================
+run_manage_command() {
+    echo "Running manage.py $*"
+    # Temporarily disable redirection
+    exec >/dev/tty 2>/dev/tty
+
+    python "$SCRIPT_DIR/manage.py" "$@"
+
+    # Restore redirection
+    exec > >(tee -a "$LOGFILE_DEV") 2>&1
+}
+
+#=======================================================================
+# Special case: if the first argument is “manage”, just run manage.py <args>
+#=======================================================================
+if [ "$1" == "manage" ]; then
+    shift
+    ensure_virtualenv  # Activates and creates virtualenv if needed
+    run_manage_command "$@"
+    exit $?
+fi
+
+#=======================================================================
+# Parse “--load-static” flag (if present), then shift it away
+#=======================================================================
 LOAD_STATIC_DATA=false
 for arg in "$@"; do
   case $arg in
     --load-static)
-    LOAD_STATIC_DATA=true
-    shift
-    ;;
+      LOAD_STATIC_DATA=true
+      shift
+      ;;
   esac
 done
 
 # Function to generate git_info.properties
 # Should parallel similar functionality in the Dockerfile
 generate_git_info() {
-    GIT_INFO_PATH=$cerfServer/git_info.json
     repo_url=$(git config --get remote.origin.url)
     # Extract the repo name (everything after the last slash) and remove any trailing .git
     key=${repo_url##*/}
     key=${key%.git}
-    echo "Generating git_info.json..."
+    GIT_INFO_PATH=$SCRIPT_DIR/${key}_git_info.json
+    echo "Generating ${GIT_INFO_PATH}..."
     jq -n \
         --arg commit_hash "$(git rev-parse HEAD)" \
         --arg branch "$(git rev-parse --abbrev-ref HEAD)" \
@@ -49,66 +97,56 @@ generate_git_info() {
         --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
         "{\"${key}\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
         > "$GIT_INFO_PATH"
-    echo "git_info.json created at $GIT_INFO_PATH"
+    echo "Generated $GIT_INFO_PATH"
 }
 
 if [ "${CERF_VENV}" != "Docker" ]; then
     # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
-       # shellcheck disable=SC1090
-       source "$cerfServer/${CERF_VENV}/bin/activate"
+        ensure_virtualenv  # Activates and creates virtualenv if needed
 
-       # Install all requirements
-       echo "Installing requirements.txt"
-       pip install --upgrade pip
-       pip install -r requirements.txt
+        # Install all requirements
+        echo "Installing requirements.txt"
+        pip install --upgrade pip
+        pip install -r "$SCRIPT_DIR/requirements.txt"
 
-       # Doing a pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
-       NGEN_CAL_BRANCH='development'
-       NGEN_FORCING_BRANCH='development'
+        # Doing a pip install with requirements.txt does not reliably pick up changes to the ngen-cal repo, so we have to force a re-install every time
+        NGEN_CAL_BRANCH='development'
+        NGEN_FORCING_BRANCH='development'
 #       NGEN_CAL_BRANCH='129809ac'
 #       NGEN_FORCING_BRANCH='xxxx'
-       echo
-       echo "Installing createInput"
-       if pip show "createInput" > /dev/null 2>&1; then
-           # Package is installed, reinstall without dependencies
-           pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
-       else
-           # Package is not installed, install with dependencies
-           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
-       fi
+        echo
+        echo "Installing createInput"
+        if pip show "createInput" > /dev/null 2>&1; then
+            # Package is installed, reinstall without dependencies
+            pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+        else
+            # Package is not installed, install with dependencies
+            pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
+        fi
 
-       echo
-       echo "Installing swe_mapping"
-       if pip show "swe_mapping" > /dev/null 2>&1; then
-           # Package is installed, reinstall without dependencies
-           pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
-       else
-           # Package is not installed, install with dependencies
-           pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
-       fi
+        echo
+        echo "Installing swe_mapping"
+        if pip show "swe_mapping" > /dev/null 2>&1; then
+            # Package is installed, reinstall without dependencies
+            pip install --force-reinstall --no-deps --no-cache-dir -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
+        else
+            # Package is not installed, install with dependencies
+            pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
+        fi
 
-       generate_git_info
+        generate_git_info
     else
-       echo "CERF_VENV is not set. Please set the virtual environment variable."
-       exit 1
+        echo "CERF_VENV is not set. Please set the virtual environment variable."
+        exit 1
     fi
 fi
 
-# Function to run Django management commands without logging redirection
-run_manage_command() {
-    echo "Running $*"
-    # Temporarily disable redirection
-    exec >/dev/tty 2>/dev/tty
-
-    python3 manage.py "$@"
-
-    # Restore redirection
-    exec > >(tee -a "$LOGFILE_DEV" | tee -a "$LOGFILE_PROD") 2>&1
-}
-
 # Run management commands with proper logging
-run_manage_command migrate
+if ! run_manage_command migrate; then
+  echo "migrate failed"
+  exit 1
+fi
 
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
 if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
@@ -117,18 +155,31 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
 
     run_manage_command createsuperuser_docker --noinput --password admin --email admin@nextgenwaterprediction.com
     echo
-    run_manage_command init_sql
+    if ! run_manage_command init_sql; then
+      echo "init_sql failed"
+      exit 1
+    fi
+
     echo
-    run_manage_command init_gages
+    if ! run_manage_command init_gages; then
+      echo "init_gages failed"
+      exit 1
+    fi
 
     touch "${CERF_LOAD_STATIC_DATA}"
 else
     # Run this every time, since sometimes there are updates and it is very quick
-    run_manage_command init_sql
+    if ! run_manage_command init_sql; then
+      echo "init_sql failed"
+      exit 1
+    fi
 fi
 
 echo
-run_manage_command pre_start
+if ! run_manage_command pre_start; then
+  echo "pre_start failed"
+  exit 1
+fi
 
 echo
 echo "Starting server"
@@ -136,7 +187,7 @@ echo "Starting server"
 # Restore original stdout and stderr before starting the server
 exec >/dev/tty 2>/dev/tty
 
-python3 "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
 
 if [ -n "${CERF_VENV}" ]; then
     deactivate

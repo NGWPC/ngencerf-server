@@ -15,7 +15,7 @@ upload_geopackage_data() {
     echo "Uploading geopackage: $geopackage_file for calibration_run_id: $calibration_run_id"
 
     # Send the upload request to the server
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
         --header 'Content-Type: multipart/form-data' \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         --form "return_geopackage_url=false" \
@@ -25,13 +25,13 @@ upload_geopackage_data() {
 
     # Capture the HTTP status and response content
     http_status=$(tail -n1 <<< "$response")
-    response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check for HTTP errors and exit if needed
     check_http_error "$http_status" "$response" true
 
     # Clean up the temporary file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Function to handle the observational data upload
@@ -46,7 +46,7 @@ upload_observational_data() {
     echo "Uploading observational data: $observational_filepath for calibration_run_id: $calibration_run_id"
 
     # Send the upload request to the server
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
         --header 'Content-Type: multipart/form-data' \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         --form "observational_file=@$observational_filepath" \
@@ -55,13 +55,13 @@ upload_observational_data() {
 
     # Capture the HTTP status and response content
     http_status=$(tail -n1 <<< "$response")
-    response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check for HTTP errors and exit if needed
     check_http_error "$http_status" "$response" true
 
     # Clean up the temporary file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Function to handle the forcing data upload
@@ -92,7 +92,7 @@ upload_forcing_data() {
     fi
 
     # Send the upload request to the server
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
         --header 'Content-Type: multipart/form-data' \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         "${form_files[@]}" \
@@ -101,13 +101,13 @@ upload_forcing_data() {
 
     # Capture the HTTP status and response content
     http_status=$(tail -n1 <<< "$response")
-    response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check for HTTP errors and exit if needed
     check_http_error "$http_status" "$response" true
 
     # Clean up the temporary file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Function to submit a calibration run job
@@ -123,7 +123,7 @@ run_job() {
     json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
 
     # Send the job submission request to the server
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
         --header 'Content-Type: application/json' \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         --data "$json_payload" \
@@ -131,13 +131,13 @@ run_job() {
 
     # Capture the HTTP status and response content
     http_status=$(tail -n1 <<< "$response")
-    response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check for HTTP errors and exit if needed
     check_http_error "$http_status" "$response" true
 
     # Clean up the temporary file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Function to delete a calibration run job
@@ -153,7 +153,7 @@ delete_job() {
     json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
 
     # Send the job deletion request to the server
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
         --header 'Content-Type: application/json' \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         --data "$json_payload" \
@@ -161,13 +161,13 @@ delete_job() {
 
     # Capture the HTTP status and response content
     http_status=$(tail -n1 <<< "$response")
-    response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check for HTTP errors and exit if needed
     check_http_error "$http_status" "$response" true
 
     # Clean up the temporary file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Function to cancel a calibration run job
@@ -183,7 +183,7 @@ cancel_job() {
     json_payload=$(jq -n --arg calibration_run_id "$calibration_run_id" '{calibration_run_id: $calibration_run_id}')
 
     # Send the job cancellation request to the server
-    response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+    response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
         --header 'Content-Type: application/json' \
         --header "Authorization: Bearer $ACCESS_TOKEN" \
         --data "$json_payload" \
@@ -191,11 +191,11 @@ cancel_job() {
 
     # Capture the HTTP status and response content
     http_status=$(tail -n1 <<< "$response")
-    response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check for HTTP errors and exit if needed
     check_http_error "$http_status" "$response" true
 
     # Clean up the temporary file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }

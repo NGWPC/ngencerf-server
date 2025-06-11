@@ -106,6 +106,14 @@ class DomainEnum(AbstractEnum):
     Domain Enum with database synchronization.
     """
 
+    PUERTO_RICO = 'Puerto_Rico'
+
+    @classmethod
+    def get_aliases(cls):
+        return {
+            cls.PUERTO_RICO: ['Puerto Rico', 'Puerto_Rico']
+        }
+
     @classmethod
     def get_model(cls) -> Type[Domain]:
         return Domain
@@ -172,6 +180,7 @@ class PlotDefinitionsEnum(AbstractEnum):
     HYDROGRAPH_VALIDATION = 'Hydrograph Validation'
     STREAMFLOW_VALIDATION_PRECIPITATION = 'Streamflow Validation Precipitation'
     FORECAST_HYDROGRAPH = 'Forecast Hydrograph'
+    CALIBRATION_METRICS = 'Calibration Metrics'
 
     @classmethod
     def get_model(cls) -> Type[PlotDefinition]:
@@ -239,3 +248,11 @@ class GetValidationJobsScope(AbstractEnum):
     IDS = 'ids'
     STATUS = 'status'
     DETAILS = 'details'
+
+
+class NgenLogging(AbstractEnum):
+    DEBUG = 'debug'
+    INFO = 'info'
+    WARNING = 'warning'
+    SEVERE = 'severe'
+    FATAL = 'fatal'

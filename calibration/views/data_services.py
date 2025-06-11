@@ -28,12 +28,12 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
     """
     Sends an HTTP request to Data Services and processes the response.
 
-    :param method: HTTP method (e.g., 'GET' or 'POST')
+    :param method: HTTP method (e.g., 'GET' or 'POST').
     :param url: The full URL of the Data Services endpoint.
     :param headers: Optional HTTP headers to include.
     :param payload: Optional JSON payload for POST requests.
     :return: The response JSON data as a dictionary.
-    :raises: DataServicesException for any HTTP or connection-related errors.
+    :raises: DataServicesException: For any HTTP or connection-related errors.
     """
     status_code = None
     response_text = None
@@ -107,11 +107,19 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
 class DataServicesException(Exception):
     """
     Custom exception for errors related to Data Services.
+
+    :param message: Description of the error.
+    :param status_code: Optional HTTP status code associated with the error.
     """
 
     def __init__(self, message, status_code=None):
         super().__init__(message)
         self.status_code = status_code
+
+
+def get_and_set_geopackage_from_data_services(run: CalibrationRun):
+    # placeholder
+    pass
 
 
 def get_geopackage_from_data_services(run: CalibrationRun):
@@ -245,7 +253,7 @@ def get_forcing_data_from_s3(run: CalibrationRun):
 
 def get_module_metadata_from_data_services(run: CalibrationRun,
                                            calibration_formulations: QuerySet[CalibrationFormulation],
-                                           gage_changed: bool = False):
+                                           gage_changed: bool = False) -> list[dict]:
     """
     Retrieves module metadata from Data Services and updates the database with module parameters and output variables.
 
@@ -255,12 +263,14 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
                          - If False: Indicates the modules have changed.
                          - If True: Indicates the gage has changed, and we want to retain the min/max values
                            for existing parameters while updating their initial values.
+    :return A list of dictionaries containing potential errors
     :raises DataServicesException: If required module metadata is missing.
     """
     gage = run.gage
 
     # Collect module names from calibration formulations
     my_module_names_set = list(calibration_formulations.values_list('module__name', flat=True))
+    my_module_names_set[0] = my_module_names_set[0]
 
     # Fetch module metadata from Data Services or use test data
     if settings.ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT[0]:
@@ -294,10 +304,21 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     missing_names = my_module_names_set - eds_module_names
     extra_names = eds_module_names - my_module_names_set
 
-    # Save module parameters and output variables to the database
+    eds_errors = []
+
+    # Save module parameters to the database
     with transaction.atomic():
         for module in module_metadata.get('modules'):
             module_name = module['module_name']
+            # See if we have optional field
+            error = module.get('error')
+            if error:
+                eds_errors.append({
+                    'name': 'parameters',
+                    'message': error,
+                    'status_code': None
+                })
+                continue
 
             if module_name in extra_names:
                 # Ignore any extra names that Data Services sent us
@@ -352,7 +373,7 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     if missing_names:
         raise DataServicesException(f'Response from Data Services is missing entries for: {missing_names}')
 
-    return
+    return eds_errors
 
 
 translation_map = {
@@ -406,7 +427,7 @@ def fix_module_metadata(metadata):
                      {
                          "modules": [
                              {
-                                 "name": "module_name",
+                                 "module_name": "module_name",
                                  "calibrate_parameters": [
                                      {"name": "full_param_name", "value": 123}
                                  ]

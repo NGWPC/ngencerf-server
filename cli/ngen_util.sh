@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Set this here, since all the other script source this file
+CURL_RESPONSE_FILE="/tmp/curl_response_$(whoami)"
+
+
 # Function to check HTTP errors with optional immediate exit
 # Arguments:
 #   - http_status: The HTTP status code from the server response.

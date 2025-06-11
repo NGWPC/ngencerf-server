@@ -188,7 +188,7 @@ the static tables.  Use `createsuperuser_docker` even though you are not creatin
 It is a locally modified version of `createsuperuser` that allows you to enter the password on the command line.
 
 ```
-python manage.py createsuperuser_docker --username admin --password admin
+python manage.py createsuperuser_docker --email admin@nextgenwaterprediction.com --password admin
 ```
 Run `init_sql` and `init_gages` to initialize the static tables
 ```

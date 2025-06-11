@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 domains = list(Domain.objects.only('id', 'name').values('id', 'name'))
 alaska_domain = DomainEnum.get_instance('Alaska')
 hawaii_domain = DomainEnum.get_instance('Hawaii')
-puerto_rico_domain = DomainEnum.get_instance('Puerto Rico')
+puerto_rico_domain = DomainEnum.get_instance('Puerto_Rico')
 conus_domain = DomainEnum.get_instance('CONUS')
 
 rfc_dict = {rfc['name']: rfc['id'] for rfc in list(Rfc.objects.only('id', 'name').values('id', 'name'))}
@@ -52,7 +52,9 @@ class Command(BaseCommand):
             # need to get a user that is guaranteed to be there, such as admin
             user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
-            logger.error('Admin user does not exist.')
+            logger.error('********************************')
+            logger.error('** Admin user does not exist. **')
+            logger.error('********************************')
             sys.exit(1)
 
         logger.info(f"In init_gages: email: {cast(CustomUser, user).email}")
@@ -172,6 +174,24 @@ class Command(BaseCommand):
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - CONUS.csv', conus_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - PR.csv', puerto_rico_domain)
         add_additional_gages(data_dir / 'RFC Additional NextGen Calibration Basin List - HI.csv', hawaii_domain)
+
+        # Deactivate gages.  This one should be done last
+        with (data_dir / 'inactive_gages.csv').open() as file:
+            inactive_count = 0
+            for raw in file:
+                line = raw.strip()
+                # Skip empty lines or comments
+                if not line or line.startswith('#'):
+                    continue
+
+                gage_id = line
+                if gage_id in gages:
+                    gages[gage_id]['is_active'] = False
+                    inactive_count += 1
+                else:
+                    logger.warning(f"Could not find gage_id '{gage_id}' in loaded gages for deactivation")
+
+            logger.info(f'Processed {inactive_count} inactive gages from {file.name}.')
 
         logger.info('')
         logger.info('Creating objects.... this will take a minute or two')

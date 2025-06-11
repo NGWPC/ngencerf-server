@@ -5,8 +5,9 @@ from typing import Type, TypeVar
 from django.core.cache import cache
 from django.db import models
 
-# Create a generic type variable for models
+# Create a generic type variable for models and Enums
 T = TypeVar('T', bound=models.Model)
+E = TypeVar('E', bound='AbstractEnum')
 
 
 class AbstractEnum(Generic[T], Enum):
@@ -35,7 +36,7 @@ class AbstractEnum(Generic[T], Enum):
         return None
 
     @classmethod
-    def get_aliases(cls) -> dict[Enum, list[str]]:
+    def get_aliases(cls: type[E]) -> dict[E, list[str]]:
         """
         Optionally overridden by subclasses to provide aliases for enum members.
 
@@ -185,6 +186,26 @@ class AbstractEnum(Generic[T], Enum):
                             if the corresponding model instance cannot be found.
         """
         return self.__class__.get_instance(self.value)
+
+    @classmethod
+    def from_name(cls: type[E], name: str) -> E:
+        """
+        Returns the enum member corresponding to the given name or alias.
+        Raises ValueError if no match is found.
+        """
+        name = name.lower()
+
+        # Check direct matches
+        for member in cls:
+            if member.value.lower() == name:
+                return member
+
+        # Check aliases
+        for main_value, alias_list in cls.get_aliases().items():
+            if any(alias.lower() == name for alias in alias_list):
+                return main_value
+
+        raise ValueError(f"No matching enum member for name '{name}' in {cls.__name__}")
 
     @classmethod
     def get_choices_with_fields(cls, fields: list[str] = None, extra_filter: dict[str, Any] = None) -> list[dict[str, Any]]:

@@ -21,15 +21,15 @@ ngen_login() {
     email="${NGEN_EMAIL:-$NGEN_USERNAME}"
 
     if [ -z "$email" ]; then
-        read -p "ngenCerf email: " email
+        read -r -p "ngenCerf email: " email
     fi
     if [ -z "$NGEN_PASSWORD" ]; then
-        read -sp "ngenCerf password: " NGEN_PASSWORD
+        read -r -sp "ngenCerf password: " NGEN_PASSWORD
         echo  # Move to a new line after password input
     fi
 
     # Send the login request and capture both the HTTP status and response
-    response=$(curl --silent --location --write-out "%{http_code}" --output /tmp/curl_response \
+    response=$(curl --silent --location --write-out "%{http_code}" --output $CURL_RESPONSE_FILE \
         --request POST "$login_endpoint" \
         --header 'Content-Type: application/json' \
         --data-raw "{ \"email\": \"$email\", \"password\": \"$NGEN_PASSWORD\" }")
@@ -38,7 +38,7 @@ ngen_login() {
     http_status="${response: -3}"
 
     # Read the response body if the file exists
-    response_body=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response_body=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Handle login success
     if [[ "$http_status" -eq 200 ]]; then
@@ -53,12 +53,12 @@ ngen_login() {
             echo "Login failed with status code $http_status."
             echo "$response_body" | jq --indent 3 2>/dev/null || echo "$response_body"
         fi
-        rm -f /tmp/curl_response
+        rm -f $CURL_RESPONSE_FILE
         exit 1
     fi
 
     # Clean up the temp file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Function for register with optional email argument
@@ -68,14 +68,14 @@ ngen_register() {
 
     # Prompt for email if none was provided
     if [ -z "$email" ]; then
-        read -p "Enter a new email for ngenCerf registration: " email
+        read -r -p "Enter a new email for ngenCerf registration: " email
     fi
 
     # Prompt for password twice for confirmation
     while true; do
-        read -sp "Enter a new password for ngenCerf registration: " NGEN_PASSWORD
+        read -r -sp "Enter a new password for ngenCerf registration: " NGEN_PASSWORD
         echo
-        read -sp "Confirm your password: " NGEN_PASSWORD_CONFIRM
+        read -r -sp "Confirm your password: " NGEN_PASSWORD_CONFIRM
         echo
         if [ "$NGEN_PASSWORD" == "$NGEN_PASSWORD_CONFIRM" ]; then
             break
@@ -85,13 +85,13 @@ ngen_register() {
     done
 
     # Send the registration request, capture the HTTP status and response
-    response=$(curl --silent --location --write-out "%{http_code}" --output /tmp/curl_response \
+    response=$(curl --silent --location --write-out "%{http_code}" --output $CURL_RESPONSE_FILE \
         --request POST "$register_endpoint" \
         --header 'Content-Type: application/json' \
         --data-raw "{ \"email\": \"$email\", \"password\": \"$NGEN_PASSWORD\" }")
 
     http_status="${response: -3}"
-    response_body=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+    response_body=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
     # Check registration status
     if [ "$http_status" -eq 201 ]; then
@@ -103,13 +103,13 @@ ngen_register() {
             echo "Registration failed. HTTP Status: $http_status"
             echo "$response_body" | jq --indent 3 2>/dev/null || echo "$response_body"
         fi
-        rm -f /tmp/curl_response
+        rm -f $CURL_RESPONSE_FILE
         return 1
     fi
 
     # Clean up the temp file
-    rm -f /tmp/curl_response
+    rm -f $CURL_RESPONSE_FILE
 }
 
 # Clean up the temp file
-rm -f /tmp/curl_response
+rm -f $CURL_RESPONSE_FILE

@@ -5,7 +5,7 @@ import os
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
-from typing import Literal, cast
+from typing import Literal
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -18,14 +18,15 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun, CustomUser
+from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
+from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
-    get_valid_path, format_datetime
+    get_valid_path, format_datetime, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ def load_tuning_tab(request: Request) -> Response:
     :return: Response containing the tuning tab data, including time ranges, modules, and formulations.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_tuning_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(CalibrationRunSerializer, data)
     if error_return:
@@ -95,7 +96,7 @@ def load_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(LoadTuningResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_tuning_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -246,7 +247,7 @@ def save_tuning_tab(request: Request) -> Response:
     Saves tuning settings for a calibration run, including parameters, output variables, and time periods.
     """
     data = request.data
-    logger.debug(f'save_tuning_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(SaveTuningRequestSerializer, data)
     if error_return:
@@ -286,7 +287,7 @@ def save_tuning_tab(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_tuning_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -313,7 +314,7 @@ def upload_user_parameters(request: Request) -> Response:
     and content, and then attaching it to the specified calibration run.
     """
     data = request.data
-    logger.debug(f'upload_user_parameter_file() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(UploadUserParameterFile, data, context={'request': request})
     if error_return:
@@ -396,7 +397,7 @@ def upload_user_parameters(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from upload_user_parameter_file() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

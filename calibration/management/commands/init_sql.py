@@ -43,7 +43,10 @@ class Command(BaseCommand):
             # need to get a user that is guaranteed to be there, such as admin
             self.user = get_user_model().objects.get(email='admin@nextgenwaterprediction.com')
         except ObjectDoesNotExist:
-            logger.error('Admin user does not exist.')
+            logger.error('********************************')
+            logger.error('** Admin user does not exist. **')
+            logger.error('********************************')
+
             sys.exit(1)
 
         logger.info(f"In init_sql: email: {cast(CustomUser, self.user).email}")
@@ -98,6 +101,10 @@ class Command(BaseCommand):
                   {"name": "CFE-X",
                    "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
                    "groups": ["Rainfall Runoff"]},
+                  {"name": "LSTM",
+                   "description": "description",
+                   "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"],
+                   "is_active": False},
                   {"name": "PET", "description": "description", "groups": ["Evapotranspiration"], "is_active": False},
                   {"name": "TopModel",
                    "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
@@ -138,7 +145,7 @@ class Command(BaseCommand):
         values = [{"name": "Alaska", "description": "Alaska"},
                   {"name": "Hawaii", "description": "Hawaii"},
                   {"name": "CONUS", "description": "Continental United Status"},
-                  {"name": "Puerto Rico", "description": "Puerto Rico, including US Virgin Islands"}
+                  {"name": "Puerto_Rico", "description": "Puerto Rico, including US Virgin Islands"}
                   ]
 
         for v in values:
@@ -458,6 +465,14 @@ class Command(BaseCommand):
                 "location": "forecast_output",
                 "job_type": JobType.FORECAST.value,
                 "filename_mask": "{gage_id}_hydrograph.png"
+            },
+            {
+                "name": "Calibration Metrics",
+                "description": "Comparison of metrics from best validation runs for multimple calibration runs",
+                "location": "",
+                "job_type": JobType.COMPARISON.value,
+                "filename_mask": "",
+                "timeseries_available": False
             }
         ]
 

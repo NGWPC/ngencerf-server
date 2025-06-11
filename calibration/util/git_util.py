@@ -6,13 +6,14 @@ from functools import cache
 
 from django.conf import settings
 
-from calibration.util.container_util import copy_file_from_image
+from calibration.enums_vanilla import NgenEnvironmentEnum
+from calibration.util.container_util import copy_file_from_image, copy_file_from_docker_image
 from calibration.util.file_util import copy_file
 
 logger = logging.getLogger(__name__)
 
 
-def get_git_info_internal():
+def get_git_info_internal() -> dict[str, dict[str, str]]:
     """
     Gather Git information from multiple sources, merge the JSON files, and transform each component
     so that only the desired fields are retained. The transformation rules are:
@@ -38,7 +39,7 @@ def get_git_info_internal():
     os.mkdir(git_info_directory)
 
     # Copy our local git_info.json into the shared directory.
-    src_git_info = os.path.join(settings.BASE_DIR, 'git_info.json')
+    src_git_info = os.path.join(settings.BASE_DIR, 'ngencerf-server_git_info.json')
     dest_git_info = os.path.join(git_info_directory, 'ngencerf-server_git_info.json')
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
@@ -50,25 +51,39 @@ def get_git_info_internal():
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen_git_info.json')
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen-cal_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen-cal_git_info.json')
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-fcst'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-bmi-forcing'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
-    copy_file_from_image(container_name, container_file_name, image_name, local_file_name)
+    copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
-    merged_data = {}
+    if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        image_name = 'ngencerf-ngencerf-ui'
+        container_name = f'{image_name}_temp_container'
+        container_file_name = "/var/www//ngencerf/nuxt-app/ngencerf_ui_git_info.json"
+        # This will always be from docker
+        copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
+    else:
+        ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf_ui')
+        git_info = os.path.join(ui_directory, 'ngencerf_ui_git_info.json')
+        try:
+            copy_file(git_info, os.path.join(git_info_directory, os.path.basename(git_info)))
+        except FileNotFoundError:
+            logger.warning(f'File {git_info} not found.')
+
+    merged_data: dict[str, dict[str, str]] = {}
     # Iterate over all JSON files in the directory and merge them.
     for filename in os.listdir(git_info_directory):
         if filename.endswith('.json'):
@@ -92,7 +107,7 @@ def get_git_info_internal():
     return transformed_data
 
 
-def transform_component(component_git_info):
+def transform_component(component_git_info) -> dict[str, str]:
     """
     Transform a single component dictionary to include only selected Git fields in a specific order:
       - Always include 'release', 'build_date', and 'commit_hash' (in that order).
@@ -101,7 +116,7 @@ def transform_component(component_git_info):
     :param component_git_info: A dictionary containing Git information for a component.
     :return: A new dictionary with only the desired fields.
     """
-    new_comp = {}
+    new_comp: dict[str, str] = {}
 
     tags = component_git_info.get("tags", "").strip()
     if tags == "":
@@ -155,11 +170,28 @@ def recursive_print(d: dict, indent: int = 0) -> None:
             logger.info(" " * indent + f"{key}: {value}")
 
 
-GIT_INFO_FILE = 'git_info.json'
+GIT_INFO_FILE = 'ngencerf-server_git_info.json'
 
 
 @cache
-def load_git_info(git_info_file: str = GIT_INFO_FILE):
+def load_git_info(git_info_file: str) -> dict[str, dict[str, str]] | None:
+    """
+    Load and transform Git information from a JSON file.
+
+    This function reads Git metadata from the specified JSON file and applies a transformation
+    to each top-level component to retain only relevant fields.
+
+    Steps performed:
+      1. Attempt to open and parse the JSON file.
+      2. If the file does not exist, log a warning and return None.
+      3. If the JSON content is malformed, log an error and return None.
+      4. If the parsed content is empty, log an error and return None.
+      5. Transform each component in the parsed JSON using `transform_component()`.
+      6. Return the transformed Git information as a dictionary, or None on failure.
+
+    :param git_info_file: Path to the JSON file containing Git information.
+    :return: A dictionary with transformed Git metadata, or None if an error occurs.
+    """
     try:
         with open(git_info_file, 'r') as f:
             git_info = json.load(f)
@@ -180,7 +212,7 @@ def load_git_info(git_info_file: str = GIT_INFO_FILE):
     return transformed_git_info
 
 
-def print_git_info(git_info_file: str):
+def print_git_info(git_info_file: str) -> None:
     """
     Read the specified git_info JSON file, transform its contents, and log all key/value pairs recursively.
 
@@ -194,7 +226,7 @@ def print_git_info(git_info_file: str):
         recursive_print(git_info)
 
 
-def print_git_info_all():
+def print_git_info_all() -> None:
     """
     Convenience function to print Git information from multiple JSON files.
     """

@@ -1,30 +1,27 @@
 import json
 import logging
-from typing import cast
 
 from django.db import transaction
-from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, CustomUser
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
-from calibration.util.calibration_validators import SaveFormulationRequestSerializer, CalibrationRunSerializer, LoadFormulationResponseSerializer, \
-    ErrorResponseSerializer, SaveFormulationResponseSerializer
+from calibration.util.calibration_validators import SaveFormulationRequestSerializer, \
+    ErrorResponseSerializer, SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH
+from calibration.views.called_from import get_caller_name
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, get_user_email
 from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
 
 logger = logging.getLogger(__name__)
 
-MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
-
 
 @extend_schema(
-    request=CalibrationRunSerializer,
+    request=EmptySerializer,
     responses={
-        200: LoadFormulationResponseSerializer,
+        200: GetModulesResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -34,30 +31,21 @@ MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
             description="Internal server error"
         )
     },
-    parameters=[
-        OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
-    ],
-    description="Load formulation tab data"
+    description="Get static list of modules and groups"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def load_formulation_tab(request) -> Response:
+def get_modules(request) -> Response:
     """
-    Load the formulation tab data for a specific calibration run.
+    Retrieve module and group information
 
     :param request: The HTTP request containing either POST data or query parameters.
     :return: A JSON response with the calibration run ID, status, modules, and module groups.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
-    logger.debug(f'load_formulation_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationRunSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-
-    run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+    validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
         return error_return
 
@@ -74,18 +62,16 @@ def load_formulation_tab(request) -> Response:
         for module in cached_modules.values()
     ]
 
-    # Retrieve cached module groups
+    # Retrieve ordered list of module groups from cache
     module_groups = get_cached_module_groups()
 
-    ngen_cal_input.ready_to_run(run)
+    response = {'modules': module_groups_list, 'module_groups': module_groups}
 
-    response = {'calibration_run_id': run.id, 'status': run.status.name, 'modules': module_groups_list, 'module_groups': module_groups}
-
-    response_validator, error_response = validate_response(LoadFormulationResponseSerializer, response)
+    response_validator, error_response = validate_response(GetModulesResponseSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from load_formulation_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -134,7 +120,7 @@ def save_formulation_tab(request) -> Response:
     :return: A JSON response confirming the update along with any warnings or errors.
     """
     data = request.data
-    logger.debug(f'save_formulation_tab() request from {(cast(CustomUser, request.user)).email}  - {data}')
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
     validator, error_return = validate_request(SaveFormulationRequestSerializer, data)
     if error_return:
@@ -197,7 +183,8 @@ def save_formulation_tab(request) -> Response:
         if required_formulations_qs.exists() and run.gage:
             logger.info(f"Fetching metadata for modules: {required_formulations_qs}")
             try:
-                get_module_metadata_from_data_services(run, required_formulations_qs)
+                # Append new errors to the existing list
+                eds_errors.extend(get_module_metadata_from_data_services(run, required_formulations_qs))
             except DataServicesException as e:
                 logger.exception("Error retrieving module parameter data from Data Services")
                 eds_errors.append({
@@ -233,7 +220,7 @@ def save_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {(cast(CustomUser, request.user)).email}  from save_formulation_tab() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -342,7 +329,7 @@ def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
             must_have_modules = conditions.get("must_have", [])
             # Check if any of the required modules are present
             if not any(module in module_names for module in must_have_modules):
-                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(must_have_modules)}"
+                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(str(m) for m in must_have_modules)}"
                 logger.warning(msg)
                 messages.append(msg)
                 formulation_validation_json['excluded_modules'].append(
@@ -405,3 +392,5 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], modu
             )
 
         CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
+
+    return None

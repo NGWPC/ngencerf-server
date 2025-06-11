@@ -5,6 +5,10 @@ source ./ngen_util.sh
 source ./ngen_functions.sh
 source ./ngen_user.sh  # For ngen_login and ngen_register functions
 
+# Automatically remove the temporary curl response file on script exit
+trap "rm -f $CURL_RESPONSE_FILE" EXIT
+
+
 # Instructions for setting NGEN_EMAIL and NGEN_PASSWORD
 # --------------------------------------------------------
 # To avoid being prompted for your email and password, you can set these variables in several ways:
@@ -135,17 +139,17 @@ case "$operation" in
         fi
 
         # Read data from the import file
-        data=$(cat "$argument")
+        data=$(jq -c --argfile payload "$argument" '{data: $payload}')
 
         # Send import request, capture the HTTP status and response
-        response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+        response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
             --header 'Content-Type: application/json' \
             --header "Authorization: Bearer $ACCESS_TOKEN" \
             --data "$data" 'http://localhost:8000/calibration/import/')
 
         # Extract HTTP status and response
         http_status=$(tail -n1 <<< "$response")
-        response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+        response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
         # Check for HTTP errors and exit if any error is encountered
         check_http_error "$http_status" "$response" true
@@ -160,7 +164,7 @@ case "$operation" in
 
         # Run the job if requested
         if [ "$run_after_import" = true ]; then run_job "$calibration_run_id" || exit 1; fi
-        rm -f /tmp/curl_response
+        rm -f $CURL_RESPONSE_FILE
         ;;
 
     "export")
@@ -168,14 +172,14 @@ case "$operation" in
             echo "Error: Calibration run ID required for export."
             exit 1
         fi
-        response=$(curl --location --write-out "%{http_code}" --silent --output /tmp/curl_response \
+        response=$(curl --location --write-out "%{http_code}" --silent --output $CURL_RESPONSE_FILE \
             --header 'Content-Type: application/json' \
             --header "Authorization: Bearer $ACCESS_TOKEN" \
             "http://localhost:8000/calibration/export/?calibration_run_id=$argument")
 
         # Extract HTTP status and response
         http_status=$(tail -n1 <<< "$response")
-        response=$([[ -f /tmp/curl_response ]] && cat /tmp/curl_response || echo "")
+        response=$([[ -f $CURL_RESPONSE_FILE ]] && cat $CURL_RESPONSE_FILE || echo "")
 
         check_http_error "$http_status" "$response"
 
@@ -199,7 +203,7 @@ case "$operation" in
         fi
 
         # Clean up
-        rm -f /tmp/curl_response
+        rm -f $CURL_RESPONSE_FILE
         ;;
 
     "run")
