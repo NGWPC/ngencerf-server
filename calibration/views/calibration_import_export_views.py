@@ -360,9 +360,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
     num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
         geopackage_path) else None
 

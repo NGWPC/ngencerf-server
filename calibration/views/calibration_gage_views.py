@@ -260,9 +260,7 @@ def save_gage_tab(request: Request):
 
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
-        geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                         GeopackageSourceEnum.UPLOAD,
-                                         lambda: get_single_file(get_geopackage_dir_for_job(run)))
+        geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
         num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
@@ -626,9 +624,7 @@ def upload_geopackage_data(request: Request) -> Response:
     logger.info(f"Saving user-uploaded geopackage file to {os.path.join(fs.location, user_geopackage_file.name)}")
     fs.save(user_geopackage_file.name, user_geopackage_file)
 
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
     geopackage_image_url = get_geopackage_image_url(geopackage_path) if return_geopackage_url else None
 
     num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
@@ -671,17 +667,11 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     :param run: The calibration run instance to check.
     :return: A dictionary with boolean values indicating the presence of observational, forcing, and geopackage files.
     """
-    observation_path = get_valid_path(run.observational_source, run.observational_eds_file_path,
-                                      ObservationalSourceEnum.UPLOAD,
-                                      lambda: get_observational_file_for_job(run))
+    observation_path = get_valid_path(run.observational_eds_file_path, lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source, run.forcing_eds_dir_path,
-                                  ForcingSourceEnum.UPLOAD,
-                                  lambda: get_forcing_dir_for_job(run))
+    forcing_path = get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
 
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
     return {'observational': bool(observation_path),
             'forcing': bool(forcing_path),

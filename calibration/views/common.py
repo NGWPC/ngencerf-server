@@ -440,23 +440,19 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
-# TODO Fix me
-# Get the valid path for a file that can come from Data Services or user-upload
-def get_valid_path(source, eds_path, upload_enum, get_path_func):
+def get_valid_path(eds_path, get_path_func):
     """
-    Get the valid file path based on the source type, EDS path, or job-specific path.
+    Determine the valid file path by checking the job-specific path first,
+    then falling back to the provided EDS path if the job-specific file does not exist.
 
-    :param source: The source type.
     :param eds_path: The EDS path.
-    :param upload_enum: The upload enumeration.
     :param get_path_func: A function to retrieve the job-specific path.
-    :return: The valid path if found; otherwise None.
+    return: The path to the existing file, either job-specific or EDS; otherwise, None if neither exists.
     """
     job_specific_file = get_path_func()
 
     # job_specific_file is there, then always use it
     # If it's not there, then use the EDS file
-
     if job_specific_file and os.path.exists(job_specific_file):
         return job_specific_file
 
