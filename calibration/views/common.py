@@ -28,7 +28,7 @@ from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.caching import get_cached_modules_with_groups
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
-from calibration.util.ngen_locations import get_forecast_dir, get_ngen_stdout_log_filename, get_output_calibration_run_dir, \
+from calibration.util.ngen_locations import get_forecast_dir, get_output_calibration_run_dir, \
     get_output_validation_run_dir, get_ngen_logging_file, get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
@@ -682,21 +682,21 @@ def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Call
             worker_lambda(worker_dir, run)
 
 
-def find_validation_worker_with_matching_log(
+def find_validation_worker_with_matching_id(
         validation_run: ValidationRun,
         worker_name: str | None = None,
         iteration_num: int | None = None
 ) -> str | None:
     """
     Searches the worker directories of a validation run to locate the worker directory
-    containing the ngen stdout file. The matching criteria depend on the validation type:
-    - For VALID_ITERATION: Matches the worker name and iteration number in the log.
+    containing the matching worker_id file. The matching criteria depend on the validation type:
+    - For VALID_ITERATION: Matches the worker name and iteration number.
     - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
 
     :param validation_run: The validation run object to process.
     :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
     :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
-    :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
+    :return: The name of the worker directory containing the matching worker_id file, or None if not found.
     """
     matching_worker_name = None
     validation_type = ValidationType(validation_run.validation_type)
@@ -705,26 +705,29 @@ def find_validation_worker_with_matching_log(
     if validation_type == ValidationType.VALID_ITERATION:
         if not worker_name or iteration_num is None:
             raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
-        expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
+        expected_first_line = f"Valid_{worker_name}_iter{iteration_num}"
     elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
-        expected_first_line = f"Starting {validation_type.value.capitalize()} Run"
+        expected_first_line = f"{validation_type.value.capitalize()}"
     else:
         raise ValueError(f"Unsupported validation type: {validation_type}")
 
     # Custom function to check worker directories for the ngen.log file
     def check_worker(worker_dir: str, _run: ValidationRun):
         nonlocal matching_worker_name
-        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
+        worker_id_filename = 'worker_id.txt'
+        worker_id_path = os.path.join(worker_dir, worker_id_filename)
 
-        # Check if ngen.log exists in the current worker directory
-        if os.path.isfile(potential_log_path):
-            # Read the first line of the file
-            with open(potential_log_path, 'r') as file:
+        # Check if worker_id file exists in the current worker directory
+        if os.path.isfile(worker_id_path):
+            # Read the first (and only) line of the file
+            with open(worker_id_path, 'r') as file:
                 first_line = file.readline().strip()
 
-            # Check if the first line matches the expected format
-            if first_line == expected_first_line:
+            # Check if the line matches the expected format
+            if first_line.casefold() == expected_first_line.casefold():
                 matching_worker_name = os.path.basename(worker_dir)
+        else:
+            logger.error(f"Could not find {worker_id_filename} file in {worker_dir}")
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(validation_run, check_worker)
