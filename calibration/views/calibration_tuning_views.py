@@ -167,15 +167,9 @@ def get_time_range(run: CalibrationRun) -> dict[str, datetime | None]:
         logger.info("Time range is already set")
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
-    observation_path = get_valid_path(run.observational_source,
-                                      run.observational_eds_file_path,
-                                      ObservationalSourceEnum.UPLOAD,
-                                      lambda: get_observational_file_for_job(run))
+    observation_path = get_valid_path(run.observational_eds_file_path, lambda: get_observational_file_for_job(run))
 
-    forcing_path = get_valid_path(run.forcing_source,
-                                  run.forcing_eds_dir_path,
-                                  ForcingSourceEnum.UPLOAD,
-                                  lambda: get_forcing_dir_for_job(run))
+    forcing_path = get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
 
     if not observation_path or not forcing_path:
         return {}

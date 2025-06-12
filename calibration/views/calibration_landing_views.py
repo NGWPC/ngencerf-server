@@ -638,14 +638,11 @@ def import_job(request: Request) -> Response:
     # TODO What is going on here?  Why are we calling ready_to_run twice?
     errors, config_file = ngen_cal_input.ready_to_run(run)
 
-    if run_after_import and not errors:
-        errors, config_file = ngen_cal_input.ready_to_run(run)
-        if not errors:
-            # create_ngen_logging_file(run, {}, create_import_file=True)
-            error_response = submit_job(run)
-            if error_response:
-                return error_response
-            imported_and_submitted = f"{imported_and_submitted} and submitted"
+    if run_after_import and not errors.get('errors') and not errors.get('fatal'):
+        error_response = submit_job(run)
+        if error_response:
+            return error_response
+        imported_and_submitted = f"{imported_and_submitted} and submitted"
 
     response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
     if messages:

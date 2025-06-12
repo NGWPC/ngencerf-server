@@ -222,7 +222,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                 if source_dir:
                     # Validate each file in EDS forcing dir before subsetting
                     fatal += validate_csv_directory(source_dir)
-                    print(run.calibration_start_period, run.validation_start_period)
 
                     if (not (errors or fatal)
                             and run.calibration_start_period and run.calibration_end_period

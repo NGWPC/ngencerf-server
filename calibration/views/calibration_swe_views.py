@@ -22,7 +22,7 @@ from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_
     get_output_validation_iteration_plot_dir, get_output_validation_plot_dir, get_output_validation_run_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, get_validation_run, png_to_base64_url, get_job_description, \
-    validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_log, get_user_email
+    validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_id, get_user_email
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ def derive_swe_file_inputs(run: ValidationRun) -> dict[str, str]:
     validation_type = ValidationType(run.validation_type)
 
     # Find the matching worker name for the validation run if applicable.
-    worker_name = find_validation_worker_with_matching_log(
+    worker_name = find_validation_worker_with_matching_id(
         run,
         worker_name=run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
         iteration_num=run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
