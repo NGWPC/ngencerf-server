@@ -336,22 +336,22 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
     :param logging_config: Optional logging configuration for CalibrationRun preparation.
     :return: A DRF Response instance if there is an issue; otherwise, None on success.
     """
-    # Special handling for calibration jobs
-    if isinstance(run, CalibrationRun):
-        create_ngen_logging_file(run, logging_config)
-        fatal, response = prepare_calibration_job(run, config_file)
-        if response:
-            if fatal:
-                run.status = StatusEnum.FAILED.db_instance
-                run.save(update_fields=['status'])
-            return response
+    with transaction.atomic():
+        # Set submission date and status
+        run.submit_date = datetime.now(timezone.utc)
+        run.status = StatusEnum.SUBMITTED.db_instance
+        run.save(update_fields=['submit_date', 'status'])
 
     try:
-        with transaction.atomic():
-            # Set submission date and status
-            run.submit_date = datetime.now(timezone.utc)
-            run.status = StatusEnum.SUBMITTED.db_instance
-            run.save(update_fields=['submit_date', 'status'])
+        # Special handling for calibration jobs
+        if isinstance(run, CalibrationRun):
+            create_ngen_logging_file(run, logging_config)
+            fatal, response = prepare_calibration_job(run, config_file)
+            if response:
+                if fatal:
+                    run.status = StatusEnum.FAILED.db_instance
+                    run.save(update_fields=['status'])
+                return response
 
         # Determine the appropriate job execution function
         if isinstance(run, CalibrationRun):
@@ -419,6 +419,15 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
             )
 
     try:
+        logger.info(f'Final preparation to run Calibration Job {calibration_run.id}')
+        validation_errors = ngen_cal_input.run_long_running_preparations(calibration_run)
+
+        if validation_errors:
+            return True, ResponseError(
+                f'Calibration Job {calibration_run.id} failed validation after preprocessing',
+                fatal_errors=validation_errors
+            )
+
         logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
         create_input(config_file)
     except Exception as e:

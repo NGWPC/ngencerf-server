@@ -241,27 +241,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                 # Check if forcing data has been uploaded
                 if not forcing_dir or not os.path.exists(forcing_dir):
                     errors.append('Forcing data must be uploaded')
-                elif build:
-                    # Validate uploaded data
-                    fatal += validate_csv_directory(forcing_dir)
-
-            elif build:
-                # For non-uploaded data, subset the forcing data by time range
-                source_dir = run.forcing_eds_dir_path
-                if source_dir:
-                    # Validate each file in EDS forcing dir before subsetting
-                    fatal += validate_csv_directory(source_dir)
-
-                    if (not (errors or fatal)
-                            and run.calibration_start_period and run.calibration_end_period
-                            and run.validation_start_period and run.validation_end_period):
-                        subset_directory_by_time_range(
-                            run,
-                            source_dir,
-                            forcing_dir,
-                            DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
-                                          max(run.calibration_end_period, run.validation_end_period))
-                        )
 
             datafile['forcing_dir'] = get_forcing_dir_for_job(run)
 
@@ -276,32 +255,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                 if not user_uploaded_observational_file:
                     errors.append('Observational data must be uploaded')
                 elif build:
-                    # Validate user-uploaded file before renaming
-                    fatal += validate_csv_file(user_uploaded_observational_file, is_observational=True)
-
                     # Rename the observational file if necessary
                     # If the user uploaded it with the proper name, no need to rename
                     if user_uploaded_observational_file != observational_file:
                         logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
                         os.rename(user_uploaded_observational_file, observational_file)
-            elif build:
-                # Validate subsetted observational file
-                source_file = run.observational_eds_file_path
-                # For non-uploaded data, subset the observational data by time range
-                if source_file:
-                    fatal += validate_csv_file(source_file, is_observational=True)
-                    if (not (errors or fatal)
-                            and run.calibration_start_period and run.calibration_end_period
-                            and run.validation_start_period and run.validation_end_period):
-                        subset_by_time_range(
-                            run,
-                            source_file,
-                            observational_file,
-                            DateTimeRange(
-                                min(run.calibration_start_period, run.validation_start_period),
-                                max(run.calibration_end_period, run.validation_end_period)
-                            )
-                        )
 
             datafile['obs_dir'] = observational_dir
 
@@ -505,6 +463,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
             parallel['nprocs'] = nprocs
             run.mpi_nprocs = nprocs
 
+    ## Validation is done.
+
     run.status = StatusEnum.SAVED.db_instance if errors else StatusEnum.READY.db_instance
 
     run.save()
@@ -687,6 +647,50 @@ def validate_csv_file(path: str, is_observational: bool) -> list[str]:
                 errors.append(f"{path}: Row {row_number}, column '{col}' must be numeric (value='{row[col]}')")
 
     return errors
+
+
+def run_long_running_preparations(run: CalibrationRun) -> list[str]:
+    """
+    Executes the long-running preparation steps for the given CalibrationRun.
+    Assumes that all prerequisites (paths, date ranges) have been validated.
+
+    :param run: The CalibrationRun to process.
+    :return: List of validation error messages.
+    """
+    from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
+
+    errors: list[str] = []
+
+    # Validate and subset forcing data
+    if run.forcing_source != ForcingSourceEnum.UPLOAD.db_instance:
+        errors += validate_csv_directory(run.forcing_eds_dir_path)
+        subset_directory_by_time_range(
+            run,
+            run.forcing_eds_dir_path,
+            get_forcing_dir_for_job(run),
+            DateTimeRange(
+                min(run.calibration_start_period, run.validation_start_period),
+                max(run.calibration_end_period, run.validation_end_period)
+            )
+        )
+    else:
+        errors += validate_csv_directory(get_forcing_dir_for_job(run))
+
+    # Validate and subset observational data
+    if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
+        errors += validate_csv_file(run.observational_eds_file_path, is_observational=True)
+        subset_by_time_range(
+            run,
+            run.observational_eds_file_path,
+            get_observational_file_for_job(run),
+            DateTimeRange(
+                min(run.calibration_start_period, run.validation_start_period),
+                max(run.calibration_end_period, run.validation_end_period)
+            )
+        )
+    else:
+        observational_file = get_single_file(get_observational_dir_for_job(run))
+        errors += validate_csv_file(observational_file, is_observational=True)
 
 
 def validate_csv_directory(dir_path: str) -> list[str]:
