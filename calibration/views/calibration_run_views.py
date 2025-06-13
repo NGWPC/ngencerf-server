@@ -19,7 +19,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun
+from calibration.models import Iteration, ValidationRun, ForecastRun, Status, ForecastForcingDownloadRun, CalibrationRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_forecast_forcing_download_job_callback_pw
@@ -333,7 +333,7 @@ def run_calibration(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def get_performance_metrics(performance_metrics):
+def get_performance_metrics(performance_metrics) -> dict[str, str | int | float | None]:
     """
     Helper function to retrieve selected performance metrics, converting numeric fields to 'K' units.
     """
@@ -363,7 +363,7 @@ def get_performance_metrics(performance_metrics):
     return metrics_dict
 
 
-def should_include_metrics(run_status: Status, include_performance_metrics: bool = False):
+def should_include_metrics(run_status: Status, include_performance_metrics: bool = False) -> bool:
     """
     Determines if performance metrics should be included based on job status and request parameters.
     """
@@ -733,7 +733,7 @@ def cancel_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def resolve_job_data_dir(run) -> str:
+def resolve_job_data_dir(run: CalibrationRun) -> str:
     """
     Resolves the job data directory for the given CalibrationRun object, converting paths if necessary
     based on the current settings.
@@ -990,49 +990,7 @@ def get_slurm_token(request: Request) -> Response:
     return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
 
 
-def subset_directory_by_time_range(input_directory, output_directory, date_time_range: DateTimeRange, max_workers=4):
-    """
-    Subsets the files in a directory based on a provided time range and saves the filtered
-    files into an output directory. Uses parallel processing to handle multiple files at once.
-
-    :param input_directory: Path to the input directory.
-    :param output_directory: Path to the output directory.
-    :param date_time_range: DateTimeRange object specifying the time range for filtering.
-    :param max_workers: Maximum number of parallel workers (default is 4 to balance S3FS I/O and system resources).
-    - S3FS benefits from parallel reads, but excessive threads can cause API throttling or network congestion.
-    - 4 workers provide a good balance between concurrency and avoiding excessive I/O wait.
-    - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
-    - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
-    """
-    start_time = time.time()
-    logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers}')
-
-    if not os.path.isdir(input_directory):
-        raise ValueError(f"Input path '{input_directory}' is not a directory.")
-
-    os.makedirs(output_directory, exist_ok=True)
-
-    files_to_process = [
-        (os.path.join(input_directory, filename), os.path.join(output_directory, filename))
-        for filename in os.listdir(input_directory)
-        if os.path.isfile(os.path.join(input_directory, filename))
-    ]
-
-    logger.info(f"Found {len(files_to_process)} files to process in {input_directory}")
-
-    def process_file(input_output_tuple):
-        input_file, output_file = input_output_tuple
-        subset_by_time_range(input_file, output_file, date_time_range)
-
-    # Use ThreadPoolExecutor for I/O-bound tasks (like S3FS-based file reads/writes)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        executor.map(process_file, files_to_process)
-
-    elapsed_time = time.time() - start_time
-    logger.info(f"Finished subsetting directory {input_directory} in {elapsed_time:.2f} seconds")
-
-
-def get_performance_chunksize(file_path):
+def get_performance_chunksize(file_path: str) -> int:
     """
     Dynamically determines an optimal chunksize for high-performance processing
     using a **single row** to estimate memory size sine all rows are substantially the same size
@@ -1064,7 +1022,66 @@ def get_performance_chunksize(file_path):
     return max(10_000, min(optimal_chunksize, 100_000))
 
 
-def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange):
+def subset_directory_by_time_range(
+        run: CalibrationRun,
+        input_directory: str,
+        output_directory: str,
+        date_time_range: DateTimeRange,
+        max_workers: int = 4
+) -> None:
+    """
+    Subsets the files in a directory based on a provided time range and saves the filtered
+    files into an output directory. Uses parallel processing to handle multiple files at once.
+
+    :param run: The CalibrationRun instance (used for consistent logging context).
+    :param input_directory: Path to the input directory.
+    :param output_directory: Path to the output directory.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    :param max_workers: Maximum number of parallel workers (default is 4 to balance S3FS I/O and system resources).
+    - S3FS benefits from parallel reads, but excessive threads can cause API throttling or network congestion.
+    - 4 workers provide a good balance between concurrency and avoiding excessive I/O wait.
+    - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
+    - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
+    """
+    start_time = time.time()
+    logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers} for Calibration Job {run.id}')
+
+    if not os.path.isdir(input_directory):
+        raise ValueError(f"Input path '{input_directory}' is not a directory for Calibration Job {run.id}")
+
+    os.makedirs(output_directory, exist_ok=True)
+
+    files_to_process = [
+        (os.path.join(input_directory, filename), os.path.join(output_directory, filename))
+        for filename in os.listdir(input_directory)
+        if os.path.isfile(os.path.join(input_directory, filename))
+    ]
+
+    logger.info(f"Found {len(files_to_process)} files to process in {input_directory} for Calibration Job {run.id}")
+
+    def process_file(input_output_tuple: tuple[str, str]) -> None:
+        """
+        Processes a single file by applying time-based subsetting.
+
+        :param input_output_tuple: Tuple containing the full path to the input and output files.
+        """
+        input_file, output_file = input_output_tuple
+        # Delegate to the time range subsetting logic
+        subset_by_time_range(run, input_file, output_file, date_time_range)
+
+    # Use ThreadPoolExecutor for I/O-bound tasks (like S3FS-based file reads/writes)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(process_file, files_to_process)
+
+    elapsed_time = time.time() - start_time
+    logger.info(f"Finished subsetting directory {input_directory} in {elapsed_time:.2f} seconds for Calibration Job {run.id}")
+
+
+def subset_by_time_range(
+        run: CalibrationRun,
+        input_file: str, output_file: str,
+        date_time_range: DateTimeRange
+) -> None:
     """
     Reads a CSV file, filters rows based on a time range, and writes the filtered data
     to an output file with the original column names and timezone-naive datetime values.
@@ -1072,16 +1089,17 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
     Optimized to take advantage of sorted data for faster processing.
     Chunksize is optimized for **performance**, reducing disk I/O overhead.
 
+    :param run: The CalibrationRun instance (used for logging context only).
     :param input_file: Path to the input CSV file.
     :param output_file: Path to the output CSV file.
     :param date_time_range: DateTimeRange object specifying the time range for filtering.
     """
-    logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range}')
+    logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range} for Calibration Job {run.id}')
     file_basename = os.path.basename(input_file)  # Extract just the filename
 
     # Dynamically determine the best chunksize for performance
     chunk_size = get_performance_chunksize(input_file)
-    logger.info(f"Using optimized chunksize={chunk_size} for {file_basename}")
+    logger.info(f"Using optimized chunksize={chunk_size} for {file_basename} for Calibration Job {run.id}")
 
     # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -1108,16 +1126,16 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             if original_time_column in chunk.columns:
                 chunk.rename(columns={original_time_column: 'dateTime'}, inplace=True)
             else:
-                logger.error(f"Expected datetime column '{original_time_column}' not found in {file_basename}")
-                raise KeyError(f"Expected datetime column '{original_time_column}' not found in {file_basename}")
+                logger.error(f"Expected datetime column '{original_time_column}' not found in {file_basename} for Calibration Job {run.id}")
+                raise KeyError(f"Expected datetime column '{original_time_column}' not found in {file_basename} for Calibration Job {run.id}")
 
             # Convert to datetime and explicitly assume timestamps are in UTC
             chunk['dateTime'] = pd.to_datetime(chunk['dateTime'], errors='coerce')
 
             # Validate datetime values before localizing
             if chunk['dateTime'].isna().any():
-                logger.error(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line})")
-                raise ValueError(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line})")
+                logger.error(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line}) for Calibration Job {run.id}")
+                raise ValueError(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line}) for Calibration Job {run.id}")
 
             # Now localize to UTC
             chunk['dateTime'] = chunk['dateTime'].dt.tz_localize('UTC')
@@ -1125,7 +1143,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             # Log the original start and end ranges in this chunk, including line numbers
             chunk_start = chunk['dateTime'].min()
             chunk_end = chunk['dateTime'].max()
-            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end}')
+            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end} for Calibration Job {run.id}')
 
             # Skip chunks that are entirely before the time range
             if chunk_end < start_datetime:
@@ -1140,7 +1158,7 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             subset_df = chunk.loc[
                 (chunk['dateTime'] >= start_datetime) &
                 (chunk['dateTime'] <= end_datetime)
-                ].copy()  # Explicitly create a copy
+            ].copy()  # Explicitly create a copy
 
             # Convert back to naive timestamps for output (to match original format)
             subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
@@ -1155,4 +1173,4 @@ def subset_by_time_range(input_file, output_file, date_time_range: DateTimeRange
             # Update the starting line number for the next chunk
             start_line = end_line + 1
 
-    logger.info(f'Finished subsetting file {input_file} to {output_file}')
+    logger.info(f'Finished subsetting file {input_file} to {output_file} for Calibration Job {run.id}')
