@@ -203,6 +203,35 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
+        # Determine the source of the geopackage data (user-uploaded or EDS)
+        if not is_missing(run.geopackage_source, 'Geopackage source', errors):
+            geopackage_dir = get_geopackage_dir_for_job(run)
+            is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
+
+            if is_geopackage_upload:
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
+                    # For user uploads, use the job-specific location directly
+                    datafile['hydrofab_file'] = geopackage_file
+                else:
+                    errors.append('Geopackage data must be uploaded')
+            else:
+                if run.geopackage_eds_file_path and build:
+                    # For data from Data Services, normalize the CRS and copy to job-specific location
+                    try:
+                        normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
+                        # copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
+                    except FileNotFoundError:
+                        run.geopackage_eds_file_path = None
+
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
+                    datafile['hydrofab_file'] = geopackage_file
+
+            if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
+                catchments = list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())
+                logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
+
         # Determine the source of the forcing data (user-uploaded or EDS)
         if not is_missing(run.forcing_source, 'Forcing source', errors):
             forcing_dir = get_forcing_dir_for_job(run)
@@ -227,6 +256,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                             and run.calibration_start_period and run.calibration_end_period
                             and run.validation_start_period and run.validation_end_period):
                         subset_directory_by_time_range(
+                            run,
                             source_dir,
                             forcing_dir,
                             DateTimeRange(min(run.calibration_start_period, run.validation_start_period),
@@ -264,6 +294,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                             and run.calibration_start_period and run.calibration_end_period
                             and run.validation_start_period and run.validation_end_period):
                         subset_by_time_range(
+                            run,
                             source_file,
                             observational_file,
                             DateTimeRange(
@@ -273,34 +304,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                         )
 
             datafile['obs_dir'] = observational_dir
-
-        if not is_missing(run.geopackage_source, 'Geopackage source', errors):
-            geopackage_dir = get_geopackage_dir_for_job(run)
-            is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
-
-            if is_geopackage_upload:
-                geopackage_file = get_single_file(geopackage_dir)
-                if geopackage_file:
-                    # For user uploads, use the job-specific location directly
-                    datafile['hydrofab_file'] = geopackage_file
-                else:
-                    errors.append('Geopackage data must be uploaded')
-            else:
-                if run.geopackage_eds_file_path and build:
-                    # For data from Data Services, normalize the CRS and copy to job-specific location
-                    try:
-                        normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
-                        # copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
-                    except FileNotFoundError:
-                        run.geopackage_eds_file_path = None
-
-                geopackage_file = get_single_file(geopackage_dir)
-                if geopackage_file:
-                    datafile['hydrofab_file'] = geopackage_file
-
-            if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
-                catchments = list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())
-                logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
 
         nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
         if os.path.exists(nwm_retro):
