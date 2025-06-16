@@ -274,6 +274,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         module_names = [f.module.name for f in formulations]
         general['models'] = ', '.join(module_names)
 
+        # Check fatal errors
+        formulation_errors, _ = validate_formulation(module_names)
+        errors = errors + formulation_errors
+
         # See if we have at least one module in Snowmelt
         calibration['output_swe'] = any(
             any(group.name == "Snowmelt" for group in get_cached_module_by_name(name).groups.all())

@@ -408,7 +408,6 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_warning = serializers.JSONField(required=False)
     parameters_selected = serializers.BooleanField(required=True)
-    nwm_warning = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
@@ -701,8 +700,8 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
-    nwm_warning = serializers.BooleanField(required=True)
-    formulation_warning = serializers.JSONField(required=False)
+    formulation_errors = serializers.JSONField(required=False)
+    formulation_warnings = serializers.JSONField(required=False)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
 
 
@@ -895,6 +894,7 @@ class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
 class ImportResponseSerializer(GenericResponseSerializer):
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.JSONField(required=False)
 
 

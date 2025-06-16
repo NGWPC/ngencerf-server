@@ -154,9 +154,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         if error_message:
             return None, None, ResponseError(error_message)
 
-        formulation_warning, nwm_warning = validate_formulation(module_names)
-        if formulation_warning is not None:
-            errors.append(json.dumps(formulation_warning))
+        formulation_errors, formulation_warnings = validate_formulation(module_names)
 
         # Set formulation name
         run.user_formulation_name = calibration_run_data.get('formulation_name')
@@ -264,19 +262,20 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         if logging_config:
             # Create a logging_config_import file with the imported data
             logging_config_path = get_ngen_logging_file(run, import_flag=True)
+            os.makedirs(os.path.dirname(logging_config_path), exist_ok=True)
             with open(logging_config_path, 'w') as f:
                 json.dump(logging_config, f, indent=4)
 
         run.save()
-    response_dict = {}
+    messages = {}
     if errors:
-        response_dict['errors'] = errors
-    if parameter_warnings:
-        response_dict['warnings'] = parameter_warnings
+        messages['errors'] = errors + formulation_errors
+    if formulation_warnings:
+        messages['warnings'] = formulation_warnings
     if eds_errors:
-        response_dict['eds_errors'] = eds_errors
+        messages['eds_errors'] = eds_errors
 
-    return run, response_dict, None
+    return run, messages, None
 
 
 @extend_schema(
@@ -491,11 +490,11 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['modules'] = modules
 
     # Validation warnings
-    formulation_warning, nwm_warning = validate_formulation(modules)
-    if not export:
-        calibration_run_data['nwm_warning'] = nwm_warning
-    if formulation_warning and not export:
-        calibration_run_data['formulation_warning'] = formulation_warning
+    formulation_errors, formulation_warnings = validate_formulation(modules)
+    if formulation_warnings and not export:
+        calibration_run_data['formulation_warnings'] = formulation_warnings
+    if formulation_errors and not export:
+        calibration_run_data['formulation_errors'] = formulation_errors
 
     # Handle SLOTH parameters
     calibration_run_data['use_sloth'] = run.use_sloth
