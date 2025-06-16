@@ -362,7 +362,7 @@ def get_log(request: Request) -> Response:
             raise CerfException(f"Unknown log category '{log_category.value}'")
 
     # Check if the log file exists
-    if not os.path.exists(log_path):
+    if log_path and not os.path.exists(log_path):
         raise CerfException(f"Log file not found: {log_path}")
 
     # Get the file size in bytes
@@ -572,12 +572,15 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
         potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
 
         # Check if ngen stdout file exists in the current worker directory
-        if os.path.isfile(potential_log_path):
+        if potential_log_path and os.path.isfile(potential_log_path):
             ngen_log_path = potential_log_path
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(run, check_worker)
 
+    if not ngen_log_path:
+        raise CerfException('Could not find ngen log in worker directory')
+ 
     return ngen_log_path
 
 

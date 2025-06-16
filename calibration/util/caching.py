@@ -156,12 +156,15 @@ def get_filtered_plot_definitions(
 
         optimization = run.optimization if isinstance(run, CalibrationRun) else run.calibration_run.optimization
 
+        # TODO LSTM doesn't have optimization.  We need to refine the list if the database to account for LSTM
+        # For now, if optimization is None, we'll just return the Plot.  If it doesn't exist, the UI will deal with it
+
         # Filter plots based on job type, optimization, and optional plot_name criteria
         filtered_plots = [
             plot for plot in cached_plot_definitions
             if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
                and plot['valid_optimizations'] is not None  # Exclude plots with null valid_optimizations
-               and (optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
+               and (optimization is None or optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
                and (
                        plot['job_type'] == JobType.CALIBRATION.value or
                        (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)

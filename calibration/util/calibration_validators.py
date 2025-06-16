@@ -1189,7 +1189,8 @@ class ValidationJobsResponseSerializer(BaseSerializer):
     validation_type = serializers.CharField(required=True)
     iteration_num = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
+    # Can be empty for LSTM
+    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=True)
     best = serializers.BooleanField(required=True)
 
 
