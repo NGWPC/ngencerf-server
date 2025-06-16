@@ -412,7 +412,7 @@ def get_plots_for_comparison(request: Request) -> Response:
                         # Gage IDs don't match - still return data for this run, but note this in errors
                         response['errors'].append({
                             'calibration_run_id': run.id,
-                            'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id + \
+                            'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id +
                                        '.\n This does not match the Gage ID requested: ' + gage_id + '.'
                         })
 
@@ -461,7 +461,7 @@ def get_plots_for_comparison(request: Request) -> Response:
                         # Gage IDs don't match - still return data for this run, but note this in errors
                         response['errors'].append({
                             'calibration_run_id': run.id,
-                            'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id + \
+                            'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id +
                                        '.\n This does not match the Gage ID requested: ' + gage_id + '.'
                         })
 

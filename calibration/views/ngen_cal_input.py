@@ -6,9 +6,7 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
-import pandas as pd
 import toml
-from datetimerange import DateTimeRange
 from django.db.models import F
 from toml import TomlEncoder
 
@@ -24,10 +22,9 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE
-from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
-from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime
+from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -145,14 +142,14 @@ CONFIG_TEMPLATE = {
 }
 
 
-def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, list[str]] | None, str | None]:
+def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport | None, str | None]:
     """
     Validate the given CalibrationRun and prepare it for execution.
 
     This function checks for missing or invalid configuration in the CalibrationRun
     and optionally builds necessary input files and directories if `build=True`.
 
-    It returns a dictionary of validation issues (`errors` and `fatal`), along with
+    It returns an ErrorReport object (containing `errors` and `fatal`), along with
     the path to the generated configuration file if applicable.
 
     - `errors`: Problems the user can fix. These prevent the job from being marked as ready.
@@ -165,15 +162,21 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
 
     :param run: The CalibrationRun instance to validate and prepare.
     :param build: If True, generate configuration files and other runtime input artifacts.
-    :return: A tuple (error_object, config_file_path):
-             - error_object: dict with 'errors' and 'fatal' lists, or None if status check fails.
+    :return: A tuple (ErrorReport, config_file_path):
+             - error_object: ErrorReport object with errors and fatal lists.
              - config_file_path: Path to the generated config file if build is successful, else None.
     """
     logger.info(called_from())
 
+    error_object = ErrorReport()
+
     # Check if the run's status allows it to be prepared for execution
-    if run.status not in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
-        return None, None
+    allowed_status_names = [StatusEnum.SAVED.value, StatusEnum.READY.value, StatusEnum.SUBMITTED.value]
+    if run.status.name not in allowed_status_names:
+        error_object.add_warning(f'Calibration Job {run.id} is not in an allowed status: '
+                                 f'{join_with_or(allowed_status_names)}. '
+                                 f'Current status: {run.status.name}')
+        return error_object, None
 
     config: dict[str, dict[str, str | int | float | bool]] = copy.deepcopy(CONFIG_TEMPLATE)
 
@@ -187,24 +190,18 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
         "nprocs": None
     }
 
-    # Errors prevent the job from running, but the user can fix the problem
-    errors = []
-    # Fatal errors cause the job to fail
-    fatal = []
-    error_object = {'errors': errors, 'fatal': fatal}
-
     # Initialize general configuration settings for the run
     general['calibration_run_id'] = run.id
     general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
     catchments = None
     # Validate and configure the gage ID and station name
-    if not is_missing(run.gage, 'gage_id', errors):
+    if not is_missing(run.gage, 'gage_id', error_object):
         general['basin'] = run.gage.gage_id
         calibration['station_name'] = run.gage.station_name
 
         # Determine the source of the geopackage data (user-uploaded or EDS)
-        if not is_missing(run.geopackage_source, 'Geopackage source', errors):
+        if not is_missing(run.geopackage_source, 'Geopackage source', error_object):
             geopackage_dir = get_geopackage_dir_for_job(run)
             is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
 
@@ -214,7 +211,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                     # For user uploads, use the job-specific location directly
                     datafile['hydrofab_file'] = geopackage_file
                 else:
-                    errors.append('Geopackage data must be uploaded')
+                    error_object.add_warning('Geopackage data must be uploaded')
             else:
                 if run.geopackage_eds_file_path and build:
                     # For data from Data Services, normalize the CRS and copy to job-specific location
@@ -233,19 +230,17 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                 logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
 
         # Determine the source of the forcing data (user-uploaded or EDS)
-        if not is_missing(run.forcing_source, 'Forcing source', errors):
+        if not is_missing(run.forcing_source, 'Forcing source', error_object):
             forcing_dir = get_forcing_dir_for_job(run)
             is_forcing_upload = run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance
 
-            if is_forcing_upload:
-                # Check if forcing data has been uploaded
-                if not forcing_dir or not os.path.exists(forcing_dir):
-                    errors.append('Forcing data must be uploaded')
+            if is_forcing_upload and (not forcing_dir or not os.path.exists(forcing_dir)):
+                error_object.add_warning('Forcing data must be uploaded')
 
-            datafile['forcing_dir'] = get_forcing_dir_for_job(run)
+            datafile['forcing_dir'] = forcing_dir
 
         # Determine the source of observational data (user-uploaded or EDS)
-        if not is_missing(run.observational_source, 'Observational source', errors):
+        if not is_missing(run.observational_source, 'Observational source', error_object):
             observational_dir = get_observational_dir_for_job(run)
             observational_file = get_observational_file_for_job(run)
             is_observational_upload = run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance
@@ -253,13 +248,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
             if is_observational_upload:
                 user_uploaded_observational_file = get_single_file(observational_dir)
                 if not user_uploaded_observational_file:
-                    errors.append('Observational data must be uploaded')
-                elif build:
-                    # Rename the observational file if necessary
-                    # If the user uploaded it with the proper name, no need to rename
-                    if user_uploaded_observational_file != observational_file:
-                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
-                        os.rename(user_uploaded_observational_file, observational_file)
+                    error_object.add_warning('Observational data must be uploaded')
+                elif build and user_uploaded_observational_file != observational_file:
+                    logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
+                    os.rename(user_uploaded_observational_file, observational_file)
 
             datafile['obs_dir'] = observational_dir
 
@@ -269,17 +261,17 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
 
         error_message = validate_time_range_against_data(run)
         if error_message:
-            errors.append(error_message)
+            error_object.add_warning(error_message)
 
         # Need to set parquet file based on domain
         datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    if not is_missing(formulations, 'Modules', errors) and not is_missing(run.user_formulation_name, 'Formulation name', errors):
+    if not is_missing(formulations, 'Modules', error_object) and not is_missing(run.user_formulation_name, 'Formulation name', error_object):
         general['formulation'] = run.user_formulation_name
 
-        module_names = [formulation.module.name for formulation in formulations]
+        module_names = [f.module.name for f in formulations]
         general['models'] = ', '.join(module_names)
 
         # See if we have at least one module in Snowmelt
@@ -291,9 +283,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
         if run.use_sloth:
             general['models'] += f', {SLOTH}'
 
-        # Dynamically add keys and values directly using the formulations list
-        for formulation in formulations:
-            datafile[get_bmi_config_key(formulation.module.name)] = get_bmi_config_dir_for_module(run, formulation.module.name)
+        # Dynamically add keys and values directly using the formulation list
+        for f in formulations:
+            datafile[get_bmi_config_key(f.module.name)] = get_bmi_config_dir_for_module(run, f.module.name)
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir
@@ -311,7 +303,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
     missing_calibration_fields = [name for name, value in required_calibration_fields.items() if value is None]
 
     if missing_calibration_fields:
-        errors.append(f"Missing required calibration fields: {', '.join(missing_calibration_fields)}")
+        error_object.add_warning(f"Missing required calibration fields: {', '.join(missing_calibration_fields)}")
     else:
         calibration.update({
             'calib_start_period': format_datetime(run.calibration_start_period),
@@ -331,7 +323,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
         missing_validation_fields = [name for name, value in required_validation_fields.items() if value is None]
 
         if missing_validation_fields:
-            errors.append(f"Missing required validation fields: {', '.join(missing_validation_fields)}")
+            error_object.add_warning(f"Missing required validation fields: {', '.join(missing_validation_fields)}")
         else:
             calibration.update({
                 'valid_start_period': format_datetime(run.validation_start_period),
@@ -349,10 +341,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
-    if not is_missing(run.objective_function, 'Objective function', errors):
+    if not is_missing(run.objective_function, 'Objective function', error_object):
         calibration['objective_function'] = run.objective_function.name.lower()
 
-    if not is_missing(run.optimization, 'Optimization', errors):
+    if not is_missing(run.optimization, 'Optimization', error_object):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         # Validate if all inputs are provided
@@ -372,9 +364,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
 
         # Check if any required inputs are missing
         if all_input_names:
-            errors.append(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
+            error_object.add_warning(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', errors):
+    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', error_object):
         calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
 
     # This field is not required from user
@@ -383,12 +375,12 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', errors):
+    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', error_object):
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
     if stop_criteria and run.save_plot_iteration_frequency is not None and (stop_criteria.value < run.save_plot_iteration_frequency):
-        errors.append(
+        error_object.add_warning(
             f"The plot iteration frequency, {run.save_plot_iteration_frequency}, must be <= the stop criteria (number of iteration) {stop_criteria.value}")
 
     calibration['start_iteration'] = 0  # TODO ????'
@@ -398,6 +390,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
 
     if run.peak_flow_threshold:
         calibration['peak_flow_threshold'] = run.peak_flow_threshold
+
     if run.use_sloth:
         sloth_params = (CalibrationSlothParam.objects.filter(calibration_run=run)
                         .values('param_name', 'param_count', 'param_units', 'param_location', 'param_value',
@@ -414,7 +407,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
             missing_fields = [field for field in required_fields if s.get(field) is None]
             if missing_fields:
                 sloth_error = True
-                errors.append(f"Missing fields {', '.join(missing_fields)} for sloth parameter '{s['param_name']}'")
+                error_object.add_warning(f"Missing fields {', '.join(missing_fields)} for sloth parameter '{s['param_name']}'")
             else:
                 sloth_lines.append(
                     line_format.format(s['param_name'], s['param_count'], s['param_units'], s['param_location'], s['param_value'], s['module'],
@@ -442,14 +435,14 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__module__name')))
 
     if not params:
-        errors.append("At least one parameter must be specified")
+        error_object.add_warning("At least one parameter must be specified")
     else:
         param_error = False
         for p in params:
             # Make sure everything is specified
             if not p['name'] or p['initial_value'] is None or p['minimum'] is None or p['maximum'] is None:
                 param_error = True
-                errors.append(
+                error_object.add_warning(
                     f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
 
         if not param_error and build:
@@ -463,14 +456,16 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[dict[str, li
             parallel['nprocs'] = nprocs
             run.mpi_nprocs = nprocs
 
-    ## Validation is done.
-
-    run.status = StatusEnum.SAVED.db_instance if errors else StatusEnum.READY.db_instance
+    # If not errors, then leave the status alone, either READY or SUBMITTED
+    print('returning from ready_to_run: errors', error_object.has_errors(), error_object.errors)
+    print('original status:', run.status)
+    run.status = StatusEnum.SAVED.db_instance if error_object.has_errors() else run.status
+    print('updated status:', run.status)
 
     run.save()
 
     # Only build the config file if there are no errors and build is True
-    config_file = build_config(config, job_data_dir) if build and not (errors or fatal) else None
+    config_file = build_config(config, job_data_dir) if build and not error_object.has_errors() and not error_object.has_warnings() else None
 
     return error_object, config_file
 
@@ -546,18 +541,17 @@ def build_config(config: dict, directory: str) -> str:
     return config_file
 
 
-def is_missing(value: Any, field_name: str, errors: list[str], custom_error: str = "") -> bool:
+def is_missing(value: Any, label: str, report: ErrorReport) -> bool:
     """
-    Checks if a required value is missing, adding an error message if so.
+    Checks if a required value is missing, and logs an error if so.
 
     :param value: The value to check.
-    :param field_name: The name of the field being checked.
-    :param errors: The list to which errors will be appended if the value is missing.
-    :param custom_error: An optional custom error message.
-    :return: True if the value is missing, False otherwise.
+    :param label: A descriptive name of the value (used in the error message).
+    :param report: ErrorReport instance to record the error.
+    :return: True if the value is None, False otherwise.
     """
     if value is None:
-        errors.append(custom_error if custom_error else f"{field_name} must be specified")
+        report.add_warning(f'{label} is required')
         return True
     return False
 
@@ -581,136 +575,3 @@ def get_mpi_nodes(num_catchments: int) -> int:
 
     logger.info(f'{num_catchments} catchments using {mpi_nodes} nodes')
     return mpi_nodes
-
-
-# This is really not a good place for this type of validation.  It takes a long time and is repeated even if this
-# Forcing or Observation data has been validated before
-# We really need to do validation of the data outside of the server.  This is static data that can just be validated in one fell swoop.
-# Ngen should also be updated to issue more readable and understandable error messages when it comes across bad data.
-def validate_csv_file(path: str, is_observational: bool) -> list[str]:
-    """
-    Validates a forcing or observational CSV file for structure and numeric value expectations.
-
-    :param path: Path to the CSV file.
-    :param is_observational: Whether this is observational (2-column) or forcing (9-column) data.
-    :return: A list of validation error strings.
-    """
-    data_type = 'observational' if is_observational else 'forcing'
-    logger.info(f"Validating {data_type} file {path}")
-    errors = []
-    expected_columns = 2 if is_observational else 9
-    rows = []
-
-    # Check column count on each row manually first
-    try:
-        with open(path, newline='') as f:
-            reader = csv.reader(f)
-            for i, row in enumerate(reader, start=1):
-
-                # Simulate malformed row by dropping a column from row 2
-                # if i == 2:
-                #     row = row[:-1]  # remove last column to simulate structural error
-
-                if len(row) != expected_columns:
-                    errors.append(f"{path}: Row {i} has {len(row)} columns, expected {expected_columns}")
-                    logger.error(errors)
-                    # Only report the first structural error to avoid duplication
-                    return errors
-
-                rows.append(row)
-    except Exception as e:
-        return [f"{path}: Failed to read CSV (structural check): {e}"]
-
-    if len(rows) < 2:
-        return [f"{path}: File does not contain data rows"]
-
-    if len(rows[0]) != expected_columns:
-        return [f"{path}: Header has {len(rows[0])} columns, expected {expected_columns}"]
-
-    # Now read the file fully with pandas for per-column type checking
-    try:
-        df = pd.DataFrame(rows[1:], columns=rows[0])  # Assumes header is first row
-        df = df.reset_index(drop=True)  # Ensure numeric row indices
-    except Exception as e:
-        return [f"{os.path.basename(path)}: Failed to read CSV: {e}"]
-
-    # Inject bad value to simulate an error
-    # df.iloc[0, 1] = "not_a_number"
-
-    # Validate all value columns (non-timestamp)
-    value_columns = df.columns[1:]
-    for row_number, (_, row) in enumerate(df.iterrows(), start=2):  # start=2 = header + 1-indexed
-        for col in value_columns:
-            try:
-                float(row[col])
-            except (ValueError, TypeError):
-                errors.append(f"{path}: Row {row_number}, column '{col}' must be numeric (value='{row[col]}')")
-
-    return errors
-
-
-def run_long_running_preparations(run: CalibrationRun) -> list[str]:
-    """
-    Executes the long-running preparation steps for the given CalibrationRun.
-    Assumes that all prerequisites (paths, date ranges) have been validated.
-
-    :param run: The CalibrationRun to process.
-    :return: List of validation error messages.
-    """
-    from calibration.views.calibration_run_views import subset_by_time_range, subset_directory_by_time_range
-
-    errors: list[str] = []
-
-    # Validate and subset forcing data
-    if run.forcing_source != ForcingSourceEnum.UPLOAD.db_instance:
-        errors += validate_csv_directory(run.forcing_eds_dir_path)
-        subset_directory_by_time_range(
-            run,
-            run.forcing_eds_dir_path,
-            get_forcing_dir_for_job(run),
-            DateTimeRange(
-                min(run.calibration_start_period, run.validation_start_period),
-                max(run.calibration_end_period, run.validation_end_period)
-            )
-        )
-    else:
-        errors += validate_csv_directory(get_forcing_dir_for_job(run))
-
-    # Validate and subset observational data
-    if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
-        errors += validate_csv_file(run.observational_eds_file_path, is_observational=True)
-        subset_by_time_range(
-            run,
-            run.observational_eds_file_path,
-            get_observational_file_for_job(run),
-            DateTimeRange(
-                min(run.calibration_start_period, run.validation_start_period),
-                max(run.calibration_end_period, run.validation_end_period)
-            )
-        )
-    else:
-        observational_file = get_single_file(get_observational_dir_for_job(run))
-        errors += validate_csv_file(observational_file, is_observational=True)
-
-
-def validate_csv_directory(dir_path: str) -> list[str]:
-    """
-    Validates all forcing CSV files in a directory using validate_csv_file.
-    Groups errors by file for easier debugging.
-
-    :param dir_path: Path to the directory.
-    :return: List of all error messages across files.
-    """
-    if not os.path.isdir(dir_path):
-        return [f"{dir_path} is not a directory"]
-
-    errors = []
-    for f in sorted(os.listdir(dir_path)):
-        full_path = os.path.join(dir_path, f)
-        if os.path.isfile(full_path) and f.lower().endswith(".csv"):
-            file_errors = validate_csv_file(full_path, is_observational=False)
-            if file_errors:
-                logger.error(file_errors)
-                errors.extend(file_errors)
-
-    return errors

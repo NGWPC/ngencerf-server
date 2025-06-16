@@ -876,6 +876,7 @@ class GetStatusForecastsResponseSerializer(CommonStatusFieldsMixin, ForecastRunS
 
 class GetStatusResponseSerializer(GenericResponseSerializer):
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusValidationsResponseSerializer(many=True)
     forecasts = GetStatusForecastsResponseSerializer(many=True)
@@ -892,6 +893,7 @@ class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
 
 
 class ImportResponseSerializer(GenericResponseSerializer):
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.JSONField(required=False)
 
@@ -1052,11 +1054,11 @@ class ExportResponseSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=False)
+    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=False)
+    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=False)
+    geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
@@ -1141,7 +1143,7 @@ class ErrorResponseSerializer(BaseSerializer):
     response_type = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     message = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     validation_errors = serializers.JSONField(required=False, allow_null=False)
-    fatal_errors = serializers.JSONField(required=False, allow_null=False)
+    errors = serializers.JSONField(required=False, allow_null=False)
 
 
 ##################################

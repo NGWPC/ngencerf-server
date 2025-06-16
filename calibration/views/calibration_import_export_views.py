@@ -314,9 +314,12 @@ def export_job(request: Request) -> Response:
 
     calibration_run_data = load_calibration_run_data(run, export=True)
 
-    errors, _ = ngen_cal_input.ready_to_run(run)
-    if errors:
-        calibration_run_data['metadata']['errors'] = errors.get('errors')
+    error_object, _ = ngen_cal_input.ready_to_run(run)
+    if error_object:
+        if error_object.has_warnings():
+            calibration_run_data['metadata']['warnings'] = error_object.warnings
+        if error_object.has_errors():
+            calibration_run_data['metadata']['errors'] = error_object.errors
 
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:

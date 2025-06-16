@@ -16,7 +16,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, StatusEnum
+from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name

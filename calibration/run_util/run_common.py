@@ -1,17 +1,21 @@
+import csv
 import json
 import logging
 import os
 import subprocess
-from concurrent.futures import Future
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable
 
+import pandas as pd
 from createInput import create_input
+from datetimerange import DateTimeRange
 from django.conf import settings
 from django.db import transaction
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum
+from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun
 from calibration.models.base_run import BaseRun
@@ -22,7 +26,8 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_path, \
     get_forecast_dir, get_forecast_forcing_config_file, get_validation_iteration_git_info_file, get_forecast_download_git_info_file, \
-    get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file
+    get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, \
+    get_observational_file_for_job, get_observational_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, create_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
@@ -321,7 +326,7 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
-def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response | None:
+def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     """
     Submit a job after setting initial status and submission date.
 
@@ -333,7 +338,6 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
 
     :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.) to submit.
     :param config_file: Optional configuration file for CalibrationRun preparation.
-    :param logging_config: Optional logging configuration for CalibrationRun preparation.
     :return: A DRF Response instance if there is an issue; otherwise, None on success.
     """
     with transaction.atomic():
@@ -346,7 +350,7 @@ def submit_job(run: BaseRun, config_file=None, logging_config=None) -> Response 
         # Special handling for calibration jobs
         if isinstance(run, CalibrationRun):
             create_ngen_logging_file(run, logging_config)
-            fatal, response = prepare_calibration_job(run, config_file)
+            fatal, response = prepare_calibration_job(run)
             if response:
                 if fatal:
                     run.status = StatusEnum.FAILED.db_instance
@@ -394,7 +398,7 @@ def create_git_info(git_info_file: str) -> None:
         f.write(json.dumps(git_info_data, indent=4))
 
 
-def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -> tuple[bool, Response | None]:
+def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Response | None]:
     """
     Prepare input files and validate readiness for a calibration job.
 
@@ -402,30 +406,26 @@ def prepare_calibration_job(calibration_run: CalibrationRun, config_file=None) -
     preparation logic for calibration jobs.
 
     :param calibration_run: The CalibrationRun object to prepare.
-    :param config_file: Optional configuration file to use instead of generating one.
     :return: A tuple (fatal_error: bool, Response). If preparation is successful, returns (False, None).
              If there are validation errors, returns (bool, Response).
     """
-    # If a config file is passed, validation can be skipped
-    if not config_file:
-        error_object, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
+    error_object, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
 
-        if error_object['errors'] or error_object['fatal']:
-            fatal_error = bool(error_object['fatal'])
-            return fatal_error, ResponseError(
-                f'Calibration Job {calibration_run.id} is not ready',
-                validation_errors=error_object['errors'],
-                fatal_errors=error_object['fatal']
-            )
+    if error_object.has_warnings() or error_object.has_errors():
+        return error_object.has_errors(), ResponseError(
+            f'Calibration Job {calibration_run.id} is not ready',
+            validation_errors=error_object.warnings,
+            errors=error_object.errors
+        )
 
     try:
         logger.info(f'Final preparation to run Calibration Job {calibration_run.id}')
-        validation_errors = ngen_cal_input.run_long_running_preparations(calibration_run)
+        validation_errors = final_preprocessing_for_calibration(calibration_run)
 
         if validation_errors:
             return True, ResponseError(
                 f'Calibration Job {calibration_run.id} failed validation after preprocessing',
-                fatal_errors=validation_errors
+                errrs=validation_errors
             )
 
         logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
@@ -595,3 +595,322 @@ def finalize_forecast_after_callback(run: ForecastRun, failed_so_far: bool) -> N
     if failed_so_far:
         return
     set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
+
+
+def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
+    """
+    Executes the long-running preparation steps for the given CalibrationRun.
+    Assumes that all prerequisites (paths, date ranges) have been validated.
+
+    :param run: The CalibrationRun to process.
+    :return: List of validation error messages.
+    """
+    errors: list[str] = []
+
+    # Validate and subset forcing data
+    if run.forcing_source != ForcingSourceEnum.UPLOAD.db_instance:
+        errors += validate_csv_directory(run.forcing_eds_dir_path)
+        subset_directory_by_time_range(
+            run,
+            run.forcing_eds_dir_path,
+            get_forcing_dir_for_job(run),
+            DateTimeRange(
+                min(run.calibration_start_period, run.validation_start_period),
+                max(run.calibration_end_period, run.validation_end_period)
+            )
+        )
+    else:
+        errors += validate_csv_directory(get_forcing_dir_for_job(run))
+
+    # Validate and subset observational data
+    if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
+        errors += validate_csv_file(run.observational_eds_file_path, is_observational=True)
+        subset_by_time_range(
+            run,
+            run.observational_eds_file_path,
+            get_observational_file_for_job(run),
+            DateTimeRange(
+                min(run.calibration_start_period, run.validation_start_period),
+                max(run.calibration_end_period, run.validation_end_period)
+            )
+        )
+    else:
+        observational_file = get_single_file(get_observational_dir_for_job(run))
+        errors += validate_csv_file(observational_file, is_observational=True)
+
+    return errors
+
+
+def subset_directory_by_time_range(
+        run: CalibrationRun,
+        input_directory: str,
+        output_directory: str,
+        date_time_range: DateTimeRange,
+        max_workers: int = 4
+) -> None:
+    """
+    Subsets the files in a directory based on a provided time range and saves the filtered
+    files into an output directory. Uses parallel processing to handle multiple files at once.
+
+    :param run: The CalibrationRun instance (used for consistent logging context).
+    :param input_directory: Path to the input directory.
+    :param output_directory: Path to the output directory.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    :param max_workers: Maximum number of parallel workers (default is 4 to balance S3FS I/O and system resources).
+    - S3FS benefits from parallel reads, but excessive threads can cause API throttling or network congestion.
+    - 4 workers provide a good balance between concurrency and avoiding excessive I/O wait.
+    - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
+    - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
+    """
+    start_time = time.time()
+    logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers} for Calibration Job {run.id}')
+
+    if not os.path.isdir(input_directory):
+        raise ValueError(f"Input path '{input_directory}' is not a directory for Calibration Job {run.id}")
+
+    os.makedirs(output_directory, exist_ok=True)
+
+    files_to_process = [
+        (os.path.join(input_directory, filename), os.path.join(output_directory, filename))
+        for filename in os.listdir(input_directory)
+        if os.path.isfile(os.path.join(input_directory, filename))
+    ]
+
+    logger.info(f"Found {len(files_to_process)} files to process in {input_directory} for Calibration Job {run.id}")
+
+    def process_file(input_output_tuple: tuple[str, str]) -> None:
+        """
+        Processes a single file by applying time-based subsetting.
+
+        :param input_output_tuple: Tuple containing the full path to the input and output files.
+        """
+        input_file, output_file = input_output_tuple
+        # Delegate to the time range subsetting logic
+        subset_by_time_range(run, input_file, output_file, date_time_range)
+
+    # Use ThreadPoolExecutor for I/O-bound tasks (like S3FS-based file reads/writes)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor.map(process_file, files_to_process)
+
+    elapsed_time = time.time() - start_time
+    logger.info(f"Finished subsetting directory {input_directory} in {elapsed_time:.2f} seconds for Calibration Job {run.id}")
+
+
+def subset_by_time_range(
+        run: CalibrationRun,
+        input_file: str, output_file: str,
+        date_time_range: DateTimeRange
+) -> None:
+    """
+    Reads a CSV file, filters rows based on a time range, and writes the filtered data
+    to an output file with the original column names and timezone-naive datetime values.
+
+    Optimized to take advantage of sorted data for faster processing.
+    Chunksize is optimized for **performance**, reducing disk I/O overhead.
+
+    :param run: The CalibrationRun instance (used for logging context only).
+    :param input_file: Path to the input CSV file.
+    :param output_file: Path to the output CSV file.
+    :param date_time_range: DateTimeRange object specifying the time range for filtering.
+    """
+    logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range} for Calibration Job {run.id}')
+    file_basename = os.path.basename(input_file)  # Extract just the filename
+
+    # Dynamically determine the best chunksize for performance
+    chunk_size = get_performance_chunksize(input_file)
+    logger.info(f"Using optimized chunksize={chunk_size} for {file_basename} for Calibration Job {run.id}")
+
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    start_line = 1  # Track the first row of each chunk (excluding header)
+
+    # DateTimeRange arguments are already in UTC, so use them as-is
+    start_datetime = pd.Timestamp(date_time_range.start_datetime)
+    end_datetime = pd.Timestamp(date_time_range.end_datetime)
+
+    with open(output_file, 'w') as out_file:
+        write_header = True  # Ensure the header is written only once
+
+        # Read the first chunk to detect the datetime column name
+        first_chunk = pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size)
+        for chunk in first_chunk:
+            original_time_column = chunk.columns[0]  # Get the first column name dynamically
+            break  # Exit after getting the column name
+
+        # Read the CSV in chunks, parsing dates in the detected first column
+        for chunk in pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size):
+            end_line = start_line + len(chunk) - 1  # Compute last row index for this chunk
+
+            # Rename the first column to a consistent name
+            if original_time_column in chunk.columns:
+                chunk.rename(columns={original_time_column: 'dateTime'}, inplace=True)
+            else:
+                logger.error(f"Expected datetime column '{original_time_column}' not found in {file_basename} for Calibration Job {run.id}")
+                raise KeyError(f"Expected datetime column '{original_time_column}' not found in {file_basename} for Calibration Job {run.id}")
+
+            # Convert to datetime and explicitly assume timestamps are in UTC
+            chunk['dateTime'] = pd.to_datetime(chunk['dateTime'], errors='coerce')
+
+            # Validate datetime values before localizing
+            if chunk['dateTime'].isna().any():
+                logger.error(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line}) for Calibration Job {run.id}")
+                raise ValueError(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line}) for Calibration Job {run.id}")
+
+            # Now localize to UTC
+            chunk['dateTime'] = chunk['dateTime'].dt.tz_localize('UTC')
+
+            # Log the original start and end ranges in this chunk, including line numbers
+            chunk_start = chunk['dateTime'].min()
+            chunk_end = chunk['dateTime'].max()
+            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end} for Calibration Job {run.id}')
+
+            # Skip chunks that are entirely before the time range
+            if chunk_end < start_datetime:
+                start_line += chunk_size  # Update row counter
+                continue  # No relevant data in this chunk
+
+            # Stop processing early if chunks exceed the time range
+            if chunk_start > end_datetime:
+                break  # Since files are sorted, no need to read further
+
+            # Filter the data within the time range
+            subset_df = chunk.loc[
+                (chunk['dateTime'] >= start_datetime) &
+                (chunk['dateTime'] <= end_datetime)
+            ].copy()  # Explicitly create a copy
+
+            # Convert back to naive timestamps for output (to match original format)
+            subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
+
+            # Rename datetime column back to its original name
+            subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
+
+            # Write filtered data to output CSV
+            subset_df.to_csv(out_file, mode='a', index=False, header=write_header)
+            write_header = False  # Ensure subsequent writes do not include headers
+
+            # Update the starting line number for the next chunk
+            start_line = end_line + 1
+
+    logger.info(f'Finished subsetting file {input_file} to {output_file} for Calibration Job {run.id}')
+
+
+# This is really not a good place for this type of validation.  It takes a long time and is repeated even if this
+# Forcing or Observation data has been validated before
+# We really need to do validation of the data outside of the server.  This is static data that can just be validated in one fell swoop.
+# Ngen should also be updated to issue more readable and understandable error messages when it comes across bad data.
+def validate_csv_file(path: str, is_observational: bool) -> list[str]:
+    """
+    Validates a forcing or observational CSV file for structure and numeric value expectations.
+
+    :param path: Path to the CSV file.
+    :param is_observational: Whether this is observational (2-column) or forcing (9-column) data.
+    :return: A list of validation error strings.
+    """
+    data_type = 'observational' if is_observational else 'forcing'
+    logger.info(f"Validating {data_type} file {path}")
+    errors = []
+    expected_columns = 2 if is_observational else 9
+    rows = []
+
+    # Check column count on each row manually first
+    try:
+        with open(path, newline='') as f:
+            reader = csv.reader(f)
+            for i, row in enumerate(reader, start=1):
+
+                # Simulate malformed row by dropping a column from row 2
+                # if i == 2:
+                #     row = row[:-1]  # remove last column to simulate structural error
+
+                if len(row) != expected_columns:
+                    errors.append(f"{path}: Row {i} has {len(row)} columns, expected {expected_columns}")
+                    logger.error(errors)
+                    # Only report the first structural error to avoid duplication
+                    return errors
+
+                rows.append(row)
+    except Exception as e:
+        return [f"{path}: Failed to read CSV (structural check): {e}"]
+
+    if len(rows) < 2:
+        return [f"{path}: File does not contain data rows"]
+
+    if len(rows[0]) != expected_columns:
+        return [f"{path}: Header has {len(rows[0])} columns, expected {expected_columns}"]
+
+    # Now read the file fully with pandas for per-column type checking
+    try:
+        df = pd.DataFrame(rows[1:], columns=rows[0])  # Assumes header is first row
+        df = df.reset_index(drop=True)  # Ensure numeric row indices
+    except Exception as e:
+        return [f"{os.path.basename(path)}: Failed to read CSV: {e}"]
+
+    # Inject bad value to simulate an error
+    # df.iloc[0, 1] = "not_a_number"
+
+    # Validate all value columns (non-timestamp)
+    value_columns = df.columns[1:]
+    for row_number, (_, row) in enumerate(df.iterrows(), start=2):  # start=2 = header + 1-indexed
+        for col in value_columns:
+            try:
+                float(row[col])
+            except (ValueError, TypeError):
+                errors.append(f"{path}: Row {row_number}, column '{col}' must be numeric (value='{row[col]}')")
+
+    return errors
+
+
+def validate_csv_directory(dir_path: str) -> list[str]:
+    """
+    Validates all forcing CSV files in a directory using validate_csv_file.
+    Groups errors by file for easier debugging.
+
+    :param dir_path: Path to the directory.
+    :return: List of all error messages across files.
+    """
+    if not os.path.isdir(dir_path):
+        return [f"{dir_path} is not a directory"]
+
+    errors = []
+    for f in sorted(os.listdir(dir_path)):
+        full_path = os.path.join(dir_path, f)
+        if os.path.isfile(full_path) and f.lower().endswith(".csv"):
+            file_errors = validate_csv_file(full_path, is_observational=False)
+            if file_errors:
+                logger.error(file_errors)
+                errors.extend(file_errors)
+
+    return errors
+
+
+def get_performance_chunksize(file_path: str) -> int:
+    """
+    Dynamically determines an optimal chunksize for high-performance processing
+    using a **single row** to estimate memory size since all rows are substantially the same size
+
+    :param file_path: Path to the input CSV file.
+    :return: Optimal chunksize for pandas.read_csv()
+    """
+    file_size = os.path.getsize(file_path)  # Get file size in bytes
+
+    # Read one row (excluding header) to estimate row size
+    sample_df = pd.read_csv(file_path, nrows=2)  # Read first two rows (header + 1 row)
+    row_size = sample_df.iloc[1:].memory_usage(deep=True).sum()  # Size of first data row (ignore header)
+
+    # Estimate total rows in the file
+    estimated_rows = file_size / row_size
+
+    # Adjust chunk fraction based on file size
+    if file_size < 50_000_000:  # <50MB
+        target_fraction = 0.05  # 5%
+    elif file_size < 200_000_000:  # 50MB-200MB
+        target_fraction = 0.03  # 3%
+    else:
+        target_fraction = 0.01  # 1% (limit memory impact for huge files)
+
+    # Set chunksize as 5-10% of total estimated rows
+    optimal_chunksize = int(estimated_rows * target_fraction)
+
+    # Ensure reasonable limits (between 10k - 100k)
+    return max(10_000, min(optimal_chunksize, 100_000))
