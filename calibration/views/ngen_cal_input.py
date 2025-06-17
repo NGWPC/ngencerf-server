@@ -170,8 +170,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
     error_object = ErrorReport()
 
-    # Check if the run's status allows it to be prepared for execution
-    allowed_status_names = [StatusEnum.SAVED.value, StatusEnum.READY.value, StatusEnum.SUBMITTED.value]
+    allowed_status_names = [StatusEnum.SAVED.value, StatusEnum.READY.value]
+    if build:
+        allowed_status_names = allowed_status_names + [StatusEnum.SUBMITTED.value]
     if run.status.name not in allowed_status_names:
         error_object.add_warning(f'Calibration Job {run.id} is not in an allowed status: '
                                  f'{join_with_or(allowed_status_names)}. '
@@ -217,7 +218,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     # For data from Data Services, normalize the CRS and copy to job-specific location
                     try:
                         normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
-                        # copy_file_to_directory(run.geopackage_eds_file_path, geopackage_dir)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None
 
@@ -457,10 +457,12 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             run.mpi_nprocs = nprocs
 
     # If not errors, then leave the status alone, either READY or SUBMITTED
-    print('returning from ready_to_run: errors', error_object.has_errors(), error_object.errors)
-    print('original status:', run.status)
-    run.status = StatusEnum.SAVED.db_instance if error_object.has_errors() else run.status
-    print('updated status:', run.status)
+
+    if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
+        if run.status == StatusEnum.SAVED.db_instance and not error_object.has_errors() and not error_object.has_warnings():
+            run.status = StatusEnum.READY.db_instance
+        elif run.status == StatusEnum.READY.db_instance and (error_object.has_errors() or error_object.has_warnings()):
+            run.status = StatusEnum.SAVED.db_instance
 
     run.save()
 

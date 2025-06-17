@@ -341,7 +341,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     :return: Dictionary containing the calibration run data.
     """
     start_time = time.time()
-    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id}")
+    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id} - {run.status.name}")
 
     calibration_run_data = {}
 
