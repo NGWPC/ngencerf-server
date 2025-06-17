@@ -1,5 +1,4 @@
 import json
-import sys
 
 
 def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool]:
@@ -19,7 +18,6 @@ def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool
             except json.JSONDecodeError:
                 print("Warning: Response is not valid JSON.")
                 return None, False
-
 
         # Handle 400 Bad Request with specific error handling
         if http_status == 400:
@@ -64,7 +62,7 @@ def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool
         return None, False
 
 
-def _print_validation_errors(errors: dict|list, prefix: str = "") -> None:
+def _print_validation_errors(errors: dict | list, prefix: str = "") -> None:
     """
     Recursively prints validation errors, handling both field-specific and nested errors.
     """
