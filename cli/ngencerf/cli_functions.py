@@ -31,18 +31,22 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
-def post_with_spinner(message: str, post_func: callable) -> requests.Response:
+def post_with_spinner(message: str, post_func: callable) -> requests.Response | None:
     """
     Displays a spinner while executing a POST request callable.
+    Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
 
     :param message: Message to display while waiting.
     :param post_func: A callable that returns a requests.Response when invoked.
-    :return: The requests.Response object from the callable.
+    :return: The requests.Response object from the callable, or None if interrupted.
     """
     spinner = Spinner(message)
     spinner.start()
     try:
         return post_func()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user.")
+        return None
     finally:
         spinner.stop()
 
@@ -58,6 +62,9 @@ def about(output_path: str | None = None) -> int:
         f"{API_BASE}/calibration/get_git_info/",
         headers=get_auth_headers()
     ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -95,6 +102,9 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int
             data=data
         ))
 
+        if response is None:
+            return 1  # Interrupted by user
+
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
@@ -126,6 +136,9 @@ def upload_observational_data(observational_file: str, calibration_run_id: int) 
             files=files,
             data=data
         ))
+
+        if response is None:
+            return 1  # Interrupted by user
 
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
@@ -169,6 +182,9 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int) -> int:
             data={"calibration_run_id": calibration_run_id}
         ))
 
+        if response is None:
+            return 1  # Interrupted by user
+
         # Check for errors
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
@@ -200,6 +216,9 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
         json=payload,
         stream=True
     ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -238,6 +257,9 @@ def run_job(calibration_run_id: int) -> int:
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -285,6 +307,9 @@ def delete_job(calibration_run_ids: list[int]) -> int:
         json=payload,
     ))
 
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
@@ -309,6 +334,9 @@ def archive_job(calibration_run_ids: list[int]) -> int:
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -335,6 +363,9 @@ def unarchive_job(calibration_run_ids: list[int]) -> int:
         json=payload,
     ))
 
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
@@ -360,6 +391,9 @@ def cancel_job(calibration_run_id: int) -> int:
         json=payload,
     ))
 
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
@@ -383,6 +417,9 @@ def list_jobs(output_path: str | None = None) -> int:
         f"{API_BASE}/calibration/get_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
     ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -462,6 +499,9 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
         json=payload
     ))
 
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
@@ -515,6 +555,9 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
     ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
