@@ -435,14 +435,15 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 user_uploaded_forcing_dir) else None
 
         # Export the logging data.  Start with any imported data
-        # The use the run-time logging, if this job has been run
+        # Then use the run-time logging, if this job has been run
         logging_config_file = get_ngen_logging_file(run, import_flag=True)
         if not os.path.exists(logging_config_file):
             logging_config_file = get_ngen_logging_file(run, import_flag=False)
-            if os.path.exists(logging_config_file):
-                with open(logging_config_file, 'r') as f:
-                    logging_config = json.load(f)
-                    calibration_run_data['logging_config'] = logging_config
+            
+        if os.path.exists(logging_config_file):
+            with open(logging_config_file, 'r') as f:
+                logging_config = json.load(f)
+                calibration_run_data['logging_config'] = logging_config
 
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
