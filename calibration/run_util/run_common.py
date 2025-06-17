@@ -425,7 +425,7 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
         if validation_errors:
             return True, ResponseError(
                 f'Calibration Job {calibration_run.id} failed validation after preprocessing',
-                errrs=validation_errors
+                errors=validation_errors
             )
 
         logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
