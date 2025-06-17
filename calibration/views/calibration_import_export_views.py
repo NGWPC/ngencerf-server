@@ -107,7 +107,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         else:
             # Fetch forcing data from Data Services
             try:
-                get_forcing_data_from_data_services(run)
+                if gage_id:
+                    get_forcing_data_from_data_services(run)
             except DataServicesException as e:
                 errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -132,7 +133,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     errors.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
         else:
             try:
-                get_observational_data_from_data_services(run)
+                if gage_id:
+                    get_observational_data_from_data_services(run)
             except DataServicesException as e:
                 errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
