@@ -1,11 +1,8 @@
 import json
 import logging
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 
-import pandas as pd
-from datetimerange import DateTimeRange
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
@@ -36,7 +33,7 @@ from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, TOKEN_SLURM_SCOPE, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
-    get_forecast_forcing_download_run, join_with_or, get_user_email
+    get_forecast_forcing_download_run, join_with_or, get_user_email, get_job_description
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -178,12 +175,16 @@ def get_status(request: Request) -> Response:
         response['performance_metrics'] = calibration_metrics
 
     # Add error messages if applicable
-    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
-        messages, _ = ngen_cal_input.ready_to_run(calibration_run)
-        if messages:
-            response['errors'] = messages.get('errors')
+    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
+        error_object, _ = ngen_cal_input.ready_to_run(calibration_run)
+        if error_object:
+            if error_object.has_warnings():
+                response['warnings'] = error_object.warnings
+            if error_object.has_errors():
+                response['errors'] = error_object.errors
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response, fields_to_truncate=['validations', 'forecasts'],
+    response_validator, error_response = validate_response(GetStatusResponseSerializer, response,
+                                                           fields_to_truncate=['validations', 'forecasts'],
                                                            max_length=10)
     if error_response:
         return error_response
@@ -613,8 +614,8 @@ def get_iteration(request: Request) -> Response:
 
     # Allow status Ready for UI polling immediately after submission.
     run, error_return = get_calibration_run(calibration_run_id, request.user,
-                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.FAILED,
-                                                        StatusEnum.SERVER_ERROR])
+                                            run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE,
+                                                        StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
@@ -672,10 +673,10 @@ def cancel_job(request: Request) -> Response:
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
         run_type = JobType.CALIBRATION.value
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED])
     elif validation_run_id:
         run_type = JobType.VALIDATION.value
-        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING])
+        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED])
     else:
         # Retrieve the ForecastForcingDownloadRun regardless of its status,
         # using the provided forecast_run_id to get the forcing download run.
@@ -684,34 +685,37 @@ def cancel_job(request: Request) -> Response:
         if error_return:
             return error_return
 
-        forcing_run, forcing_error = get_forecast_forcing_download_run(forecast_run_unfiltered.forcing_download_run.id, request.user,
-                                                                       run_status=list(StatusEnum))
+        forecast_forcing_download_run, forcing_error = get_forecast_forcing_download_run(
+            forecast_run_unfiltered.forcing_download_run.id,
+            request.user,
+            run_status=list(StatusEnum)
+        )
         if forcing_error:
             return forcing_error
 
         # Check the status of the forcing download run.
-        if forcing_run.status == StatusEnum.RUNNING.db_instance:
+        if forecast_forcing_download_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
             # Forcing download run is running: cancel it.
-            run = forcing_run
+            run = forecast_forcing_download_run
             # Call it a Forecast job and not Forcing Download
             run_type = JobType.FORECAST.value
-        elif forcing_run.status == StatusEnum.DONE.db_instance:
+        elif forecast_forcing_download_run.status == StatusEnum.DONE.db_instance:
             # Forcing download run is done.
             # Retrieve the forecast run from the forcing run.
-            forecast_run = forcing_run.forecast_run
-            if forecast_run.status == StatusEnum.RUNNING.db_instance:
+            forecast_run = forecast_forcing_download_run.forecast_run
+            if forecast_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
                 run = forecast_run
                 run_type = JobType.FORECAST.value
 
             else:
                 error = (f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
-                         f'{StatusEnum.RUNNING.value}. '
+                         f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
                          f'Current status: {forecast_run.status.name}')
                 return ResponseError(error)
         else:
-            error = (f'{ForecastForcingDownloadRun.__name__} {forcing_run.id} is not in an allowed status: '
-                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.DONE.value])}. '
-                     f'Current status: {forcing_run.status.name}')
+            error = (f'{ForecastForcingDownloadRun.__name__} {forecast_forcing_download_run.id} is not in an allowed status: '
+                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value, StatusEnum.DONE.value])}. '
+                     f'Current status: {forecast_forcing_download_run.status.name}')
             return ResponseError(error)
 
     if not cancel_job_common(run):
@@ -783,26 +787,12 @@ def calibration_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(CalibrationJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    calibration_run_id = validator.get('calibration_run_id')
-    job_status = validator.get('job_status')
-
-    calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_calibration_job_callback_pw(calibration_run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
+    return handle_slurm_callback(
+        request,
+        CalibrationJobSlurmCallbackRequestSerializer,
+        get_calibration_run,
+        run_calibration_job_callback_pw
+    )
 
 
 @extend_schema(
@@ -830,26 +820,12 @@ def validation_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(ValidationJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    validation_run_id = validator.get('validation_run_id')
-    job_status = validator.get('job_status')
-
-    validation_run, error_return = get_validation_run(validation_run_id, None, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_validation_job_callback_pw(validation_run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
+    return handle_slurm_callback(
+        request,
+        ValidationJobSlurmCallbackRequestSerializer,
+        get_validation_run,
+        run_validation_job_callback_pw
+    )
 
 
 @extend_schema(
@@ -877,27 +853,12 @@ def forecast_forcing_download_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(ForecastForcingDownloadJobSlurmCallbackRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    forecast_forcing_download_run_id = validator.get('forecast_forcing_download_run_id')
-    job_status = validator.get('job_status')
-
-    forecast_forcing_download_run, error_return = get_forecast_forcing_download_run(forecast_forcing_download_run_id, None,
-                                                                                    run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
-    slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_forcing_download_job_callback_pw(forecast_forcing_download_run, slurm_status)
-
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
-    return Response(status=status.HTTP_202_ACCEPTED)
+    return handle_slurm_callback(
+        request,
+        ForecastForcingDownloadJobSlurmCallbackRequestSerializer,
+        get_forecast_forcing_download_run,
+        run_forecast_forcing_download_job_callback_pw
+    )
 
 
 @extend_schema(
@@ -925,25 +886,56 @@ def forecast_job_slurm_callback(request: Request) -> Response:
     :param request: HTTP request containing Slurm job details and status.
     :return: HTTP 202 response indicating the callback was processed.
     """
+    return handle_slurm_callback(
+        request,
+        ForecastJobSlurmCallbackRequestSerializer,
+        get_forecast_run,
+        run_forecast_job_callback_pw
+    )
+
+
+def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_end_callback_fn) -> Response:
+    """
+    Common handler for Slurm callback endpoints for any run type that inherits from BaseRun.
+
+    :param request: The incoming HTTP request.
+    :param serializer_class: The serializer used for validating the incoming data.
+    :param get_run_fn: A function that returns the correct run object given its ID.
+    :param job_end_callback_fn: A function that handles the job completion logic.
+    :return: HTTP 202 Response or error Response.
+    """
     data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(ForecastJobSlurmCallbackRequestSerializer, data)
+    validator, error_return = validate_request(serializer_class, data)
     if error_return:
         return error_return
 
-    forecast_run_id = validator.get('forecast_run_id')
-    job_status = validator.get('job_status')
-
-    forecast_run, error_return = get_forecast_run(forecast_run_id, None, run_status=[StatusEnum.RUNNING])
-    if error_return:
-        return error_return
-
+    run_id = validator.get(next(k for k in validator.keys() if k.endswith("_id")))
+    job_status = validator.get("job_status")
     slurm_status = SlurmStatusEnum(job_status)
-    run_forecast_job_callback_pw(forecast_run, slurm_status)
+
+    # If Slurm is reporting that the job is now starting, we expect to be in Submitted status
+    # For any other status changes, we should be Running or Submitted.  We allow Submitted just in case
+    #  1) The job doesn't properly transition to Running
+    #  2) To allow a submitted job to be canceled
+    expected_status = [StatusEnum.SUBMITTED] if slurm_status == SlurmStatusEnum.STARTING else [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+
+    run, error_return = get_run_fn(run_id, None, run_status=expected_status)
+    if error_return:
+        return error_return
+
+    if slurm_status == SlurmStatusEnum.STARTING:
+        logger.info(f'{get_job_description(run)} is starting')
+        run.status = StatusEnum.RUNNING.db_instance
+        run.run_start = datetime.now(timezone.utc)
+        run.save(update_fields=["status", "run_start"])
+    else:
+        # Job has ended
+        logger.info(f'{get_job_description(run)} is ending')
+        job_end_callback_fn(run, slurm_status)
 
     logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
-
     return Response(status=status.HTTP_202_ACCEPTED)
 
 
@@ -990,187 +982,3 @@ def get_slurm_token(request: Request) -> Response:
     return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
 
 
-def get_performance_chunksize(file_path: str) -> int:
-    """
-    Dynamically determines an optimal chunksize for high-performance processing
-    using a **single row** to estimate memory size sine all rows are substantially the same size
-
-    :param file_path: Path to the input CSV file.
-    :return: Optimal chunksize for pandas.read_csv()
-    """
-    file_size = os.path.getsize(file_path)  # Get file size in bytes
-
-    # Read one row (excluding header) to estimate row size
-    sample_df = pd.read_csv(file_path, nrows=2)  # Read first two rows (header + 1 row)
-    row_size = sample_df.iloc[1:].memory_usage(deep=True).sum()  # Size of first data row (ignore header)
-
-    # Estimate total rows in the file
-    estimated_rows = file_size / row_size
-
-    # Adjust chunk fraction based on file size
-    if file_size < 50_000_000:  # <50MB
-        target_fraction = 0.05  # 5%
-    elif file_size < 200_000_000:  # 50MB-200MB
-        target_fraction = 0.03  # 3%
-    else:
-        target_fraction = 0.01  # 1% (limit memory impact for huge files)
-
-    # Set chunksize as 5-10% of total estimated rows
-    optimal_chunksize = int(estimated_rows * target_fraction)
-
-    # Ensure reasonable limits (between 10k - 100k)
-    return max(10_000, min(optimal_chunksize, 100_000))
-
-
-def subset_directory_by_time_range(
-        run: CalibrationRun,
-        input_directory: str,
-        output_directory: str,
-        date_time_range: DateTimeRange,
-        max_workers: int = 4
-) -> None:
-    """
-    Subsets the files in a directory based on a provided time range and saves the filtered
-    files into an output directory. Uses parallel processing to handle multiple files at once.
-
-    :param run: The CalibrationRun instance (used for consistent logging context).
-    :param input_directory: Path to the input directory.
-    :param output_directory: Path to the output directory.
-    :param date_time_range: DateTimeRange object specifying the time range for filtering.
-    :param max_workers: Maximum number of parallel workers (default is 4 to balance S3FS I/O and system resources).
-    - S3FS benefits from parallel reads, but excessive threads can cause API throttling or network congestion.
-    - 4 workers provide a good balance between concurrency and avoiding excessive I/O wait.
-    - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
-    - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
-    """
-    start_time = time.time()
-    logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers} for Calibration Job {run.id}')
-
-    if not os.path.isdir(input_directory):
-        raise ValueError(f"Input path '{input_directory}' is not a directory for Calibration Job {run.id}")
-
-    os.makedirs(output_directory, exist_ok=True)
-
-    files_to_process = [
-        (os.path.join(input_directory, filename), os.path.join(output_directory, filename))
-        for filename in os.listdir(input_directory)
-        if os.path.isfile(os.path.join(input_directory, filename))
-    ]
-
-    logger.info(f"Found {len(files_to_process)} files to process in {input_directory} for Calibration Job {run.id}")
-
-    def process_file(input_output_tuple: tuple[str, str]) -> None:
-        """
-        Processes a single file by applying time-based subsetting.
-
-        :param input_output_tuple: Tuple containing the full path to the input and output files.
-        """
-        input_file, output_file = input_output_tuple
-        # Delegate to the time range subsetting logic
-        subset_by_time_range(run, input_file, output_file, date_time_range)
-
-    # Use ThreadPoolExecutor for I/O-bound tasks (like S3FS-based file reads/writes)
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        executor.map(process_file, files_to_process)
-
-    elapsed_time = time.time() - start_time
-    logger.info(f"Finished subsetting directory {input_directory} in {elapsed_time:.2f} seconds for Calibration Job {run.id}")
-
-
-def subset_by_time_range(
-        run: CalibrationRun,
-        input_file: str, output_file: str,
-        date_time_range: DateTimeRange
-) -> None:
-    """
-    Reads a CSV file, filters rows based on a time range, and writes the filtered data
-    to an output file with the original column names and timezone-naive datetime values.
-
-    Optimized to take advantage of sorted data for faster processing.
-    Chunksize is optimized for **performance**, reducing disk I/O overhead.
-
-    :param run: The CalibrationRun instance (used for logging context only).
-    :param input_file: Path to the input CSV file.
-    :param output_file: Path to the output CSV file.
-    :param date_time_range: DateTimeRange object specifying the time range for filtering.
-    """
-    logger.info(f'Subsetting file {input_file} to {output_file} with date range {date_time_range} for Calibration Job {run.id}')
-    file_basename = os.path.basename(input_file)  # Extract just the filename
-
-    # Dynamically determine the best chunksize for performance
-    chunk_size = get_performance_chunksize(input_file)
-    logger.info(f"Using optimized chunksize={chunk_size} for {file_basename} for Calibration Job {run.id}")
-
-    # Ensure the output directory exists
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    start_line = 1  # Track the first row of each chunk (excluding header)
-
-    # DateTimeRange arguments are already in UTC, so use them as-is
-    start_datetime = pd.Timestamp(date_time_range.start_datetime)
-    end_datetime = pd.Timestamp(date_time_range.end_datetime)
-
-    with open(output_file, 'w') as out_file:
-        write_header = True  # Ensure the header is written only once
-
-        # Read the first chunk to detect the datetime column name
-        first_chunk = pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size)
-        for chunk in first_chunk:
-            original_time_column = chunk.columns[0]  # Get the first column name dynamically
-            break  # Exit after getting the column name
-
-        # Read the CSV in chunks, parsing dates in the detected first column
-        for chunk in pd.read_csv(input_file, delimiter=',', parse_dates=[0], chunksize=chunk_size):
-            end_line = start_line + len(chunk) - 1  # Compute last row index for this chunk
-
-            # Rename the first column to a consistent name
-            if original_time_column in chunk.columns:
-                chunk.rename(columns={original_time_column: 'dateTime'}, inplace=True)
-            else:
-                logger.error(f"Expected datetime column '{original_time_column}' not found in {file_basename} for Calibration Job {run.id}")
-                raise KeyError(f"Expected datetime column '{original_time_column}' not found in {file_basename} for Calibration Job {run.id}")
-
-            # Convert to datetime and explicitly assume timestamps are in UTC
-            chunk['dateTime'] = pd.to_datetime(chunk['dateTime'], errors='coerce')
-
-            # Validate datetime values before localizing
-            if chunk['dateTime'].isna().any():
-                logger.error(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line}) for Calibration Job {run.id}")
-                raise ValueError(f"Invalid datetime values found in {file_basename} (lines {start_line}-{end_line}) for Calibration Job {run.id}")
-
-            # Now localize to UTC
-            chunk['dateTime'] = chunk['dateTime'].dt.tz_localize('UTC')
-
-            # Log the original start and end ranges in this chunk, including line numbers
-            chunk_start = chunk['dateTime'].min()
-            chunk_end = chunk['dateTime'].max()
-            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end} for Calibration Job {run.id}')
-
-            # Skip chunks that are entirely before the time range
-            if chunk_end < start_datetime:
-                start_line += chunk_size  # Update row counter
-                continue  # No relevant data in this chunk
-
-            # Stop processing early if chunks exceed the time range
-            if chunk_start > end_datetime:
-                break  # Since files are sorted, no need to read further
-
-            # Filter the data within the time range
-            subset_df = chunk.loc[
-                (chunk['dateTime'] >= start_datetime) &
-                (chunk['dateTime'] <= end_datetime)
-            ].copy()  # Explicitly create a copy
-
-            # Convert back to naive timestamps for output (to match original format)
-            subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
-
-            # Rename datetime column back to its original name
-            subset_df.rename(columns={'dateTime': original_time_column}, inplace=True)
-
-            # Write filtered data to output CSV
-            subset_df.to_csv(out_file, mode='a', index=False, header=write_header)
-            write_header = False  # Ensure subsequent writes do not include headers
-
-            # Update the starting line number for the next chunk
-            start_line = end_line + 1
-
-    logger.info(f'Finished subsetting file {input_file} to {output_file} for Calibration Job {run.id}')

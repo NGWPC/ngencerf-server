@@ -135,10 +135,6 @@ def create_performance_metrics(run: BaseRun, performance_metrics_file: str) -> N
     """
     performance_metrics = parse_performance_metrics(performance_metrics_file)
 
-    # Use a reserved_time of 0 if performance_metrics is None
-    reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
-    run.run_start = run.submit_date + reserved_time
-
     if not performance_metrics:
         # Fallback to calculate elapsed_time manually
         elapsed_time = now() - run.run_start

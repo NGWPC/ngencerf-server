@@ -493,22 +493,22 @@ def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
     return truncated_data
 
 
-def ResponseError(message, response_type='error', validation_errors=None, fatal_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
+def ResponseError(message, response_type='error', validation_errors=None, errors=None, http_status=status.HTTP_400_BAD_REQUEST):
     """
     Return a standardized error response, with optional validation errors.
 
     :param message: The error message to include.
     :param response_type: The type of error (default is 'error').
     :param validation_errors: Optional validation errors to include.
-    :param fatal_errors: Optional fatal errors to include which causes the job to fail
+    :param errors: Optional fatal errors to include which causes the job to fail
     :param http_status: The HTTP status code for the response (default is 400).
     :return: A formatted Response object with the error details.
     """
     response = {'response_type': response_type, 'message': message}
     if validation_errors:
         response['validation_errors'] = validation_errors
-    if fatal_errors:
-        response['fatal_errors'] = fatal_errors
+    if errors:
+        response['errors'] = errors
     serializer = ErrorResponseSerializer(response)
     logger.error(serializer.data)
     return Response(serializer.data, status=http_status)
@@ -531,7 +531,7 @@ def validate_request(serializer_class, data, context=None):
     except ValidationError as e:
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
         message = f"called from {calling_function}, validated by {validator.__class__.__name__}"
-        validation_errors = validator.errors if validator else str(e)
+        validation_errors = validator.warnings if validator else str(e)
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
@@ -823,3 +823,49 @@ def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config
     if os.path.islink(symlink_path) or os.path.exists(symlink_path):
         os.remove(symlink_path)
     os.symlink(output_path, symlink_path)
+
+
+class ErrorReport:
+    """
+    Container for collecting error and fatal validation messages during run preparation.
+
+    - `errors`: Recoverable issues the user can fix (e.g., missing input data).
+    - `fatal`: Irrecoverable issues that typically require system admin or developer intervention.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize an empty ErrorReport.
+        """
+        self._warnings: list[str] = []
+        self._errors: list[str] = []
+
+    def add_warning(self, message: str) -> None:
+        """
+        Add a user-fixable error message.
+
+        :param message: The error message to add.
+        """
+        self._warnings.append(message)
+
+    def add_error(self, message: str) -> None:
+        """
+        Add a fatal error message.
+
+        :param message: The fatal error message to add.
+        """
+        self._errors.append(message)
+
+    def has_warnings(self) -> bool:
+        return bool(self._warnings)
+
+    def has_errors(self) -> bool:
+        return bool(self._errors)
+
+    @property
+    def warnings(self) -> list[str]:
+        return self._warnings
+
+    @property
+    def errors(self) -> list[str]:
+        return self._errors

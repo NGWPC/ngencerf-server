@@ -11,7 +11,7 @@ from calibration.enums import StatusEnum, SlurmStatusEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun
 from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
-from calibration.run_util.run_common import set_job_status, run_generic_job_callback, finalize_calibration_after_callback, \
+from calibration.run_util.run_common import set_job_status, run_generic_job_end_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_forecast_forcing_download_after_callback
 from calibration.util.calibration_validators import SlurmSubmitCalibrationOrValidationJobResponse, GenericMessageResponseSerializer, \
     SlurmSubmitForecastForcingDownloadJobResponse, SlurmSubmitForecastJobResponse
@@ -151,28 +151,28 @@ def check_pw_for_failure(run: BaseRun, slurm_status: SlurmStatusEnum) -> bool:
 # - Uses `check_pw_status` to check the Slurm job's status (e.g., CANCELED or FAILED).
 # - Executes `finalize_calibration` to read job output, mark the job as DONE, and possibly create validation runs.
 run_calibration_job_callback_pw = functools.partial(
-    run_generic_job_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_calibration_after_callback
+    run_generic_job_end_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_calibration_after_callback
 )
 
 # Handles the completion of a validation job in the PW environment.
 # - Uses `check_pw_status` to validate the job's status.
 # - Executes `finalize_validation` to process validation results and potentially mark the best validation run.
 run_validation_job_callback_pw = functools.partial(
-    run_generic_job_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_validation_after_callback
+    run_generic_job_end_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_validation_after_callback
 )
 
 # Handles the completion of a forecast job in the PW environment.
 # - Uses `check_pw_status` to validate the job's status.
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_job_callback_pw = functools.partial(
-    run_generic_job_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_forecast_after_callback
+    run_generic_job_end_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_forecast_after_callback
 )
 
 # Handles the completion of a forecast job in the PW environment.
 # - Uses `check_pw_status` to validate the job's status.
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_forcing_download_job_callback_pw = functools.partial(
-    run_generic_job_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_forecast_forcing_download_after_callback
+    run_generic_job_end_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_forecast_forcing_download_after_callback
 )
 
 

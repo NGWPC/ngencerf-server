@@ -98,8 +98,12 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
-        if response_json and (message := response_json.get("message")):
+        if message := response_json.get("message"):
             print(message)
+        if warnings := response_json.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
         return 0
 
 
@@ -126,8 +130,12 @@ def upload_observational_data(observational_file: str, calibration_run_id: int) 
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
-        if response_json and (message := response_json.get("message")):
+        if message := response_json.get("message"):
             print(message)
+        if warnings := response_json.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
         return 0
 
 
@@ -165,8 +173,12 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int) -> int:
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
-        if response_json and (message := response_json.get("message")):
+        if message := response_json.get("message"):
             print(message)
+        if warnings := response_json.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
         return 0
 
 
@@ -230,8 +242,12 @@ def run_job(calibration_run_id: int) -> int:
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json and (message := response_json.get("message")):
+    if message := response_json.get("message"):
         print(message)
+    if warnings := response_json.get("warnings"):
+        print("Warnings:")
+        for w in warnings:
+            print(f"   {w}")
     return 0
 
 
@@ -272,9 +288,9 @@ def delete_job(calibration_run_ids: list[int]) -> int:
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json:
-        for job in response_json.get("jobs", []):
-            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
@@ -297,9 +313,9 @@ def archive_job(calibration_run_ids: list[int]) -> int:
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json:
-        for job in response_json.get("jobs", []):
-            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
@@ -322,9 +338,9 @@ def unarchive_job(calibration_run_ids: list[int]) -> int:
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json:
-        for job in response_json.get("jobs", []):
-            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
@@ -347,8 +363,12 @@ def cancel_job(calibration_run_id: int) -> int:
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json and (message := response_json.get("message")):
+    if message := response_json.get("message"):
         print(message)
+    if warnings := response_json.get("warnings"):
+        print("Warnings:")
+        for w in warnings:
+            print(f"   {w}")
     return 0
 
 
@@ -445,8 +465,12 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json and (message := response_json.get("message")):
+    if message := response_json.get("message"):
         print(message)
+    if warnings := response_json.get("warnings"):
+        print("Warnings:")
+        for w in warnings:
+            print(f"   {w}")
     return 0
 
 
