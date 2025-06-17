@@ -14,6 +14,7 @@ class StatusEnum(AbstractEnum):
 
     SAVED = 'Saved'
     READY = 'Ready'
+    SUBMITTED = 'Submitted'
     RUNNING = 'Running'
     DONE = 'Done'
     CANCELLED = 'Cancelled'
@@ -200,6 +201,7 @@ class SlurmStatusEnum(AbstractEnum):
     DONE = 'DONE'
     FAILED = 'FAILED'
     CANCELED = 'CANCELED'
+    STARTING = 'STARTING'
 
 
 class LocationEnum(AbstractEnum):

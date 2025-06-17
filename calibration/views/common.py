@@ -28,7 +28,7 @@ from calibration.models.base_run import BaseRun
 from calibration.models.forecast_forcing_download_run import ForecastForcingDownloadRun
 from calibration.util.caching import get_cached_modules_with_groups
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
-from calibration.util.ngen_locations import get_forecast_dir, get_ngen_stdout_log_filename, get_output_calibration_run_dir, \
+from calibration.util.ngen_locations import get_forecast_dir, get_output_calibration_run_dir, \
     get_output_validation_run_dir, get_ngen_logging_file, get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
@@ -440,23 +440,19 @@ def handle_exceptions(view_func):
     return _wrapped_view
 
 
-# TODO Fix me
-# Get the valid path for a file that can come from Data Services or user-upload
-def get_valid_path(source, eds_path, upload_enum, get_path_func):
+def get_valid_path(eds_path, get_path_func):
     """
-    Get the valid file path based on the source type, EDS path, or job-specific path.
+    Determine the valid file path by checking the job-specific path first,
+    then falling back to the provided EDS path if the job-specific file does not exist.
 
-    :param source: The source type.
     :param eds_path: The EDS path.
-    :param upload_enum: The upload enumeration.
     :param get_path_func: A function to retrieve the job-specific path.
-    :return: The valid path if found; otherwise None.
+    return: The path to the existing file, either job-specific or EDS; otherwise, None if neither exists.
     """
     job_specific_file = get_path_func()
 
     # job_specific_file is there, then always use it
     # If it's not there, then use the EDS file
-
     if job_specific_file and os.path.exists(job_specific_file):
         return job_specific_file
 
@@ -497,22 +493,22 @@ def truncate_large_fields(data, fields_to_truncate=None, max_length=100):
     return truncated_data
 
 
-def ResponseError(message, response_type='error', validation_errors=None, fatal_errors=None, http_status=status.HTTP_400_BAD_REQUEST):
+def ResponseError(message, response_type='error', validation_errors=None, errors=None, http_status=status.HTTP_400_BAD_REQUEST):
     """
     Return a standardized error response, with optional validation errors.
 
     :param message: The error message to include.
     :param response_type: The type of error (default is 'error').
     :param validation_errors: Optional validation errors to include.
-    :param fatal_errors: Optional fatal errors to include which causes the job to fail
+    :param errors: Optional fatal errors to include which causes the job to fail
     :param http_status: The HTTP status code for the response (default is 400).
     :return: A formatted Response object with the error details.
     """
     response = {'response_type': response_type, 'message': message}
     if validation_errors:
         response['validation_errors'] = validation_errors
-    if fatal_errors:
-        response['fatal_errors'] = fatal_errors
+    if errors:
+        response['errors'] = errors
     serializer = ErrorResponseSerializer(response)
     logger.error(serializer.data)
     return Response(serializer.data, status=http_status)
@@ -535,7 +531,7 @@ def validate_request(serializer_class, data, context=None):
     except ValidationError as e:
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
         message = f"called from {calling_function}, validated by {validator.__class__.__name__}"
-        validation_errors = validator.errors if validator else str(e)
+        validation_errors = validator.warnings if validator else str(e)
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 
@@ -682,21 +678,21 @@ def process_worker_dirs(run: CalibrationRun | ValidationRun, worker_lambda: Call
             worker_lambda(worker_dir, run)
 
 
-def find_validation_worker_with_matching_log(
+def find_validation_worker_with_matching_id(
         validation_run: ValidationRun,
         worker_name: str | None = None,
         iteration_num: int | None = None
 ) -> str | None:
     """
     Searches the worker directories of a validation run to locate the worker directory
-    containing the ngen stdout file. The matching criteria depend on the validation type:
-    - For VALID_ITERATION: Matches the worker name and iteration number in the log.
+    containing the matching worker_id file. The matching criteria depend on the validation type:
+    - For VALID_ITERATION: Matches the worker name and iteration number.
     - For VALID_BEST or VALID_CONTROL: Matches the validation type only.
 
     :param validation_run: The validation run object to process.
     :param worker_name: The worker name to match in the ngen.log file (only for VALID_ITERATION).
     :param iteration_num: The iteration number to match in the ngen.log file (only for VALID_ITERATION).
-    :return: The name of the worker directory containing the matching ngen stdout log file, or None if not found.
+    :return: The name of the worker directory containing the matching worker_id file, or None if not found.
     """
     matching_worker_name = None
     validation_type = ValidationType(validation_run.validation_type)
@@ -705,26 +701,29 @@ def find_validation_worker_with_matching_log(
     if validation_type == ValidationType.VALID_ITERATION:
         if not worker_name or iteration_num is None:
             raise ValueError("worker_name and iteration_num are required for VALID_ITERATION.")
-        expected_first_line = f"Starting Valid_{worker_name}_iter{iteration_num} Run"
+        expected_first_line = f"Valid_{worker_name}_iter{iteration_num}"
     elif validation_type in {ValidationType.VALID_BEST, ValidationType.VALID_CONTROL}:
-        expected_first_line = f"Starting {validation_type.value.capitalize()} Run"
+        expected_first_line = f"{validation_type.value.capitalize()}"
     else:
         raise ValueError(f"Unsupported validation type: {validation_type}")
 
     # Custom function to check worker directories for the ngen.log file
     def check_worker(worker_dir: str, _run: ValidationRun):
         nonlocal matching_worker_name
-        potential_log_path = os.path.join(worker_dir, get_ngen_stdout_log_filename())
+        worker_id_filename = 'worker_id.txt'
+        worker_id_path = os.path.join(worker_dir, worker_id_filename)
 
-        # Check if ngen.log exists in the current worker directory
-        if os.path.isfile(potential_log_path):
-            # Read the first line of the file
-            with open(potential_log_path, 'r') as file:
+        # Check if worker_id file exists in the current worker directory
+        if os.path.isfile(worker_id_path):
+            # Read the first (and only) line of the file
+            with open(worker_id_path, 'r') as file:
                 first_line = file.readline().strip()
 
-            # Check if the first line matches the expected format
-            if first_line == expected_first_line:
+            # Check if the line matches the expected format
+            if first_line.casefold() == expected_first_line.casefold():
                 matching_worker_name = os.path.basename(worker_dir)
+        else:
+            logger.error(f"Could not find {worker_id_filename} file in {worker_dir}")
 
     # Call process_worker_dirs to iterate through the worker directories
     process_worker_dirs(validation_run, check_worker)
@@ -824,3 +823,49 @@ def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config
     if os.path.islink(symlink_path) or os.path.exists(symlink_path):
         os.remove(symlink_path)
     os.symlink(output_path, symlink_path)
+
+
+class ErrorReport:
+    """
+    Container for collecting error and fatal validation messages during run preparation.
+
+    - `errors`: Recoverable issues the user can fix (e.g., missing input data).
+    - `fatal`: Irrecoverable issues that typically require system admin or developer intervention.
+    """
+
+    def __init__(self) -> None:
+        """
+        Initialize an empty ErrorReport.
+        """
+        self._warnings: list[str] = []
+        self._errors: list[str] = []
+
+    def add_warning(self, message: str) -> None:
+        """
+        Add a user-fixable error message.
+
+        :param message: The error message to add.
+        """
+        self._warnings.append(message)
+
+    def add_error(self, message: str) -> None:
+        """
+        Add a fatal error message.
+
+        :param message: The fatal error message to add.
+        """
+        self._errors.append(message)
+
+    def has_warnings(self) -> bool:
+        return bool(self._warnings)
+
+    def has_errors(self) -> bool:
+        return bool(self._errors)
+
+    @property
+    def warnings(self) -> list[str]:
+        return self._warnings
+
+    @property
+    def errors(self) -> list[str]:
+        return self._errors

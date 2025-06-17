@@ -3,9 +3,12 @@ Module providing CLI functionality for interacting with ngen calibration job end
 Supports operations like uploading data, submitting/deleting/cancelling jobs, and
 importing/exporting configurations.
 """
-
+import itertools
 import json
 import os
+import sys
+import threading
+import time
 from contextlib import ExitStack
 from datetime import datetime
 
@@ -28,6 +31,26 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
+def post_with_spinner(message: str, post_func: callable) -> requests.Response | None:
+    """
+    Displays a spinner while executing a POST request callable.
+    Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
+
+    :param message: Message to display while waiting.
+    :param post_func: A callable that returns a requests.Response when invoked.
+    :return: The requests.Response object from the callable, or None if interrupted.
+    """
+    spinner = Spinner(message)
+    spinner.start()
+    try:
+        return post_func()
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user.")
+        return None
+    finally:
+        spinner.stop()
+
+
 def about(output_path: str | None = None) -> int:
     """
     Fetch and display git information from the calibration server in a formatted manner.
@@ -35,10 +58,14 @@ def about(output_path: str | None = None) -> int:
     Returns:
         int: Exit code (0 for success, 1 for failure).
     """
-    response = requests.post(
+    response = post_with_spinner("Sending to server", lambda: requests.post(
         f"{API_BASE}/calibration/get_git_info/",
         headers=get_auth_headers()
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
@@ -68,17 +95,25 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int
             "calibration_run_id": calibration_run_id,
             "return_geopackage_url": "false",
         }
-        response = requests.post(
+        response = post_with_spinner("Uploading geopackage...", lambda: requests.post(
             f"{API_BASE}/calibration/upload_geopackage_data/",
             headers=get_auth_headers(),
             files=files,
-            data=data,
-        )
+            data=data
+        ))
+
+        if response is None:
+            return 1  # Interrupted by user
+
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
-        if response_json and (message := response_json.get("message")):
+        if message := response_json.get("message"):
             print(message)
+        if warnings := response_json.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
         return 0
 
 
@@ -94,17 +129,26 @@ def upload_observational_data(observational_file: str, calibration_run_id: int) 
     with open(observational_file, "rb") as f:
         files = {"observational_file": f}
         data = {"calibration_run_id": calibration_run_id}
-        response = requests.post(
+
+        response = post_with_spinner("Uploading observational data...", lambda: requests.post(
             f"{API_BASE}/calibration/upload_observational_data/",
             headers=get_auth_headers(),
             files=files,
-            data=data,
-        )
+            data=data
+        ))
+
+        if response is None:
+            return 1  # Interrupted by user
+
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
-        if response_json and (message := response_json.get("message")):
+        if message := response_json.get("message"):
             print(message)
+        if warnings := response_json.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
         return 0
 
 
@@ -118,6 +162,7 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int) -> int:
     """
     print(f"Uploading forcing data from directory: '{forcing_dir}' for calibration_run_id: {calibration_run_id}")
 
+    # noinspection PyAbstractClass
     with ExitStack() as stack:
         # Collect files from directory
         files = [
@@ -130,19 +175,26 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int) -> int:
             print("No forcing data files found to upload.")
             return 1
 
-        # Send the request
-        response = requests.post(
+        response = post_with_spinner("Uploading forcing data...", lambda: requests.post(
             f"{API_BASE}/calibration/upload_forcing_data/",
             headers=get_auth_headers(),
             files=files,
-            data={"calibration_run_id": calibration_run_id},
-        )
+            data={"calibration_run_id": calibration_run_id}
+        ))
+
+        if response is None:
+            return 1  # Interrupted by user
+
         # Check for errors
         response_json, success = check_http_error(response.status_code, response.text)
         if not success:
             return 1
-        if response_json and (message := response_json.get("message")):
+        if message := response_json.get("message"):
             print(message)
+        if warnings := response_json.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
         return 0
 
 
@@ -158,12 +210,15 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
 
     payload = {"calibration_run_id": calibration_run_id}
 
-    response = requests.post(
+    response = post_with_spinner("Downloading zip...", lambda: requests.post(
         f"{API_BASE}/calibration/get_calibration_job_zip/",
         headers=get_auth_headers(),
         json=payload,
-        stream=True,
-    )
+        stream=True
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -196,16 +251,25 @@ def run_job(calibration_run_id: int) -> int:
     """
     print(f"Submitting calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
-    response = requests.post(
+
+    response = post_with_spinner("Submitting job", lambda: requests.post(
         f"{API_BASE}/calibration/run_calibration/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json and (message := response_json.get("message")):
+    if message := response_json.get("message"):
         print(message)
+    if warnings := response_json.get("warnings"):
+        print("Warnings:")
+        for w in warnings:
+            print(f"   {w}")
     return 0
 
 
@@ -236,17 +300,22 @@ def delete_job(calibration_run_ids: list[int]) -> int:
     # Proceed with deletion
     print(f"\nDeleting calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids}
-    response = requests.post(
+
+    response = post_with_spinner("Deleting jobs", lambda: requests.post(
         f"{API_BASE}/calibration/delete_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json:
-        for job in response_json.get("jobs", []):
-            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
@@ -259,17 +328,22 @@ def archive_job(calibration_run_ids: list[int]) -> int:
     """
     print(f"Archiving calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids, "archive": True}
-    response = requests.post(
+
+    response = post_with_spinner("Archiving jobs...", lambda: requests.post(
         f"{API_BASE}/calibration/archive_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json:
-        for job in response_json.get("jobs", []):
-            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
@@ -282,17 +356,22 @@ def unarchive_job(calibration_run_ids: list[int]) -> int:
     """
     print(f"Unarchiving calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids, "archive": False}
-    response = requests.post(
+
+    response = post_with_spinner("Unarchiving jobs...", lambda: requests.post(
         f"{API_BASE}/calibration/archive_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json:
-        for job in response_json.get("jobs", []):
-            print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
     return 0
 
 
@@ -305,16 +384,25 @@ def cancel_job(calibration_run_id: int) -> int:
     """
     print(f"Cancelling calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
-    response = requests.post(
+
+    response = post_with_spinner("Cancelling job...", lambda: requests.post(
         f"{API_BASE}/calibration/cancel_job/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json and (message := response_json.get("message")):
+    if message := response_json.get("message"):
         print(message)
+    if warnings := response_json.get("warnings"):
+        print("Warnings:")
+        for w in warnings:
+            print(f"   {w}")
     return 0
 
 
@@ -325,11 +413,13 @@ def list_jobs(output_path: str | None = None) -> int:
     :param output_path: Path to save the job list (optional)
     :return: 0 on success, 1 on failure
     """
-    print("Fetching calibration jobs...")
-    response = requests.post(
-        f"{API_BASE}/calibration/get_calibration_jobs/",
+    response = post_with_spinner("Fetching job list...", lambda: requests.post(
+        f"{API_BASE}/calibration/get_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -373,7 +463,7 @@ def list_jobs(output_path: str | None = None) -> int:
     return 0
 
 
-def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
+def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
     """
     Submits job data to the import or update endpoint.
 
@@ -403,18 +493,24 @@ def _submit_job_data(job_file: str, calibration_run_id: int | None = None, run_a
     if calibration_run_id is not None:
         payload["calibration_run_id"] = calibration_run_id
 
-    # Send the modified job data to the server
-    response = requests.post(
+    response = post_with_spinner(f"{action} job", lambda: requests.post(
         f"{API_BASE}/calibration/import/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
-        json=payload,
-    )
+        json=payload
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
-    if response_json and (message := response_json.get("message")):
+    if message := response_json.get("message"):
         print(message)
+    if warnings := response_json.get("warnings"):
+        print("Warnings:")
+        for w in warnings:
+            print(f"   {w}")
     return 0
 
 
@@ -427,7 +523,7 @@ def import_job(job_file: str, run_after_import: bool | None = None) -> int:
     :return: 0 on success, 1 on failure
     """
     print(f"Importing job from: {job_file}")
-    return _submit_job_data(job_file, run_after_import=run_after_import)
+    return _submit_job_data(job_file, action='Importing', run_after_import=run_after_import)
 
 
 def update_job(calibration_run_id: int, job_file: str, run_after_update: bool | None = None) -> int:
@@ -440,7 +536,7 @@ def update_job(calibration_run_id: int, job_file: str, run_after_update: bool | 
     :return: 0 on success, 1 on failure
     """
     print(f"Updating job {calibration_run_id} from: {job_file}")
-    return _submit_job_data(job_file, calibration_run_id=calibration_run_id, run_after_import=run_after_update)
+    return _submit_job_data(job_file, action='Updating', calibration_run_id=calibration_run_id, run_after_import=run_after_update)
 
 
 def handle_export_display(calibration_run_id: int, output_path: str | None = None, display: bool = False) -> int:
@@ -454,11 +550,14 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     """
     payload = {"calibration_run_id": calibration_run_id}
 
-    response = requests.post(
+    response = post_with_spinner("Fetching job...", lambda: requests.post(
         f"{API_BASE}/calibration/export/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
-    )
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
@@ -568,3 +667,31 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
                 os.makedirs(dir_name, exist_ok=True)
 
     return output_path
+
+
+class Spinner:
+    def __init__(self, message="Processing..."):
+        self.spinner = itertools.cycle(["|", "/", "-", "\\"])
+        self.running = False
+        self.thread = None
+        self.message = message
+
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self._spin)
+        self.thread.start()
+
+    def _spin(self):
+        print(self.message, end=" ", flush=True)
+        while self.running:
+            sys.stdout.write(next(self.spinner))
+            sys.stdout.flush()
+            time.sleep(0.1)
+            sys.stdout.write("\b")
+
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join()
+        sys.stdout.write(" \n")
+        sys.stdout.flush()

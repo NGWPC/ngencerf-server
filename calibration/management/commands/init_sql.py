@@ -333,6 +333,7 @@ class Command(BaseCommand):
 
         values = [{"name": "Saved"},
                   {"name": "Ready"},
+                  {"name": "Submitted"},
                   {"name": "Running"},
                   {"name": "Done"},
                   {"name": "Cancelled"},

@@ -314,9 +314,12 @@ def export_job(request: Request) -> Response:
 
     calibration_run_data = load_calibration_run_data(run, export=True)
 
-    errors, _ = ngen_cal_input.ready_to_run(run)
-    if errors:
-        calibration_run_data['metadata']['errors'] = errors.get('errors')
+    error_object, _ = ngen_cal_input.ready_to_run(run)
+    if error_object:
+        if error_object.has_warnings():
+            calibration_run_data['metadata']['warnings'] = error_object.warnings
+        if error_object.has_errors():
+            calibration_run_data['metadata']['errors'] = error_object.errors
 
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
@@ -338,7 +341,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     :return: Dictionary containing the calibration run data.
     """
     start_time = time.time()
-    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id}")
+    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id} - {run.status.name}")
 
     calibration_run_data = {}
 
@@ -360,9 +363,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     module_objects = CalibrationFormulation.objects.filter(calibration_run=run)
 
-    geopackage_path = get_valid_path(run.geopackage_source, run.geopackage_eds_file_path,
-                                     GeopackageSourceEnum.UPLOAD,
-                                     lambda: get_single_file(get_geopackage_dir_for_job(run)))
+    geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
     num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
         geopackage_path) else None
 

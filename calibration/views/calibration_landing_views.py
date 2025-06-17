@@ -128,7 +128,7 @@ def create_and_run_validation(request: Request) -> Response:
     existing_validation_run = ValidationRun.objects.filter(
         calibration_run=calibration_run,
         iteration_id=iteration_id,
-        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance]
+        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
     ).first()
     if existing_validation_run:
         return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
@@ -338,26 +338,32 @@ def clone_job(request: Request) -> Response:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, messages, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
-    if fatal_error:
-        return fatal_error
+    new_run, messages, errors = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
+    if errors:
+        return errors
 
     # Set the new status to Saved and then we check it
     new_run.status = StatusEnum.SAVED.db_instance
+    warnings = None
     errors = None
     if new_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.RUNNING.db_instance]:
-        ready_to_run_messages, _ = ngen_cal_input.ready_to_run(new_run)
-        errors = ready_to_run_messages.get('errors')
+        error_object, _ = ngen_cal_input.ready_to_run(new_run)
+        if error_object.has_warnings():
+            warnings = error_object.warnings
+        if error_object.has_errors():
+            errors = error_object.errors
 
     # noinspection PyUnresolvedReferences
     response = {'message': f'Calibration Job {run.id} has been cloned to Calibration Job {new_run.id}',
                 'calibration_run_id': new_run.id,
                 'status': new_run.status.name}
     # I agree that the message handling got out of hand
+    if warnings:
+        response['warnings'] = warnings
     if errors:
         response['errors'] = errors
     if messages:
-        response.setdefault('errors', []).extend(messages)
+        response.setdefault('warnings', []).extend(messages)
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
@@ -377,19 +383,22 @@ def has_running_associated_jobs(run: CalibrationRun) -> str | None:
     :return: A message indicating if the job or its associated jobs are running, or None if there are no running jobs.
     """
     # Check if the calibration run itself is running
-    if run.status == StatusEnum.RUNNING.db_instance:
+    if run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
         return f'Calibration Job {run.id} is running. Cannot proceed while the job is running.'
 
     # Check if any associated validation jobs are running
-    if ValidationRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+    if ValidationRun.objects.filter(calibration_run=run,
+                                    status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
         return f'Calibration Job {run.id} has associated validation jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forecast jobs are running
-    if ForecastRun.objects.filter(calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+    if ForecastRun.objects.filter(calibration_run=run,
+                                  status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
         return f'Calibration Job {run.id} has associated forecast jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forcing download jobs are running
-    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status=StatusEnum.RUNNING.db_instance).exists():
+    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run,
+                                                 status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
         return f'Calibration Job {run.id} has associated forcing download jobs that are still running. Cannot proceed until they are completed.'
 
     # No running jobs found
@@ -629,29 +638,25 @@ def import_job(request: Request) -> Response:
     else:
         calibration_run = None
 
-    run, messages, fatal_error = import_calibration_run_data(request, data, JobGenesis.IMPORT, run=calibration_run)
-    if fatal_error:
-        return fatal_error
+    run, messages, errors = import_calibration_run_data(request, data, JobGenesis.IMPORT, run=calibration_run)
+    if errors:
+        return errors
 
     imported_and_submitted = 'updated' if calibration_run_id else 'imported'
 
-    # TODO What is going on here?  Why are we calling ready_to_run twice?
-    errors, config_file = ngen_cal_input.ready_to_run(run)
+    error_object, config_file = ngen_cal_input.ready_to_run(run)
 
-    if run_after_import and not errors:
-        errors, config_file = ngen_cal_input.ready_to_run(run)
-        if not errors:
-            # create_ngen_logging_file(run, {}, create_import_file=True)
-            error_response = submit_job(run)
-            if error_response:
-                return error_response
-            imported_and_submitted = f"{imported_and_submitted} and submitted"
+    if run_after_import and not error_object.warnings and not error_object.errors:
+        error_response = submit_job(run)
+        if error_response:
+            return error_response
+        imported_and_submitted = f"{imported_and_submitted} and submitted"
 
     response = {'message': f'Calibration Job {run.id} {imported_and_submitted}', 'calibration_run_id': run.id, 'status': run.status.name}
     if messages:
         response['messages'] = messages
-    if errors:
-        response['errors'] = errors.get('errors')
+    if error_object.warnings:
+        response['warnings'] = error_object.warnings
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:

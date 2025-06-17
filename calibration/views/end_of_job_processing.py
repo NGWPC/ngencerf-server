@@ -2,6 +2,7 @@ import csv
 import logging
 import math
 import os
+import traceback
 from collections import deque
 from datetime import timedelta
 from itertools import groupby
@@ -23,7 +24,7 @@ from calibration.util.ngen_locations import get_realization_file_path, get_metri
     get_validation_special_performance_file, get_forecast_forcing_download_performance_file, \
     get_forecast_performance_file, get_params_iteration_file
 from calibration.views.calibration_swe_views import generate_swe_ts_data
-from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_log
+from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def read_validation_output(validation_run: ValidationRun, failed_so_far: bool) -
         validation_type = ValidationType(validation_run.validation_type)
 
         # Identify the matching worker based on validation type
-        matching_worker = find_validation_worker_with_matching_log(
+        matching_worker = find_validation_worker_with_matching_id(
             validation_run,
             worker_name=validation_run.iteration.worker_name if validation_type == ValidationType.VALID_ITERATION else None,
             iteration_num=validation_run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
@@ -133,10 +134,6 @@ def create_performance_metrics(run: BaseRun, performance_metrics_file: str) -> N
     :return: None
     """
     performance_metrics = parse_performance_metrics(performance_metrics_file)
-
-    # Use a reserved_time of 0 if performance_metrics is None
-    reserved_time = performance_metrics.reserved_time if performance_metrics else timedelta(0)
-    run.run_start = run.submit_date + reserved_time
 
     if not performance_metrics:
         # Fallback to calculate elapsed_time manually
@@ -266,6 +263,7 @@ def process_validation_for_validation_run(validation_run: ValidationRun) -> None
         generate_swe_ts_data(validation_run)
     except Exception as e:
         logger.error(f'Failed to generate SWE timeseries data: {e}')
+        traceback.print_exc()
 
 
 # Function to process iterations for all workers in a run
