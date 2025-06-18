@@ -406,9 +406,9 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
-    formulation_warning = serializers.JSONField(required=False)
+    formulation_errors = serializers.JSONField(required=False)
+    formulation_warnings = serializers.JSONField(required=False)
     parameters_selected = serializers.BooleanField(required=True)
-    nwm_warning = serializers.BooleanField(required=True)
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default=[])
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
@@ -701,8 +701,8 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
-    nwm_warning = serializers.BooleanField(required=True)
-    formulation_warning = serializers.JSONField(required=False)
+    formulation_errors = serializers.JSONField(required=False)
+    formulation_warnings = serializers.JSONField(required=False)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
 
 
@@ -895,6 +895,7 @@ class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
 class ImportResponseSerializer(GenericResponseSerializer):
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.JSONField(required=False)
 
 
@@ -1177,7 +1178,7 @@ class RetrospectiveData(BaseSerializer):
 
 
 class GetCalibrationDataByIterationResponseSerializer(GenericMessageResponseSerializer):
-    objective_function_metric = serializers.CharField(required=True)
+    objective_function_metric = serializers.CharField(required=True, allow_null=True)
     iteration_data = CalibrationDataByIteration(many=True, required=True)
     retrospective_data = RetrospectiveData(many=True, required=True)
 
@@ -1188,7 +1189,8 @@ class ValidationJobsResponseSerializer(BaseSerializer):
     validation_type = serializers.CharField(required=True)
     iteration_num = serializers.IntegerField(required=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=False)
+    # Can be empty for LSTM
+    parameters = serializers.ListSerializer(child=ValidationJobsParameter(), required=True, allow_empty=True)
     best = serializers.BooleanField(required=True)
 
 

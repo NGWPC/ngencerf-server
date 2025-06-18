@@ -432,8 +432,9 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
         create_input(config_file)
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
-        logger.exception(f'Exception during create_input - {str(e)}')
-        raise CerfException(f'Exception during create_input - {str(e)}') from e
+        msg = f'Exception during create_input for Calibration Job {calibration_run.id} - {str(e)}'
+        logger.exception(msg)
+        raise CerfException(msg) from e
 
     logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
     return False, None

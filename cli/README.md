@@ -28,6 +28,9 @@ The `ngenCerf` CLI provides a command-line interface to interact with the ngenCe
 
 ## Building
 
+```
+NOte: This step is not necessary when running on Parallel Works
+```
 Before using the CLI, it must be built from the source code. Run the following script, located in the `cli` directory to build the executable:
 
 ```bash
@@ -49,7 +52,7 @@ $ ./build_cli.sh
 When complete, the executable is built in the `dist` directory. You can then copy it to a directory in your PATH, such as `~/.local/bin` or `/usr/local/bin`:
 
 ```bash
-$ cp dist/ngencerf /usr/local/bin
+$ sudo cp dist/ngencerf /usr/local/bin
 ```
 
 ## Login
