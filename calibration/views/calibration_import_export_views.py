@@ -46,7 +46,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
     :param calibration_run_data: Dictionary with calibration run data.
     :param genesis: Enum value indicating the origin of the job.
     :param run: Optional CalibrationRun to update.  If None, a new CalibrationRun is created.
-    :return: Tuple containing CalibrationRun instance, messages, and optional ResponseError.
+    :return: Tuple containing CalibrationRun instance, response_dict, and optional ResponseError.
     """
     with transaction.atomic():
         run = run if run else create_calibration_run_internal(request.user, genesis)
@@ -107,7 +107,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         else:
             # Fetch forcing data from Data Services
             try:
-                get_forcing_data_from_data_services(run)
+                if gage_id:
+                    get_forcing_data_from_data_services(run)
             except DataServicesException as e:
                 errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -132,7 +133,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     errors.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
         else:
             try:
-                get_observational_data_from_data_services(run)
+                if gage_id:
+                    get_observational_data_from_data_services(run)
             except DataServicesException as e:
                 errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -201,9 +203,9 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         # Don't bother validating parameters if we got a Data Services error
         if not any(error.get('name') == 'parameters' for error in eds_errors):
-            error_message = validate_parameters(run, parameters)
-            if error_message:
-                return None, None, ResponseError(error_message)
+            parameter_errors, parameter_warnings = validate_parameters(run, parameters)
+            if parameter_errors:
+                return None, None, ResponseError(parameter_errors)
 
             save_parameters(run, parameters, allow_nulls=True)
 
@@ -266,13 +268,15 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 json.dump(logging_config, f, indent=4)
 
         run.save()
-    messages = {}
+    response_dict = {}
     if errors:
-        messages['errors'] = errors
+        response_dict['errors'] = errors
+    if parameter_warnings:
+        response_dict['warnings'] = parameter_warnings
     if eds_errors:
-        messages['eds_errors'] = eds_errors
+        response_dict['eds_errors'] = eds_errors
 
-    return run, messages, None
+    return run, response_dict, None
 
 
 @extend_schema(

@@ -531,7 +531,7 @@ def validate_request(serializer_class, data, context=None):
     except ValidationError as e:
         calling_function = inspect.stack()[1].function  # Get the name of the calling function
         message = f"called from {calling_function}, validated by {validator.__class__.__name__}"
-        validation_errors = validator.warnings if validator else str(e)
+        validation_errors = validator.errors if validator else str(e)
         return None, ResponseError(message, response_type='validation_error', validation_errors=validation_errors)
 
 

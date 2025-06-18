@@ -266,9 +266,10 @@ def save_tuning_tab(request: Request) -> Response:
     if parameters and not run.gage:
         return ResponseError('Parameters cannot be specified without a gage')
 
-    error_message = validate_parameters(run, parameters)
-    if error_message:
-        return ResponseError(error_message)
+    # The UI already does the parameter validation, so we don't have to bother sending the warnings
+    parameter_errors, _ = validate_parameters(run, parameters)
+    if parameter_errors:
+        return ResponseError(parameter_errors)
 
     with transaction.atomic():
         run.save()
@@ -648,12 +649,15 @@ def validate_time_range(
     return None, (start_time, end_time)
 
 
-def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]]) -> str | None:
+def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]]) -> tuple[list[str], list[str]]:
     """
     Validates each provided parameter against existing calibration parameters for a specific calibration run.
+    Returns a tuple: (errors, warnings)
+    - Errors: invalid parameter names or modules
+    - Warnings: initial values outside of [minimum, maximum]
     """
     if not parameters:
-        return None
+        return [], []
 
     # Fetch all CalibrationParameters for the given calibration run and related modules in one query
     existing_parameters = CalibrationParameter.objects.filter(
@@ -669,19 +673,46 @@ def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | fl
     # Validate each parameter in the input
     invalid_parameters = []
     invalid_modules = []
+    value_out_of_bounds = []
+
     for p in parameters:
         key = (p['module'], p['name'])
         if key not in parameter_lookup:
-            # Determine if the module exists in the cache
-            (invalid_parameters if get_cached_module_by_name(p['module']) else invalid_modules).append(key)
+            # Check if module is valid
+            if get_cached_module_by_name(p['module']):
+                invalid_parameters.append(key)
+            else:
+                invalid_modules.append(key)
+        else:
+            min_val = p['minimum']
+            max_val = p['maximum']
+            initial = p['initial_value']
+            if not (min_val <= initial <= max_val):
+                value_out_of_bounds.append(
+                    f"Initial value {initial} for parameter '{p['name']}' in module '{p['module']}' "
+                    f"is outside the range [{min_val}, {max_val}]"
+                )
 
-    # If any invalid parameters or modules are found, create an error message
-    if invalid_parameters or invalid_modules:
-        invalid_param_list = [f"Invalid parameter '{name}' for module '{module}'" for module, name in invalid_parameters]
-        invalid_module_list = [f"Invalid module '{module}' for parameter '{name}'" for module, name in invalid_modules]
-        return ", ".join(invalid_param_list + invalid_module_list)
+    # Construct messages
+    error_messages = []
+    warning_messages = []
 
-    return None
+    if invalid_parameters:
+        error_messages.extend(
+            f"Invalid parameter '{name}' for module '{module}'"
+            for module, name in invalid_parameters
+        )
+    if invalid_modules:
+        error_messages.extend(
+            f"Invalid module '{module}' for parameter '{name}'"
+            for module, name in invalid_modules
+        )
+    if value_out_of_bounds:
+        for m in value_out_of_bounds:
+            logger.warning(m)
+        warning_messages.extend(value_out_of_bounds)
+
+    return error_messages, warning_messages
 
 
 def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]], allow_nulls: bool = False) -> None:
