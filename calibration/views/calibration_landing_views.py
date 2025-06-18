@@ -362,8 +362,6 @@ def clone_job(request: Request) -> Response:
         response['warnings'] = warnings
     if errors:
         response['errors'] = errors
-    if response_dict:
-        response.setdefault('warnings', []).extend(response_dict)
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:

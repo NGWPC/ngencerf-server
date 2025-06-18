@@ -507,10 +507,11 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
         return 1
     if message := response_json.get("message"):
         print(message)
-    if warnings := response_json.get("warnings"):
-        print("Warnings:")
-        for w in warnings:
-            print(f"   {w}")
+    if messages := response_json.get("messages"):
+        if warnings := messages.get("warnings"):
+            print("Warnings:")
+            for w in warnings:
+                print(f"   {w}")
     return 0
 
 

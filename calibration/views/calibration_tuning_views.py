@@ -649,7 +649,7 @@ def validate_time_range(
     return None, (start_time, end_time)
 
 
-def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]]) -> tuple[str, str]:
+def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]]) -> tuple[list[str], list[str]]:
     """
     Validates each provided parameter against existing calibration parameters for a specific calibration run.
     Returns a tuple: (errors, warnings)
@@ -657,7 +657,7 @@ def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | fl
     - Warnings: initial values outside of [minimum, maximum]
     """
     if not parameters:
-        return "", ""
+        return [], []
 
     # Fetch all CalibrationParameters for the given calibration run and related modules in one query
     existing_parameters = CalibrationParameter.objects.filter(
@@ -712,7 +712,7 @@ def validate_parameters(run: CalibrationRun, parameters: list[dict[str, str | fl
             logger.warning(m)
         warning_messages.extend(value_out_of_bounds)
 
-    return ", ".join(error_messages), ", ".join(warning_messages)
+    return error_messages, warning_messages
 
 
 def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]], allow_nulls: bool = False) -> None:
