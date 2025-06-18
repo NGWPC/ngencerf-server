@@ -50,6 +50,7 @@ urlpatterns = [
     # Formulation tab
     ##################################
     path('calibration/get_modules/', calibration_formulation_views.get_modules, name="getModules"),
+    path('calibration/validate_formulation_tab/', calibration_formulation_views.validate_formulation_tab, name="validateFormulationTab"),
     path('calibration/save_formulation_tab/', calibration_formulation_views.save_formulation_tab, name="saveFormulationTab"),
 
     ##################################
