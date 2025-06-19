@@ -406,7 +406,7 @@ def get_plots_for_comparison(request: Request) -> Response:
                     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
                     if error_return:
                         response['errors'].append({
-                            'calibration_run_id': run.id, 
+                            'calibration_run_id': run.id,
                             'message': error_return.data.get('message')
                         })
                     elif run.gage.gage_id != gage_id:
@@ -414,7 +414,7 @@ def get_plots_for_comparison(request: Request) -> Response:
                         response['errors'].append({
                             'calibration_run_id': run.id,
                             'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id +
-                                '.\n This does not match the Gage ID requested: ' + gage_id + '.'
+                                       '.\n This does not match the Gage ID requested: ' + gage_id + '.'
                         })
                     else:
                         for row in get_bar_chart_metrics([run.id])[run.id]:
@@ -454,21 +454,22 @@ def get_plots_for_comparison(request: Request) -> Response:
                     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
                     if error_return:
                         response['errors'].append({
-                            'calibration_run_id': run.id, 
+                            'calibration_run_id': run.id,
                             'message': error_return.data.get('message')
                         })
                     elif run.gage.gage_id != gage_id:
                         # Gage IDs don't match
                         response['errors'].append({
-                            'calibration_run_id': run.id, 
+                            'calibration_run_id': run.id,
                             'message': 'Gage ID for Calibration Job ' + str(run.id) + ' is: ' + run.gage.gage_id +
-                            		'.\n This does not match the Gage ID requested: ' + gage_id + '.'
+                                       '.\n This does not match the Gage ID requested: ' + gage_id + '.'
                         })
                     else:
                         # get best validation run
                         for validation_job in get_validation_jobs_internal(run.id, GetValidationJobsScope.STATUS):
                             if validation_job['validation_type'] == ValidationType.VALID_BEST.value:
-                                best_run, error_return = get_validation_run(validation_job['validation_run_id'], request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+                                best_run, error_return = get_validation_run(validation_job['validation_run_id'], request.user,
+                                                                            run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
                                 if error_return:
                                     response['errors'].append({
                                         'calibration_run_id': run.id,

@@ -45,10 +45,14 @@ def derive_swe_file_inputs(run: ValidationRun) -> dict[str, str]:
         iteration_num=run.iteration.iteration_num if validation_type == ValidationType.VALID_ITERATION else None
     )
 
-    # Retrieve paths to required files.
-    swe_csv = get_validation_output_valid(run.calibration_run, worker_name)
-    gpkg = get_single_file(get_geopackage_dir_for_job(run.calibration_run))
-    return {'swe_csv': swe_csv, 'gpkg': gpkg}
+    if worker_name:
+        # Retrieve paths to required files.
+        swe_csv = get_validation_output_valid(run.calibration_run, worker_name)
+        gpkg = get_single_file(get_geopackage_dir_for_job(run.calibration_run))
+        return {'swe_csv': swe_csv, 'gpkg': gpkg}
+    else:
+        logger.warning(f'Unable to get SWE data for {get_job_description(run)}')
+        return {}
 
 
 def get_or_create_swe_plots(run: ValidationRun, date: str, plot_dir: str) -> dict[str, str]:
@@ -62,6 +66,8 @@ def get_or_create_swe_plots(run: ValidationRun, date: str, plot_dir: str) -> dic
     """
     # Get common SWE file inputs.
     inputs = derive_swe_file_inputs(run)
+    if not inputs:
+        return {}
     swe_csv = inputs['swe_csv']
     gpkg = inputs['gpkg']
 
@@ -119,26 +125,27 @@ def generate_swe_ts_data(validation_run: ValidationRun) -> None:
     if validation_run.validation_type != ValidationType.VALID_CONTROL.value:
         # Generate SWE timeseries images.
         inputs = derive_swe_file_inputs(validation_run)
-        swe_csv = inputs['swe_csv']
-        gpkg = inputs['gpkg']
+        if inputs:
+            swe_csv = inputs['swe_csv']
+            gpkg = inputs['gpkg']
 
-        # Determine the appropriate plot directory.
-        plot_dir = get_plot_dir(validation_run)
-        os.makedirs(plot_dir, exist_ok=True)
+            # Determine the appropriate plot directory.
+            plot_dir = get_plot_dir(validation_run)
+            os.makedirs(plot_dir, exist_ok=True)
 
-        swe_args = [
-            swe_csv,
-            gpkg,
-            '--plot_output',
-            get_swe_timeseries_png_filename(validation_run),
-            '--csv_output',
-            get_swe_timeseries_data_filename(validation_run),
-        ]
-        logger.info(f"Calling swe_timeseries.swe_ts with arguments: {swe_args}")
-        start_time = time.time()
-        swe_timeseries.swe_ts(swe_args)
-        elapsed_time = time.time() - start_time
-        logger.info(f"Finished running swe_timeseries.swe_ts in {elapsed_time:.2f} seconds")
+            swe_args = [
+                swe_csv,
+                gpkg,
+                '--plot_output',
+                get_swe_timeseries_png_filename(validation_run),
+                '--csv_output',
+                get_swe_timeseries_data_filename(validation_run),
+            ]
+            logger.info(f"Calling swe_timeseries.swe_ts with arguments: {swe_args}")
+            start_time = time.time()
+            swe_timeseries.swe_ts(swe_args)
+            elapsed_time = time.time() - start_time
+            logger.info(f"Finished running swe_timeseries.swe_ts in {elapsed_time:.2f} seconds")
 
 
 def get_swe_timeseries_png_filename(validation_run: ValidationRun) -> str:
@@ -222,6 +229,8 @@ def get_swe_images_by_date(request: Request) -> Response:
 
     # Retrieve or generate the SWE plots using the helper.
     swe_results = get_or_create_swe_plots(run, date, plot_dir)
+    if not swe_results:
+        return ResponseError(f'Unable to retrieve SWE data for {get_job_description(run)}')
 
     response = {
         'message': f'Plots created in {plot_dir}',

@@ -187,7 +187,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
         # For each metric in the row, create or update the relevant Metric model
         for metric_name, value in metrics_row.items():
             # Perform case-insensitive lookup for the metric
-            metric = MetricEnum.get_instance(metric_name)
+            metric = MetricEnum.get_instance(str(metric_name))
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
@@ -560,7 +560,7 @@ def update_objective_function_values(metrics_iteration_file: str, calibration_ru
 
     # Iterate over rows in the DataFrame
     for _, row in metrics_df.iterrows():
-        iteration_num = int(row['iteration'])
+        iteration_num = int(row['iteration'])  # type: ignore[arg-type]
         obj_fun_val = row['objFunVal']
 
         # Retrieve the iteration object from the dictionary
