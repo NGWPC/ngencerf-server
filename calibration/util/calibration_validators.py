@@ -895,7 +895,6 @@ class GetStatusForComparisonResponseSerializer(CalibrationRunIdList):
 class ImportResponseSerializer(GenericResponseSerializer):
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
-    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     messages = serializers.JSONField(required=False)
 
 

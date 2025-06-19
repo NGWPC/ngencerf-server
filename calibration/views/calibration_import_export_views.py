@@ -439,7 +439,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         logging_config_file = get_ngen_logging_file(run, import_flag=True)
         if not os.path.exists(logging_config_file):
             logging_config_file = get_ngen_logging_file(run, import_flag=False)
-            
+
         if os.path.exists(logging_config_file):
             with open(logging_config_file, 'r') as f:
                 logging_config = json.load(f)
