@@ -507,15 +507,25 @@ def run_generic_job_end_callback(
     :param check_if_failed: Function to check job status based on the environment.
     :param finalize_func: Function to execute finalization logic specific to the job type.
     """
+    # TODO Clean up some of the handlers so that we handle the exceptions here instead of the individual handlers
     job_description = get_job_description(run)
-    logger.info(f"Job end callback received for {job_description} with status{status}")
-    run.run_end = datetime.now(timezone.utc)
-    run.save(update_fields=["run_end"])
+    try:
+        logger.info(f"Job end callback received for {job_description} with status{status}")
 
-    failed_so_far = check_if_failed(run, status)
+        run.run_end = datetime.now(timezone.utc)
+        run.save(update_fields=["run_end"])
 
-    # Execute finalization logic
-    finalize_func(run, failed_so_far)
+        failed_so_far = check_if_failed(run, status)
+
+        # Execute finalization logic
+        finalize_func(run, failed_so_far)
+
+    except Exception:
+        logger.exception(f"Exception occurred during job end callback for {job_description}")
+        try:
+            set_job_status(run, StatusEnum.FAILED)
+        except Exception:
+            logger.exception(f"Failed to set FAILED status for {job_description}")
 
 
 def finalize_calibration_after_callback(run: CalibrationRun, failed_so_far: bool) -> None:
@@ -783,7 +793,7 @@ def subset_by_time_range(
             subset_df = chunk.loc[
                 (chunk['dateTime'] >= start_datetime) &
                 (chunk['dateTime'] <= end_datetime)
-            ].copy()  # Explicitly create a copy
+                ].copy()  # Explicitly create a copy
 
             # Convert back to naive timestamps for output (to match original format)
             subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)
