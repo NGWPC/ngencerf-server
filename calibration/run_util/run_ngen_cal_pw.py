@@ -46,7 +46,6 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'output_file': (None, stdout_file),
             'nprocs': (None, arguments['nprocs'])
         }
-        # slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, ValidationRun):
         url_endpoint = settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT
         payload = {
@@ -58,7 +57,6 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'worker_name': (None, arguments.get('worker_name')),
             'iteration': (None, arguments.get('iteration_num'))
         }
-        # slurm_response_validator = SlurmSubmitCalibrationOrValidationJobResponse
     elif isinstance(run, ForecastForcingDownloadRun):
         url_endpoint = settings.SLURM_SUBMIT_FORECAST_FORCING_DOWNLOAD_JOB_ENDPOINT
         payload = {
@@ -69,7 +67,6 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'forcing_dir': (None, arguments['forcing_dir']),
             'stdout_file': (None, stdout_file),
         }
-        # slurm_response_validator = SlurmSubmitForecastForcingDownloadJobResponse
     elif isinstance(run, ForecastRun):
         url_endpoint = settings.SLURM_SUBMIT_FORECAST_JOB_ENDPOINT
         payload = {
@@ -79,7 +76,6 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'forecast_dir': (None, arguments['forecast_dir']),
             'stdout_file': (None, stdout_file),
         }
-        # slurm_response_validator = SlurmSubmitForecastJobResponse
     else:
         raise ValueError(
             f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ForecastRun, ForecastForcingDownloadRun."
@@ -101,19 +97,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     )
 
     # Dynamically update fields
-    # update_fields = ['slurm_job_id']
     run.slurm_job_id = slurm_response.get('slurm_job_id')
-
-    # if hasattr(run, 'ngen_commit_hash'):
-    #     run.ngen_commit_hash = slurm_response.get('ngen_commit_hash')
-    #     update_fields.append('ngen_commit_hash')
-    # if hasattr(run, 'ngen_cal_commit_hash'):
-    #     run.ngen_cal_commit_hash = slurm_response.get('ngen_cal_commit_hash')
-    #     update_fields.append('ngen_cal_commit_hash')
-    # if hasattr(run, 'ngen_forcing_commit_hash'):
-    #     run.ngen_forcing_commit_hash = slurm_response.get('ngen_forcing_commit_hash')
-    # if hasattr(run, 'ngen_forecast_commit_hash'):
-    #     run.ngen_forecast_commit_hash = slurm_response.get('ngen_forecast_commit_hash')
 
     run.save(update_fields=['slurm_job_id'])
     logger.info(f"{get_job_description(run)} submitted successfully! Slurm id: {run.slurm_job_id}")
