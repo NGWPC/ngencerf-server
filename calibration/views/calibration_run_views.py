@@ -725,7 +725,7 @@ def cancel_job(request: Request) -> Response:
     run.save(update_fields=['status'])
 
     response = {
-        'message': f"{run_type.capitalize()} Run job {run.id} has been canceled",
+        'message': f"{run_type.capitalize()} Job {run.id} has been canceled",
         f"{run_type}_run_id": run.id,
         'status': run.status.name  # type: ignore[attr-defined]
     }
