@@ -38,8 +38,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     save_plot_iteration_frequency = models.PositiveIntegerField(null=True)
     save_output_iteration = models.BooleanField(default=False)
     automatic_validation = models.BooleanField(null=False, default=False)
-    ngen_commit_hash = models.CharField(max_length=50, null=True)
-    ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
     is_archived = models.BooleanField(default=False)
     mpi_nprocs = models.IntegerField(null=True)
 

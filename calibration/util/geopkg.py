@@ -350,7 +350,7 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
                 logger.error(f"Failed to copy non-spatial table '{table}': {e}")
                 traceback.print_exc()
 
-    logger.info(f"\nNormalized GeoPackage written to: {output_path}")
+    logger.info(f"Normalized GeoPackage written to: {output_path}")
 
 
 def copy_non_spatial_table_one(table_name: str, src_conn: sqlite3.Connection, dst_conn: sqlite3.Connection):

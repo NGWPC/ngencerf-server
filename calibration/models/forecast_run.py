@@ -7,8 +7,6 @@ class ForecastRun(BaseRun):
     calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="forecasts", on_delete=models.CASCADE, db_index=True)
     cycle = models.ForeignKey("ForecastCycle", null=False, on_delete=models.RESTRICT)
     forcing_download_run = models.OneToOneField('ForecastForcingDownloadRun', null=False, on_delete=models.CASCADE, related_name='forecast_run')
-    ngen_forecast_commit_hash = models.CharField(max_length=50, null=True)
-    ngen_commit_hash = models.CharField(max_length=50, null=True)
 
     class Meta:
         db_table = 'forecast_run'
