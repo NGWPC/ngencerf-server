@@ -581,13 +581,13 @@ def hard_delete(run: CalibrationRun) -> None:
         logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
         # Iterate through the collected objects and list IDs and other fields
         for model, instances in collector.data.items():
-            logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
+            logger.debug(f"Calibration Job {run.id} - {model.__name__}: {len(instances)} instance(s) will be deleted")
             for instance in instances:
                 logger.debug(f' - {instance}')
 
         job_data_dir = run.job_data_dir
         run.delete()
-        logger.debug(f'Deleting directory {job_data_dir}')
+        logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
         if os.path.exists(job_data_dir):
             shutil.rmtree(job_data_dir)
 
