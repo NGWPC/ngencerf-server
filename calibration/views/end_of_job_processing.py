@@ -23,6 +23,7 @@ from calibration.util.ngen_locations import get_realization_file_path, get_metri
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_forecast_forcing_download_performance_file, \
     get_forecast_performance_file, get_params_iteration_file
+from calibration.views.calibration_formulation_views import have_LSTM
 from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
 
@@ -186,7 +187,7 @@ def process_validation_metrics(run: ValidationRun | CalibrationRun, metrics_file
         # For each metric in the row, create or update the relevant Metric model
         for metric_name, value in metrics_row.items():
             # Perform case-insensitive lookup for the metric
-            metric = MetricEnum.get_instance(metric_name)
+            metric = MetricEnum.get_instance(str(metric_name))
             if not metric:
                 raise CerfException(f"Could not find metric '{metric_name}' in MetricEnum")
 
@@ -278,14 +279,16 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     # Compute best_params_dict once, outside the loop
     best_params_dict: Dict[str, float] = {}
 
+    have_LSTM_flag = have_LSTM(calibration_run)
     if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
-        global_best_params_file = get_global_best_params_file(calibration_run)
-        if not os.path.isfile(global_best_params_file):
-            raise CerfException(f"{global_best_params_file} does not exist")
+        if not have_LSTM_flag:
+            global_best_params_file = get_global_best_params_file(calibration_run)
+            if not os.path.isfile(global_best_params_file):
+                raise CerfException(f"{global_best_params_file} does not exist")
 
-        # Read the global best parameters into a dictionary
-        df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
-        best_params_dict = pd.Series(df['value'].astype(float).values, index=df['name']).to_dict()
+            # Read the global best parameters into a dictionary
+            df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
+            best_params_dict = pd.Series(df['value'].astype(float).values, index=df['name']).to_dict()
 
     # Query all Iteration objects for the calibration run and prefetch related metrics and parameters
     iterations = Iteration.objects.filter(calibration_run=calibration_run).order_by(
@@ -294,16 +297,16 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
 
     # Group the iterations by worker and process them
     for worker_name, worker_iterations in groupby(iterations, key=attrgetter('worker_name')):
-        process_iterations_for_a_worker(calibration_run, worker_name, list(worker_iterations), best_params_dict)
+        process_iterations_for_a_worker(calibration_run, worker_name, list(worker_iterations), best_params_dict, have_LSTM_flag)
 
     # Raise an error if no best iteration was found
-    if not Iteration.objects.filter(calibration_run=calibration_run, best_params=True).exists():
+    if not have_LSTM_flag and not Iteration.objects.filter(calibration_run=calibration_run, best_params=True).exists():
         raise CerfException(f"No best iteration was found for CalibrationRun {calibration_run.id}")
 
 
 # Function to process iterations for a specific worker
 def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name: str, iterations: list[Iteration],
-                                    best_params_dict: Dict[str, float]) -> None:
+                                    best_params_dict: Dict[str, float], have_LSTM_flag: bool) -> None:
     """
     Process all iterations for a specific worker in a CalibrationRun.
     It reads the metrics and parameters files for the worker and processes each
@@ -314,6 +317,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
                         Need to prefix with ngen_ and suffix with _worker.
     :param iterations: A list of Iteration objects for the worker.
     :param best_params_dict: Precomputed dictionary of best parameters for comparison.
+    :param have_LSTM_flag: Flag to indicate whether or not this job has LSTM
     """
     logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
 
@@ -331,7 +335,7 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Check if the files exist
     if not os.path.isfile(metrics_iteration_file):
         raise CerfException(f'{metrics_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
-    if not os.path.isfile(params_iteration_file):
+    if not os.path.isfile(params_iteration_file) and not have_LSTM_flag:
         raise CerfException(f'{params_iteration_file} does not exist for CalibrationRun {calibration_run.id}')
 
     # Check for the best iteration based on optimization type (DDS, GWO, PSO)
@@ -350,43 +354,45 @@ def process_iterations_for_a_worker(calibration_run: CalibrationRun, worker_name
     # Prefetch Iteration objects for efficiency
     iteration_dict = {it.iteration_num: it for it in iterations}
 
-    # Read metrics and parameters files using pandas
-    metrics_df = pd.read_csv(metrics_iteration_file)
-    params_df = pd.read_csv(params_iteration_file)
-
-    # Ensure the metrics and parameters CSV files have the same number of rows
-    if len(metrics_df) != len(params_df):
-        raise CerfException(
-            f'Mismatch in the number of rows between {metrics_iteration_file} and {params_iteration_file} for CalibrationRun {calibration_run.id}'
-        )
-
     metrics_to_create = []  # List to accumulate metrics to be created
     params_to_create = []  # List to accumulate parameters to be created
-
-    # Update the output variables for the worker's iterations
-    update_objective_function_values(metrics_iteration_file, calibration_run, worker_name)
 
     # Track whether a best iteration was set
     best_iteration_found = False
 
-    # Loop over both metrics and parameters DataFrames row by row
-    for _, (metrics_row, params_row) in enumerate(zip(metrics_df.iterrows(), params_df.iterrows())):
-        # Convert the pandas.Series objects to dictionaries
-        metrics_row_dict = metrics_row[1].to_dict()
-        params_row_dict = params_row[1].to_dict()
+    # Process metrics file
+    metrics_df = pd.read_csv(metrics_iteration_file)
+    if not have_LSTM_flag:
+        update_objective_function_values(metrics_iteration_file, calibration_run, worker_name)
 
-        iteration_num = metrics_row_dict['iteration']
+    for _, row in metrics_df.iterrows():
+        row_dict = row.to_dict()
+        iteration_num = row_dict['iteration']
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
-            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name} in CalibrationRun {calibration_run.id}")
+            raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
+        process_metrics_row_for_calibration(calibration_run, iteration, row_dict, metrics_to_create)
 
-        # Process metrics and parameters for this iteration
-        process_metrics_row_for_calibration(calibration_run, iteration, metrics_row_dict, metrics_to_create)
-        process_params_row(calibration_run, iteration, params_row_dict, params_to_create, best_iteration_for_worker, best_params_dict)
+        if have_LSTM_flag:
+            # For LSTM, there is only 1 iteration so we will mark it as having the best
+            iteration.best_params = True
+            iteration.save(update_fields=['best_params'])
 
-        # Check if this iteration was set as the best
-        if iteration.best_params:
-            best_iteration_found = True
+    # Process parameters file
+    if not have_LSTM_flag:
+        params_df = pd.read_csv(params_iteration_file)
+
+        for _, row in params_df.iterrows():
+            row_dict = row.to_dict()
+            iteration_num = row_dict['iteration']
+            iteration = iteration_dict.get(iteration_num)
+            if not iteration:
+                raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
+            process_params_row(calibration_run, iteration, row_dict, params_to_create, best_iteration_for_worker, best_params_dict)
+
+            # Check if this iteration was set as the best
+            if iteration.best_params:
+                best_iteration_found = True
 
     # Bulk create IterationMetric and IterationParameter objects in chunks
     if metrics_to_create:
@@ -495,13 +501,14 @@ def process_params_row(calibration_run: CalibrationRun,
     params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
 
     # Check if the current params_row matches the global best parameters
+    # The is_best_match logic is done for PSO and GWO.  We actually compare the values of the parameters
     is_best_match = (
             len(params_row) == len(best_params_dict) and
             all(param_name in best_params_dict and math.isclose(float(value), best_params_dict[param_name], rel_tol=1e-9, abs_tol=0.0)
                 for param_name, value in params_row.items())
     )
 
-    # If the iteration is the best (based on matching parameters or best iteration number)
+    # If the iteration is the best (based on matching parameters or best iteration number (from objective_log file for DDS))
     if is_best_match or iteration.iteration_num == best_iteration_for_worker:
         logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}, for {job_description}')
         iteration.best_params = True
@@ -553,7 +560,7 @@ def update_objective_function_values(metrics_iteration_file: str, calibration_ru
 
     # Iterate over rows in the DataFrame
     for _, row in metrics_df.iterrows():
-        iteration_num = int(row['iteration'])
+        iteration_num = int(row['iteration'])  # type: ignore[arg-type]
         obj_fun_val = row['objFunVal']
 
         # Retrieve the iteration object from the dictionary

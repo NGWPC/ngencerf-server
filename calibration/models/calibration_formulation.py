@@ -6,7 +6,6 @@ from calibration.models.base_model import BaseModel
 class CalibrationFormulation(BaseModel):
     module = models.ForeignKey('Module', null=False, on_delete=models.RESTRICT)
     calibration_run = models.ForeignKey('CalibrationRun', null=False, on_delete=models.CASCADE)
-    module_commit_hash = models.CharField(max_length=50, null=True)
 
     class Meta:
         db_table = 'calibration_formulation'

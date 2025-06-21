@@ -14,6 +14,7 @@ from calibration.util.caching import get_cached_optimization_inputs
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
+from calibration.views.calibration_formulation_views import have_LSTM
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, get_user_email
 
@@ -64,7 +65,8 @@ def load_optimization_tab(request) -> Response:
     if error_return:
         return error_return
 
-    metrics = MetricEnum.get_choices_with_fields(fields=['name', 'description', 'categorical', 'event_based'], extra_filter={'objective_function': True})
+    metrics = MetricEnum.get_choices_with_fields(fields=['name', 'description', 'categorical', 'event_based'],
+                                                 extra_filter={'objective_function': True})
 
     optimization_list = get_static_optimizations()
 
@@ -171,6 +173,14 @@ def save_optimization_tab(request) -> Response:
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
+
+    if have_LSTM(run) and (optimization_name or objective_function_name or
+                           streamflow_threshold is not None or peak_flow_threshold is not None or
+                           optimization_inputs or stop_criteria is not None or
+                           save_output_iteration or save_plot_iteration_frequency is not None):
+        return ResponseError(
+            "You cannot specify optimization_name, objective_function_name, streamflow_threshold, peak_flow_threshold, "
+            "optimization_name, stop_criteria, save_output_iteration or save_plot_iteration_frequency when using LSTM")
 
     if optimization_inputs and not optimization_name:
         return ResponseError('Optimization inputs cannot be specified without an optimization name')

@@ -4,7 +4,7 @@ from calibration.models.base_run import BaseRun
 
 
 class ForecastForcingDownloadRun(BaseRun):
-    ngen_forcing_commit_hash = models.CharField(max_length=50, null=True)
+    pass
 
     class Meta:
         db_table = 'forecast_forcing_download_run'

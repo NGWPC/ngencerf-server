@@ -510,7 +510,12 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     if warnings := response_json.get("warnings"):
         print("Warnings:")
         for w in warnings:
-            print(f"   {w}")
+            print('  ', w)
+    if errors := response_json.get("errors"):
+        print("Errors:")
+        for e in errors:
+            print('  ', e)
+
     return 0
 
 

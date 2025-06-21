@@ -22,6 +22,7 @@ from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_L
     get_observational_file_for_job, get_geopackage_dir_for_job, \
     PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE
+from calibration.views.calibration_formulation_views import have_LSTM, validate_formulation
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport
@@ -48,13 +49,13 @@ CONFIG_TEMPLATE = {
     },
 
     "Calibration": {
-        "optimization_algorithm": "",
+        "optimization_algorithm": None,
         "swarm_size": 0,
         "c1": 0,
         "c2": 0,
         "w": 0,
         "r": 0,
-        "objective_function": "",
+        "objective_function": None,
         "start_iteration": 0,
         "number_iteration": 0,
         # Whether restart calibration from the stopped iteration
@@ -113,11 +114,13 @@ CONFIG_TEMPLATE = {
         "lasam_bmi_dir": "",
         "smp_bmi_dir": "",
         "sft_bmi_dir": "",
+        "lstm_bmi_dir": "",
 
         # Static file
         "noah_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'noah-owp-modular'),
         "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
         "lasam_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lasam'),
+        "lstm_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lstm'),
 
         # Parquet file - base on domain
         "attributes_file": "",
@@ -195,6 +198,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     general['calibration_run_id'] = run.id
     general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
+    have_LSTM_flag = have_LSTM(run)
+
     catchments = None
     # Validate and configure the gage ID and station name
     if not is_missing(run.gage, 'gage_id', error_object):
@@ -271,8 +276,13 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     if not is_missing(formulations, 'Modules', error_object) and not is_missing(run.user_formulation_name, 'Formulation name', error_object):
         general['formulation'] = run.user_formulation_name
 
-        module_names = [f.module.name for f in formulations]
+        module_names = {f.module.name for f in formulations}
         general['models'] = ', '.join(module_names)
+
+        # Check fatal errors
+        formulation_errors, _ = validate_formulation(module_names)
+        for f in formulation_errors:
+            error_object.add_error(f)
 
         # See if we have at least one module in Snowmelt
         calibration['output_swe'] = any(
@@ -341,10 +351,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 calibration['full_eval_start_period'] = format_datetime(full_eval_start)
                 calibration['full_eval_end_period'] = format_datetime(full_eval_end)
 
-    if not is_missing(run.objective_function, 'Objective function', error_object):
+    if not is_missing(run.objective_function, 'Objective function', error_object, have_LSTM_flag=have_LSTM_flag):
         calibration['objective_function'] = run.objective_function.name.lower()
 
-    if not is_missing(run.optimization, 'Optimization', error_object):
+    if not is_missing(run.optimization, 'Optimization', error_object, have_LSTM_flag=have_LSTM_flag):
         calibration['optimization_algorithm'] = run.optimization.name.lower()
 
         # Validate if all inputs are provided
@@ -366,7 +376,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         if all_input_names:
             error_object.add_warning(f'Missing required optimization inputs for {run.optimization.name} - {list(all_input_names)}')
 
-    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', error_object):
+    if not is_missing(run.save_plot_iteration_frequency, 'Plot iteration frequency', error_object, have_LSTM_flag=have_LSTM_flag):
         calibration['save_plot_iter_freq'] = run.save_plot_iteration_frequency
 
     # This field is not required from user
@@ -375,7 +385,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     calibration['restart'] = 0  # TODO ???
 
     stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
-    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', error_object):
+    if not is_missing(stop_criteria, 'Stop criteria (number of iterations)', error_object, have_LSTM_flag=have_LSTM_flag):
         # We're assuming there is only 1 stop criteria record for now
         calibration['number_iteration'] = stop_criteria.value
 
@@ -434,7 +444,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                   .select_related('calibration_formulation__module')
                   .values('name', 'initial_value', 'minimum', 'maximum', model=F('calibration_formulation__module__name')))
 
-    if not params:
+    if not params and not have_LSTM_flag:
         error_object.add_warning("At least one parameter must be specified")
     else:
         param_error = False
@@ -543,17 +553,19 @@ def build_config(config: dict, directory: str) -> str:
     return config_file
 
 
-def is_missing(value: Any, label: str, report: ErrorReport) -> bool:
+def is_missing(value: Any, label: str, report: ErrorReport, have_LSTM_flag: bool = False) -> bool:
     """
     Checks if a required value is missing, and logs an error if so.
 
     :param value: The value to check.
     :param label: A descriptive name of the value (used in the error message).
     :param report: ErrorReport instance to record the error.
+    :param have_LSTM_flag If true, then we don't check this field
     :return: True if the value is None, False otherwise.
     """
     if value is None:
-        report.add_warning(f'{label} is required')
+        if not have_LSTM_flag:
+            report.add_warning(f'{label} is required')
         return True
     return False
 

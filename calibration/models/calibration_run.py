@@ -38,8 +38,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     save_plot_iteration_frequency = models.PositiveIntegerField(null=True)
     save_output_iteration = models.BooleanField(default=False)
     automatic_validation = models.BooleanField(null=False, default=False)
-    ngen_commit_hash = models.CharField(max_length=50, null=True)
-    ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
     is_archived = models.BooleanField(default=False)
     mpi_nprocs = models.IntegerField(null=True)
 
@@ -55,6 +53,8 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             f"geopackage_eds_file_path: {self.geopackage_eds_file_path}, "
             f"forcing_eds_dir_path: {self.forcing_eds_dir_path}, "
             f"observational_eds_file_path: {self.observational_eds_file_path}, "
+            f"objective_function.name: {self.objective_function.name if self.objective_function else 'None'}, "
+            f"optimization.name: {self.optimization.name if self.optimization else 'None'}, "
             f"status.name: {self.status.name}, "
             f"is_archived: {self.is_archived}"
         )

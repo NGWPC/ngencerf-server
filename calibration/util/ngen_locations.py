@@ -69,9 +69,11 @@ def check_files():
 
 # Construct the directory where the Input/Output is
 def get_gage_dir(run: CalibrationRun) -> str:
+    objective_function_name = run.objective_function.name if run.objective_function else 'None'
+    optimization_name = run.optimization.name if run.optimization else 'None'
     return os.path.join(
         run.job_data_dir,
-        f"{run.objective_function.name.lower()}_{run.optimization.name.lower()}",
+        f"{objective_function_name.lower()}_{optimization_name.lower()}",
         run.user_formulation_name,
         run.gage.gage_id
     )
@@ -331,11 +333,11 @@ def get_validation_special_performance_file(run: CalibrationRun,
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{validation_type_str}_performance.log")
 
 
-def get_calibration_git_info_file(run: CalibrationRun):
+def get_calibration_git_info_file(run: CalibrationRun) -> str:
     return os.path.join(get_output_calibration_run_dir(run), f"git_info_calibration.json")
 
 
-def get_validation_special_git_info_file(run: ValidationRun):
+def get_validation_special_git_info_file(run: ValidationRun) -> str:
     return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{run.validation_type}.json")
 
 
@@ -343,11 +345,11 @@ def get_validation_iteration_git_info_file(run: ValidationRun, worker_name: str,
     return os.path.join(get_output_validation_run_dir(run.calibration_run), f"git_info_{worker_name}_iter{iteration_num}.json")
 
 
-def get_forecast_download_git_info_file(forecast_forcing_download_run: ForecastForcingDownloadRun):
+def get_forecast_download_git_info_file(forecast_forcing_download_run: ForecastForcingDownloadRun) -> str:
     return os.path.join(get_forecast_dir(forecast_forcing_download_run.forecast_run), "git_info_forecast_download.json")
 
 
-def get_forecast_git_info_file(forecast_run: ForecastRun):
+def get_forecast_git_info_file(forecast_run: ForecastRun) -> str:
     return os.path.join(get_forecast_dir(forecast_run), "git_info_forecast.json")
 
 

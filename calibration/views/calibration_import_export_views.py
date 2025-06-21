@@ -46,7 +46,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
     :param calibration_run_data: Dictionary with calibration run data.
     :param genesis: Enum value indicating the origin of the job.
     :param run: Optional CalibrationRun to update.  If None, a new CalibrationRun is created.
-    :return: Tuple containing CalibrationRun instance, messages, and optional ResponseError.
+    :return: Tuple containing CalibrationRun instance, response_dict, and optional ResponseError.
     """
     with transaction.atomic():
         run = run if run else create_calibration_run_internal(request.user, genesis)
@@ -64,15 +64,71 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             except Gage.DoesNotExist:
                 return None, None, ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
 
+            #############################
+            # Formulations and Modules
+            #############################
+            modules_list = calibration_run_data.get('modules')
+            module_names = set(modules_list) if modules_list else set()
+
+            # Validate module names
+            error_message = validate_modules(module_names)
+            if error_message:
+                return None, None, ResponseError(error_message)
+
+            formulation_errors, formulation_warnings = validate_formulation(module_names)
+            have_lstm = 'LSTM' in module_names
+
+            sloth_parameters = calibration_run_data.get('sloth_parameters')
+            use_sloth = calibration_run_data.get('use_sloth')
+            if have_lstm and (sloth_parameters or use_sloth):
+                return None, None, ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
+
+            # Set formulation name
+            run.user_formulation_name = calibration_run_data.get('formulation_name')
+
+            # Handling of sloth parameters
+            run.use_sloth = use_sloth
+
+            sloth_parameters = sloth_parameters
+            if not run.use_sloth and sloth_parameters:
+                return None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
+
+            if run.use_sloth and not sloth_parameters:
+                return None, None, ResponseError(f"If you indicate 'use_sloth', you must enter {SLOTH} parameters")
+
+            # Create any new formulations and process sloth parameters
+            for m_name in module_names:
+                module_instance = get_cached_module_by_name(m_name)
+                CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
+
+            error_message = add_sloth_parameters(run, sloth_parameters, module_names)
+            if error_message:
+                return None, None, ResponseError(error_message)
+
+            # Get the list of modules for this Run
+            modules = CalibrationFormulation.objects.filter(calibration_run=run)
+
+            if modules and run.gage:
+                try:
+                    get_module_metadata_from_data_services(run, modules)  # type: ignore
+                except DataServicesException as e:
+                    errors.append(f"Error retrieving module parameter data from Data Services - status code: {e.status_code} - {str(e)}")
+                    eds_errors.append({
+                        'name': 'parameters',
+                        'message': str(e),
+                        'status_code': e.status_code if e.status_code else None
+                    })
+
         # Note that for EDS, only the paths are copied.  The files will be copied to the job-specific directory in ready_to_run
         #############################
         # Geopackage Handling
         #############################
         geopackage_source_name = calibration_run_data.get('geopackage_source')
+        geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
+
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
         if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance:
-            geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
             if geopackage_user_uploaded_file_path and os.path.exists(geopackage_user_uploaded_file_path):
                 # Copy file to job-specific directory
                 copy_file_to_directory(geopackage_user_uploaded_file_path, get_geopackage_dir_for_job(run))
@@ -94,10 +150,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         # Forcing Data Handling
         #############################
         forcing_source_name = calibration_run_data.get('forcing_source')
+        forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
+
         run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
 
         if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
-            forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
+            forcing_user_uploaded_dir_path = forcing_user_uploaded_dir_path
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy directory to job-specific path
                 copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
@@ -107,7 +165,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         else:
             # Fetch forcing data from Data Services
             try:
-                get_forcing_data_from_data_services(run)
+                if gage_id:
+                    get_forcing_data_from_data_services(run)
             except DataServicesException as e:
                 errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -120,10 +179,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         # Observational Data Handling
         #############################
         observational_source_name = calibration_run_data.get('observational_source')
+        observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
+
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
-            observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
+
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy file to job-specific path
                 copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
@@ -132,7 +193,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                     errors.append(f"User uploaded observational data from '{observational_user_uploaded_file_path}' not found")
         else:
             try:
-                get_observational_data_from_data_services(run)
+                if gage_id:
+                    get_observational_data_from_data_services(run)
             except DataServicesException as e:
                 errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -142,76 +204,30 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 })
 
         #############################
-        # Formulations and Modules
-        #############################
-        modules_list = calibration_run_data.get('modules')
-        module_names = set(modules_list) if modules_list else set()
-
-        # Validate module names
-        error_message = validate_modules(module_names)
-        if error_message:
-            return None, None, ResponseError(error_message)
-
-        formulation_warning, nwm_warning = validate_formulation(module_names)
-        if formulation_warning is not None:
-            errors.append(json.dumps(formulation_warning))
-
-        # Set formulation name
-        run.user_formulation_name = calibration_run_data.get('formulation_name')
-
-        # Handling of sloth parameters
-        run.use_sloth = calibration_run_data.get('use_sloth')
-        sloth_parameters = calibration_run_data.get('sloth_parameters')
-        if not run.use_sloth and sloth_parameters:
-            return None, None, ResponseError(f"You must indicate 'use_sloth' is True to allow {SLOTH} parameters to be specified")
-
-        if run.use_sloth and not sloth_parameters:
-            return None, None, ResponseError(f"If you indicate 'use_sloth', you must enter {SLOTH} parameters")
-
-        # Create any new formulations and process sloth parameters
-        for m_name in module_names:
-            module_instance = get_cached_module_by_name(m_name)
-            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
-
-        error_message = add_sloth_parameters(run, sloth_parameters, module_names)
-        if error_message:
-            return None, None, ResponseError(error_message)
-
-        # Get the list of modules for this Run
-        modules = CalibrationFormulation.objects.filter(calibration_run=run)
-
-        if modules and run.gage:
-            try:
-                get_module_metadata_from_data_services(run, modules)  # type: ignore
-            except DataServicesException as e:
-                errors.append(f"Error retrieving module parameter data from Data Services - status code: {e.status_code} - {str(e)}")
-                eds_errors.append({
-                    'name': 'parameters',
-                    'message': str(e),
-                    'status_code': e.status_code if e.status_code else None
-                })
-
-        #############################
         # Tuning
         #############################
         parameters = calibration_run_data.get('parameters')
+        automatic_validation = calibration_run_data.get('automatic_validation')  # defaults to True
+        if have_lstm and parameters:
+            return None, None, ResponseError("You cannot specify parameters when using LSTM")
 
         if parameters and not modules:
             return None, None, ResponseError('Parameters cannot be specified without modules')
 
         # Don't bother validating parameters if we got a Data Services error
         if not any(error.get('name') == 'parameters' for error in eds_errors):
-            error_message = validate_parameters(run, parameters)
-            if error_message:
-                return None, None, ResponseError(error_message)
+            parameter_errors, parameter_warnings = validate_parameters(run, parameters)
+            if parameter_errors:
+                return None, None, ResponseError(parameter_errors)
 
             save_parameters(run, parameters, allow_nulls=True)
 
         # Set automatic validation flags
-        run.automatic_validation = calibration_run_data.get('automatic_validation')
+        run.automatic_validation = automatic_validation
 
         calibration_times = calibration_run_data.get('calibration_times')
         validation_times = calibration_run_data.get('validation_times')
+
         if not run.automatic_validation and validation_times:
             return None, None, ResponseError('validation_times cannot be specified unless automatic_validation is True')
 
@@ -228,6 +244,17 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         peak_flow_threshold = calibration_run_data.get('peak_flow_threshold')
         optimization_inputs = calibration_run_data.get('optimization_inputs')
         stop_criteria = calibration_run_data.get('stop_criteria')
+        save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
+        save_output_iteration = calibration_run_data.get('save_output_iteration')
+        if have_lstm and (
+                optimization_name or objective_function_name or
+                streamflow_threshold is not None or peak_flow_threshold is not None or optimization_name or
+                stop_criteria is not None or
+                save_plot_iteration_frequency is not None or save_output_iteration
+        ):
+            return None, None, ResponseError(
+                "You cannot specify optimization_name, objective_function_name, streamflow_threshold, peak_flow_threshold, "
+                "optimization_name, stop_criteria, save_plot_iteration_frequency or save_output_iteration when using LSTM")
 
         if not optimization_name:
             if optimization_inputs:
@@ -243,9 +270,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             return None, None, ResponseError(error_message)
 
         # Set run parameters and save
-        run.save_plot_iteration_frequency = calibration_run_data.get('save_plot_iteration_frequency')
-        run.save_output_iteration = calibration_run_data.get('save_output_iteration') if not calibration_run_data.get(
-            'save_output_iteration') else False
+        run.save_plot_iteration_frequency = save_plot_iteration_frequency
+        run.save_output_iteration = save_output_iteration if not save_output_iteration else False
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
@@ -262,13 +288,16 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         if logging_config:
             # Create a logging_config_import file with the imported data
             logging_config_path = get_ngen_logging_file(run, import_flag=True)
+            os.makedirs(os.path.dirname(logging_config_path), exist_ok=True)
             with open(logging_config_path, 'w') as f:
                 json.dump(logging_config, f, indent=4)
 
         run.save()
     messages = {}
     if errors:
-        messages['errors'] = errors
+        messages['errors'] = errors + formulation_errors
+    if formulation_warnings:
+        messages['warnings'] = formulation_warnings
     if eds_errors:
         messages['eds_errors'] = eds_errors
 
@@ -406,14 +435,15 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 user_uploaded_forcing_dir) else None
 
         # Export the logging data.  Start with any imported data
-        # The use the run-time logging, if this job has been run
+        # Then use the run-time logging, if this job has been run
         logging_config_file = get_ngen_logging_file(run, import_flag=True)
         if not os.path.exists(logging_config_file):
             logging_config_file = get_ngen_logging_file(run, import_flag=False)
-            if os.path.exists(logging_config_file):
-                with open(logging_config_file, 'r') as f:
-                    logging_config = json.load(f)
-                    calibration_run_data['logging_config'] = logging_config
+
+        if os.path.exists(logging_config_file):
+            with open(logging_config_file, 'r') as f:
+                logging_config = json.load(f)
+                calibration_run_data['logging_config'] = logging_config
 
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
@@ -487,11 +517,11 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['modules'] = modules
 
     # Validation warnings
-    formulation_warning, nwm_warning = validate_formulation(modules)
-    if not export:
-        calibration_run_data['nwm_warning'] = nwm_warning
-    if formulation_warning and not export:
-        calibration_run_data['formulation_warning'] = formulation_warning
+    formulation_errors, formulation_warnings = validate_formulation(modules)
+    if formulation_warnings and not export:
+        calibration_run_data['formulation_warnings'] = formulation_warnings
+    if formulation_errors and not export:
+        calibration_run_data['formulation_errors'] = formulation_errors
 
     # Handle SLOTH parameters
     calibration_run_data['use_sloth'] = run.use_sloth

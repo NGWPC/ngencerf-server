@@ -338,9 +338,9 @@ def clone_job(request: Request) -> Response:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, messages, errors = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
-    if errors:
-        return errors
+    new_run, response_dict, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
+    if fatal_error:
+        return fatal_error
 
     # Set the new status to Saved and then we check it
     new_run.status = StatusEnum.SAVED.db_instance
@@ -362,8 +362,6 @@ def clone_job(request: Request) -> Response:
         response['warnings'] = warnings
     if errors:
         response['errors'] = errors
-    if messages:
-        response.setdefault('warnings', []).extend(messages)
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
@@ -583,13 +581,13 @@ def hard_delete(run: CalibrationRun) -> None:
         logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
         # Iterate through the collected objects and list IDs and other fields
         for model, instances in collector.data.items():
-            logger.debug(f"{model.__name__}: {len(instances)} instance(s) will be deleted")
+            logger.debug(f"Calibration Job {run.id} - {model.__name__}: {len(instances)} instance(s) will be deleted")
             for instance in instances:
                 logger.debug(f' - {instance}')
 
         job_data_dir = run.job_data_dir
         run.delete()
-        logger.debug(f'Deleting directory {job_data_dir}')
+        logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
         if os.path.exists(job_data_dir):
             shutil.rmtree(job_data_dir)
 
@@ -612,7 +610,6 @@ def hard_delete(run: CalibrationRun) -> None:
 @api_view(['POST'])
 @handle_exceptions
 def import_job(request: Request) -> Response:
-    # TODO Make a separate update_job endpoint for existing job
     """
     API endpoint to import (create) a calibration job or update an existing job.
      It validates input data, imports calibration run data, and optionally submits a job.

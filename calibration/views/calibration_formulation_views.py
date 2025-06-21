@@ -12,7 +12,8 @@ from calibration.util.calibration_validators import SaveFormulationRequestSerial
     ErrorResponseSerializer, SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, get_user_email
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
+    get_user_email, join_with_or
 from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
 
 logger = logging.getLogger(__name__)
@@ -128,22 +129,24 @@ def save_formulation_tab(request) -> Response:
 
     new_module_names = set(validator.get('modules'))
     calibration_run_id = validator.get('calibration_run_id')
-    user_formulation_name = validator.get('formulation_name')
     use_sloth = validator.get('use_sloth')
     sloth_parameters = validator.get('sloth_parameters')
+    have_lstm = 'LSTM' in new_module_names
+    if have_lstm and (sloth_parameters or use_sloth):
+        return ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
 
     run, error_return = get_calibration_run(calibration_run_id, request.user)
     if error_return:
         return error_return
 
-    run.user_formulation_name = user_formulation_name
+    run.user_formulation_name = validator.get('formulation_name')
 
     # Validate modules and formulation constraints
     error_message = validate_modules(new_module_names)
     if error_message:
         return ResponseError(error_message)
 
-    formulation_warning, nwm_warning = validate_formulation(new_module_names)
+    formulation_errors, formulation_warnings = validate_formulation(new_module_names)
 
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
@@ -209,10 +212,11 @@ def save_formulation_tab(request) -> Response:
         'message': f'Calibration Job {run.id} updated',
         'calibration_run_id': run.id,
         'status': run.status.name,
-        'nwm_warning': nwm_warning
     }
-    if formulation_warning:
-        response['formulation_warning'] = formulation_warning
+    if formulation_warnings:
+        response['formulation_warnings'] = formulation_warnings
+    if formulation_errors:
+        response['formulation_errors'] = formulation_errors
     if eds_errors:
         response['eds_errors'] = eds_errors
 
@@ -259,112 +263,142 @@ def validate_modules(module_names: set[str]) -> str | None:
 
 formulation_validations = {
     "formulation_rules": {
-        "nwm_required_groups": [
-            "Glacier"
-        ],
         "group_requirements": {
             "Glacier": {
-                "expected_counts": [0]  # Change back to [0, 1], once Topoflow is allowed
+                "expected_counts": [0],  # Change back to [0, 1], once Topoflow is allowed
+                "fatal": True
             },
             "Snowmelt": {
-                "expected_counts": [0, 1]
+                "expected_counts": [0, 1],
+                "fatal": False
             },
             "Evapotranspiration": {
-                "expected_counts": [1]
+                "expected_counts": [1],
+                "fatal": True
             },
             "Rainfall Runoff": {
-                "expected_counts": [1]
+                "expected_counts": [1],
+                "fatal": True
             },
             "Soil Moisture": {
-                "expected_counts": [0, 2]
+                "expected_counts": [0, 2],
+                "fatal": True
             },
             "Routing": {
-                "expected_counts": [1]
+                "expected_counts": [1],
+                "fatal": True
             }
         },
         "module_exclusions": {
             "SMP": {
-                "must_have": ["CFE-S", "CFE-X", "LASAM"]
+                "must_have": ["CFE-S", "CFE-X", "LASAM"],
+                "fatal": True
             },
             "SFT": {
-                "must_have": ["CFE-S", "CFE-X", "LASAM"]
+                "must_have": ["CFE-S", "CFE-X", "LASAM"],
+                "fatal": True
             }
         }
     }
 }
 
 
-def validate_formulation(module_names: set[str]) -> tuple[dict | None, bool]:
+def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
     :param module_names: A set of module names to validate.
-    :return: A tuple containing validation details (or None if valid) and a boolean indicating if an NWM warning is triggered.
+    :return: A tuple (fatal_errors, nonfatal_errors), where each is a list of messages.
+             If there are no errors of a given severity, that list will be empty.
     """
     if not module_names:
-        return None, False
+        return [], []
 
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
 
-    # Initialize a dictionary to store the count of modules per group
-    group_counts = {group_name: 0 for group_name in formulation_validations['formulation_rules']['group_requirements']}
+    # Prepare containers for fatal vs. non-fatal messages
+    fatal_errors: list[str] = []
+    nonfatal_errors: list[str] = []
+
+    # --- Special case: if LSTM is present, enforce LSTM-specific rules and skip the rest ---
+    if "LSTM" in module_names:
+        if len(module_names) > 2:
+            # More than two modules with LSTM is not allowed
+            fatal_errors.append("LSTM cannot be combined with more than one other module.")
+            return fatal_errors, nonfatal_errors
+
+        if len(module_names) < 2:
+            # LSTM alone (no other module) is not allowed
+            fatal_errors.append(
+                "When LSTM is specified, exactly one other Routing module must be included."
+            )
+            return fatal_errors, nonfatal_errors
+
+        # At this point, len(module_names) == 2 and one of them is LSTM
+        other_name = next(name for name in module_names if name != "LSTM")
+        other_module = get_cached_module_by_name(other_name)
+        other_groups = [g.name for g in other_module.groups.all()]
+        if "Routing" not in other_groups:
+            fatal_errors.append(
+                f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
+            )
+        return fatal_errors, nonfatal_errors
+
+    # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
+
+    # Count how many selected modules belong to each group
+    group_defs = formulation_validations["formulation_rules"]["group_requirements"]
+    group_counts = {grp_name: 0 for grp_name in group_defs}
 
     # Parse the groups for each module once and update the group counts
+    print('my_modules', my_modules)
     for module in my_modules:
+        print('module', module)
+        print('groups', module.groups.all())
         for group in module.groups.all():
             if group.name in group_counts:  # Only count groups that are in the group_requirements
                 group_counts[group.name] += 1
 
-    # Check for module exclusions
-    messages = []
-    formulation_validation_json = {
-        "excluded_modules": [],
-        "group_requirements": []
-    }
-
-    # Validate excluded modules based on conditions
-    for excluded_module, conditions in formulation_validations['formulation_rules']['module_exclusions'].items():
-        if excluded_module in module_names:  # If the excluded module exists
-            must_have_modules = conditions.get("must_have", [])
+    # 1) Check module_exclusions
+    excl_defs = formulation_validations["formulation_rules"].get("module_exclusions", {})
+    for excluded_module, rules in excl_defs.items():
+        if excluded_module in module_names:
+            must_have_modules = rules.get("must_have", [])
             # Check if any of the required modules are present
-            if not any(module in module_names for module in must_have_modules):
-                msg = f"{excluded_module} module cannot exist without one of the following: {', '.join(str(m) for m in must_have_modules)}"
-                logger.warning(msg)
-                messages.append(msg)
-                formulation_validation_json['excluded_modules'].append(
-                    {'module_name': excluded_module, 'must_have': must_have_modules}
+            if not any(m in module_names for m in must_have_modules):
+                msg = (
+                    f"{excluded_module} module cannot exist without one of: "
+                    f"{', '.join(str(m) for m in must_have_modules)}"
                 )
+                logger.warning(msg)
+                if rules.get("fatal", True):
+                    fatal_errors.append(msg)
+                else:
+                    nonfatal_errors.append(msg)
 
-    # Validate group requirements
-    for group_name, group_rules in formulation_validations['formulation_rules']['group_requirements'].items():
-        expected_counts = group_rules.get('expected_counts')
+    # 2) Check group_requirements
+    for group_name, group_rules in group_defs.items():
+        expected_counts = group_rules.get("expected_counts", [])
         count = group_counts.get(group_name, 0)
 
         # Validate the count against expected_counts
         if count not in expected_counts:
-            msg = f"{group_name} group is expected to have {expected_counts} modules, but it has {count}"
-            logger.warning(msg)
-            messages.append(msg)
-            formulation_validation_json['group_requirements'].append(
-                {'group_name': group_name, 'expected_counts': expected_counts, 'has_count': count}
+            # build the “1” vs “0 or 2” string
+            expected_str = join_with_or([str(c) for c in expected_counts])
+            # choose singular if exactly [1], otherwise plural
+            word = "module" if expected_counts == [1] else "modules"
+            msg = (
+                f"{group_name} group is expected to have "
+                f"{expected_str} {word}, but it has {count}"
             )
+            logger.warning(msg)
+            if group_rules.get("fatal", False):
+                fatal_errors.append(msg)
+            else:
+                nonfatal_errors.append(msg)
 
-    nwm_warning = False
-
-    # Check that required groups have at least one module
-    required_groups = formulation_validations['formulation_rules']['nwm_required_groups']
-    for required_group in required_groups:
-        if group_counts.get(required_group, 0) == 0:  # If a required group has no modules, set nwm_warning to True
-            nwm_warning = True
-            break  # No need to continue checking if one required group is missing
-
-    # Return the messages, validation details, and the NWM warning status
-    if messages:
-        formulation_validation_json['messages'] = messages
-        return formulation_validation_json, nwm_warning
-    else:
-        return None, nwm_warning
+    return fatal_errors, nonfatal_errors
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:
@@ -394,3 +428,9 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], modu
         CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
     return None
+
+
+def have_LSTM(run: CalibrationRun) -> bool:
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+    module_names = {formulation.module.name for formulation in formulations}
+    return 'LSTM' in module_names

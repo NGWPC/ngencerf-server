@@ -328,17 +328,18 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
 
 def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     """
-    Submit a job after setting initial status and submission date.
+    Submits a job by setting initial metadata and dispatching it to the appropriate execution function.
 
-    The specific job execution function is determined based on the job type
-    and executed accordingly.
+    - Sets the submission timestamp and updates the job status to 'SUBMITTED'.
+    - For CalibrationRun, performs additional preprocessing, validation, and input generation.
+    - Selects the appropriate job runner based on the job type (calibration, validation, forecast, etc.).
+    - For each run type, a git info file is created prior to execution.
+    - If an error occurs during submission, the job status is set to 'FAILED' and the error is logged.
 
-    Handles special preparation logic for calibration jobs internally
-    before delegating execution to the appropriate job function.
-
-    :param run: The BaseRun object (CalibrationRun, ValidationRun, etc.) to submit.
-    :param config_file: Optional configuration file for CalibrationRun preparation.
-    :return: A DRF Response instance if there is an issue; otherwise, None on success.
+    :param run: A CalibrationRun, ValidationRun, ForecastForcingDownloadRun, or ForecastRun object.
+    :param logging_config: Optional logging configuration to use when creating calibration job logs.
+    :return: None if successful; a DRF Response object if the job is not ready or fails preprocessing.
+    :raises CerfException: If the run type is unsupported or job execution fails.
     """
     with transaction.atomic():
         # Set submission date and status
@@ -400,14 +401,18 @@ def create_git_info(git_info_file: str) -> None:
 
 def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Response | None]:
     """
-    Prepare input files and validate readiness for a calibration job.
+    Prepare a CalibrationRun job by validating inputs, preprocessing data, and generating configuration files.
 
-    This function is called from `submit_job` to handle the special input
-    preparation logic for calibration jobs.
+    This function performs:
+    - Readiness validation using `ready_to_run`
+    - Forcing/observational data subsetting
+    - Input file generation using `create_input`
+
+    This is only used internally by `submit_job` for CalibrationRun.
 
     :param calibration_run: The CalibrationRun object to prepare.
     :return: A tuple (fatal_error: bool, Response). If preparation is successful, returns (False, None).
-             If there are validation errors, returns (bool, Response).
+             If errors occur, returns (True, error response) or (False, warning response).
     """
     error_object, config_file = ngen_cal_input.ready_to_run(calibration_run, build=True)
 
@@ -432,8 +437,9 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
         create_input(config_file)
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
-        logger.exception(f'Exception during create_input - {str(e)}')
-        raise CerfException(f'Exception during create_input - {str(e)}') from e
+        msg = f'Exception during create_input for Calibration Job {calibration_run.id} - {str(e)}'
+        logger.exception(msg)
+        raise CerfException(msg) from e
 
     logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
     return False, None
@@ -501,15 +507,25 @@ def run_generic_job_end_callback(
     :param check_if_failed: Function to check job status based on the environment.
     :param finalize_func: Function to execute finalization logic specific to the job type.
     """
+    # TODO Clean up some of the handlers so that we handle the exceptions here instead of the individual handlers
     job_description = get_job_description(run)
-    logger.info(f"Job end callback received for {job_description} with status{status}")
-    run.run_end = datetime.now(timezone.utc)
-    run.save(update_fields=["run_end"])
+    try:
+        logger.info(f"Job end callback received for {job_description} with status{status}")
 
-    failed_so_far = check_if_failed(run, status)
+        run.run_end = datetime.now(timezone.utc)
+        run.save(update_fields=["run_end"])
 
-    # Execute finalization logic
-    finalize_func(run, failed_so_far)
+        failed_so_far = check_if_failed(run, status)
+
+        # Execute finalization logic
+        finalize_func(run, failed_so_far)
+
+    except Exception:
+        logger.exception(f"Exception occurred during job end callback for {job_description}")
+        try:
+            set_job_status(run, StatusEnum.FAILED)
+        except Exception:
+            logger.exception(f"Failed to set FAILED status for {job_description}")
 
 
 def finalize_calibration_after_callback(run: CalibrationRun, failed_so_far: bool) -> None:
@@ -777,7 +793,7 @@ def subset_by_time_range(
             subset_df = chunk.loc[
                 (chunk['dateTime'] >= start_datetime) &
                 (chunk['dateTime'] <= end_datetime)
-            ].copy()  # Explicitly create a copy
+                ].copy()  # Explicitly create a copy
 
             # Convert back to naive timestamps for output (to match original format)
             subset_df['dateTime'] = subset_df['dateTime'].dt.tz_convert(None)

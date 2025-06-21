@@ -160,7 +160,7 @@ To update the code, do a `git pull` and run `runCerf.sh` again
 
 
 ## Manual Steps (optional if you're using runCerf.sh)
-These are the steps the `runCert` is performing.  You can skip them if you've successfully run `runCerf`.
+These are the steps the `runCerf` is performing.  You can skip them if you've successfully run `runCerf`.
 
 **Ensure that you are still in the `.venv-cerf` virtual environment**
 

@@ -6,8 +6,6 @@ from calibration.models.base_run import BaseRun
 class ValidationRun(BaseRun):
     calibration_run = models.ForeignKey('CalibrationRun', null=False, related_name="validations", on_delete=models.CASCADE, db_index=True)
     iteration = models.ForeignKey('Iteration', null=True, on_delete=models.CASCADE)
-    ngen_commit_hash = models.CharField(max_length=50, null=True)
-    ngen_cal_commit_hash = models.CharField(max_length=50, null=True)
     validation_type = models.CharField(max_length=20, null=False)
     validation_worker_name = models.CharField(max_length=20, null=True)
 
