@@ -239,6 +239,44 @@ class ValidationTimeControls(BaseSerializer):
             self.fields['simulation_end_time'].required = True
 
 
+class LoggingConfigSerializer(BaseSerializer):
+    logging_enabled = serializers.BooleanField(required=False, default=True)
+    modules = serializers.DictField(child=serializers.CharField(), default=[])
+
+    def validate_modules(self, value: dict) -> dict:
+        """
+        Lowercase all module names and validate:
+        - Keys (module names) must match known modules (case-insensitive),
+          or be the special case 'ngen'
+        - Values must be valid log levels from NgenLogging
+
+        Returns a new dict with all lowercase keys.
+        """
+        validator = enum_validator(NgenLogging)
+
+        valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
+        valid_modules.add('ngen')  # Special case
+
+        errors = {}
+        normalized = {}
+
+        for module_name, log_level in value.items():
+            lowered_name = module_name.lower()
+            if lowered_name not in valid_modules:
+                errors[module_name] = f"Invalid module name: '{module_name}'"
+                continue
+            try:
+                validator(log_level)
+                normalized[lowered_name] = log_level
+            except ValueError as e:
+                errors[module_name] = f"Invalid log level for module '{module_name}': {e}"
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return normalized
+
+
 class SaveTuningParametersSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     minimum = serializers.FloatField(required=True, allow_null=False)
@@ -416,7 +454,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)
     validation_times = ValidationTimeControls(required=False, allow_empty=True)
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
-
+    logging_config = LoggingConfigSerializer(required=False)
     objective_function = serializers.CharField(required=True, allow_null=True)
     streamflow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
     peak_flow_threshold = serializers.FloatField(required=False, allow_null=True, validators=[greater_than_zero])
@@ -922,44 +960,6 @@ class ForecastForcingDownloadJobSlurmCallbackRequestSerializer(ForecastForcingDo
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
-class LoggingConfigSerializer(BaseSerializer):
-    logging_enabled = serializers.BooleanField(required=False, default=True)
-    modules = serializers.DictField(child=serializers.CharField(), default=[])
-
-    def validate_modules(self, value: dict) -> dict:
-        """
-        Lowercase all module names and validate:
-        - Keys (module names) must match known modules (case-insensitive),
-          or be the special case 'ngen'
-        - Values must be valid log levels from NgenLogging
-
-        Returns a new dict with all lowercase keys.
-        """
-        validator = enum_validator(NgenLogging)
-
-        valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
-        valid_modules.add('ngen')  # Special case
-
-        errors = {}
-        normalized = {}
-
-        for module_name, log_level in value.items():
-            lowered_name = module_name.lower()
-            if lowered_name not in valid_modules:
-                errors[module_name] = f"Invalid module name: '{module_name}'"
-                continue
-            try:
-                validator(log_level)
-                normalized[lowered_name] = log_level
-            except ValueError as e:
-                errors[module_name] = f"Invalid log level for module '{module_name}': {e}"
-
-        if errors:
-            raise serializers.ValidationError(errors)
-
-        return normalized
-
-
 class RunCalibrationJob(CalibrationRunSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 
@@ -1268,4 +1268,3 @@ class GetSWETimeseriesDataResponseSerializer(GenericMessageResponseSerializer):
 ##################################
 class SlurmSubmitResponseSerializer(BaseSerializer):
     slurm_job_id = serializers.IntegerField(required=False, allow_null=False)
-

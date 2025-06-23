@@ -30,7 +30,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request, get_valid_path, truncate_large_fields, get_user_email
+    validate_request, get_valid_path, truncate_large_fields, get_user_email, generate_ngen_logging_config
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
     get_forcing_data_from_data_services, get_observational_data_from_data_services
 
@@ -434,17 +434,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
                 user_uploaded_forcing_dir) else None
 
-        # Export the logging data.  Start with any imported data
-        # Then use the run-time logging, if this job has been run
-        logging_config_file = get_ngen_logging_file(run, import_flag=True)
-        if not os.path.exists(logging_config_file):
-            logging_config_file = get_ngen_logging_file(run, import_flag=False)
-
-        if os.path.exists(logging_config_file):
-            with open(logging_config_file, 'r') as f:
-                logging_config = json.load(f)
-                calibration_run_data['logging_config'] = logging_config
-
         logger.info(f"Export data preparation completed in {time.time() - export_start:.2f}s")
 
     #############################
@@ -564,6 +553,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
     calibration_run_data['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
     logger.info(f"Optimization data processed in {time.time() - optimization_start:.2f}s")
+
+    # Export the logging data.
+    calibration_run_data['logging_config'] = generate_ngen_logging_config(run)
 
     logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data
