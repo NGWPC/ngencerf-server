@@ -110,7 +110,7 @@ def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
             description="Internal server error"
         )
     },
-    description="Save formulation tab data"
+    description="Validate the module list from the formulation tab."
 )
 @api_view(['POST'])
 @handle_exceptions
