@@ -119,7 +119,7 @@ def validate_formulation_tab(request) -> Response:
     Validate the module list from the formulation tab.
 
     :param request: The HTTP request containing POST data with a list of modules.
-    :return: A JSON response confirming the update along with any warnings or errors.
+    :return: A JSON response with any warnings or errors.
     """
     data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
