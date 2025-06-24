@@ -367,7 +367,7 @@ def save_gage(run: CalibrationRun, gage_id: str) -> dict | None:
     gage_dict = get_gage_by_id(gage_id)
     if not gage_dict:
         raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
-    gage = Gage(gage_id=gage_dict['gage_id'])
+    gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
 
     # Only update if the gage has changed
     if run.gage != gage:
