@@ -681,7 +681,7 @@ def subset_directory_by_time_range(
     start_time = time.time()
     logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers} for Calibration Job {run.id}')
 
-    if not os.path.isdir(input_directory):
+    if not input_directory or not os.path.isdir(input_directory):
         raise ValueError(f"Input path '{input_directory}' is not a directory for Calibration Job {run.id}")
 
     os.makedirs(output_directory, exist_ok=True)
@@ -886,7 +886,7 @@ def validate_csv_directory(dir_path: str) -> list[str]:
     :param dir_path: Path to the directory.
     :return: List of all error messages across files.
     """
-    if not os.path.isdir(dir_path):
+    if not dir_path or not os.path.isdir(dir_path):
         return [f"{dir_path} is not a directory"]
 
     errors = []

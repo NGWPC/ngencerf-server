@@ -241,6 +241,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
             if is_forcing_upload and (not forcing_dir or not os.path.exists(forcing_dir)):
                 error_object.add_warning('Forcing data must be uploaded')
+            else:
+                if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
+                    pass
 
             datafile['forcing_dir'] = forcing_dir
 
@@ -257,6 +260,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 elif build and user_uploaded_observational_file != observational_file:
                     logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
                     os.rename(user_uploaded_observational_file, observational_file)
+            else:
+                if not is_missing(run.observational_eds_file_path, "Observational file", error_object):
+                    pass
 
             datafile['obs_dir'] = observational_dir
 
