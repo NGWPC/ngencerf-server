@@ -352,10 +352,7 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
     group_counts = {grp_name: 0 for grp_name in group_defs}
 
     # Parse the groups for each module once and update the group counts
-    print('my_modules', my_modules)
     for module in my_modules:
-        print('module', module)
-        print('groups', module.groups.all())
         for group in module.groups.all():
             if group.name in group_counts:  # Only count groups that are in the group_requirements
                 group_counts[group.name] += 1

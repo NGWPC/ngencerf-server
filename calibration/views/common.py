@@ -757,10 +757,9 @@ def get_user_email(request: Request) -> str:
     return "Anonymous"
 
 
-def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict = None) -> None:
+def generate_ngen_logging_config(run: CalibrationRun | ValidationRun, logging_config_param: dict = None) -> dict:
     """
-    Create a JSON logging configuration file for a calibration or validation run, and a symbolic
-    link pointing to it using a consistent base name.
+    Generate the JSON logging configuration for a calibration or validation run.
 
     The generated config includes:
     - All valid modules (based on cached definitions)
@@ -769,17 +768,19 @@ def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config
 
     Overrides are applied in this order:
     1. A previously imported logging config file, if it exists
-    2. The provided `logging_config_param` dictionary
+    2. The config used in a previous run, if it exists
+    3. The provided `logging_config_param` dictionary
 
     All module names are treated case-insensitively and stored in lowercase in the output.
 
-    :param run: A CalibrationRun or ValidationRun instance for which to create the logging config.
+    :param run: A CalibrationRun or ValidationRun instance for which to generate the logging config.
     :param logging_config_param: A dictionary with optional overrides, e.g.:
         {
             "logging_enabled": False,
             "modules": {"cfe-s": "DEBUG"}
         }
         This is currently only provided by the UI when calling run_calibration_job.
+    :return: A dictionary representing the final logging config.
     """
     if not logging_config_param:
         logging_config_param = {}
@@ -792,31 +793,54 @@ def create_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config
     module_levels = {name: NgenLogging.INFO.value for name in valid_modules}
     logging_enabled = True  # default
 
-    # Apply overrides from an imported config file, if it exists
-    # This occurs during 'import' or 'update' operations
-    import_path = get_ngen_logging_file(run, import_flag=True)
-    if os.path.exists(import_path):
-        with open(import_path, "r") as f:
-            imported = json.load(f)
-            logging_enabled = imported.get("logging_enabled", logging_enabled)
-            for name, level in imported.get("modules", {}).items():
-                module_levels[name.lower()] = level
+    # Helper to apply overrides from a config file if it exists
+    def apply_config_file(path: str) -> None:
+        nonlocal logging_enabled, module_levels
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                config = json.load(f)
+                logging_enabled = config.get("logging_enabled", logging_enabled)
+                for name, level in config.get("modules", {}).items():
+                    module_levels[name.lower()] = level
+
+    # Apply from imported config (used during import/update)
+    apply_config_file(get_ngen_logging_file(run, import_flag=True))
+
+    # Apply from config used in previous run, if any
+    apply_config_file(get_ngen_logging_file(run, import_flag=False))
 
     # Apply overrides from the provided logging_config_param (used by UI during run_calibration_job)
     logging_enabled = logging_config_param.get("logging_enabled", logging_enabled)
     for name, level in logging_config_param.get("modules", {}).items():
         module_levels[name.lower()] = level
 
-    # Build final logging config
-    ngen_logging = {
+    return {
         "logging_enabled": logging_enabled,
         "modules": module_levels
     }
 
+
+def write_ngen_logging_file(run: CalibrationRun | ValidationRun, logging_config_param: dict) -> None:
+    """
+    Generate and write the logging config to a JSON file on disk, and create a symbolic link pointing
+    to it using a consistent base name.
+
+    This wraps the logic of generating the config and writing it to disk.
+
+    :param run: A CalibrationRun or ValidationRun instance.
+    :param logging_config_param: A dictionary with optional overrides, e.g.:
+        {
+            "logging_enabled": False,
+            "modules": {"cfe-s": "DEBUG"}
+        }
+        This is currently only provided by the UI when calling run_calibration_job.
+    """
+    logging_config = generate_ngen_logging_config(run, logging_config_param)
+
     # Write logging config to disk
     output_path = get_ngen_logging_file(run, import_flag=False)
     with open(output_path, "w") as f:
-        json.dump(ngen_logging, f, indent=4)
+        json.dump(logging_config, f, indent=4)
 
     # Replace or create a symbolic link with a consistent name
     symlink_path = os.path.join(run.job_data_dir, f'{get_ngen_logging_basename()}.json')
