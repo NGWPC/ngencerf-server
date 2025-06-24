@@ -730,12 +730,21 @@ class S3FileValidator(BaseSerializer):
     uri = S3UriField(allow_null=True)
 
 
+class ValidateFormulationRequestSerializer(BaseSerializer):
+    modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
+
+
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     formulation_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
     modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
+
+
+class ValidateFormulationResponseSerializer(BaseSerializer):
+    formulation_errors = serializers.JSONField(required=False)
+    formulation_warnings = serializers.JSONField(required=False)
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
