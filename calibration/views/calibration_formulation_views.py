@@ -8,8 +8,9 @@ from rest_framework.response import Response
 
 from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
-from calibration.util.calibration_validators import SaveFormulationRequestSerializer, \
-    ErrorResponseSerializer, SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
+from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
+    SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
+    SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
@@ -94,6 +95,55 @@ def get_sloth_parameters(run: CalibrationRun) -> list[dict[str, str]]:
     for sloth_param in sloth_parameters:
         sloth_param['maps_to_module'] = sloth_param.pop('maps_to_module__name')
     return sloth_parameters
+
+
+@extend_schema(
+    request=ValidateFormulationRequestSerializer,
+    responses={
+        200: ValidateFormulationResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Validate the module list from the formulation tab."
+)
+@api_view(['POST'])
+@handle_exceptions
+def validate_formulation_tab(request) -> Response:
+    """
+    Validate the module list from the formulation tab.
+
+    :param request: The HTTP request containing POST data with a list of modules.
+    :return: A JSON response with any warnings or errors.
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(ValidateFormulationRequestSerializer, data)
+    if error_return:
+        return error_return
+    
+    new_module_names = set(validator.get('modules'))
+
+    formulation_errors, formulation_warnings = validate_formulation(new_module_names)
+    
+    response = {}
+    if formulation_warnings:
+        response['formulation_warnings'] = formulation_warnings
+    if formulation_errors:
+        response['formulation_errors'] = formulation_errors
+
+    response_validator, error_response = validate_response(ValidateFormulationResponseSerializer, response)
+    if error_response:
+        return error_response
+
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -311,8 +361,6 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
     :return: A tuple (fatal_errors, nonfatal_errors), where each is a list of messages.
              If there are no errors of a given severity, that list will be empty.
     """
-    if not module_names:
-        return [], []
 
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
@@ -352,10 +400,7 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
     group_counts = {grp_name: 0 for grp_name in group_defs}
 
     # Parse the groups for each module once and update the group counts
-    print('my_modules', my_modules)
     for module in my_modules:
-        print('module', module)
-        print('groups', module.groups.all())
         for group in module.groups.all():
             if group.name in group_counts:  # Only count groups that are in the group_requirements
                 group_counts[group.name] += 1

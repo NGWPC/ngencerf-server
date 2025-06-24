@@ -29,7 +29,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, \
     get_observational_file_for_job, get_observational_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, create_ngen_logging_file
+from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
 from cerfServer.settings import NgenEnvironmentEnum
@@ -350,7 +350,7 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     try:
         # Special handling for calibration jobs
         if isinstance(run, CalibrationRun):
-            create_ngen_logging_file(run, logging_config)
+            write_ngen_logging_file(run, logging_config)
             fatal, response = prepare_calibration_job(run)
             if response:
                 if fatal:
@@ -681,7 +681,7 @@ def subset_directory_by_time_range(
     start_time = time.time()
     logger.info(f'Starting subsetting for directory {input_directory} with max_workers={max_workers} for Calibration Job {run.id}')
 
-    if not os.path.isdir(input_directory):
+    if not input_directory or not os.path.isdir(input_directory):
         raise ValueError(f"Input path '{input_directory}' is not a directory for Calibration Job {run.id}")
 
     os.makedirs(output_directory, exist_ok=True)
@@ -778,7 +778,8 @@ def subset_by_time_range(
             # Log the original start and end ranges in this chunk, including line numbers
             chunk_start = chunk['dateTime'].min()
             chunk_end = chunk['dateTime'].max()
-            logger.debug(f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end} for Calibration Job {run.id}')
+            logger.debug(
+                f'Chunk {file_basename} (lines {start_line}-{end_line}) date range: {chunk_start} - {chunk_end} for Calibration Job {run.id}')
 
             # Skip chunks that are entirely before the time range
             if chunk_end < start_datetime:
@@ -885,7 +886,7 @@ def validate_csv_directory(dir_path: str) -> list[str]:
     :param dir_path: Path to the directory.
     :return: List of all error messages across files.
     """
-    if not os.path.isdir(dir_path):
+    if not dir_path or not os.path.isdir(dir_path):
         return [f"{dir_path} is not a directory"]
 
     errors = []
