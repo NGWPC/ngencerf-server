@@ -361,8 +361,6 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
     :return: A tuple (fatal_errors, nonfatal_errors), where each is a list of messages.
              If there are no errors of a given severity, that list will be empty.
     """
-    if not module_names:
-        return [], []
 
     # Filter cached modules to match the given module names
     my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
