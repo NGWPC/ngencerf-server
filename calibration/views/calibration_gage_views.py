@@ -170,7 +170,7 @@ def get_gage(request: Request) -> Response:
     gage_dict = get_gage_by_id(gage_id)
 
     if not gage_dict:
-        return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+        return ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
 
     if not gage_dict['station_name']:
         gage_dict['station_name'] = "<unknown>"
@@ -236,7 +236,7 @@ def save_gage_tab(request: Request):
             if eds_errors_entry:
                 eds_errors.append(eds_errors_entry)
         except Gage.DoesNotExist:
-            return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+            return ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
 
         # Process GeoPackage source and delete user-uploaded file if necessary
         if geopackage_source_name and geopackage_source_name != GeopackageSourceEnum.UPLOAD.value:
@@ -352,7 +352,7 @@ def get_geopackage_image_url(geopackage_path: str) -> str | None:
         return None
 
 
-def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
+def save_gage(run: CalibrationRun, gage_id: str) -> dict | None:
     """
     Update the calibration run with a new gage and remove any previously uploaded files.
 
@@ -364,7 +364,10 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
     :return: A dictionary with error details if an error occurs; otherwise, None.
     :raises: Gage.DoesNotExist if the specified gage does not exist.
     """
-    gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
+    gage_dict = get_gage_by_id(gage_id)
+    if not gage_dict:
+        raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
+    gage = Gage(gage_id=gage_dict['gage_id'])
 
     # Only update if the gage has changed
     if run.gage != gage:
@@ -404,6 +407,7 @@ def save_gage(run: CalibrationRun, gage_id: int) -> dict | None:
                     'message': str(e),
                     'status_code': e.status_code if e.status_code else None
                 }
+    return None
 
 
 @extend_schema(

@@ -62,7 +62,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             try:
                 save_gage(run, gage_id)
             except Gage.DoesNotExist:
-                return None, None, ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+                return None, None, ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
 
             #############################
             # Formulations and Modules
