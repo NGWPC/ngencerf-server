@@ -473,9 +473,3 @@ def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], modu
         CalibrationSlothParam.objects.bulk_create(sloth_param_objects)
 
     return None
-
-
-def have_LSTM(run: CalibrationRun) -> bool:
-    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
-    module_names = {formulation.module.name for formulation in formulations}
-    return 'LSTM' in module_names

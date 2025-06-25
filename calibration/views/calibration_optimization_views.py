@@ -10,11 +10,10 @@ from rest_framework.response import Response
 
 from calibration.enums import OptimizationEnum, StatusEnum, MetricEnum
 from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
-from calibration.util.caching import get_cached_optimization_inputs
+from calibration.util.caching import get_cached_optimization_inputs, have_LSTM
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import have_LSTM
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, get_user_email
 
