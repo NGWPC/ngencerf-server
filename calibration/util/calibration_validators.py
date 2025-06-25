@@ -385,6 +385,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
     modules = serializers.ListSerializer(child=serializers.CharField(required=True, allow_null=False, allow_blank=False), required=True)
     is_archived = serializers.BooleanField(required=True, allow_null=True)
+    is_locked = serializers.BooleanField(required=True, allow_null=True)
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
 
 
@@ -502,6 +503,9 @@ class GetGitInfoResponseSerializer(BaseSerializer):
 
 class ArchiveJobRequestSerializer(CalibrationRunIdList):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
+
+class LockJobRequestSerializer(CalibrationRunIdList):
+    lock = serializers.BooleanField(default=True, allow_null=False, required=False)
 
 
 class GetCalibrationJobsRequestSerializer(BaseSerializer):

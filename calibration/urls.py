@@ -26,6 +26,7 @@ urlpatterns = [
     path('calibration/load_calibration_run/', calibration.views.calibration_import_export_views.load_calibration_run, name="loadCalibrationRun"),
     path('calibration/delete_jobs/', calibration_landing_views.delete_jobs, name="deleteJobs"),
     path('calibration/archive_jobs/', calibration_landing_views.archive_jobs, name="archiveJobs"),
+    path('calibration/lock_jobs/', calibration_landing_views.lock_jobs, name="lockJobs"),
     path('calibration/clone_job/', calibration_landing_views.clone_job, name="cloneJob"),
 
     ##################################
