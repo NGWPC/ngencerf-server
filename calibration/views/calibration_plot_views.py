@@ -4,7 +4,7 @@ import os
 import re
 from collections import defaultdict
 from functools import lru_cache
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from django.core.cache import cache
@@ -90,14 +90,19 @@ def get_plot_names(request: Request) -> Response:
     # Get filtered plot definitions for the run
     filtered_plot_definitions = get_filtered_plot_definitions(run)
 
-    # TODO Need to see if plots exist
+    fields = ['name', 'display_name', 'description', 'timeseries_available']
+    plot_names = []
 
-    # Create a list of plot names with descriptions
-    plot_names = [{'name': plot['name'], 'display_name': plot['display_name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
-                  for plot in filtered_plot_definitions]
+    for plot in filtered_plot_definitions:
+        try:
+            plot_file_path = plot_exists(run, plot)
+            if plot_file_path is not None:
+                plot_names.append({k: plot[k] for k in fields})
+            else:
+                logger.warning(f"Plot file does not exist for '{plot.get('name')}' for {get_job_description(run)}")
+        except Exception as e:
+            logger.warning(f"Skipping plot '{plot.get('name')}' for {get_job_description(run)} due to error: {e}")
 
-    print('filtered_plot_definitions', filtered_plot_definitions)
-    print('plot_names', plot_names)
     response = {
         f"{run_type.lower()}_run_id": run.id,
         'plot_names': plot_names,
@@ -155,8 +160,8 @@ def get_plot_names_for_comparison(request: Request) -> Response:
     ]
 
     # Create a list of plot names with descriptions
-    plot_names = [{'name': plot['name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
-                  for plot in filtered_plot_definitions]
+    fields = ['name', 'display_name', 'description', 'timeseries_available']
+    plot_names = [{k: plot[k] for k in fields} for plot in filtered_plot_definitions]
 
     response = {
         'plot_names': plot_names,
@@ -260,18 +265,17 @@ def get_plot(request: Request) -> Response:
 
     # Process plot_url if it doesn't exist in the cache or if force_include_plot is True
     if force_include_plot or not plot_url:
-        gage_id = calibration_run.gage.gage_id
+        try:
+            plot_file_path = plot_exists(run, plot_definition)
+        except Exception as e:
+            logger.error(f"Failed to determine plot path for '{plot_name}' for {get_job_description(run)}: {e}")
+            return ResponseError(f"Error while checking existence of plot '{plot_name}' for {run_type} {run.id}: {type(e).__name__}: {e}")
 
-        # Determine plot location based on plot definition
-        location = determine_plot_location(run, plot_definition)
-        plot_file_name = plot_definition['filename_mask'].format(gage_id=gage_id)
-        plot_file_path = os.path.join(location, plot_file_name)
-
-        if not os.path.exists(plot_file_path):
-            return ResponseError(f"Plot {plot_file_path} not found at expected location")
+        if not plot_file_path:
+            return ResponseError(f"Plot file does not exist for '{plot_name}' at expected location for {run_type} for {get_job_description(run)}")
 
         plot_url = png_to_base64_url(plot_file_path)
-        logger.info(f'Retrieving plot {plot_file_name} from {plot_file_path}')
+        logger.info(f'Retrieving plot from {plot_file_path}')
         plot_url_calculated = True
 
         # Cache the plot_url
@@ -607,6 +611,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
         case PlotDefinitionsEnum.OBJECTIVE_FUNCTION_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            if worker_dir is None:
+                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -632,6 +638,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
         case PlotDefinitionsEnum.METRIC_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            if worker_dir is None:
+                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -644,6 +652,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
         case PlotDefinitionsEnum.PARAMETER_EVOLUTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            if worker_dir is None:
+                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -657,6 +667,8 @@ def get_plot_data(run: CalibrationRun | ValidationRun | ForecastRun, plot_defini
         case PlotDefinitionsEnum.METRICS_VS_OBJECTIVE_FUNCTION:
             # Only get iterations for a specific worker
             worker_dir = find_worker_with_non_empty_plot_iteration(calibration_run)
+            if worker_dir is None:
+                raise CerfException(f'No plot directory found for {get_job_description(run)}')
             worker_name = get_worker_name_from_directory(worker_dir)
             iterations = get_iterations_for_calibration_job(calibration_run, worker_name=worker_name)
             total_count = len(iterations)
@@ -902,8 +914,9 @@ def count_and_read_file_in_chunks(file_path: str, start: int, limit: int) -> tup
             df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
 
         # Convert DataFrame to a list of dictionaries
-        data = df.to_dict(orient="records")
-
+        raw_data = df.to_dict(orient="records")
+        # Cast to avoid Pycharm warning
+        data = cast(list[dict[str, Any]], raw_data)
         return data, total_count
 
     except Exception as e:
@@ -1031,3 +1044,23 @@ def get_worker_name_from_directory(worker_dir: str) -> str:
     match = re.search(pattern, dir_name)
     # This will raise an AttributeError if the pattern is not found.
     return match.group(1)
+
+
+def plot_exists(run: CalibrationRun | ValidationRun | ForecastRun, plot_definition: dict[str, Any]) -> str | None:
+    """
+    Determines whether the plot file exists. Returns the full path if it exists, else None.
+
+    :param run: The job instance (CalibrationRun, ValidationRun, or ForecastRun).
+    :param plot_definition: Dictionary containing the plot definition, including filename_mask and location.
+    :return: Full path to the plot file if it exists, otherwise None.
+    """
+    try:
+        calibration_run = run if isinstance(run, CalibrationRun) else run.calibration_run
+        gage_id = calibration_run.gage.gage_id
+        location = determine_plot_location(run, plot_definition)
+        plot_file_name = plot_definition['filename_mask'].format(gage_id=gage_id)
+        plot_file_path = os.path.join(location, plot_file_name)
+        return plot_file_path if os.path.exists(plot_file_path) else None
+    except CerfException as e:
+        logger.warning(f"Could not determine plot file existence for plot '{plot_definition.get('name')}' - {e}")
+        return None
