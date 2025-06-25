@@ -19,12 +19,11 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
-from calibration.util.caching import get_cached_module_by_name
+from calibration.util.caching import get_cached_module_by_name, have_LSTM
 from calibration.util.calibration_validators import CalibrationRunSerializer, SaveTuningRequestSerializer, LoadTuningResponseSerializer, \
     GenericResponseSerializer, ErrorResponseSerializer, UploadUserParameterFile, UserParameterFileUploadResponse
 from calibration.util.ngen_locations import get_observational_file_for_job, get_forcing_dir_for_job
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import have_LSTM
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
     get_valid_path, format_datetime, get_user_email

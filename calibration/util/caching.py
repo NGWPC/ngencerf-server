@@ -5,7 +5,7 @@ from django.db.models import Prefetch
 
 from calibration.enums import PlotDefinitionsEnum
 from calibration.enums_vanilla import JobType
-from calibration.models import Module, Gage, OptimizationInput, ModuleGroup, CalibrationRun, ValidationRun, ForecastRun
+from calibration.models import Module, Gage, OptimizationInput, ModuleGroup, CalibrationRun, ValidationRun, ForecastRun, CalibrationFormulation
 
 
 def get_cached_module_by_name(module_name: str) -> Module | None:
@@ -137,17 +137,28 @@ def get_filtered_plot_definitions(
     :return: A list of dictionaries representing plot definitions that match the criteria, a single dictionary if first_match is True, or None if no match is found.
     """
     cached_plot_definitions = PlotDefinitionsEnum.get_choices_with_fields(
-        fields=['name', 'description', 'valid_optimizations', 'job_type', 'location', 'filename_mask', 'timeseries_available']
+        fields=['name', 'display_name', 'description', 'valid_optimizations', 'job_type', 'location', 'filename_mask', 'timeseries_available',
+                'lstm_flag']
     )
+
+    have_LSTM_flag = have_LSTM(run if isinstance(run, CalibrationRun) else run.calibration_run)
+
+    def matches_common_criteria(plot: dict) -> bool:
+        return (
+                (plot_name is None or plot['name'].lower() == plot_name.lower())
+                and (
+                        plot['job_type'] == JobType.CALIBRATION.value or
+                        (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
+                )
+        )
 
     if isinstance(run, ForecastRun):
         # Only return plots for Forecast jobs
         filtered_plots = [
             plot for plot in cached_plot_definitions
-            if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
-               and plot['job_type'] == JobType.FORECAST.value  # Ensure it's a forecast plot
+            if (plot_name is None or plot['name'].lower() == plot_name.lower())
+               and plot['job_type'] == JobType.FORECAST.value
         ]
-
     else:
         # Determine if validation plots should be included
         include_validation_plots = isinstance(run, ValidationRun) or (
@@ -156,22 +167,27 @@ def get_filtered_plot_definitions(
 
         optimization = run.optimization if isinstance(run, CalibrationRun) else run.calibration_run.optimization
 
-        # TODO LSTM doesn't have optimization.  We need to refine the list if the database to account for LSTM
-        # For now, if optimization is None, we'll just return the Plot.  If it doesn't exist, the UI will deal with it
-
-        # Filter plots based on job type, optimization, and optional plot_name criteria
-        filtered_plots = [
-            plot for plot in cached_plot_definitions
-            if (plot_name is None or plot['name'].lower() == plot_name.lower())  # Case-insensitive match for plot_name
-               and plot['valid_optimizations'] is not None  # Exclude plots with null valid_optimizations
-               and (optimization is None or optimization.name in json.loads(plot['valid_optimizations']))  # Check valid optimizations
-               and (
-                       plot['job_type'] == JobType.CALIBRATION.value or
-                       (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
-               )  # Include based on job type
-        ]
+        if have_LSTM_flag:
+            # LSTM mode: only include plots with lstm_flag=True
+            filtered_plots = [
+                plot for plot in cached_plot_definitions
+                if matches_common_criteria(plot) and plot.get('lstm_flag', False) is True
+            ]
+        else:
+            # Standard case: filter by valid_optimizations
+            filtered_plots = [
+                plot for plot in cached_plot_definitions
+                if matches_common_criteria(plot)
+                   and plot['valid_optimizations'] is not None
+                   and optimization.name in json.loads(plot['valid_optimizations'])
+            ]
 
     # Return the first match if first_match is True, otherwise return the list of matches
-    if first_match:
-        return filtered_plots[0] if filtered_plots else None
-    return filtered_plots
+    return filtered_plots[0] if first_match and filtered_plots else filtered_plots
+
+
+# Weird place for this function, but needed to be here to avoid circular imports
+def have_LSTM(run: CalibrationRun) -> bool:
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+    module_names = {formulation.module.name for formulation in formulations}
+    return 'LSTM' in module_names

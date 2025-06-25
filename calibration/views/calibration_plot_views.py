@@ -90,10 +90,14 @@ def get_plot_names(request: Request) -> Response:
     # Get filtered plot definitions for the run
     filtered_plot_definitions = get_filtered_plot_definitions(run)
 
+    # TODO Need to see if plots exist
+
     # Create a list of plot names with descriptions
-    plot_names = [{'name': plot['name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
+    plot_names = [{'name': plot['name'], 'display_name': plot['display_name'], 'description': plot['description'], 'timeseries_available': plot['timeseries_available']}
                   for plot in filtered_plot_definitions]
 
+    print('filtered_plot_definitions', filtered_plot_definitions)
+    print('plot_names', plot_names)
     response = {
         f"{run_type.lower()}_run_id": run.id,
         'plot_names': plot_names,
@@ -448,7 +452,6 @@ def get_plots_for_comparison(request: Request) -> Response:
             case _:
                 # Determine job type and retrieve the appropriate run instance
                 for calibration_run_id in calibration_run_ids:
-                    plot_data = None
                     best_run = None
 
                     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])

@@ -651,6 +651,7 @@ class GeopackageSerializer(BaseSerializer):
 
 class PlotListStaticSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
+    display_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     description = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     timeseries_available = serializers.BooleanField(required=True, allow_null=False)
 
