@@ -22,7 +22,8 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CalibrationRunSerializer, ImportResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
-    ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer
+    ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
+    LockJobRequestSerializer
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -449,6 +450,15 @@ def delete_jobs(request: Request) -> Response:
             })
             continue
 
+        # Can't delete if the job is locked
+        if run.is_locked:
+            job_results.append({
+                "message": f'Calibration Job {run.id} is locked for deletion',
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
+
         # Check for any running jobs (including the calibration job itself)
         running_jobs_error = has_running_associated_jobs(run)
         if running_jobs_error:
@@ -463,7 +473,7 @@ def delete_jobs(request: Request) -> Response:
         hard_delete(run)
 
         job_results.append({
-            "message": f"Calibration Id {calibration_run_id} and associated records have been deleted",
+            "message": f"Calibration Job {calibration_run_id} and associated records have been deleted",
             "calibration_run_id": calibration_run_id,
             "success": True
         })
@@ -545,10 +555,86 @@ def archive_jobs(request: Request) -> Response:
                 continue
 
         run.is_archived = archive
-        run.save(update_fields=['is_archived'])
+        # If we're archiving, then unlock it
+        run.is_locked = False if archive else run.is_locked
+        run.save(update_fields=['is_archived', 'is_locked'])
 
         job_results.append({
-            'message': f'Calibration Id {run.id} and associated records have been {"archived" if archive else "unarchived"}',
+            'message': f'Calibration Job {run.id} has been {"archived" if archive else "unarchived"}',
+            "calibration_run_id": calibration_run_id,
+            "success": True
+        })
+
+    response = {"jobs": job_results}
+
+    response_validator, error_response = validate_response(CalibrationRunListResponse, response)
+    if error_response:
+        return error_response
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=LockJobRequestSerializer,
+    responses={
+        200: CalibrationRunListResponse,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Lock of unlock a list of calibration jobs"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def lock_jobs(request: Request) -> Response:
+    """
+    Lock or unlock multiple calibration jobs.  Locking a job prevents it from being deleted
+
+    :param request: The HTTP request object.
+    :return: A Response object with the lock confirmation.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(LockJobRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    calibration_run_ids = validator.get('calibration_run_ids')
+    lock = validator.get('lock')
+
+    job_results = []
+
+    # Process each calibration_run_id in the list
+    for calibration_run_id in calibration_run_ids:
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+        if error_return:
+            job_results.append({
+                "message": error_return.data.get('message'),
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
+
+        if lock == run.is_locked:
+            job_results.append({
+                "message": f'Calibration Job {run.id} is {"already" if lock else "not"} locked',
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
+
+        run.is_locked = lock
+        run.save(update_fields=['is_locked'])
+
+        job_results.append({
+            'message': f'Calibration Job {run.id} has been {"locked" if lock else "unlocked"}',
             "calibration_run_id": calibration_run_id,
             "success": True
         })

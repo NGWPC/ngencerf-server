@@ -218,7 +218,7 @@ def get_jobs(
         'calibration_start_period', 'calibration_end_period',
         'status__name', 'job_genesis', 'created_at',
         'objective_function__name', 'optimization__name',
-        'is_archived'
+        'is_archived', 'is_locked'
     ).select_related(
         'gage', 'status', 'objective_function', 'optimization'
     ).prefetch_related(formulations_prefetch)
@@ -240,6 +240,7 @@ def get_jobs(
             'objective_function': run.objective_function.name if run.objective_function else None,
             'optimization_algorithm': run.optimization.name if run.optimization else None,
             'is_archived': run.is_archived,
+            'is_locked': run.is_locked,
             'submit_date': run.submit_date,
             'formulation_name': run.user_formulation_name,
             'calibration_start_period': run.calibration_start_period,
