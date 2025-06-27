@@ -23,9 +23,9 @@ from calibration.util.ngen_locations import get_realization_file_path, get_metri
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
     get_validation_special_performance_file, get_forecast_forcing_download_performance_file, \
     get_forecast_performance_file, get_params_iteration_file
-from calibration.views.calibration_formulation_views import have_LSTM
 from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
+from calibration.util.caching import have_LSTM
 
 logger = logging.getLogger(__name__)
 

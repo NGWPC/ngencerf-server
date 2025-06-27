@@ -355,15 +355,18 @@ class Command(BaseCommand):
         values = [
             {
                 "name": "Hydrograph evolution",
+                "display_name": "Hydrograph evolution",
                 "description": "Time series plot comparing streamflow simulations from the control, the best iteration and the last iteration with the observed streamflow",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
                 "filename_mask": "{gage_id}_hydrograph_iteration.png",
-                "timeseries_available": True
+                "timeseries_available": True,
+                "lstm_flag": True
             },
             {
                 "name": "Objective Function evolution",
+                "display_name": "Objective Function evolution",
                 "description": "The evolution of objective function during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
@@ -372,14 +375,17 @@ class Command(BaseCommand):
             },
             {
                 "name": "Metric evolution",
+                "display_name": "Metric evolution",
                 "description": "The evolution of objective function and all other metrics during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_metric_iteration.png"
+                "filename_mask": "{gage_id}_metric_iteration.png",
+                "lstm_flag": True
             },
             {
                 "name": "Parameter evolution",
+                "display_name": "Parameter evolution",
                 "description": "The evolution of each calibration parameter during all iterations with the best iteration highlighted in red",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
@@ -388,14 +394,17 @@ class Command(BaseCommand):
             },
             {
                 "name": "Scatterplot streamflow",
+                "display_name": "Scatterplot streamflow",
                 "description": "Scatter plot of streamflow simulations from the control, the best iteration and the last iteration vs the observed streamflow",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png"
+                "filename_mask": "{gage_id}_scatterplot_streamflow_iteration.png",
+                "lstm_flag": True
             },
             {
                 "name": "Metrics vs Objective Function",
+                "display_name": "Metrics vs Objective Function",
                 "description": "Scatter plot of objective function vs each of the other evaluation metrics from all iterations (to examine tradeoffs between the objective function and other metrics)",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
@@ -404,63 +413,77 @@ class Command(BaseCommand):
             },
             {
                 "name": "Stream Flow Precipitation",
+                "display_name": "Stream Flow Precipitation",
                 "description": "Same as Hydrograph Evolution but with the precipitation time series added at the top using an inverted y-axis",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_streamflow_precip_iteration.png"
+                "filename_mask": "{gage_id}_streamflow_precip_iteration.png",
+                "lstm_flag": True
             },
             {
                 "name": "Flow Duration Curves",
+                "display_name": "Flow Duration Curves",
                 "description": "Comparison of the flow duration curves for the streamflow simulations from the control, the best iteration, the last iteration and the observed streamflow",
                 "location": "plot_iteration",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_fdc_iteration.png"
+                "filename_mask": "{gage_id}_fdc_iteration.png",
+                "lstm_flag": True
             },
             {
                 "name": "Cost History",
+                "display_name": "Cost History",
                 "description": "Comparison of the best global, local and best cost values at each iteration",
                 "location": "output_calibration",
                 "valid_optimizations": "[\"GWO\", \"PSO\"]",
                 "job_type": JobType.CALIBRATION.value,
-                "filename_mask": "{gage_id}_cost_hist.png"
+                "filename_mask": "{gage_id}_cost_hist.png",
             },
             {
                 "name": "Bar Chart Metrics",
+                "display_name": "Bar Chart Metrics",
                 "description": "Bar chart comparing metrics from best and control validation runs for each evaluation period of the best global, local and best cost values at each iteration",
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
-                "filename_mask": "{gage_id}_barplot_metrics_valid_run.png"
+                "filename_mask": "{gage_id}_barplot_metrics_valid_run.png",
+                "lstm_flag": True
             },
             {
                 "name": "Flow Duration Curves Validation",
+                "display_name": "Flow Duration Curves Validation",
                 "description": "Plot of flow duration curve comparing best and control validation runs with observation for each evaluation period",
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
-                "filename_mask": "{gage_id}_fdc_valid_run.png"
+                "filename_mask": "{gage_id}_fdc_valid_run.png",
+                "lstm_flag": True
             },
             {
                 "name": "Hydrograph Validation",
+                "display_name": "Hydrograph Validation",
                 "description": "Plot comparing streamflow times series from best and control validation runs with observed streamflow",
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
                 "filename_mask": "{gage_id}_hydrograph_valid_run.png",
-                "timeseries_available": True
+                "timeseries_available": True,
+                "lstm_flag": True
             },
             {
                 "name": "Streamflow Validation Precipitation",
+                "display_name": "Streamflow Validation Precipitation",
                 "description": "Same as Hydrograph Validation but with the precipitation time series added at the top using an inverted y-axis",
                 "location": "plot_valid",
                 "valid_optimizations": "[\"GWO\", \"PSO\", \"DDS\"]",
                 "job_type": JobType.VALIDATION.value,
-                "filename_mask": "{gage_id}_streamflow_precip_valid_run.png"
+                "filename_mask": "{gage_id}_streamflow_precip_valid_run.png",
+                "lstm_flag": True
             },
             {
                 "name": "Forecast Hydrograph",
+                "display_name": "Forecast Hydrograph",
                 "description": "Time series of streamflow forecasts based on the calibrated formulation and parameters",
                 "location": "forecast_output",
                 "job_type": JobType.FORECAST.value,
@@ -468,6 +491,7 @@ class Command(BaseCommand):
             },
             {
                 "name": "Calibration Metrics",
+                "display_name": "Calibration Metrics",
                 "description": "Comparison of metrics from best validation runs for multimple calibration runs",
                 "location": "",
                 "job_type": JobType.COMPARISON.value,
@@ -477,11 +501,13 @@ class Command(BaseCommand):
         ]
 
         for v in values:
-            PlotDefinition.objects.update_or_create(name=v['name'], defaults={"is_active": v.get('is_active', True),
+            PlotDefinition.objects.update_or_create(name=v['name'], defaults={"display_name": v['display_name'],
+                                                                              "is_active": v.get('is_active', True),
                                                                               "description": v['description'],
                                                                               "location": v['location'],
                                                                               "valid_optimizations": v.get('valid_optimizations'),
                                                                               "job_type": v['job_type'],
                                                                               "filename_mask": v['filename_mask'],
                                                                               "timeseries_available": v.get('timeseries_available', False),
+                                                                              "lstm_flag": v.get('lstm_flag', False),
                                                                               "created_by": self.user})

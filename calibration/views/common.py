@@ -893,3 +893,4 @@ class ErrorReport:
     @property
     def errors(self) -> list[str]:
         return self._errors
+
