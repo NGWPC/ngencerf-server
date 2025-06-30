@@ -30,7 +30,7 @@ from calibration.views.calibration_import_export_views import load_calibration_r
 from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email
+    validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email, get_elapsed_str
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -154,7 +154,7 @@ def create_and_run_validation(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -215,7 +215,7 @@ def create_and_run_forecast(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -259,7 +259,7 @@ def get_footer(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -297,7 +297,7 @@ def get_git_info(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data, default=str)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 
@@ -367,7 +367,7 @@ def clone_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -483,7 +483,7 @@ def delete_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -570,7 +570,7 @@ def archive_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -644,7 +644,7 @@ def lock_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -745,5 +745,5 @@ def import_job(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)

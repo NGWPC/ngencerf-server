@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import timedelta, datetime
 from functools import wraps
 from typing import Type, Any, Callable, cast
@@ -789,7 +790,7 @@ def generate_ngen_logging_config(run: CalibrationRun | ValidationRun, logging_co
     valid_modules = {m.name.lower() for m in get_cached_modules_with_groups().values()}
     valid_modules.add('ngen')
 
-    # Default all modules to INFO level
+    # Default all modules to INFO lvl
     module_levels = {name: NgenLogging.INFO.value for name in valid_modules}
     logging_enabled = True  # default
 
@@ -800,8 +801,8 @@ def generate_ngen_logging_config(run: CalibrationRun | ValidationRun, logging_co
             with open(path, "r") as f:
                 config = json.load(f)
                 logging_enabled = config.get("logging_enabled", logging_enabled)
-                for name, level in config.get("modules", {}).items():
-                    module_levels[name.lower()] = level
+                for name, lvl in config.get("modules", {}).items():
+                    module_levels[name.lower()] = lvl
 
     # Apply from imported config (used during import/update)
     apply_config_file(get_ngen_logging_file(run, import_flag=True))
@@ -894,3 +895,21 @@ class ErrorReport:
     def errors(self) -> list[str]:
         return self._errors
 
+
+def get_elapsed_str(request: Request) -> str:
+    """
+    Compute elapsed time since the request started using `request._request._start_time`.
+
+    This is intended to be called near the end of a view for logging purposes.
+
+    :param request: The DRF Request object.
+    :return: A string like " in 0.253s", or "" if unavailable.
+    """
+    raw_request = getattr(request, '_request', None)
+    start_time = getattr(raw_request, '_start_time', None)
+
+    if start_time is None:
+        return ""
+
+    elapsed = time.perf_counter() - start_time
+    return f" in {elapsed:.3f}s"
