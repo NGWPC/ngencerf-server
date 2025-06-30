@@ -27,7 +27,7 @@ from calibration.util.ngen_locations import get_calibration_stdout_file, get_val
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError
+    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,7 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         return error_response
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["iteration_data"], max_length=10))}'
     )
 
@@ -249,7 +249,7 @@ def get_log_names(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -401,7 +401,7 @@ def get_log(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -480,7 +480,7 @@ def get_log_status(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -628,7 +628,7 @@ def get_calibration_job_zip(request: Request) -> HttpResponse:
     zip_name = f"{os.path.basename(job_data_dir)}_{calibration_run.user_formulation_name}"
     response['Content-Disposition'] = f'attachment; filename="{zip_name}.zip"'
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
     return response
 
 
@@ -731,7 +731,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -890,7 +890,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         response.close = (lambda original_close=response.close:
                           lambda: (cleanup(), original_close())[1])()
 
-        logger.debug(f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} from {get_caller_name()}()')
+        logger.debug(f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
         return response
 
     except IOError as e:

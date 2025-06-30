@@ -22,7 +22,7 @@ from calibration.util.ngen_locations import get_geopackage_dir_for_job, get_swe_
     get_output_validation_iteration_plot_dir, get_output_validation_plot_dir, get_output_validation_run_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, get_validation_run, png_to_base64_url, get_job_description, \
-    validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_id, get_user_email
+    validate_response, ResponseError, truncate_large_fields, find_validation_worker_with_matching_id, get_user_email, get_elapsed_str
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +247,7 @@ def get_swe_images_by_date(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["lumped_map", "raw_map", "sim_map"]))}'
     )
 
@@ -317,7 +317,7 @@ def get_swe_timeseries_data(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["swe_timeseries_image", "swe_timeseries_data"], max_length=50))}'
     )
 

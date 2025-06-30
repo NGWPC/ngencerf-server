@@ -30,7 +30,7 @@ from calibration.views.calibration_tuning_views import get_times, get_parameters
     save_parameters, get_time_range, has_user_selected_tuning_parameters
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
-    validate_request, get_valid_path, truncate_large_fields, get_user_email, generate_ngen_logging_config
+    validate_request, get_valid_path, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
     get_forcing_data_from_data_services, get_observational_data_from_data_services
 
@@ -353,7 +353,7 @@ def export_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ExportResponseSerializer, calibration_run_data)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -608,7 +608,7 @@ def load_calibration_run(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
     )
 
