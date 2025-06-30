@@ -189,8 +189,8 @@ class SlothParameters(BaseSerializer):
 
 
 class TimeRangeSerializerAllowEmpty(BaseSerializer):
-    start_time = serializers.DateTimeField(required=False)
-    end_time = serializers.DateTimeField(required=False)
+    start_time = serializers.DateTimeField(required=False, allow_null=True)
+    end_time = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class CalibrationTimeControls(BaseSerializer):
