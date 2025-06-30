@@ -1,5 +1,3 @@
-from django.db import models
-
 from calibration.models.base_run import BaseRun
 
 

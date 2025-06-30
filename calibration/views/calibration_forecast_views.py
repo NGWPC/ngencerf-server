@@ -15,7 +15,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
 from calibration.util.ngen_locations import get_forecast_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
-    ResponseError, get_user_email
+    ResponseError, get_user_email, get_elapsed_str
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def clone_and_run_forecast_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CreateAndRunForecastResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -175,6 +175,6 @@ def delete_forecast_job(request: Request) -> Response:
     response_validator, error_response = validate_response(DeleteForecastRunResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)

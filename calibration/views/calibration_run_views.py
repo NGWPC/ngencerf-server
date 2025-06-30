@@ -33,7 +33,7 @@ from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import ResponseError, get_calibration_run, handle_exceptions, validate_response, validate_request, \
     generate_custom_token, TOKEN_SLURM_SCOPE, auth_scope_required, get_validation_run, get_forecast_run, truncate_large_fields, \
-    get_forecast_forcing_download_run, join_with_or, get_user_email, get_job_description
+    get_forecast_forcing_download_run, join_with_or, get_user_email, get_job_description, get_elapsed_str
 from calibration.views.end_of_job_processing import read_calibration_output
 
 logger = logging.getLogger(__name__)
@@ -189,9 +189,12 @@ def get_status(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10))}'
     )
+    logger.debug(f"[DEBUG] view request type: {type(request)}")
+    logger.debug(f"[DEBUG] request._request type: {type(getattr(request, '_request', None))}")
+    logger.debug(f"[DEBUG] elapsed_time on _request: {getattr(getattr(request, '_request', None), 'elapsed_time', 'MISSING')}")
 
     return Response(response_validator.data)
 
@@ -271,7 +274,7 @@ def get_status_for_comparison(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(response_validator.data)}'
     )
 
@@ -329,7 +332,7 @@ def run_calibration(request: Request) -> Response:
     if error_return:
         return error_return
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -417,7 +420,7 @@ def process_calibration_output(request):
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -467,7 +470,7 @@ def process_swe_timeseries(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializerWithValidator, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -498,7 +501,7 @@ def update_mpi_rules(request: Request) -> Response:
     response_validator, error_response = validate_response(MPINodesRulesResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -574,7 +577,7 @@ def report_iteration(request):
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
         return Response(response_validator.data)
 
@@ -630,7 +633,7 @@ def get_iteration(request: Request) -> Response:
     response_validator, error_response = validate_response(GetIterationsResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -732,7 +735,7 @@ def cancel_job(request: Request) -> Response:
     response_validator, error_response = validate_response(CancelJobResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -935,7 +938,7 @@ def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_en
         logger.info(f'{get_job_description(run)} is ending')
         job_end_callback_fn(run, slurm_status)
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}()')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
     return Response(status=status.HTTP_202_ACCEPTED)
 
 

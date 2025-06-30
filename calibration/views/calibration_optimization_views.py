@@ -15,7 +15,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Lo
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
-from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, get_user_email
+from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, get_user_email, \
+    get_elapsed_str
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +81,7 @@ def load_optimization_tab(request) -> Response:
     response_validator, error_response = validate_response(LoadOptimizationResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -217,7 +218,7 @@ def save_optimization_tab(request) -> Response:
         response_validator, error_response = validate_response(GenericResponseSerializer, response)
         if error_response:
             return error_response
-        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}() - {json.dumps(response_validator.data)}')
+        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
         return Response(response_validator.data)
 
 

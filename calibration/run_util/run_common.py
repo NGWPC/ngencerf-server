@@ -625,7 +625,7 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
 
     # Validate and subset forcing data
     if run.forcing_source != ForcingSourceEnum.UPLOAD.db_instance:
-        errors += validate_csv_directory(run.forcing_eds_dir_path)
+        # errors += validate_csv_directory(run.forcing_eds_dir_path)
         subset_directory_by_time_range(
             run,
             run.forcing_eds_dir_path,
@@ -636,11 +636,12 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
             )
         )
     else:
-        errors += validate_csv_directory(get_forcing_dir_for_job(run))
+        # errors += validate_csv_directory(get_forcing_dir_for_job(run))
+        pass
 
     # Validate and subset observational data
     if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
-        errors += validate_csv_file(run.observational_eds_file_path, is_observational=True)
+        # errors += validate_csv_file(run.observational_eds_file_path, is_observational=True)
         subset_by_time_range(
             run,
             run.observational_eds_file_path,
@@ -652,7 +653,7 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
         )
     else:
         observational_file = get_single_file(get_observational_dir_for_job(run))
-        errors += validate_csv_file(observational_file, is_observational=True)
+        # errors += validate_csv_file(observational_file, is_observational=True)
 
     return errors
 

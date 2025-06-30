@@ -29,7 +29,7 @@ from calibration.views.calibration_evaluation_views import get_iterations_for_ca
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, CerfException, \
     ResponseError, truncate_large_fields, get_validation_run, get_job_description, \
-    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url, process_worker_dirs, get_user_email
+    get_forecast_run, replace_nan_and_inf_with_none, png_to_base64_url, process_worker_dirs, get_user_email, get_elapsed_str
 from calibration.views.get_jobs_views import get_validation_jobs_internal
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,7 @@ def get_plot_names(request: Request) -> Response:
         return error_response
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(response_validator.data)}'
     )
 
@@ -172,7 +172,7 @@ def get_plot_names_for_comparison(request: Request) -> Response:
         return error_response
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(response_validator.data)}'
     )
 
@@ -331,7 +331,7 @@ def get_plot(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["plot_url", "plot_data"], max_length=10))}'
     )
 
@@ -518,7 +518,7 @@ def get_plots_for_comparison(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}() - '
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(response_validator.data)}'
     )
 
