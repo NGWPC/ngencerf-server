@@ -612,16 +612,26 @@ def count_rows_in_csv(file_path: str) -> int:
         return sum(1 for _ in file) - 1
 
 
-def parse_duration(duration_str: str) -> timedelta:
+def parse_duration(duration_str: str | None) -> timedelta | None:
     """
-    Converts a duration string (HH:MM:SS) into a timedelta object.
+    Converts a duration string (D-HH:MM:SS or HH:MM:SS) into a timedelta object.
 
-    :param duration_str: The duration string in HH:MM:SS format.
+    :param duration_str: The duration string in D-HH:MM:SS or HH:MM:SS format.
     :return: A timedelta object representing the duration.
     """
-
-    hours, minutes, seconds = map(int, duration_str.split(':'))
-    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    if not duration_str:
+        return None
+    try:
+        if '-' in duration_str:
+            days_part, time_part = duration_str.split('-')
+            days = int(days_part)
+        else:
+            time_part = duration_str
+            days = 0
+        hours, minutes, seconds = map(int, time_part.split(':'))
+        return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
+    except (ValueError, TypeError):
+        return None
 
 
 def parse_size_to_kb(size_str: str | None) -> float | None:
@@ -691,12 +701,12 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
                 # Collect data from the .batch line with fallback to None for missing fields
                 batch_metrics = {
                     'slurm_job_id': job_id,
-                    'elapsed_time': parse_duration(row.get('Elapsed', '')) if row.get('Elapsed') else None,
-                    'num_cpus': int(row.get('NCPUS', 0)) if row.get('NCPUS') else None,
-                    'cpu_time': parse_duration(row.get('CPUTime', '')) if row.get('CPUTime') else None,
-                    'max_rss': parse_size_to_kb(row.get('MaxRSS', None)),
-                    'max_disk_read': parse_size_to_kb(row.get('MaxDiskRead', None)),
-                    'max_disk_write': parse_size_to_kb(row.get('MaxDiskWrite', None)),
+                    'elapsed_time': parse_duration(row.get('Elapsed')),
+                    'num_cpus': int(row.get('NCPUS')) if row.get('NCPUS') else None,
+                    'cpu_time': parse_duration(row.get('CPUTime')),
+                    'max_rss': parse_size_to_kb(row.get('MaxRSS')),
+                    'max_disk_read': parse_size_to_kb(row.get('MaxDiskRead')),
+                    'max_disk_write': parse_size_to_kb(row.get('MaxDiskWrite')),
                     'reserved_time': reserved_time  # This will be updated later if available
                 }
             else:
@@ -707,7 +717,7 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
                     logger.warning(f'Missing fields for non-batch JobID {job_id}: {", ".join(missing_fields)}')
 
                 # Save the reserved time from the non-.batch line
-                reserved_time = parse_duration(row.get('Planned', '')) if row.get('Planned') else None
+                reserved_time = parse_duration(row.get('Planned'))
 
     if batch_metrics:
         # Update the reserved_time for the batch metrics
