@@ -973,13 +973,21 @@ def get_bar_chart_metrics(calibration_run_ids: list[int], validation_run_ids: li
     valid_periods = ValidationMetricPeriod.get_names()
     valid_run_types = ValidationType.get_names()
 
-    # Query ValidationMetrics (for valid_best and valid_control runs, and optional alt iterations if validation_run_ids are given)
+    # Query ValidationMetrics (for valid_best and valid_control runs)
     validation_metrics_qs = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
+      validation_run__calibration_run_id__in=calibration_run_ids,
+      run_type__in=valid_run_types,
+      period__in=valid_periods
+    )
+
+    validation_metrics_qs_alt = None
+    if len(validation_run_ids) > 0:
+      # Query ValidationMetrics (for alt iteration) and concatenate with previous query
+      validation_metrics_qs_alt = ValidationMetrics.objects.select_related('metric', 'validation_run').filter(
         validation_run__calibration_run_id__in=calibration_run_ids,
+        validation_run_id__in=validation_run_ids,
         period__in=valid_periods
-      ).filter(
-        (Q(run_type__in=valid_run_types) | Q(validation_run_id__in=validation_run_ids))
-      )
+      ).exclude(run_type__in=valid_run_types)
 
     # Query NWMRetrospectiveMetrics (for nwm_retro runs)
     nwm_metrics_qs = NWMRetrospectiveMetrics.objects.select_related('metric').filter(
@@ -1009,6 +1017,17 @@ def get_bar_chart_metrics(calibration_run_ids: list[int], validation_run_ids: li
 
         combined_data_by_run[calibration_run_id][(run, period)][metric_name] = metric.metric_value
         all_metric_names.add(metric_name)
+    
+    if validation_metrics_qs_alt:
+      # Process ValidationMetrics (alt iteration)
+      for metric in validation_metrics_qs_alt:
+          calibration_run_id = metric.validation_run.calibration_run_id
+          run = metric.run_type.replace('valid_','')
+          period = metric.period
+          metric_name = metric.metric.name  # e.g., 'Corr', 'MAE', etc.
+
+          combined_data_by_run[calibration_run_id][(run, period)][metric_name] = metric.metric_value
+          all_metric_names.add(metric_name)
 
     # Flatten into final output format
     final_output = {}
