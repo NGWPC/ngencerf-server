@@ -492,7 +492,7 @@ class Command(BaseCommand):
             {
                 "name": "Calibration Metrics",
                 "display_name": "Calibration Metrics",
-                "description": "Comparison of metrics from best validation runs for multimple calibration runs",
+                "description": "Comparison of metrics from best validation runs for multiple calibration runs",
                 "location": "",
                 "job_type": JobType.COMPARISON.value,
                 "filename_mask": "",
