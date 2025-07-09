@@ -442,6 +442,8 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
                 fatal_errors.append(msg)
             else:
                 nonfatal_errors.append(msg)
+            if count > 1 and 'Noah-OWP-Modular' in module_names:
+                nonfatal_errors.append(f"Noah-OWP-Modular will not be used for {group_name}")
 
     return fatal_errors, nonfatal_errors
 
