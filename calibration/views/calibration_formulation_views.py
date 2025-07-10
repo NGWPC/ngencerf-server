@@ -437,6 +437,8 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
                 f"{group_name} group is expected to have "
                 f"{expected_str} {word}, but it has {count}"
             )
+            if count > 1 and 'Noah-OWP-Modular' in module_names:
+                msg += f", and Noah-OWP-Modular will not be used for {group_name}."
             logger.warning(msg)
             if group_rules.get("fatal", False):
                 fatal_errors.append(msg)
