@@ -269,8 +269,6 @@ def save_formulation_tab(request) -> Response:
         response['formulation_warnings'] = formulation_warnings
     if formulation_errors:
         response['formulation_errors'] = formulation_errors
-    if formulation_messages:
-        response['formulation_messages'] = formulation_messages
     if eds_errors:
         response['eds_errors'] = eds_errors
 
