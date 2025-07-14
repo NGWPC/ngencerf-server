@@ -455,7 +455,11 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
             else:
                 nonfatal_errors.append(msg)
     
-    # 3) Check for completeness
+    # 3) If no errors, warnings so far, indicate that the formulation is Calibratable
+    if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
+      info_messages.append('Formulation is Calibratable.')
+    
+    # 4) Check for completeness
     module_complete = True
     for module_name in formulation_validations["formulation_rules"]["complete_module_list"]:
         if type(module_name) is list:
@@ -473,8 +477,6 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
             module_complete = False
             break
     if not module_complete:
-        if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
-          info_messages.append('Formulation is Calibratable.')
         nonfatal_errors.append('Formulation Incomplete. All NWM v3 Output Variables will not be produced.')
     else:
         info_messages.append('Formulation Complete. All NWM v3 Output Variables will be produced.')
