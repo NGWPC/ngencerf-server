@@ -750,11 +750,13 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 class ValidateFormulationResponseSerializer(BaseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
+    formulation_messages = serializers.JSONField(required=False)
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
+    formulation_messages = serializers.JSONField(required=False)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
 
 
