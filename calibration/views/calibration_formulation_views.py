@@ -477,9 +477,9 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
             module_complete = False
             break
     if not module_complete:
-        nonfatal_errors.append('Formulation Incomplete. All NWM v3 Output Variables will not be produced.')
+        nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.')
     else:
-        info_messages.append('Formulation Complete. All NWM v3 Output Variables will be produced.')
+        info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
     
     return error_list()
 
