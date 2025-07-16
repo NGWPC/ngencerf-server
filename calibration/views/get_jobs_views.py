@@ -10,7 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
-from calibration.models import CalibrationFormulation, CalibrationRun, ValidationRun, IterationParameter, ForecastRun
+from calibration.models import CalibrationFormulation, CalibrationRun, CalibrationStopCriteria, ValidationRun, IterationParameter, ForecastRun
 from calibration.util.calibration_validators import EmptySerializer, GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer
@@ -60,7 +60,8 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     jobs = get_jobs(request.user,
                     include_validation_data=GetValidationJobsScope.IDS,
                     run_status=[StatusEnum.DONE],
-                    include_archived=include_archived
+                    include_archived=include_archived,
+                    include_stop_criteria=True
                     )
 
     response = {'jobs': jobs}
@@ -111,7 +112,8 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
 
     jobs = get_jobs(request.user,
                     run_status=[StatusEnum.DONE],
-                    include_archived=include_archived
+                    include_archived=include_archived,
+                    include_stop_criteria=True
                     )
 
     response = {'jobs': jobs}
@@ -162,7 +164,8 @@ def get_calibration_jobs(request):
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
-        include_archived=include_archived
+        include_archived=include_archived,
+        include_stop_criteria=True
     )
 
     response = {'jobs': jobs}
@@ -182,7 +185,8 @@ def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
         include_validation_data: GetValidationJobsScope = None,
-        include_archived: bool = False
+        include_archived: bool = False,
+        include_stop_criteria: bool = False
 ) -> list[dict[str, Any]]:
     """
     Retrieves calibration jobs for the given user with optional status filtering and validation data inclusion.
@@ -260,6 +264,11 @@ def get_jobs(
         # Include detailed validation status if requested
         elif include_validation_data == GetValidationJobsScope.STATUS:
             result['validations'] = get_validation_jobs_internal(run.id, include_validation_data)
+        
+        # Include stop criteria if requested
+        if include_stop_criteria:
+            calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
+            result['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
 
         results.append(result)
 

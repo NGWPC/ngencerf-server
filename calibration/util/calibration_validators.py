@@ -387,6 +387,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     is_archived = serializers.BooleanField(required=True, allow_null=True)
     is_locked = serializers.BooleanField(required=True, allow_null=True)
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
+    stop_criteria = serializers.IntegerField(required=False, allow_null=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
