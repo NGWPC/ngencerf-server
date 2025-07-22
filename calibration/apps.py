@@ -4,6 +4,7 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
+from calibration.util.db_diagnostics import patch_connect_with_diagnostics
 from calibration.util.git_util import print_git_info_all
 
 logger = logging.getLogger(__name__)
@@ -72,3 +73,5 @@ class CalibrationConfig(AppConfig):
         from calibration.util.ngen_locations import check_files
 
         check_files()
+
+        patch_connect_with_diagnostics()
