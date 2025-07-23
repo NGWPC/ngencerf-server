@@ -238,15 +238,15 @@ def get_forcing_data_from_s3(run: CalibrationRun):
     """
     for s3_uri in settings.FORCING_DATA_DIRS:
         dir_path = convert_s3_uri_to_fs(s3_uri)
-        gage_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
-        if os.path.isdir(gage_dir):
-            logger.info(f"Found forcing directory {gage_dir}")
-            run.forcing_eds_dir_path = gage_dir
+        forcing_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
+        if os.path.isdir(forcing_dir):
+            logger.info(f"Found forcing directory {forcing_dir}")
+            run.forcing_eds_dir_path = forcing_dir
             clear_times(run)
             logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
             return
         else:
-            logger.info(f"Forcing directory doesn't exist for {gage_dir}")
+            logger.info(f"Forcing directory doesn't exist for {forcing_dir}")
 
     raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 

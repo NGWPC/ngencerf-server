@@ -193,6 +193,7 @@ ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
 FORCING_DATA_DIRS = ['s3://ngwpc-forcing/aorc_2.2',
                      's3://ngwpc-forcing/retrospective_2.2']
+OBS_DATA_DIRS = 's3://ngwpc-hydrofabric/2.1'
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))

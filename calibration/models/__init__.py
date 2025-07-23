@@ -6,6 +6,8 @@ from .calibration_parameter import CalibrationParameter
 from .calibration_run import CalibrationRun
 from .calibration_sloth_param import CalibrationSlothParam
 from .calibration_stop_criteria import CalibrationStopCriteria
+from .data_validation import DataValidation
+from.data_validation_details import DataValidationDetails
 from .domain import Domain
 from .forcing_source import ForcingSource
 from .forecast_cycle import ForecastCycle

@@ -15,6 +15,7 @@ Thumbs_db
 # Log and databases
 *.log
 *.sqllite
+logs/
 
 # Pyenv file
 .python-version

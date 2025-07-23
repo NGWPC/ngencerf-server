@@ -68,6 +68,9 @@ class GenericMessageWithIdResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class DataValidationResponseSerializer(GenericMessageResponseSerializer):
+    data_validation_id = serializers.IntegerField(required=True)
+
 class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
     message = serializers.CharField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
@@ -504,6 +507,7 @@ class GetGitInfoResponseSerializer(BaseSerializer):
 
 class ArchiveJobRequestSerializer(CalibrationRunIdList):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
+
 
 class LockJobRequestSerializer(CalibrationRunIdList):
     lock = serializers.BooleanField(default=True, allow_null=False, required=False)
