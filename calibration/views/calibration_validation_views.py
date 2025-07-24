@@ -1,15 +1,20 @@
-import csv
+import io
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from time import time
 from datetime import timezone
+from time import time
+from urllib.parse import urlparse
 
+import boto3
 import pandas as pd
+import pyarrow
+import pyarrow.csv as pacsv
+from botocore.exceptions import ClientError
 from django.conf import settings
 
-from calibration.util.aws_util import convert_s3_uri_to_fs
+from calibration.util.aws_util import list_s3_csv_files, s3_prefix_exists
 from calibration.util.caching import get_cached_gages
 
 logger = logging.getLogger(__name__)
@@ -23,6 +28,9 @@ def data_validation_job(
 ) -> None:
     """
     Entry point for initiating a data validation job across multiple gages.
+
+    Accepts either local or S3 forcing directories, verifies they exist, and
+    runs file validation for selected gages or ranges.
 
     Determines the output file path, validates the list of gage IDs (if provided),
     resolves the list of forcing directories, and writes a log file summarizing
@@ -69,19 +77,21 @@ def data_validation_job(
 
     msg = f"Writing validation output to: {output_txt_path}"
     logger.info(msg)
-    flush_log_handlers()
+    # flush_log_handlers()
     append_to_validation_output(msg, output_txt_path)
     append_to_validation_output(' ', output_txt_path)
 
     forcing_directories = []
-    if forcing_dir:
-        if not os.path.exists(forcing_dir) or not os.path.isdir(forcing_dir):
-            raise ValueError(f"Invalid forcing_dir: '{forcing_dir}' is not a valid directory")
-        forcing_directories.append(forcing_dir)
-    else:
-        # Use default directories from settings
-        for f in settings.FORCING_DATA_DIRS:
-            forcing_directories.append(convert_s3_uri_to_fs(f))
+    raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS
+
+    for d in raw_dirs:
+        if d.startswith("s3://"):
+            if not s3_prefix_exists(d):
+                raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid S3 prefix")
+        else:
+            if not os.path.isdir(d):
+                raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid directory")
+        forcing_directories.append(d)
 
     # Validate gage_ids before proceeding
     cached_gage_map = get_cached_gages()
@@ -93,7 +103,7 @@ def data_validation_job(
             raise ValueError(f'These gages do not exist: {gage_errors}')
 
     logger.info(f"Using forcing directories: {forcing_directories}")
-    flush_log_handlers()
+    # flush_log_handlers()
 
     validate_files(forcing_directories, gages, start, limit, output_txt_path)
 
@@ -121,7 +131,7 @@ def validate_files(
     :param output_txt_path: Path to write error messages.
     """
     logger.info("Starting validation...")
-    flush_log_handlers()
+    # flush_log_handlers()
 
     try:
         gage_ids_filter = set(gages) if gages else None
@@ -151,13 +161,13 @@ def validate_files(
 
         # Limit the number of gages processed in parallel to avoid excessive thread usage
         # Just doing 1 gage at a time.  We are still processing multiple files at a time
-        max_parallel_gages = 1
+        max_parallel_gages = 2
 
         with ThreadPoolExecutor(max_workers=max_parallel_gages) as executor:
             futures = []
             for i, g in enumerate(gage_list, start=1):
                 logger.info(f"Queuing gage {g['gage_id']} ({i} of {total})")
-                flush_log_handlers()
+                # flush_log_handlers()
                 futures.append(executor.submit(validate_gage_data, g, forcing_directories, i, total, output_txt_path))
 
             completed = 0
@@ -170,12 +180,13 @@ def validate_files(
                     msg = f"validate_files: Unhandled exception in gage thread: {e}"
                     logger.warning(msg)
                     append_to_validation_output(msg, output_txt_path)
-                flush_log_handlers()
+                # flush_log_handlers()
 
         final_msg = f"Finished validating {completed} of {total} gages"
         logger.info(final_msg)
+        append_to_validation_output(final_msg, output_txt_path)
         logger.info(f"Output is in {output_txt_path}")
-        flush_log_handlers()
+        # flush_log_handlers()
         append_to_validation_output(final_msg, output_txt_path)
 
     except Exception as e:
@@ -183,7 +194,7 @@ def validate_files(
         logger.exception("Unhandled exception during validation")
         logger.warning(msg)
         append_to_validation_output(msg, output_txt_path)
-        flush_log_handlers()
+        # flush_log_handlers()
 
 
 def parse_timestamp(dir_name: str) -> datetime | None:
@@ -212,203 +223,205 @@ def get_latest_timestamp_directory(dir_name: str) -> str:
     return latest_dir
 
 
-def validate_csv_directory(dir_path: str, output_txt_path: str | None = None) -> None:
-
+def validate_csv_directory(dir_path: str, output_file_path: str | None = None) -> None:
     """
-    Validates all .csv files in the specified directory using concurrent threads.
-
-    Performs structure checks, column count validation, and per-file type validation.
-    Submits files to a thread pool that runs `validate_csv_file()`.
-
-    :param dir_path: Directory containing forcing CSV files.
-    :param output_txt_path: Path to the output .txt file.
+    Validates all .csv files in a local or S3 directory using concurrent threads.
     """
-    if not dir_path or not os.path.isdir(dir_path):
-        logger.warning(f"{dir_path}: Provided path is not a directory")
-        flush_log_handlers()
+    is_s3 = dir_path.startswith("s3://")
+
+    try:
+        if is_s3:
+            if not s3_prefix_exists(dir_path):
+                logger.warning(f"{dir_path}: S3 prefix does not exist or is empty")
+                # flush_log_handlers()
+                return
+            csv_files = list_s3_csv_files(dir_path)
+        else:
+            if not os.path.isdir(dir_path):
+                logger.warning(f"{dir_path}: Provided path is not a directory")
+                # flush_log_handlers()
+                return
+            csv_files = sorted([
+                os.path.join(dir_path, f)
+                for f in os.listdir(dir_path)
+                if f.lower().endswith(".csv")
+            ])
+    except Exception as e:
+        logger.warning(f"{dir_path}: Failed to list files: {e}")
+        # flush_log_handlers()
         return
 
-    csv_files = sorted([f for f in os.listdir(dir_path) if f.lower().endswith(".csv")])
     total_files = len(csv_files)
     msg = f"Validating forcing directory {dir_path} ({total_files} files)"
     logger.info(msg)
-    flush_log_handlers()
-    append_to_validation_output(msg, output_txt_path)
+    # flush_log_handlers()
+    append_to_validation_output(msg, output_file_path)
 
-    # Don't use too many workers.  Creates S3 bottlenecks.  This will process 4 files at a time
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=8) as executor:
         futures = {}
-        for i, f in enumerate(csv_files, start=1):
-            path = os.path.join(dir_path, f)
+        for i, path in enumerate(csv_files, start=1):
             try:
-                future = executor.submit(validate_csv_file, path, file_index=i, total_files=total_files, output_txt_path=output_txt_path)
+                future = executor.submit(
+                    validate_csv_file,
+                    path,
+                    file_index=i,
+                    total_files=total_files,
+                    output_file_path=output_file_path
+                )
                 futures[future] = path
                 logger.info(f"Submitted {path} to executor ({i} of {total_files})")
-                flush_log_handlers()
+                # flush_log_handlers()
             except Exception as e:
                 logger.warning(f"{path}: Exception during executor.submit: {e}")
-        flush_log_handlers()
+        # flush_log_handlers()
 
-        for i, future in enumerate(as_completed(futures), start=1):
+        for future in as_completed(futures):
             path = futures[future]
             try:
                 future.result()
             except Exception as e:
                 logger.warning(f"{path}: Unhandled exception during validation: {e}")
-            flush_log_handlers()
+            # flush_log_handlers()
 
 
-def validate_csv_file(path: str, file_index: int, total_files: int, output_txt_path: str) -> None:
+def open_csv_file(path: str) -> tuple[io.IOBase, int]:
     """
-    Validates a single forcing CSV file for structure and content errors.
+    Opens a CSV file for reading, supporting both local files and S3 URIs.
 
-    Checks include:
-      - File existence and readability
-      - Correct number of columns
-      - Valid header
-      - Timestamps are correctly formatted and in order
-      - Value columns are numeric
+    Uses fsspec to abstract access to local or cloud storage. Automatically checks
+    for file existence and raises an error if the file cannot be opened.
 
-    Errors are also written to the provided output_txt_path.
+    :param path: Local file path or S3 URI (e.g., s3://bucket/key.csv).
+    :return: Tuple containing:
+        - A readable file-like stream object.
+        - File size in bytes.
+    :raises FileNotFoundError: If the file cannot be opened.
+    """
+    parsed = urlparse(path)
 
-    :param path: Path to the CSV file.
-    :param file_index: Index of the file in a batch, for logging.
-    :param total_files: Total file count in batch, for logging.
-    :param output_txt_path: Path to a .txt file where validation errors should be written.
+    if parsed.scheme == 's3':
+        bucket = parsed.netloc
+        key = parsed.path.lstrip('/')
+        s3 = boto3.client('s3')
+        try:
+            response = s3.get_object(Bucket=bucket, Key=key)
+            stream = response['Body']
+            size = response.get('ContentLength', 0)
+            return stream, size
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchKey':
+                raise FileNotFoundError(f"S3 file not found: s3://{bucket}/{key}")
+            else:
+                raise
+
+    else:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Local file not found: {path}")
+        size = os.path.getsize(path)
+        stream = open(path, 'rb')
+        return stream, size
+
+
+def validate_csv_file(path: str, file_index: int, total_files: int, output_file_path: str) -> None:
+    """
+    Validates a single CSV file (either local or S3) containing forcing data.
+    Ensures that the file:
+      - Has 9 columns.
+      - The first column is a timestamp.
+      - Timestamps are strictly increasing.
+      - All remaining columns are valid floats.
+
+    :param path: Path to the CSV file (local or S3).
+    :param file_index: Index of this file in the validation batch (1-based).
+    :param total_files: Total number of files in the batch.
+    :param output_file_path: Path to write validation error messages.
     """
     start_time = time()
 
-    if not os.path.isfile(path):
-        msg = f"{path}: File not found"
-        logger.warning(msg)
-        flush_log_handlers()
-        append_to_validation_output(msg, output_txt_path)
-        return
-
-    expected_columns = 9
-
-    file_size_bytes = os.path.getsize(path)
-    file_size_mb = file_size_bytes / (1024*1024)  # Convert to MB
-
-    msg = f"Validating forcing file {path} ({file_index} of {total_files}) ({file_size_mb:.2f} MB)"
-    logger.info(msg)
-    flush_log_handlers()
-    append_to_validation_output(msg, output_txt_path)
-
-    rows = []
-
-    # Read and validate structure
     try:
-        read_start = time()
-        with open(path, newline='') as f:
-            reader = csv.reader(f)
-            for i, row in enumerate(reader, start=1):
-                if len(row) != expected_columns:
-                    msg = (
-                        f"   {path} [Line {i}]: Row {i} has {len(row)} columns, expected {expected_columns}\n"
-                        f"      Line content: {','.join(row)}"
-                    )
-                    logger.warning(msg)
-                    flush_log_handlers()
-                    append_to_validation_output(msg, output_txt_path)
-                    return
-                rows.append(row)
+        stream, file_size = open_csv_file(path)
+        file_size_mb = file_size / (1024 * 1024)
+        msg = f"Validating forcing file {path} ({file_index} of {total_files}) ({file_size_mb:.2f} MB)"
+        logger.info(msg)
+        # flush_log_handlers()
+        append_to_validation_output(msg, output_file_path)
+
+        read_options = pacsv.ReadOptions(block_size=1_000_000)
+        table = pacsv.read_csv(stream, read_options=read_options)
+
+        errors = validate_chunk(table, path, chunk_index=1)
+        for error in errors:
+            append_to_validation_output(error, output_file_path)
 
     except Exception as e:
-        msg = f"   {path}: Failed to read CSV (structural check): {e}"
-        logger.warning(msg)
-        flush_log_handlers()
-        append_to_validation_output(msg, output_txt_path)
-        return
-
-    read_elapsed = time() - read_start
-    logger.info(f"   Time to open+read forcing file {path}: {read_elapsed:.2f} sec")
-
-    if len(rows) < 2:
-        msg = f"   {path}: File does not contain data rows"
-        logger.warning(msg)
-        flush_log_handlers()
-        append_to_validation_output(msg, output_txt_path)
-        return
-
-    if len(rows[0]) != expected_columns:
-        msg = (
-            f"   {path} [Line 1]: Header has {len(rows[0])} columns, expected {expected_columns}\n"
-            f"       Line content: {','.join(rows[0])}"
-        )
-        logger.warning(msg)
-        flush_log_handlers()
-        append_to_validation_output(msg, output_txt_path)
-        return
-
-    # Now read the file fully with pandas for per-column type checking
-    try:
-        df = pd.DataFrame(rows[1:], columns=rows[0])  # Assumes header is first row
-        df = df.reset_index(drop=True)  # Ensure numeric row indices
-    except Exception as e:
-        msg = f"   {path}: Failed to parse CSV with pandas: {e}"
-        logger.warning(msg)
-        flush_log_handlers()
-        append_to_validation_output(msg, output_txt_path)
-        return
-
-    datetime_col = df.columns[0]
-    value_columns = df.columns[1:]
-    prev_time = None
-
-    for row_number, (_, row) in enumerate(df.iterrows(), start=2):  # start=2 = header + 1-indexed
-        # Validate datetime field
-        datetime_str = row.at[datetime_col]
-        try:
-            current_time = pd.to_datetime(datetime_str)
-        except Exception:
-            msg = (
-                f"   {path} [Line {row_number}]: Invalid datetime value in column '{datetime_col}': '{datetime_str}'\n"
-                f"      Line content: {','.join([str(x) for x in row.values])}"
-            )
-            logger.warning(msg)
-            flush_log_handlers()
-            append_to_validation_output(msg, output_txt_path)
-            continue
-
-        if prev_time is not None and current_time < prev_time:
-            msg = (
-                f"   {path} [Line {row_number}]: Timestamps out of order: {datetime_str} is earlier than previous row {prev_time}\n"
-                f"      Line content: {','.join([str(x) for x in row.values])}"
-            )
-            logger.warning(msg)
-            append_to_validation_output(msg, output_txt_path)
-        prev_time = current_time
-
-        # Validate numeric fields
-        for col in value_columns:
-            try:
-                float(row.at[col])
-            except (ValueError, TypeError):
-                msg = (
-                    f"   {path} [Line {row_number}]: Column '{col}' must be numeric (value='{row[col]}')\n"
-                    f"      Line content: {','.join([str(x) for x in row.values])}"
-                )
-                logger.warning(msg)
-                append_to_validation_output(msg, output_txt_path)
+        error_text = f"Error while validating {path}: {type(e).__name__}: {e}"
+        logger.warning(error_text)
+        append_to_validation_output(error_text, output_file_path)
 
     elapsed = time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
-    msg = f"   Finished validating forcing file {path} ({file_index} of {total_files}) in {minutes}:{seconds:02d}"
+    msg = f"    Finished validating forcing file {path} ({file_index} of {total_files}) in {minutes}:{seconds:02d}"
     logger.info(msg)
-    append_to_validation_output(msg, output_txt_path)
-    flush_log_handlers()  # Final flush after completing the file
+    append_to_validation_output(msg, output_file_path)
+
+
+def validate_chunk(table: pyarrow.Table, path: str, chunk_index: int) -> list[str]:
+    """
+    Validates a chunk of data from a forcing CSV file.
+    Ensures 9 columns: timestamp + 8 float values.
+    Timestamps must be strictly increasing and parsable.
+
+    :param table: PyArrow Table to validate.
+    :param path: File path (used in error messages).
+    :param chunk_index: Index of the chunk being validated.
+    :return: List of error messages.
+    """
+    errors = []
+    chunk = table.to_pandas()
+
+    # Validate column count
+    if chunk.shape[1] != 9:
+        errors.append(f"{path} (chunk {chunk_index}): Expected 9 columns, found {chunk.shape[1]}")
+        return errors  # skip row-level validation if structure is wrong
+
+    # Validate timestamp parsing and order
+    previous_timestamp = None
+    for i, row in chunk.iterrows():
+        try:
+            timestamp = pd.to_datetime(row.iloc[0])
+            if pd.isnull(timestamp):
+                raise ValueError("Unparsable timestamp")
+        except Exception:
+            errors.append(f"{path}, line {i + 2}: Invalid timestamp '{row.iloc[0]}'")
+            continue
+
+        if previous_timestamp and timestamp <= previous_timestamp:
+            errors.append(f"{path}, line {i + 2}: Timestamps not strictly increasing ({timestamp} <= {previous_timestamp})")
+        previous_timestamp = timestamp
+
+        # Validate remaining columns are floats
+        for j in range(1, 9):
+            value = row.iloc[j]
+            if pd.isnull(value):
+                errors.append(f"{path}, line {i + 2}, column {j + 1}: Missing value")
+            else:
+                try:
+                    float(value)
+                except Exception:
+                    errors.append(f"{path}, line {i + 2}, column {j + 1}: Invalid float value '{value}'")
+
+    return errors
 
 
 def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: int, total_gages: int, output_file_path: str) -> None:
     """
     Validates forcing data for a single gage across multiple forcing directories.
 
-    Only the first matching directory found is validated. Errors are written to
-    the provided output file.
+    Supports both local paths and S3 URLs. Only the first matching directory is validated.
+    Errors are written to the provided output file.
 
     :param gage: Dictionary with 'gage_id' and 'domain'.
-    :param forcing_directories: Root paths to look for gage data.
+    :param forcing_directories: Root paths to look for gage data (local or s3://...).
     :param gage_index: Index of this gage in the validation batch (1-based).
     :param total_gages: Total number of gages in the batch.
     :param output_file_path: Path to write validation error messages.
@@ -417,17 +430,32 @@ def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: i
     gage_id = gage['gage_id']
     domain = gage['domain']
 
-    logger.info(f"Starting validation for gage {gage_id} ({gage_index} of {total_gages})")
-    flush_log_handlers()
+    msg = f"Starting validation for gage {gage_id} ({gage_index} of {total_gages})"
+    logger.info(msg)
+    append_to_validation_output(msg, output_file_path)
+    # flush_log_handlers()
 
     logger.info(f"Checking forcing data for gage {gage_id} ({gage_index} of {total_gages})")
-    flush_log_handlers()
+    # flush_log_handlers()
+
+    validated_path = None
+
     for dir_path in forcing_directories:
-        forcing_dir = os.path.join(dir_path, domain, f"Gage_{gage_id}")
-        logger.info(f'Looking for forcing directory {forcing_dir}')
-        if os.path.isdir(forcing_dir):
-            validate_csv_directory(forcing_dir, output_file_path)
-            break
+        if dir_path.startswith("s3://"):
+            full_path = f"{dir_path.rstrip('/')}/{domain}/Gage_{gage_id}"
+            logger.info(f"Looking for forcing directory {full_path}")
+            if s3_prefix_exists(full_path):
+                validated_path = full_path
+                break
+        else:
+            full_path = os.path.join(dir_path, domain, f"Gage_{gage_id}")
+            logger.info(f"Looking for forcing directory {full_path}")
+            if os.path.isdir(full_path):
+                validated_path = full_path
+                break
+
+    if validated_path:
+        validate_csv_directory(validated_path, output_file_path)
     else:
         msg = f"Gage_{gage_id}: Forcing directory not found"
         logger.warning(msg)
@@ -435,20 +463,22 @@ def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: i
 
     elapsed = time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
-    logger.info(f"Finished processing gage {gage_id} ({gage_index} of {total_gages}) in {minutes}:{seconds:02d}")
-    flush_log_handlers()
+    msg = f"Finished processing gage {gage_id} ({gage_index} of {total_gages}) in {minutes}:{seconds:02d}"
+    logger.info(msg)
+    append_to_validation_output(msg, output_file_path)
+    # flush_log_handlers()
 
 
-def flush_log_handlers():
-    """
-    Flush all configured log handlers.
-
-    Ensures that log output is immediately written, especially important
-    in multithreaded or long-running processes.
-    """
-    for handler in logging.getLogger().handlers:
-        if hasattr(handler, 'flush'):
-            handler.flush()
+# def flush_log_handlers():
+#     """
+#     Flush all configured log handlers.
+#
+#     Ensures that log output is immediately written, especially important
+#     in multithreaded or long-running processes.
+#     """
+#     for handler in logging.getLogger().handlers:
+#         if hasattr(handler, 'flush'):
+#             handler.flush()
 
 
 def append_to_validation_output(message: str, output_path: str) -> None:
