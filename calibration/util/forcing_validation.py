@@ -21,6 +21,22 @@ from calibration.util.caching import get_cached_gages
 logger = logging.getLogger(__name__)
 
 
+def _attach_run_file_handler(output_log_path: str) -> logging.Handler:
+    """
+    Attach a per-run FileHandler to this module's logger and return it.
+    Caller is responsible for removing/closing it.
+    """
+    import time as _time  # local, does not pollute globals
+
+    fh = logging.FileHandler(output_log_path, encoding="utf-8")
+    fh.setLevel(logging.INFO)
+    formatter = logging.Formatter("%(asctime)s %(name)s %(levelname)8s [%(threadName)s] %(message)s")
+    formatter.converter = _time.gmtime  # make %(asctime)s UTC
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    return fh
+
+
 def data_validation_job(
         gages: list[str] | None,
         forcing_dir: str | None,
@@ -60,65 +76,61 @@ def data_validation_job(
         filter_description = "all"
 
     now = datetime.now(timezone.utc).strftime('%Y_%m_%d_%H_%M_%S')
-    output_txt_path = os.path.join(settings.BASE_DIR, 'logs', f"validation_output_{suffix}_{now}.txt")
+    output_log_path = os.path.join(settings.BASE_DIR, 'logs', f"validation_output_{suffix}_{now}.log")
 
-    # Write header immediately
-    header = [
-        f"Validation run started: {now} UTC",
-        f"Gage filter: {filter_description}",
-        f"Forcing directory: {forcing_dir if forcing_dir else 'default from settings'}",
-        "-" * 80
-    ]
+    # Attach a per-run file handler (thread-safe logging to the same file)
+    file_handler = _attach_run_file_handler(output_log_path)
 
     try:
-        with open(output_txt_path, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(header) + '\n')
-    except Exception as e:
-        logger.warning(f"Could not initialize validation output file '{output_txt_path}': {e}")
+        # Write header immediately (via logger so it goes to the file handler)
+        logger.info("Validation run started: %s UTC", now)
+        logger.info("Gage filter: %s", filter_description)
+        logger.info("Forcing directory: %s", forcing_dir if forcing_dir else "default from settings")
+        logger.info("-" * 80)
 
-    msg = f"Writing validation output to: {output_txt_path}"
-    logger.info(msg)
-    append_to_validation_output(msg, output_txt_path)
-    append_to_validation_output(' ', output_txt_path)
+        msg = f"Writing validation output to: {output_log_path}"
+        logger.info(msg)
+        logger.info(' ')  # blank line
 
-    forcing_directories = []
-    raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS
+        forcing_directories = []
+        raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS
 
-    for d in raw_dirs:
-        if d.startswith("s3://"):
-            if not s3_prefix_exists(d):
-                raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid S3 prefix")
-        else:
-            if not os.path.isdir(d):
-                raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid directory")
-        forcing_directories.append(d)
+        for d in raw_dirs:
+            if d.startswith("s3://"):
+                if not s3_prefix_exists(d):
+                    raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid S3 prefix")
+            else:
+                if not os.path.isdir(d):
+                    raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid directory")
+            forcing_directories.append(d)
 
-    # Validate gage_ids before proceeding
-    cached_gage_map = get_cached_gages()
-    gage_ids_filter = set(gages) if gages else None
+        # Validate gage_ids before proceeding
+        cached_gage_map = get_cached_gages()
+        gage_ids_filter = set(gages) if gages else None
 
-    if gage_ids_filter:
-        gage_errors = [gage_id for gage_id in gage_ids_filter if gage_id not in cached_gage_map]
-        if gage_errors:
-            raise ValueError(f'These gages do not exist: {gage_errors}')
+        if gage_ids_filter:
+            gage_errors = [gage_id for gage_id in gage_ids_filter if gage_id not in cached_gage_map]
+            if gage_errors:
+                raise ValueError(f'These gages do not exist: {gage_errors}')
 
-    msg = f"Using forcing directories: {forcing_directories}"
-    logger.info(msg)
-    append_to_validation_output(msg, output_txt_path)
+        logger.info(f"Using forcing directories: {forcing_directories}")
 
-    # 🆕 Run validation and collect gages with errors
-    gages_with_errors = validate_files(forcing_directories, gages, start, limit, output_txt_path)
+        # Run validation and collect gages with errors
+        gages_with_errors = validate_files(forcing_directories, gages, start, limit, output_log_path)
 
-    if gages_with_errors:
-        append_to_validation_output("\nGages with validation errors:", output_txt_path)
-        gages_sorted = sorted(gages_with_errors)
-        for i in range(0, len(gages_sorted), 10):
-            line = ', '.join(gages_sorted[i:i + 10])
-            append_to_validation_output(f"    {line}", output_txt_path)
+        if gages_with_errors:
+            logger.info("\nGages with validation errors:")
+            gages_sorted = sorted(gages_with_errors)
+            for i in range(0, len(gages_sorted), 10):
+                line = ', '.join(gages_sorted[i:i + 10])
+                logger.info("    %s", line)
 
-    msg = "Data validation completed."
-    logger.info(msg)
-    append_to_validation_output(msg, output_txt_path)
+        logger.info("Data validation completed.")
+
+    finally:
+        # Always remove/close the per-run file handler
+        logger.removeHandler(file_handler)
+        file_handler.close()
 
 
 def validate_files(
@@ -126,10 +138,10 @@ def validate_files(
         gages: list[str] | None,
         start: int | None,
         limit: int | None,
-        output_txt_path: str
+        output_log_path: str
 ) -> set[str]:
     """
-    Validates forcing files for a set of gages using threads..
+    Validates forcing files for a set of gages using threads.
 
     If `gages` is provided, only those are validated. Otherwise, headwater
     calibration gages are used, possibly sliced with `start` and `limit`.
@@ -143,13 +155,11 @@ def validate_files(
     :param gages: Optional list of gage IDs to restrict validation to.
     :param start: Optional start index into the headwater gage list (used if `gages` is not provided).
     :param limit: Optional number of gages to validate (used with `start`).
-    :param output_txt_path: Path to write validation output and error messages.
+    :param output_log_path: Path to write validation output and error messages.
 
     :return: Set of gage IDs that had at least one validation error.
     """
-    msg = "Starting validation..."
-    logger.info(msg)
-    append_to_validation_output(msg, output_txt_path)
+    logger.info("Starting validation...")
     start_time = time()
 
     lock = threading.Lock()
@@ -178,7 +188,6 @@ def validate_files(
             header_msg = "Validating all headwater calibration gages"
 
         logger.info(header_msg)
-        append_to_validation_output(header_msg, output_txt_path)
 
         total = len(gage_list)
         completed = 0
@@ -195,15 +204,14 @@ def validate_files(
 
                 def run_validate(gage=g, idx=i):
                     try:
-                        had_errors = validate_gage_data(gage, forcing_directories, idx, total, output_txt_path)
+                        had_errors = validate_gage_data(gage, forcing_directories, idx, total)
                         if had_errors:
                             with lock:
                                 gages_with_errors.add(gage['gage_id'])
-                    except Exception as ex:
-                        logger.exception(f"Exception in gage thread: {ex}")
-                        ex_msg = f"validate_files: Unhandled exception in gage thread: {ex}"
-                        logger.warning(ex_msg)
-                        append_to_validation_output(ex_msg, output_txt_path)
+                    except Exception as e:
+                        logger.exception(f"Exception in gage thread: {e}")
+                        msg = f"validate_files: Unhandled exception in gage thread: {e}"
+                        logger.warning(msg)
                         with lock:
                             gages_with_errors.add(gage['gage_id'])
                         raise  # preserve exception for outer future.result()
@@ -222,21 +230,18 @@ def validate_files(
         minutes, seconds = divmod(rem, 60)
         final_msg = f"Finished validating {completed} of {total} gages in {hours}:{minutes:02d}:{seconds:02d}"
         logger.info(final_msg)
-        append_to_validation_output(final_msg, output_txt_path)
 
         if gages_with_errors:
-            error_msg = f"\nGages with errors: {sorted(gages_with_errors)}"
+            error_msg = f"Gages with errors: {sorted(gages_with_errors)}"
             logger.info(error_msg)
-            append_to_validation_output(error_msg, output_txt_path)
 
-        logger.info(f"Output is in {output_txt_path}")
+        logger.info(f"Output is in {output_log_path}")
         return gages_with_errors
 
     except Exception as e:
         msg = f"validate_files: Unhandled exception during validation: {e}"
         logger.exception("Unhandled exception during validation")
         logger.warning(msg)
-        append_to_validation_output(msg, output_txt_path)
         return gages_with_errors
 
 
@@ -266,33 +271,28 @@ def get_latest_timestamp_directory(dir_name: str) -> str:
     return latest_dir
 
 
-def validate_csv_directory(dir_path: str, output_file_path: str | None = None) -> bool:
+def validate_csv_directory(dir_path: str) -> bool:
     """
     Validates all .csv files in a local or S3 directory using concurrent threads.
 
     Returns True if any errors were found, otherwise False.
 
     :param dir_path: Full path to the directory (local or S3) containing forcing files.
-    :param output_file_path: Path to the output `.txt` file for logging.
-
     :return: True if any validation errors occurred (file missing, content invalid, etc.).
     """
+
     is_s3 = dir_path.startswith("s3://")
     had_errors = False
 
     try:
         if is_s3:
             if not s3_prefix_exists(dir_path):
-                msg = f"{dir_path}: S3 prefix does not exist or is empty"
-                logger.warning(msg)
-                append_to_validation_output(msg, output_file_path)
+                logger.warning(f"{dir_path}: S3 prefix does not exist or is empty")
                 return True
             csv_files = list_s3_csv_files(dir_path)
         else:
             if not os.path.isdir(dir_path):
-                msg = f"{dir_path}: Provided path is not a directory"
-                logger.warning(msg)
-                append_to_validation_output(msg, output_file_path)
+                logger.warning(f"{dir_path}: Provided path is not a directory")
                 return True
             csv_files = sorted([
                 os.path.join(dir_path, f)
@@ -300,17 +300,15 @@ def validate_csv_directory(dir_path: str, output_file_path: str | None = None) -
                 if f.lower().endswith(".csv")
             ])
     except Exception as e:
-        msg = f"{dir_path}: Failed to list files: {e}"
-        logger.warning(msg)
-        append_to_validation_output(msg, output_file_path)
+        logger.warning(f"{dir_path}: Failed to list files: {e}")
         return True
 
     total_files = len(csv_files)
     msg = f"Validating forcing directory {dir_path} ({total_files} files)"
     logger.info(msg)
-    append_to_validation_output(msg, output_file_path)
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    max_workers = min(8, len(csv_files)) or 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = {}
         for i, path in enumerate(csv_files, start=1):
             try:
@@ -318,27 +316,23 @@ def validate_csv_directory(dir_path: str, output_file_path: str | None = None) -
                     validate_csv_file,
                     path,
                     file_index=i,
-                    total_files=total_files,
-                    output_file_path=output_file_path
+                    total_files=total_files
                 )
                 futures[future] = path
                 logger.info(f"Submitted {path} to executor ({i} of {total_files})")
             except Exception as e:
-                msg = f"{path}: Exception during executor.submit: {e}"
-                logger.warning(msg)
-                append_to_validation_output(msg, output_file_path)
+                logger.warning(f"{path}: Exception during executor.submit: {e}")
                 had_errors = True
 
         for future in as_completed(futures):
             path = futures[future]
             try:
                 result = future.result()
-                if result:
+                logger.debug(f"validate_csv_directory saw result={result} from {path}")
+                if result:  # validate_csv_file returns True if it had errors
                     had_errors = True
             except Exception as e:
-                msg = f"{path}: Unhandled exception during validation: {e}"
-                logger.warning(msg)
-                append_to_validation_output(msg, output_file_path)
+                logger.warning(f"{path}: Unhandled exception during validation: {e}")
                 had_errors = True
 
     return had_errors
@@ -382,7 +376,7 @@ def open_csv_file(path: str) -> tuple[io.IOBase, int]:
         return stream, size
 
 
-def validate_csv_file(path: str, file_index: int, total_files: int, output_file_path: str) -> bool:
+def validate_csv_file(path: str, file_index: int, total_files: int) -> bool:
     """
     Validates a single CSV file (either local or S3) containing forcing data.
 
@@ -395,47 +389,48 @@ def validate_csv_file(path: str, file_index: int, total_files: int, output_file_
     :param path: Path to the CSV file (local or S3).
     :param file_index: Index of this file in the validation batch (1-based).
     :param total_files: Total number of files in the batch.
-    :param output_file_path: Path to write validation error messages.
-
     :return: True if any errors were found, False otherwise.
     """
     start_time = time()
     had_errors = False
+    stream = None
 
     try:
         stream, file_size = open_csv_file(path)
         file_size_mb = file_size / (1024 * 1024)
-        msg = f"Validating forcing file {path} ({file_index} of {total_files}) ({file_size_mb:.2f} MB)"
-        logger.info(msg)
-        append_to_validation_output(msg, output_file_path)
+        logger.info(f"Validating forcing file {path} ({file_index} of {total_files}) ({file_size_mb:.2f} MB)")
 
         read_options = pacsv.ReadOptions(block_size=1_000_000)
         table = pacsv.read_csv(stream, read_options=read_options)
 
         errors = validate_chunk(table, path, chunk_index=1)
         for error in errors:
-            append_to_validation_output(error, output_file_path)
+            logger.warning(error)
             had_errors = True
 
     except Exception as e:
-        error_text = f"Error while validating {path}: {type(e).__name__}: {e}"
-        logger.warning(error_text)
-        append_to_validation_output(error_text, output_file_path)
+        logger.warning(f"Error while validating {path}: {type(e).__name__}: {e}")
         had_errors = True
+    finally:
+        # Close file-like stream (both local open() and S3 Body support .close())
+        try:
+            if stream is not None and hasattr(stream, "close"):
+                stream.close()
+        except Exception:
+            # Don’t let a close error overshadow validation results
+            pass
 
     elapsed = time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
-    msg = f"    Finished validating forcing file {path} ({file_index} of {total_files}) in {minutes}:{seconds:02d}"
-    logger.info(msg)
-    append_to_validation_output(msg, output_file_path)
+    logger.info(f"    Finished validating forcing file {path} ({file_index} of {total_files}) in {minutes}:{seconds:02d}")
 
+    logger.debug(f"validate_csv_file returning had_errors={had_errors} for {path}")
     return had_errors
 
 
 def validate_chunk(table: pyarrow.Table, path: str, chunk_index: int) -> list[str]:
     """
     Validates a chunk of data from a forcing CSV file.
-
     Ensures 9 columns: timestamp + 8 float values.
     Timestamps must be strictly increasing and parsable.
 
@@ -481,7 +476,7 @@ def validate_chunk(table: pyarrow.Table, path: str, chunk_index: int) -> list[st
     return errors
 
 
-def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: int, total_gages: int, output_file_path: str) -> bool:
+def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: int, total_gages: int) -> bool:
     """
     Validates forcing data for a single gage across multiple forcing directories.
 
@@ -492,8 +487,6 @@ def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: i
     :param forcing_directories: Root paths to look for gage data (local or s3://...).
     :param gage_index: Index of this gage in the validation batch (1-based).
     :param total_gages: Total number of gages in the batch.
-    :param output_file_path: Path to write validation error messages.
-
     :return: True if any validation errors were encountered for this gage.
     """
     start_time = time()
@@ -502,11 +495,8 @@ def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: i
 
     msg = f"Starting validation for gage {gage_id} ({gage_index} of {total_gages})"
     logger.info(msg)
-    append_to_validation_output(msg, output_file_path)
 
-    msg = f"Checking forcing data for gage {gage_id} ({gage_index} of {total_gages})"
-    logger.info(msg)
-    append_to_validation_output(msg, output_file_path)
+    logger.info(f"Checking forcing data for gage {gage_id} ({gage_index} of {total_gages})")
 
     validated_path = None
 
@@ -525,36 +515,18 @@ def validate_gage_data(gage: dict, forcing_directories: list[str], gage_index: i
                 break
 
     if validated_path:
-        had_errors = validate_csv_directory(validated_path, output_file_path)
+        had_errors = validate_csv_directory(validated_path)
     else:
         msg = f"Gage_{gage_id}: Forcing directory not found"
         logger.warning(msg)
-        append_to_validation_output(msg, output_file_path)
         had_errors = True
 
     elapsed = time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
     msg = f"Finished processing gage {gage_id} ({gage_index} of {total_gages}) in {minutes}:{seconds:02d}"
     logger.info(msg)
-    append_to_validation_output(msg, output_file_path)
 
     return had_errors
-
-
-def append_to_validation_output(message: str, output_path: str) -> None:
-    """
-    Appends a single message to the specified validation output file.
-
-    Each message is written as its own line. Used for logging errors or status updates.
-
-    :param message: Message text to write.
-    :param output_path: Path to the output .txt file.
-    """
-    try:
-        with open(output_path, 'a', encoding='utf-8') as f:
-            f.write(f"{message}\n")
-    except Exception as e:
-        logger.warning(f"Could not write to validation output file '{output_path}': {e}")
 
 
 def get_headwater_gages() -> list[dict]:

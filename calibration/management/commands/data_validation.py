@@ -1,11 +1,10 @@
 # calibration/management/commands/data_validation.py
 import sys
-import threading
 from datetime import datetime, timezone
 
 from django.core.management.base import BaseCommand
 
-from calibration.views.calibration_validation_views import data_validation_job
+from calibration.util.forcing_validation import data_validation_job
 
 
 class Command(BaseCommand):
