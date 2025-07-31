@@ -110,10 +110,6 @@ urlpatterns = [
     ##################################
     path('calibration/get_swe_images_by_date/', calibration_swe_views.get_swe_images_by_date, name="getSweImagesByDate"),
     path('calibration/get_swe_timeseries_data/', calibration_swe_views.get_swe_timeseries_data, name="getSweTimeseriesData"),
-    
-    # Testing
-    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
-    path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 
     ##################################
     # Import/Export
@@ -132,5 +128,7 @@ urlpatterns = [
     # Testing
     ##################################
     path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
+    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
+    path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 
 ]
