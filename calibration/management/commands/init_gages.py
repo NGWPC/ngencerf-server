@@ -38,7 +38,7 @@ class Command(BaseCommand):
         parser.add_argument('--data_dir', type=str, help='Path to location of gage files')
 
     def handle(self, *args, **options):
-        data_dir = Path(options['data_dir']) if options['data_dir'] else Path(BASE_DIR) / 'calibration/management/commands'
+        data_dir = Path(options['data_dir']) if options['data_dir'] else Path(BASE_DIR) / 'calibration/management/commands/gage_data'
 
         logger.info(f'Reading data from {data_dir}')
 
