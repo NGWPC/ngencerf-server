@@ -119,7 +119,8 @@ def data_validation_job(
         gages_with_errors = validate_files(forcing_directories, gages, start, limit, output_log_path)
 
         if gages_with_errors:
-            logger.info("\nGages with validation errors:")
+            logger.info('')
+            logger.info("Gages with validation errors:")
             gages_sorted = sorted(gages_with_errors)
             for i in range(0, len(gages_sorted), 10):
                 line = ', '.join(gages_sorted[i:i + 10])
@@ -230,10 +231,6 @@ def validate_files(
         minutes, seconds = divmod(rem, 60)
         final_msg = f"Finished validating {completed} of {total} gages in {hours}:{minutes:02d}:{seconds:02d}"
         logger.info(final_msg)
-
-        if gages_with_errors:
-            error_msg = f"Gages with errors: {sorted(gages_with_errors)}"
-            logger.info(error_msg)
 
         logger.info(f"Output is in {output_log_path}")
         return gages_with_errors
