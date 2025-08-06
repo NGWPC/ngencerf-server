@@ -8,10 +8,10 @@ from datetime import datetime, timezone
 from typing import Callable
 
 import pandas as pd
-from createInput import create_input
 from datetimerange import DateTimeRange
 from django.conf import settings
 from django.db import transaction
+from mswm.build_inputs import RealizationBuilder
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum, ForcingSourceEnum, ObservationalSourceEnum
@@ -432,15 +432,17 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
                 errors=validation_errors
             )
 
-        logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
-        create_input(config_file)
+        logger.info(f'Running RealizationBuilder.build_calib_realization for Calibration Job {calibration_run.id}')
+        # create_input(config_file)
+        rb = RealizationBuilder(config_file)
+        rb.build_calib_realization()
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
-        msg = f'Exception during create_input for Calibration Job {calibration_run.id} - {str(e)}'
+        msg = f'Exception during build_calib_realization for Calibration Job {calibration_run.id} - {str(e)}'
         logger.exception(msg)
         raise CerfException(msg) from e
 
-    logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
+    logger.info(f'Return from build_calib_realization for Calibration Job {calibration_run.id}')
     return False, None
 
 
