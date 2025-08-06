@@ -96,7 +96,7 @@ def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
 
 
 def get_bmi_config_key(module_name: str) -> str:
-    return f"{module_name.lower()}_bmi_dir"
+    return f"{module_name.lower().replace('-', '_')}_bmi_dir"
 
 
 # Job-specific forcing directory

@@ -37,18 +37,21 @@ logger = logging.getLogger(__name__)
 CONFIG_TEMPLATE = {
 
     "General": {
-        "calibration_run_id": 0,
-        "ngen_cerf": True,  # Indicate that we came from the ngenCerf server - Always true
-        "auth_token": "",
         "basin": "",
         "models": "",
-
         "formulation": "",
-        "run_type": "calib",
-        "main_dir": ""
+        "run_type": "calibration",
+        "main_dir": "",
+        # Snow Water equivalent output - Only True for snow models
+        "output_swe": False,
+        # Soil Moisture output - always True
+        "output_sm": True,
     },
 
     "Calibration": {
+        "calibration_run_id": 0,
+        "ngen_cerf": True,  # Indicate that we came from the ngenCerf server - Always true
+        "auth_token": "",
         "optimization_algorithm": None,
         "swarm_size": 0,
         "c1": 0,
@@ -88,10 +91,9 @@ CONFIG_TEMPLATE = {
         "peak_flow_threshold": 0.0,
         "station_name": "",
 
-        # Snow Water equivalent output - Only True for snow models
-        "output_swe": False,
-        # Soil Moisture output - always True
-        "output_sm": True,
+        # Parameter file, dynamically built based on user input
+        "calib_parameter_file": "",
+
         "user_email": "",
     },
 
@@ -100,21 +102,6 @@ CONFIG_TEMPLATE = {
         "obs_dir": "",
         "nwmretro_file": "",
         "hydrofab_file": "",
-
-        "noah-owp-modular_bmi_dir": "",
-        "cfe-s_bmi_dir": "",
-        "cfe-x_bmi_dir": "",
-        "t-route_bmi_dir": "",
-        "topoflow_bmi_dir": "",
-        "snow-17_bmi_dir": "",
-        "ueb_bmi_dir": "",
-        "pet_bmi_dir": "",
-        "topmodel_bmi_dir": "",
-        "sac-sma_bmi_dir": "",
-        "lasam_bmi_dir": "",
-        "smp_bmi_dir": "",
-        "sft_bmi_dir": "",
-        "lstm_bmi_dir": "",
 
         # Static file
         "noah_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'noah-owp-modular'),
@@ -125,21 +112,19 @@ CONFIG_TEMPLATE = {
         # Parquet file - base on domain
         "attributes_file": "",
 
-        # Parameter file, dynamically built based on user input
-        "calib_parameter_file": "",
         "sloth_parameter_file": "",
 
         "ngen_exe_file": NGEN_EXE,
         "cfe_lib": CFE_LIB,
         "sloth_lib": SLOTH_LIB,
         "topmodel_lib": TOPMD_LIB,
-        "noah-owp-modular_lib": NOAH_LIB,
+        "noah_owp_modular_lib": NOAH_LIB,
         "sft_lib": SFT_LIB,
         "smp_lib": SMP_LIB,
         "lasam_lib": LASAM_LIB,
         "pet_lib": PET_LIB,
-        "snow-17_lib": SNOW17_LIB,
-        "sac-sma_lib": SAC_LIB,
+        "snow_17_lib": SNOW17_LIB,
+        "sac_sma_lib": SAC_LIB,
         "ueb_lib": UEB_LIB
     }
 }
@@ -195,8 +180,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     }
 
     # Initialize general configuration settings for the run
-    general['calibration_run_id'] = run.id
-    general['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
+    calibration['calibration_run_id'] = run.id
+    calibration['auth_token'] = generate_custom_token(run.owner, TOKEN_NGEN_SCOPE)
 
     have_LSTM_flag = have_LSTM(run)
 
@@ -291,7 +276,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             error_object.add_error(f)
 
         # See if we have at least one module in Snowmelt
-        calibration['output_swe'] = any(
+        general['output_swe'] = any(
             any(group.name == "Snowmelt" for group in get_cached_module_by_name(name).groups.all())
             for name in module_names
         )
@@ -462,8 +447,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     f"value ({p['initial_value']}), min ({p['minimum']}) and max ({p['maximum']}) must be specified for parameter '{p['name']}'  (module {p['model']})")
 
         if not param_error and build:
-            datafile['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
-            write_parameter_files(params, datafile['calib_parameter_file'])
+            calibration['calib_parameter_file'] = os.path.join(job_data_dir, 'calib_parameter_dir')
+            write_parameter_files(params, calibration['calib_parameter_file'])
 
     if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         config['Parallel'] = parallel
