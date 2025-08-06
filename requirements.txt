@@ -24,12 +24,13 @@ pyogrio~=0.10.0
 # Need this version for create_input
 numpy<2.3
 tabulate~=0.9.0
-boto3~=1.39.12
-botocore~=1.39.12
+boto3~=1.39.8
+botocore~=1.39.8
+aiobotocore~=2.23.2
 
 
 # There is also a dependancy on these 2 entries
-# git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@development#egg=createInput&subdirectory=python/createInput
+# git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/mswm.git@$development#egg=mswm
 # git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@development#egg=swe_processing&subdirectory=swe_processing
 # These dependancies are installed separately in runCerf.sh in order to ensure that we get the latest code
 
