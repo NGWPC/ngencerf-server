@@ -1,8 +1,8 @@
 import logging
-import traceback
 import re
-import time
 import threading
+import time
+import traceback
 
 from django.db import connections
 from django.db.backends.base.base import BaseDatabaseWrapper
@@ -106,12 +106,12 @@ def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | 
         # If the failing alias can still give us a cursor, great; if not, this will raise.
         with connections[alias].cursor() as cursor:
             cursor.execute("""
-                SELECT COUNT(*) FILTER (WHERE state = 'active') AS active,
-                       COUNT(*) FILTER (WHERE state = 'idle')   AS idle,
-                       COUNT(*)                                 AS total
-                FROM pg_stat_activity
-                WHERE datname = current_database();
-            """)
+                           SELECT COUNT(*) FILTER (WHERE state = 'active') AS active,
+                                  COUNT(*) FILTER (WHERE state = 'idle')   AS idle,
+                                  COUNT(*)                                 AS total
+                           FROM pg_stat_activity
+                           WHERE datname = current_database();
+                           """)
             active, idle, total = cursor.fetchone()
 
             cursor.execute("SHOW max_connections;")
@@ -126,38 +126,29 @@ def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | 
         logger.error(f"[DB Stats] Could not retrieve connection stats: {stats_exc}")
 
 
-def patch_connect_with_diagnostics() -> None:
+def patch_ensure_connection_with_diagnostics():
     """
-    Patch BaseDatabaseWrapper.connect() to log diagnostics on failures from either:
-      - Django's OperationalError, or
-      - psycopg3 driver errors (including timeouts, auth failures, etc.).
+    Patch BaseDatabaseWrapper.ensure_connection() to log diagnostics on failure.
 
-    Why patch connect() (not ensure_connection()):
-      - Libraries like django-dbconn-retry wrap ensure_connection(), which eventually calls connect().
-      - Catching at connect() ensures we see the *actual* driver error (e.g., psycopg.errors.ConnectionTimeout).
-
-    Rate limiting:
-      - To avoid logging identical diagnostics for every retry attempt, we log at most once per
-        RATE_LIMIT_SECONDS per (alias, error signature).
+    This is more reliable than patching connect() directly because many Django
+    DB calls (including ORM queries) use ensure_connection().
     """
     global _PATCHED
     if _PATCHED:
-        return  # idempotent: do not patch twice
+        return
 
-    original_connect = BaseDatabaseWrapper.connect
+    original_ensure_connection = BaseDatabaseWrapper.ensure_connection
 
-    def wrapped_connect(self):
+    def wrapped_ensure_connection(self):
         try:
-            return original_connect(self)
+            return original_ensure_connection(self)
         except (DjangoOperationalError, PostgresDriverError) as e:
             if _should_log(self.alias, e):
                 err_type = f"{type(e).__module__}.{type(e).__name__}"
-                logger.error(f"[DB ERROR] connect() failed for alias '{self.alias}': {err_type}: {e}")
+                logger.error(f"[DB ERROR] ensure_connection() failed for alias '{self.alias}': {err_type}: {e}")
                 logger.error("Traceback:\n" + "".join(traceback.format_exc()))
-                # Use the wrapper’s settings_dict to avoid any state issues
                 log_db_diagnostics_on_failure(self.alias, settings_dict=getattr(self, "settings_dict", None))
-            # Always re-raise so normal retry/error handling continues.
             raise
 
-    BaseDatabaseWrapper.connect = wrapped_connect
+    BaseDatabaseWrapper.ensure_connection = wrapped_ensure_connection
     _PATCHED = True
