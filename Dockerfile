@@ -40,14 +40,14 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip3 install -r requirements.txt && \
     rm -f requirements.txt
 
-ARG MSWM_TAG
-ARG NGEN_FORCING_TAG
+ARG CREATE_INPUT_TAG
+ARG RUN_SWE_TAG
 ARG CACHE_BUST=1
 # Configure Git with the GitLab token using BuildKit secret mount
 RUN --mount=type=secret,id=gitlab_token \
     set -eux && \
-    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/mswm.git@${MSWM_TAG}#egg=mswm" && \
-    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_TAG}#egg=swe_processing&subdirectory=swe_processing" && \
+    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${CREATE_INPUT_TAG}#egg=createInput&subdirectory=python/createInput" && \
+    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${RUN_SWE_TAG}#egg=swe_processing&subdirectory=swe_processing" && \
     rm -f /root/.gitconfig && \
     pip3 cache purge
 
