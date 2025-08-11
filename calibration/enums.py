@@ -31,6 +31,8 @@ class ForcingSourceEnum(AbstractEnum):
     Enum for Forcing Sources, with alias support for 'Upload' or 'User Upload' entries.
     """
     UPLOAD = 'User Upload'
+    AORC = 'AORC'
+    NWM_RETROSPECTIVE = 'NWM Retrospective'
 
     @classmethod
     def get_aliases(cls):

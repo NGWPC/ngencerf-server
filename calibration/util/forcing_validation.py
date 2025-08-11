@@ -93,7 +93,7 @@ def data_validation_job(
         logger.info(' ')  # blank line
 
         forcing_directories = []
-        raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS
+        raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS_AORC
 
         for d in raw_dirs:
             if d.startswith("s3://"):

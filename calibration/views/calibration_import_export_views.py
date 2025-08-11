@@ -166,7 +166,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             # Fetch forcing data from Data Services
             try:
                 if gage_id:
-                    get_forcing_data_from_data_services(run)
+                    get_forcing_data_from_data_services(run, run.forcing_source.name)
             except DataServicesException as e:
                 errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
