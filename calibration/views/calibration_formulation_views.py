@@ -127,11 +127,11 @@ def validate_formulation_tab(request) -> Response:
     validator, error_return = validate_request(ValidateFormulationRequestSerializer, data)
     if error_return:
         return error_return
-    
+
     new_module_names = set(validator.get('modules'))
 
     formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, include_messages=True)
-    
+
     response = {}
     if formulation_warnings:
         response['formulation_warnings'] = formulation_warnings
@@ -351,18 +351,20 @@ formulation_validations = {
                 "fatal": True
             }
         },
-        "complete_module_list": [["CFE-S","CFE-X"],"SMP","SFT","Noah-OWP-Modular","T-Route"]
+        "complete_module_list": [["CFE-S", "CFE-X"], "SMP", "SFT", "Noah-OWP-Modular", "T-Route"]
     }
 }
 
 
-def validate_formulation(module_names: set[str], include_messages: bool=False) -> set[list[str]]:
+def validate_formulation(module_names: set[str], include_messages: bool = False) -> tuple[list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
     :param module_names: A set of module names to validate.
-    :return: A list (fatal_errors, nonfatal_errors, info_messages), where each is a list of messages.
-             If there are no errors of a given severity, that list will be empty.
+    :param include_messages: Whether to include informational messages in the return value.
+    :return: A tuple of lists (fatal_errors, nonfatal_errors, info_messages).
+             Each list contains validation messages of the corresponding severity.
+             If there are no messages of a given severity, that list will be empty.
     """
 
     # Filter cached modules to match the given module names
@@ -374,10 +376,11 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
     info_messages: list[str] = []
 
     def error_list():
+        """Return a tuple of the appropriate message lists, based on the include_messages flag."""
         if include_messages:
-          return [fatal_errors, nonfatal_errors, info_messages]
+            return fatal_errors, nonfatal_errors, info_messages
         else:
-          return [fatal_errors, nonfatal_errors]
+            return fatal_errors, nonfatal_errors
 
     # --- Special case: if LSTM is present, enforce LSTM-specific rules and skip the rest ---
     if "LSTM" in module_names:
@@ -401,7 +404,7 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
             fatal_errors.append(
                 f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
             )
-            return error_list()
+        return error_list()
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
 
@@ -439,9 +442,9 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
 
         # Validate the count against expected_counts
         if count not in expected_counts:
-            # build the “1” vs “0 or 2” string
+            # Build the “1” vs “0 or 2” string
             expected_str = join_with_or([str(c) for c in expected_counts])
-            # choose singular if exactly [1], otherwise plural
+            # Choose singular if exactly [1], otherwise plural
             word = "module" if expected_counts == [1] else "modules"
             msg = (
                 f"{group_name} group is expected to have "
@@ -454,33 +457,30 @@ def validate_formulation(module_names: set[str], include_messages: bool=False) -
                 fatal_errors.append(msg)
             else:
                 nonfatal_errors.append(msg)
-    
-    # 3) If no errors, warnings so far, indicate that the formulation is Calibratable
+
+    # 3) If no errors or warnings, indicate that the formulation is Calibratable
     if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
-      info_messages.append('Formulation is Calibratable.')
-    
+        info_messages.append('Formulation is Calibratable.')
+
     # 4) Check for completeness
     module_complete = True
     for module_name in formulation_validations["formulation_rules"]["complete_module_list"]:
         if type(module_name) is list:
-            # one or more modules from a list must be found
-            module_option_found = False
-            for module_option in module_name:
-              if module_option in module_names:
-                  module_option_found = True
-                  break
+            # One or more modules from a list must be found
+            module_option_found = any(m in module_names for m in module_name)
             if not module_option_found:
                 module_complete = False
                 break
         elif module_name not in module_names:
-            # exact module name must be found
+            # Exact module name must be found
             module_complete = False
             break
+
     if not module_complete:
         nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.')
     else:
         info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
-    
+
     return error_list()
 
 
