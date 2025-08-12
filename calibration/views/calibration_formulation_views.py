@@ -130,7 +130,7 @@ def validate_formulation_tab(request) -> Response:
 
     new_module_names = set(validator.get('modules'))
 
-    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names, include_messages=True)
+    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names)
 
     response = {}
     if formulation_warnings:
@@ -198,7 +198,7 @@ def save_formulation_tab(request) -> Response:
     if error_message:
         return ResponseError(error_message)
 
-    formulation_errors, formulation_warnings = validate_formulation(new_module_names)
+    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names)
 
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
@@ -356,45 +356,34 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: set[str], include_messages: bool = False) -> tuple[list[str], list[str], list[str]]:
+def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
     :param module_names: A set of module names to validate.
-    :param include_messages: Whether to include informational messages in the return value.
     :return: A tuple of lists (fatal_errors, nonfatal_errors, info_messages).
              Each list contains validation messages of the corresponding severity.
              If there are no messages of a given severity, that list will be empty.
     """
-
-    # Filter cached modules to match the given module names
-    my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
 
     # Prepare containers for fatal vs. non-fatal vs. info messages
     fatal_errors: list[str] = []
     nonfatal_errors: list[str] = []
     info_messages: list[str] = []
 
-    def error_list():
-        """Return a tuple of the appropriate message lists, based on the include_messages flag."""
-        if include_messages:
-            return fatal_errors, nonfatal_errors, info_messages
-        else:
-            return fatal_errors, nonfatal_errors
-
     # --- Special case: if LSTM is present, enforce LSTM-specific rules and skip the rest ---
     if "LSTM" in module_names:
         if len(module_names) > 2:
             # More than two modules with LSTM is not allowed
             fatal_errors.append("LSTM cannot be combined with more than one other module.")
-            return error_list()
+            return fatal_errors, nonfatal_errors, info_messages
 
         if len(module_names) < 2:
             # LSTM alone (no other module) is not allowed
             fatal_errors.append(
                 "When LSTM is specified, exactly one other Routing module must be included."
             )
-            return error_list()
+            return fatal_errors, nonfatal_errors, info_messages
 
         # At this point, len(module_names) == 2 and one of them is LSTM
         other_name = next(name for name in module_names if name != "LSTM")
@@ -404,9 +393,16 @@ def validate_formulation(module_names: set[str], include_messages: bool = False)
             fatal_errors.append(
                 f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
             )
-        return error_list()
+            return fatal_errors, nonfatal_errors, info_messages
+
+        # If LSTM passes all checks, check for completeness
+        check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+        return fatal_errors, nonfatal_errors, info_messages
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
+
+    # Perform checks for non-LSTM case
+    my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
 
     # Count how many selected modules belong to each group
     group_defs = formulation_validations["formulation_rules"]["group_requirements"]
@@ -463,6 +459,21 @@ def validate_formulation(module_names: set[str], include_messages: bool = False)
         info_messages.append('Formulation is Calibratable.')
 
     # 4) Check for completeness
+    check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+
+    return fatal_errors, nonfatal_errors, info_messages
+
+
+def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal_errors: list[str], info_messages: list[str]) -> None:
+    """
+    Check if the formulation is complete by ensuring all necessary modules are included.
+
+    :param module_names: A set of module names to check for completeness.
+    :param fatal_errors: The list to append fatal errors.
+    :param nonfatal_errors: The list to append nonfatal errors.
+    :param info_messages: The list to append informational messages.
+    :return: None.
+    """
     module_complete = True
     for module_name in formulation_validations["formulation_rules"]["complete_module_list"]:
         if type(module_name) is list:
@@ -480,8 +491,6 @@ def validate_formulation(module_names: set[str], include_messages: bool = False)
         nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.')
     else:
         info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
-
-    return error_list()
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:

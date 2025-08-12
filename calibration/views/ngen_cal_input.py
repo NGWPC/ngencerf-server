@@ -271,7 +271,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         general['models'] = ', '.join(module_names)
 
         # Check fatal errors
-        formulation_errors, _ = validate_formulation(module_names)
+        formulation_errors, _, _ = validate_formulation(module_names)
         for f in formulation_errors:
             error_object.add_error(f)
 
