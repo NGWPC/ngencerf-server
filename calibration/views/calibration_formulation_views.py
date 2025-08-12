@@ -394,9 +394,13 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
                 f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
             )
             return fatal_errors, nonfatal_errors, info_messages
-
+        
+        if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
+            info_messages.append('Formulation is Calibratable.')
+        
         # If LSTM passes all checks, check for completeness
         check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+        
         return fatal_errors, nonfatal_errors, info_messages
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
