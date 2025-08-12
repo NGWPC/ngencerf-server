@@ -1,5 +1,12 @@
 #! /bin/bash
 
+# Check if the script is being sourced
+if [[ "$1" == "activate" ]] && [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    echo "Error: This script must be sourced, not executed, when using the 'activate' command."
+    echo "Use 'source ./runCerf.sh activate' to activate the virtual environment."
+    exit 1
+fi
+
 # Get the directory of the script
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
@@ -32,6 +39,7 @@ ensure_virtualenv() {
 
         # shellcheck disable=SC1090
         source "$VENV_PATH/bin/activate"
+        echo "Activated virtual environment at $VENV_PATH"
     fi
 }
 
@@ -63,6 +71,16 @@ if [ "$1" == "manage" ]; then
     ensure_virtualenv  # Activates and creates virtualenv if needed
     run_manage_command "$@"
     exit $?
+fi
+
+#=======================================================================
+# Special case: if the first argument is "activate", just activate the venv and return
+#=======================================================================
+if [ "$1" == "activate" ]; then
+    ensure_virtualenv  # Activates and creates virtualenv if needed
+    echo "Virtual environment activated. You can now run Python commands in this environment."
+    # Return to stop further execution but not exit the terminal
+    return 0
 fi
 
 #=======================================================================
