@@ -8,6 +8,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
+from calibration.enums import ForcingSourceEnum
 from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
@@ -206,18 +207,19 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.validation_eval_end_period = None
 
 
-def get_forcing_data_from_data_services(run: CalibrationRun):
+def get_forcing_data_from_data_services(run: CalibrationRun, forcing_source_name: str):
     """
     Retrieves forcing data from Data Services and updates the CalibrationRun instance.
 
     :param run: A CalibrationRun object with associated gage information.
+    :param forcing_source_name: The name of the forcing source to retrieve data for.
     """
     if settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[0]:
         logger.info('Getting forcing data from Data Services')
         url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
         forcing_json = fetch_from_data_services('GET', url, headers=default_headers)
     else:
-        get_forcing_data_from_s3(run)
+        get_forcing_data_from_s3(run, forcing_source_name)
         return
 
     forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Data Services is not in the expected format')
@@ -229,14 +231,16 @@ def get_forcing_data_from_data_services(run: CalibrationRun):
     logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
 
 
-def get_forcing_data_from_s3(run: CalibrationRun):
+def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
     """
     Attempts to retrieve forcing data from local S3 directories.
 
     :param run: A CalibrationRun object with associated gage information.
+    :param forcing_source_name: The name of the forcing source to retrieve data for.
     :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
     """
-    for s3_uri in settings.FORCING_DATA_DIRS:
+    forcing_directories = settings.FORCING_DATA_DIRS_AORC if forcing_source_name == ForcingSourceEnum.AORC.value else settings.FORCING_DATA_DIRS_RETRO
+    for s3_uri in forcing_directories:
         dir_path = convert_s3_uri_to_fs(s3_uri)
         forcing_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
         if os.path.isdir(forcing_dir):

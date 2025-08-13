@@ -191,8 +191,10 @@ ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
 
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
-FORCING_DATA_DIRS = ['s3://ngwpc-forcing/aorc_2.2',
-                     's3://ngwpc-forcing/retrospective_2.2']
+FORCING_DATA_DIRS_AORC = ['s3://ngwpc-forcing/aorc_2.2',
+                          's3://ngwpc-forcing/retrospective_2.2']
+
+FORCING_DATA_DIRS_RETRO = ['s3://ngwpc-forcing/retrospective_2.2']
 OBS_DATA_DIRS = 's3://ngwpc-hydrofabric/2.1'
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
@@ -280,6 +282,7 @@ RUNTIME_INFO = {
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
+    # noinspection PyTypeHints
     NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
 except KeyError:
     # noinspection PyUnresolvedReferences
