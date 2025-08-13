@@ -32,7 +32,7 @@ from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request, get_valid_path, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
-    get_forcing_data_from_data_services, get_observational_data_from_data_services
+    get_forcing_data_from_s3, get_observational_data_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +52,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         run = run if run else create_calibration_run_internal(request.user, genesis)
 
         errors = []
+        warnings = []
         eds_errors = []
 
         #############################
@@ -152,7 +153,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         forcing_source_name = calibration_run_data.get('forcing_source')
         forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
 
-        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
+        if forcing_source_name:
+            run.forcing_source = run.forcing_source_actual = ForcingSourceEnum.get_instance(forcing_source_name)
 
         if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
             forcing_user_uploaded_dir_path = forcing_user_uploaded_dir_path
@@ -163,10 +165,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if forcing_user_uploaded_dir_path:
                     errors.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
         else:
-            # Fetch forcing data from Data Services
+            # Fetch forcing data from S3
             try:
                 if gage_id:
-                    get_forcing_data_from_data_services(run, run.forcing_source.name)
+                    get_forcing_data_from_s3(run, run.forcing_source.name)
             except DataServicesException as e:
                 errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -195,6 +197,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             try:
                 if gage_id:
                     get_observational_data_from_data_services(run)
+                    if run.forcing_source != run.forcing_source_actual:
+                        warnings.append(f'{run.forcing_source.name} forcing data not found.  Using {run.forcing_source_actual.name}')
             except DataServicesException as e:
                 errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -298,8 +302,12 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         messages['errors'] = errors + formulation_errors
     if formulation_warnings:
         messages['warnings'] = formulation_warnings
+    if warnings:
+        messages.setdefault('warnings', []).extend(warnings)
     if eds_errors:
         messages['eds_errors'] = eds_errors
+        
+    print('messages', messages)
 
     return run, messages, None
 

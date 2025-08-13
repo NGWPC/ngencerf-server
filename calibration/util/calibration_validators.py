@@ -589,6 +589,7 @@ class SaveGageRequestSerializer(BaseSerializer):
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
 
 

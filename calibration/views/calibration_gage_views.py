@@ -28,7 +28,7 @@ from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path, get_user_email, get_elapsed_str
 from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
-    get_forcing_data_from_data_services, DataServicesException, get_module_metadata_from_data_services, clear_times
+    get_forcing_data_from_s3, DataServicesException, get_module_metadata_from_data_services, clear_times
 
 logger = logging.getLogger(__name__)
 
@@ -294,7 +294,7 @@ def save_gage_tab(request: Request):
                 shutil.rmtree(user_uploaded_forcing_dir)
             if not run.forcing_eds_dir_path or run.forcing_source != forcing_source_name:
                 try:
-                    get_forcing_data_from_data_services(run, forcing_source_name)
+                    get_forcing_data_from_s3(run, forcing_source_name)
                 except DataServicesException as e:
                     logger.exception("Error retrieving forcing data from Data Services")
                     eds_errors.append({
@@ -314,6 +314,8 @@ def save_gage_tab(request: Request):
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments}
+    if run.forcing_source != run.forcing_source_actual:
+        response['warnings'] = [f'{run.forcing_source.name} forcing data not found.  Using {run.forcing_source_actual.name}']
     if eds_errors:
         response['eds_errors'] = eds_errors
 
@@ -526,7 +528,7 @@ def upload_forcing_data(request: Request) -> Response:
     if error_return:
         return error_return
 
-    run.forcing_source = ForcingSourceEnum.UPLOAD.db_instance
+    run.forcing_source = run_forcing_source_actual = ForcingSourceEnum.UPLOAD.db_instance
 
     # Validate the file keys and how many there are
     key = 'forcing_files'

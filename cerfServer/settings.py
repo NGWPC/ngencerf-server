@@ -187,15 +187,17 @@ ENTERPRISE_DATA_VERSION = "2.2"
 ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = [True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}']
 ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameters/']
 ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
-ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
 
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
-FORCING_DATA_DIRS_AORC = ['s3://ngwpc-forcing/aorc_2.2',
-                          's3://ngwpc-forcing/retrospective_2.2']
-
-FORCING_DATA_DIRS_RETRO = ['s3://ngwpc-forcing/retrospective_2.2']
-OBS_DATA_DIRS = 's3://ngwpc-hydrofabric/2.1'
+# Due to circular imports, can't use the enums as keys.  But the values must match exactly
+FORCING_DATA_DIRS_AORC = {
+    "AORC": 's3://ngwpc-forcing/aorc_2.2',
+    "NWM Retrospective":  's3://ngwpc-forcing/retrospective_2.2'
+}
+FORCING_DATA_DIRS_RETRO = {
+    "NWM Retrospective":  's3://ngwpc-forcing/retrospective_2.2'
+}
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
