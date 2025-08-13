@@ -204,7 +204,7 @@ class Command(BaseCommand):
                   {"name": "TX DoT", "description": "Texas Department of Transportation", "is_active": False},
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
-                  {"name": "Data Services", "description": "NGWPC Enterprise Data Services", "is_active": True},
+                  {"name": "Historical", "description": "NGWPC Enterprise Data Services", "is_active": True},
                   {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
@@ -218,7 +218,7 @@ class Command(BaseCommand):
         if self.DELETE_FLAG:
             GeopackageSource.objects.all().delete()
 
-        values = [{"name": "Data Services", "description": "NGWPC Enterprise Data Services", "is_active": True},
+        values = [{"name": "Hydrofabric", "description": "NGWPC Enterprise Data Services", "is_active": True},
                   {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
