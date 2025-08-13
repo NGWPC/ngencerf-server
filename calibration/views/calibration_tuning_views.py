@@ -325,10 +325,21 @@ def upload_user_parameters(request: Request) -> Response:
         return error_return
 
     files = request.FILES.getlist('user_parameter_file')
+    if not files:
+        return ResponseError('No file uploaded under field "user_parameter_file".')
+    if len(files) > 1:
+        logger.warning(f'{get_caller_name()}() multiple files uploaded; using the first one')
 
     # Process the first file in the list
     parameter_file = files[0]
-    file_contents = parameter_file.read().decode('utf-8')
+    try:
+        file_contents = parameter_file.read().decode('utf-8')
+    except Exception as exc:
+        logger.exception('Failed to read/decode uploaded file as UTF-8')
+        return ResponseError(f'Failed to read file as UTF-8: {exc}')
+
+    if not file_contents.strip():
+        return ResponseError('Uploaded file is empty.')
 
     # Detect delimiter type by checking the first few rows
     first_line = file_contents.splitlines()[0]
@@ -343,11 +354,46 @@ def upload_user_parameters(request: Request) -> Response:
         delimiter = r'\s+'
         logger.debug("Detected space delimiter.")
 
+    # Expected columns
+    required_columns = ['param', 'min', 'max', 'init', 'model']
+    expected_cols = len(required_columns)
+
+    # Pre-validate consistent column counts when we have a simple delimiter
+    # (csv.reader can't handle regex separators, so we skip this for r'\s+')
+    if delimiter in (',', '\t'):
+        import csv
+        lines = file_contents.splitlines()
+        # Header check (strict match on header names after trim)
+        header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
+        if header_cols != required_columns:
+            return ResponseError(
+                f'Header mismatch. Expected: {required_columns}, Found: {header_cols}'
+            )
+        # Validate each data line has exactly the expected number of columns
+        for i, row in enumerate(lines[1:], start=2):  # human line numbers
+            cols = next(csv.reader([row], delimiter=delimiter))
+            if len(cols) != expected_cols:
+                return ResponseError(
+                    f'Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}'
+                )
+
+    # Parse with pandas; enforce dtypes so we fail fast on bad numerics
     try:
         # Handle file parsing based on detected delimiter
-        df = pd.read_csv(io.StringIO(file_contents), sep=delimiter, engine='python', skipinitialspace=True)
-    except pd.errors.ParserError:
-        return Response({'error': 'The uploaded file could not be parsed with the detected delimiter.'}, status=400)
+        df = pd.read_csv(
+            io.StringIO(file_contents),
+            sep=delimiter,
+            engine='python',
+            skipinitialspace=True,
+            dtype={'param': str, 'min': float, 'max': float, 'init': float, 'model': str},
+        )
+    except pd.errors.ParserError as exc:
+        logger.debug(f'Pandas parser error: {exc}')
+        return Response({'error': f'Could not parse file with detected delimiter: {exc}'}, status=400)
+    except ValueError as exc:
+        # Typically raised when dtype conversion fails with informative message
+        logger.debug(f'Pandas dtype error: {exc}')
+        return Response({'error': f'Invalid data types in file: {exc}'}, status=400)
 
     # Strip any leading/trailing whitespace in the column headers
     df.columns = df.columns.str.strip()
@@ -356,32 +402,78 @@ def upload_user_parameters(request: Request) -> Response:
     logger.debug(f"Detected columns: {df.columns.tolist()}")
 
     # Ensure that the DataFrame contains the correct columns
-    required_columns = ['param', 'min', 'max', 'init', 'model']
     missing_cols = [col for col in required_columns if col not in df.columns]
-
     if missing_cols:
         # Log the actual DataFrame to inspect it
         logger.debug(f"DataFrame content:\n{df.head()}")
         return ResponseError(f'Missing required columns: {missing_cols}')
 
-    # Ensure numeric columns are properly converted to floats and validate values
-    invalid_values = {}
-    for col in ['min', 'max', 'init']:
-        df[col] = pd.to_numeric(df[col], errors='coerce')  # Coerce invalid values to NaN
-        invalid_rows = df[df[col].isna()]
-        if not invalid_rows.empty:
-            invalid_values[col] = invalid_rows.index.tolist()
+    # Ensure no unexpected columns (common when a row has too many fields and pandas shifts things)
+    unexpected = [c for c in df.columns if c not in required_columns]
+    if unexpected:
+        return ResponseError(f'Unexpected columns present: {unexpected}. Expected only {required_columns}.')
 
-    if invalid_values:
-        error_message = f"Invalid values found in columns: {invalid_values}"
-        logger.debug(error_message)
-        return Response({'error': error_message}, status=400)
+    # Ensure there is at least one data row
+    if df.empty:
+        return ResponseError('No data rows found. Provide at least one parameter row.')
+
+    # Validate numeric columns and report exact offending lines/values
+    invalid_details = {}
+    for col in ['min', 'max', 'init']:
+        # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
+        coerced = pd.to_numeric(df[col], errors='coerce')
+        bad_mask = coerced.isna()
+        if bad_mask.any():
+            bad_rows = df[bad_mask]
+            # +2 => header is line 1; df index 0 is line 2
+            invalid_details[col] = [
+                {'line': int(idx) + 2, 'param': str(row.get('param')), 'value': row.get(col)}
+                for idx, row in bad_rows.iterrows()
+            ]
+
+    if invalid_details:
+        logger.debug(f"Invalid numeric values: {invalid_details}")
+        return Response({'error': 'Invalid numeric values', 'details': invalid_details}, status=400)
+
+    # Range checks: min <= max and init within [min, max]
+    range_errors = {}
+
+    bad_minmax_mask = df['min'] > df['max']
+    if bad_minmax_mask.any():
+        rows = df[bad_minmax_mask]
+        range_errors['min_gt_max'] = [
+            {'line': int(idx) + 2, 'param': str(row['param']), 'min': row['min'], 'max': row['max']}
+            for idx, row in rows.iterrows()
+        ]
+
+    bad_init_low = df['init'] < df['min']
+    if bad_init_low.any():
+        rows = df[bad_init_low]
+        range_errors.setdefault('init_lt_min', [])
+        range_errors['init_lt_min'].extend(
+            {'line': int(idx) + 2, 'param': str(row['param']), 'init': row['init'], 'min': row['min']}
+            for idx, row in rows.iterrows()
+        )
+
+    bad_init_high = df['init'] > df['max']
+    if bad_init_high.any():
+        rows = df[bad_init_high]
+        range_errors.setdefault('init_gt_max', [])
+        range_errors['init_gt_max'].extend(
+            {'line': int(idx) + 2, 'param': str(row['param']), 'init': row['init'], 'max': row['max']}
+            for idx, row in rows.iterrows()
+        )
+
+    if range_errors:
+        logger.debug(f"Range validation errors: {range_errors}")
+        return Response({'error': 'Range validation failed', 'details': range_errors}, status=400)
 
     logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n{df}")
 
     # Convert DataFrame to a list of dictionaries
     parsed_data = df.to_dict(orient='records')
 
+    # Persist filename on the run
     run.user_parameter_filename = parameter_file.name
     run.save(update_fields=['user_parameter_filename'])
 
