@@ -10,7 +10,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 
 from calibration.enums import ValidationType
-from calibration.models import Iteration, ValidationRun, ValidationMetrics
+from calibration.models import Iteration, ValidationRun, ValidationMetrics, CalibrationFormulation, CalibrationRun
 from calibration.util.calibration_validators import ErrorResponseSerializer, CalibrationRunIdList
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, get_user_email, validate_request
@@ -147,9 +147,7 @@ def _build_metrics_csv_bytes(
 
         runs_by_calibration_run_id[calibration_run.id] = validation_run
         gage_id = calibration_run.gage.gage_id if calibration_run.gage else ""
-        formulation = calibration_run.user_formulation_name or (
-            calibration_run.optimization.name if calibration_run.optimization else ""
-        )
+        formulation = get_formulations(calibration_run)
         base_info_by_calibration_run_id[calibration_run.id] = (validation_run.id, gage_id, formulation)
 
     # Warn for requested runs that lacked a VALID_BEST
@@ -330,9 +328,7 @@ def _build_params_csv_bytes(
         best_iteration = best_list[0]
         calibration_run = best_iteration.calibration_run
         gage_id = calibration_run.gage.gage_id if calibration_run.gage else ""
-        formulation = calibration_run.user_formulation_name or (
-            calibration_run.optimization.name if calibration_run.optimization else ""
-        )
+        formulation = get_formulations(calibration_run)
         validation_run_id = validation_run_id_by_calibration_run_id.get(calibration_run_id, "")
 
         # Collect parameter name -> tuned_value for this best iteration
@@ -395,3 +391,10 @@ def _build_params_csv_bytes(
     logger.info(f"Parameters CSV built: rows={len(rows)}, param_columns={len(param_cols)}")
 
     return "regionalization_parameters.csv", sio.getvalue().encode('utf-8')
+
+
+def get_formulations(run: CalibrationRun) -> str:
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run).select_related('module')
+    # Sort to ensure deterministic order in CSV
+    module_names = sorted({f.module.name for f in formulations})
+    return ' '.join(module_names)
