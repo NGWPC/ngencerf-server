@@ -75,7 +75,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             if error_message:
                 return None, None, ResponseError(error_message)
 
-            formulation_errors, formulation_warnings = validate_formulation(module_names)
+            formulation_errors, formulation_warnings, _ = validate_formulation(module_names)
             have_lstm = 'LSTM' in module_names
 
             sloth_parameters = calibration_run_data.get('sloth_parameters')
@@ -506,7 +506,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     calibration_run_data['modules'] = modules
 
     # Validation warnings
-    formulation_errors, formulation_warnings = validate_formulation(modules)
+    formulation_errors, formulation_warnings, _ = validate_formulation(modules)
     if formulation_warnings and not export:
         calibration_run_data['formulation_warnings'] = formulation_warnings
     if formulation_errors and not export:
