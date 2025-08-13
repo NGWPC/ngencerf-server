@@ -1,5 +1,6 @@
 import logging
 import re
+import socket
 import threading
 import time
 import traceback
@@ -79,25 +80,41 @@ def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | 
         if not settings_dict:
             settings_dict = connections[alias].settings_dict
 
-        logger.error("Database settings used:")
+        logger.error("[DB Diagnostics] Database settings used:")
         logger.error(f"  NAME: {settings_dict.get('NAME')}")
         logger.error(f"  USER: {settings_dict.get('USER')}")
         logger.error(f"  HOST: {settings_dict.get('HOST')}")
         logger.error(f"  PORT: {settings_dict.get('PORT')}")
 
         # Timeouts and related options
-        opts = (settings_dict or {}).get('OPTIONS', {}) or {}
+        opts = settings_dict.get('OPTIONS', {}) or {}
         conn_max_age = settings_dict.get('CONN_MAX_AGE')
         connect_timeout = opts.get('connect_timeout')
         options_raw = opts.get('options')
-
         stmt_timeout = _parse_statement_timeout(options_raw)
 
-        logger.error("Timeout-related settings:")
+        logger.error("[DB Diagnostics] Timeout-related settings:")
         logger.error(f"  CONN_MAX_AGE: {conn_max_age!r}")
         logger.error(f"  OPTIONS.connect_timeout: {connect_timeout!r}")
         logger.error(f"  OPTIONS.options: {options_raw!r}")
         logger.error(f"  Parsed statement_timeout: {stmt_timeout!r}")
+
+        # Log client hostname and thread info
+        hostname = socket.gethostname()
+        thread = threading.current_thread().name
+        logger.error(f"[DB Diagnostics] Hostname: {hostname}, Thread: {thread}")
+
+        # DNS resolution timing
+        host = settings_dict.get('HOST')
+        port = settings_dict.get('PORT')
+        try:
+            dns_start = time.perf_counter()
+            resolved = socket.getaddrinfo(host, port)
+            dns_elapsed = time.perf_counter() - dns_start
+            logger.error(f"[DB Diagnostics] DNS resolution for host '{host}' took {dns_elapsed:.3f}s → {resolved[0][4][0]}")
+        except Exception as dns_exc:
+            logger.error(f"[DB Diagnostics] DNS resolution failed for host '{host}': {dns_exc}")
+
     except Exception as e:
         logger.error(f"[DB Diagnostics] Could not retrieve DB settings: {e}")
 
@@ -141,11 +158,14 @@ def patch_ensure_connection_with_diagnostics():
 
     def wrapped_ensure_connection(self):
         try:
+            start = time.perf_counter()
             return original_ensure_connection(self)
         except (DjangoOperationalError, PostgresDriverError) as e:
+            elapsed = time.perf_counter() - start
             if _should_log(self.alias, e):
                 err_type = f"{type(e).__module__}.{type(e).__name__}"
-                logger.error(f"[DB ERROR] ensure_connection() failed for alias '{self.alias}': {err_type}: {e}")
+                logger.error(f"[DB ERROR] ensure_connection() failed for alias '{self.alias}' "
+                             f"(duration: {elapsed:.3f}s): {err_type}: {e}")
                 logger.error("Traceback:\n" + "".join(traceback.format_exc()))
                 log_db_diagnostics_on_failure(self.alias, settings_dict=getattr(self, "settings_dict", None))
             raise
