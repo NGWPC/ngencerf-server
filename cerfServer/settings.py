@@ -49,7 +49,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django_dbconn_retry',
+    # 'django_dbconn_retry',
     'django.contrib.staticfiles',
     'drf_spectacular',
     'calibration.apps.CalibrationConfig',
