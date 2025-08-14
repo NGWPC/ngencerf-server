@@ -28,7 +28,6 @@ LOGGING['loggers']['calibration']['level'] = 'DEBUG'
 # Regular logging
 LOGGING['root']['level'] = 'INFO'
 
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -37,6 +36,7 @@ DATABASES = {
         'PASSWORD': os.getenv('CERF_SERVER_DATABASE_PASSWORD', 'postgres'),
         'HOST': os.getenv('CERF_SERVER_DATABASE_HOST', 'localhost'),
         'PORT': 5432,
+        'CONN_MAX_AGE': 10,
         'OPTIONS': {
             'connect_timeout': 10,
             'options': '-c statement_timeout=10000ms'
