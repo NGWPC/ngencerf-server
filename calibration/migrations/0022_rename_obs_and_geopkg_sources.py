@@ -4,8 +4,8 @@ from django.db import migrations
 
 
 def rename_obs(apps, schema_editor):
-    ObservationSource = apps.get_model('calibration', 'ObservationSource')
-    ObservationSource.objects.filter(name="Data Services").update(name='Historical')
+    ObservationalSource = apps.get_model('calibration', 'ObservationalSource')
+    ObservationalSource.objects.filter(name="Data Services").update(name='Historical')
 
 
 def rename_geo(apps, schema_editor):

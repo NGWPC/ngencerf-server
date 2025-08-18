@@ -313,7 +313,8 @@ def save_gage_tab(request: Request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
-                'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments}
+                'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments,
+                'forcing_source_requested': run.forcing_source.name, 'forcing_source_used': run.forcing_source_actual.name}
     if run.forcing_source != run.forcing_source_actual:
         response['warnings'] = [f'{run.forcing_source.name} forcing data not found.  Using {run.forcing_source_actual.name}']
     if eds_errors:

@@ -591,6 +591,9 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
     eds_errors = EdsErrorsSerializer(many=True, required=False)
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
+    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_used = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+
 
 
 class DomainResponseSerializer(BaseSerializer):
