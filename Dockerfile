@@ -36,10 +36,10 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     rm -f requirements.txt
 
 ARG MSWM_ORG=NGWPC
-ARG MSWM_TAG
+ARG MSWM_TAG=development
 
 ARG NGEN_FORCING_ORG=NGWPC
-ARG NGEN_FORCING_TAG
+ARG NGEN_FORCING_TAG=development
 
 ARG CACHE_BUST=1
 RUN set -eux && \
