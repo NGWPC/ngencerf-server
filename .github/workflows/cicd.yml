@@ -1,0 +1,149 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main, development]
+  workflow_dispatch:
+
+jobs:
+  # Setup image variables
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+      tag: ${{ steps.vars.outputs.tag }}
+    steps:
+      - name: Set image variables
+        id: vars
+        run: |
+          ORG=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          REPO=$(basename "${GITHUB_REPOSITORY}")
+          IMAGE="ghcr.io/${ORG}/${REPO}"
+          TAG="${GITHUB_REF_NAME}"
+
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+  # Build Docker images for branch/tag
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    outputs:
+      image: ${{ needs.setup.outputs.image }}
+      tag: ${{ needs.setup.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build branch/tag image
+        run: |
+          IMAGE="${{ needs.setup.outputs.image }}"
+          TAG="${{ needs.setup.outputs.tag }}"
+          echo "Building Docker image $IMAGE:$TAG"
+
+          # Build the image with optional build args if a tag exists
+          docker build --no-cache \
+            --build-arg CREATE_INPUT_TAG="$TAG" \
+            --build-arg RUN_SWE_TAG="$TAG" \
+            -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+
+
+  unit-test:
+    runs-on: ubuntu-latest
+    needs: build
+    container:
+      image: ${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}
+    steps:
+      - name: Run unit tests
+        run: |
+          echo "TODO: add unit tests here"
+
+  # SonarQube scan (internal NGWPC)
+  sonarqube-internal:
+    if: github.repository_owner == 'NGWPC'
+    runs-on: self-hosted
+    needs: unit-test
+    container:
+      image: sonarsource/sonar-scanner-cli
+      options: --entrypoint="" --user 0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      #- name: Download test results
+      #  uses: actions/download-artifact@v4
+      #  with:
+      #    name: test-results
+      - name: SonarQube Scan
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: sonar-scanner -X -Dsonar.verbose=true
+
+  codeql-scan:
+    runs-on: ubuntu-latest
+    needs: unit-test
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript
+      - name: Install dependencies
+        run: npm ci
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  container-scanning:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Scan container
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ needs.build.outputs.image }}:${{ needs.build.outputs.tag }}
+          format: 'template'
+          template: '@/contrib/sarif.tpl'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [unit-test, sonarqube-internal, codeql-scan, container-scanning]
+    if: github.ref == 'refs/heads/development'
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build production image
+        run: |
+          IMAGE="${{ needs.setup.outputs.image }}"
+          echo "Building production image with Dockerfile.production-pw"
+          docker build -f Dockerfile.production-pw -t $IMAGE:prod -t $IMAGE:latest .
+
+      - name: Push production image
+        run: |
+          IMAGE="${{ needs.setup.outputs.image }}"
+          docker push $IMAGE:prod
+          docker push $IMAGE:latest

@@ -15,11 +15,6 @@ RUN set -eux && \
         python3.11-setuptools && \
     dnf clean all
 
-# Configure Git with the GitLab token using BuildKit secret mount
-RUN --mount=type=secret,id=gitlab_token \
-    set -eux && \
-    git config --global url."https://oauth2:$(cat /run/secrets/gitlab_token)@gitlab.sh.nextgenwaterprediction.com/".insteadOf "https://gitlab.sh.nextgenwaterprediction.com/"
-
 # Install Python virtual environment
 ENV VIRTUAL_ENV=/ngencerf/ngencerf-python
 ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
@@ -40,15 +35,16 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     pip3 install -r requirements.txt && \
     rm -f requirements.txt
 
+ARG MSWM_ORG=NGWPC
 ARG MSWM_TAG
+
+ARG NGEN_FORCING_ORG=NGWPC
 ARG NGEN_FORCING_TAG
+
 ARG CACHE_BUST=1
-# Configure Git with the GitLab token using BuildKit secret mount
-RUN --mount=type=secret,id=gitlab_token \
-    set -eux && \
-    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/mswm.git@${MSWM_TAG}#egg=mswm" && \
-    echo $CACHE_BUST && pip3 install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_TAG}#egg=swe_processing&subdirectory=swe_processing" && \
-    rm -f /root/.gitconfig && \
+RUN set -eux && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${MSWM_ORG}/nwm-msw-mgr.git@${MSWM_TAG}#egg=mswm" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git@${NGEN_FORCING_TAG}#egg=swe_processing&subdirectory=swe_processing" && \
     pip3 cache purge
 
 COPY cli /ngencerf/ngencerf-server/cli
