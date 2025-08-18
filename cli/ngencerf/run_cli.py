@@ -21,7 +21,7 @@ from ngencerf.cli_functions import (
     upload_observational_data,
     upload_forcing_data,
     upload_geopackage_data,
-    download_zip, archive_job, unarchive_job, about,
+    download_zip, archive_job, unarchive_job, about, generate_regionalization_files,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
 
@@ -293,6 +293,23 @@ def main():
     register_parser = add_parser("register", "Register new user")
     register_parser.add_argument("email", nargs="?", help="Email address")
     register_parser.set_defaults(func=lambda cmd_args: ngen_register(cmd_args.email))
+
+    regionalization_parser = add_parser("regionalization", "Generate files for regionalization new user")
+    regionalization_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="+",  # One or more space-separated integers
+        help="One or more calibration run IDs"
+    )
+    regionalization_parser.add_argument(
+        "--output", "-o",
+        dest="output_path",
+        nargs="?",
+        const="__DEFAULT__",  # Use the sentinel value
+        default="__DEFAULT__",
+        help="Path to save output files"
+    )
+    regionalization_parser.set_defaults(func=lambda cmd_args: generate_regionalization_files(cmd_args.run_ids))
 
     run_parser = add_parser("run", "Submit calibration run")
     run_parser.add_argument("run_id", type=int, help="Calibration run ID")

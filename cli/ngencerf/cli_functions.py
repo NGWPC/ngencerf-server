@@ -7,10 +7,13 @@ import itertools
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
+import zipfile
 from contextlib import ExitStack
 from datetime import datetime
+from typing import Callable
 
 import requests
 import tabulate
@@ -31,7 +34,7 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
-def post_with_spinner(message: str, post_func: callable) -> requests.Response | None:
+def post_with_spinner(message: str, post_func: Callable) -> requests.Response | None:
     """
     Displays a spinner while executing a POST request callable.
     Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
@@ -203,7 +206,7 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     Downloads the ZIP archive for a calibration run from the server.
 
     :param calibration_run_id: ID of the calibration run to download.
-    :param output_path: Path to save the ZIP file or directory (default: ~/Downloads).
+    :param output_path: Path to save the ZIP file or directory.  If not provided, defaults to the current working directory.
     :returns: 0 on success, 1 on failure.
     """
     print(f"Downloading ZIP for calibration run: {calibration_run_id}")
@@ -220,7 +223,7 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     if response is None:
         return 1  # Interrupted by user
 
-    response_json, success = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text, response.headers.get("Content-Type"))
     if not success:
         return 1
 
@@ -575,7 +578,7 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     Exports a calibration job to a file or displays it.
 
     :param calibration_run_id: ID of the calibration run to export
-    :param output_path: Path to save the export file (default: ~/Downloads)
+    :param output_path: Path to save the export file. If not provided, defaults to the current working directory.
     :param display: Whether to print the job to the console
     :return: 0 on success, 1 on failure
     """
@@ -605,6 +608,61 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
 
     print(f"Job {calibration_run_id} exported to {final_path}")
     return 0
+
+
+def generate_regionalization_files(calibration_run_ids: list[int], output_path: str | None = None) -> int:
+    """
+    Triggers ZIP file generation for regionalization and saves contents to output_path.
+
+    :param calibration_run_ids: List of calibration run IDs.
+    :param output_path: Directory to unzip files into. If None, current working directory is used.
+    :return: 0 on success, 1 on failure.
+    """
+    print(f"Generating regionalization files for calibration run jobs {calibration_run_ids}")
+    payload = {"calibration_run_ids": calibration_run_ids}
+
+    # Create a temporary directory for downloading the ZIP
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, "regionalization_files.zip")
+
+        def post_zip():
+            return requests.post(
+                f"{API_BASE}/calibration/get_regionalization_files_zip/",
+                headers=get_auth_headers(),
+                json=payload,
+                stream=True,
+            )
+
+        response = post_with_spinner("Downloading regionalization ZIP...", post_zip)
+
+        if response is None:
+            return 1
+
+        if not response.ok:
+            print(f"Download failed with status code {response.status_code}")
+            check_http_error(response.status_code, response.text)
+            return 1
+
+        # Save ZIP to temp path
+        with open(zip_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        # Prepare output path
+        final_dir = os.path.abspath(output_path or os.getcwd())
+        os.makedirs(final_dir, exist_ok=True)
+
+        # Extract ZIP contents to output directory
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(final_dir)
+        except zipfile.BadZipFile:
+            print("Error: The downloaded file is not a valid ZIP archive.")
+            return 1
+
+        print(f"Unzipped regionalization files to: {final_dir}")
+        return 0
 
 
 def _pretty_print_job(calibration_run_id: int, data: dict) -> None:

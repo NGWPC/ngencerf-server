@@ -120,7 +120,7 @@ urlpatterns = [
     ##################################
     # Regionalization
     ##################################
-    path('calibration/get_regionalization_files/', calibration_regionalization_views.get_regionalization_files, name="getRegionalizationFiles"),
+    path('calibration/get_regionalization_files_zip/', calibration_regionalization_views.get_regionalization_files_zip, name="getRegionalizationFilesZip"),
 
     ##################################
     # Swagger - drf_spectacular

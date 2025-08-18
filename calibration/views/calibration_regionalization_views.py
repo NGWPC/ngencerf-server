@@ -9,11 +9,11 @@ from django.http import FileResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 
-from calibration.enums import ValidationType
+from calibration.enums import ValidationType, StatusEnum
 from calibration.models import Iteration, ValidationRun, ValidationMetrics, CalibrationFormulation, CalibrationRun
 from calibration.util.calibration_validators import ErrorResponseSerializer, CalibrationRunIdList
 from calibration.views.called_from import get_caller_name
-from calibration.views.common import handle_exceptions, get_user_email, validate_request
+from calibration.views.common import handle_exceptions, get_user_email, validate_request, get_calibration_run, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_regionalization_files(request) -> FileResponse:
+def get_regionalization_files_zip(request) -> FileResponse:
     """
     Generate regionalization CSVs for the given calibration_run_ids and return as a ZIP attachment.
 
@@ -50,6 +50,19 @@ def get_regionalization_files(request) -> FileResponse:
         return error_return
 
     calibration_run_ids = validator.get('calibration_run_ids')
+
+    job_results = []
+
+    # make sure they all exist
+    for calibration_run_id in calibration_run_ids:
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
+        if error_return:
+            job_results.append({
+                "message": error_return.data.get('message'),
+            })
+
+    if job_results:
+        return ResponseError(job_results)
 
     # Collect diagnostics to include in the ZIP's report.json and response headers
     warnings_list: list[dict] = []
