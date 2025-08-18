@@ -54,7 +54,7 @@ def data_validation_job(
     errors found during validation.
 
     :param gages: Optional list of gage IDs to validate.
-    :param forcing_dir: Optional root directory to look for forcing data. Defaults to settings.FORCING_DATA_DIRS.
+    :param forcing_dir: Optional root directory to look for forcing data. Defaults to settings.FORCING_DATA_DIRS_AORC
     :param start: Optional starting index into the full headwater gage list.
     :param limit: Optional number of gages to validate, starting from `start`.
     """
@@ -93,7 +93,7 @@ def data_validation_job(
         logger.info(' ')  # blank line
 
         forcing_directories = []
-        raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS_AORC
+        raw_dirs = [forcing_dir] if forcing_dir else settings.FORCING_DATA_DIRS_AORC.values()
 
         for d in raw_dirs:
             if d.startswith("s3://"):
@@ -420,8 +420,6 @@ def validate_csv_file(path: str, file_index: int, total_files: int) -> bool:
     elapsed = time() - start_time
     minutes, seconds = divmod(int(elapsed), 60)
     logger.info(f"    Finished validating forcing file {path} ({file_index} of {total_files}) in {minutes}:{seconds:02d}")
-
-    logger.debug(f"validate_csv_file returning had_errors={had_errors} for {path}")
     return had_errors
 
 
