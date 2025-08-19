@@ -97,10 +97,10 @@ WORKDIR /ngencerf/ngencerf-server/
 
 # Install additional Python packages
 ARG MSWM_ORG=NGWPC
-ARG MSWM_TAG
+ARG MSWM_TAG=development
 
 ARG NGEN_FORCING_ORG=NGWPC
-ARG NGEN_FORCING_TAG
+ARG NGEN_FORCING_TAG=development
 
 ARG CACHE_BUST=1
 # Configure Git with the GitLab token using BuildKit secret mount
