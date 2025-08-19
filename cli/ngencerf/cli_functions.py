@@ -610,14 +610,25 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     return 0
 
 
-def generate_regionalization_files(calibration_run_ids: list[int], output_path: str | None = None) -> int:
+def generate_regionalization_files(calibration_run_ids: list[int] | str, output_path: str | None = None) -> int:
     """
     Triggers ZIP file generation for regionalization and saves contents to output_path.
 
-    :param calibration_run_ids: List of calibration run IDs.
+    :param calibration_run_ids: List of calibration run IDs or a path to a file containing them.
     :param output_path: Directory to unzip files into. If None, current working directory is used.
     :return: 0 on success, 1 on failure.
     """
+    # Allow file input
+    if isinstance(calibration_run_ids, str):
+        try:
+            with open(calibration_run_ids, "r") as f:
+                contents = f.read()
+            # Support space/comma/line-separated values
+            calibration_run_ids = [int(x) for x in contents.replace(",", " ").split()]
+        except Exception as e:
+            print(f"Failed to read calibration run IDs from file: {e}")
+            return 1
+
     print(f"Generating regionalization files for calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids}
 
@@ -649,9 +660,8 @@ def generate_regionalization_files(calibration_run_ids: list[int], output_path: 
                 if chunk:
                     f.write(chunk)
 
-        # Prepare output path
-        final_dir = os.path.abspath(output_path or os.getcwd())
-        os.makedirs(final_dir, exist_ok=True)
+        # Resolve final output directory
+        final_dir = os.path.dirname(resolve_output_path(output_path, "regionalization_files.zip"))
 
         # Extract ZIP contents to output directory
         try:
