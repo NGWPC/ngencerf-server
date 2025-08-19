@@ -197,6 +197,7 @@ def get_jobs(
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
     :param include_archived: Whether to include archived jobs in the queryset.
+    :param include_stop_criteria: Whether to include stop_criteria in the queryset.
     :return: List of calibration jobs with selected fields.
     """
     # Base query: filter jobs for the user
