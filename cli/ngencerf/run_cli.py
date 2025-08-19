@@ -21,7 +21,7 @@ from ngencerf.cli_functions import (
     upload_observational_data,
     upload_forcing_data,
     upload_geopackage_data,
-    download_zip, archive_job, unarchive_job, about,
+    download_zip, archive_job, unarchive_job, about, generate_regionalization_files,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
 
@@ -293,6 +293,43 @@ def main():
     register_parser = add_parser("register", "Register new user")
     register_parser.add_argument("email", nargs="?", help="Email address")
     register_parser.set_defaults(func=lambda cmd_args: ngen_register(cmd_args.email))
+
+    regionalization_parser = add_parser("regionalization", "Generate files for regionalization")
+    regionalization_parser.add_argument(
+        "run_ids",
+        type=int,
+        nargs="*",  # <-- allow 0 or more positional run IDs
+        help="One or more calibration run IDs"
+    )
+
+    # Optional file input
+    regionalization_parser.add_argument(
+        "--id-file",
+        dest="id_file",
+        help="Path to file containing calibration run IDs (comma, space, or newline separated)"
+    )
+
+    regionalization_parser.add_argument(
+        "--output", "-o",
+        dest="output_path",
+        nargs="?",
+        const="__DEFAULT__",  # Use the sentinel value
+        default="__DEFAULT__",
+        help="Path to save output files"
+    )
+
+    def _handle_regionalization_args(cmd_args):
+        if cmd_args.id_file:
+            run_ids_input = cmd_args.id_file
+        elif cmd_args.run_ids:
+            run_ids_input = cmd_args.run_ids
+        else:
+            print("Error: You must provide either run IDs as arguments or via --id-file.")
+            return 1
+
+        return generate_regionalization_files(run_ids_input, cmd_args.output_path)
+
+    regionalization_parser.set_defaults(func=_handle_regionalization_args)
 
     run_parser = add_parser("run", "Submit calibration run")
     run_parser.add_argument("run_id", type=int, help="Calibration run ID")
