@@ -505,16 +505,42 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
+
+    # Print top-level message
     if message := response_json.get("message"):
         print(message)
-    if warnings := response_json.get("warnings"):
-        print("Warnings:")
-        for w in warnings:
-            print('  ', w)
+
+    # Collect errors into one list
+    combined_errors = []
+    combined_warnings = []
+
+    # Nested messages block
+    if messages := response_json.get("messages"):
+        if errors := messages.get("errors"):
+            combined_errors.extend(errors)
+
+        if eds_errors := messages.get("eds_errors"):
+            combined_errors.extend(e.get("message", str(e)) for e in eds_errors)
+
+        if warnings := messages.get("warnings"):
+            combined_warnings.extend(warnings)
+
+    # Top-level blocks
     if errors := response_json.get("errors"):
+        combined_errors.extend(errors)
+    if warnings := response_json.get("warnings"):
+        combined_warnings.extend(warnings)
+
+    # Print all collected errors and warnings
+    if combined_errors:
         print("Errors:")
-        for e in errors:
+        for e in combined_errors:
             print('  ', e)
+
+    if combined_warnings:
+        print("Warnings:")
+        for w in combined_warnings:
+            print('  ', w)
 
     return 0
 
