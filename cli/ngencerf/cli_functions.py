@@ -417,7 +417,7 @@ def list_jobs(output_path: str | None = None) -> int:
     :return: 0 on success, 1 on failure
     """
     response = post_with_spinner("Fetching job list...", lambda: requests.post(
-        f"{API_BASE}/calibration/get_jobs/",
+        f"{API_BASE}/calibration/get_calibration_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
     ))
 
