@@ -445,7 +445,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
     forcing_source_requested = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_source_used = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_image_url = serializers.CharField(required=False)
@@ -582,7 +582,7 @@ class UploadGeopackageResponseSerializer(GenericResponseSerializer):
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
-    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
 
@@ -593,7 +593,7 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
     warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
     forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_source_used = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_actual = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
 
 
 
@@ -1081,7 +1081,8 @@ class ExportResponseSerializer(BaseSerializer):
     metadata = serializers.JSONField(required=False)
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
-    forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_requested = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
