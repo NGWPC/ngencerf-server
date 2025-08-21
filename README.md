@@ -29,7 +29,7 @@ Note that these files are not checked in to Git
 
 # Create data directory
 
-Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in the ngen/ngen-cal Docker, 
+Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in the ngen/cal-mgr Docker, 
 which is `/ngencerf/data`.
 This is defined in `settings.py` as the mount point.
 
@@ -112,7 +112,7 @@ aws s3 cp --recursive s3://ngwpc-dev/ngen-static-files /ngencerf/data/ngen-stati
 ```
 
 In addition, copy the directory `module_parameter_files` and all its contents from 
-https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal/-/tree/development/module_parameter_files to the `/ngencerf/data/ngen-static-files` directory
+https://github.com/NGWPC/nwm-cal-mgr/-/tree/development/module_parameter_files to the `/ngencerf/data/ngen-static-files` directory
 
 When done, your `ngen-static-files` directory should look something like this
 
@@ -150,7 +150,7 @@ Confirm that you can log in with the new password
 # psql -h localhost -U postgres
 ```
 
-When you run `runCerf.sh` for the first time, or after dropping all tables from the database, include the `--load-static` option.  
+When you run `runCerf.sh` for the first time, or after dropping all tables from the database or if the gages have been changed,  include the `--load-static` option.  
 For example,
 ```
 ./runCerf.sh --load-static
@@ -158,43 +158,6 @@ For example,
 
 To update the code, do a `git pull` and run `runCerf.sh` again
 
-
-## Manual Steps (optional if you're using runCerf.sh)
-These are the steps the `runCerf` is performing.  You can skip them if you've successfully run `runCerf`.
-
-**Ensure that you are still in the `.venv-cerf` virtual environment**
-
-Run `pip install -r requirements.txt` to update any dependencies.
-
-The `createInput` dependency should be installed separately.  If this is the first time you're installing, then run 
-
-```
-pip install -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
-```
-If you are simply updating, enter
-```
-pip install --force-reinstall --no-deps -e "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-cal.git@${NGEN_CAL_BRANCH}#egg=createInput&subdirectory=python/createInput"
-
-```
-Run `manage.py migrate` to create all the tables
-```
-source $cerfServer/.venv-cerf/bin/activate
-pip install -r requirements.txt
-python manage.py migrate
-```
-
-Create a superuser called `admin` that is used for initializing 
-the static tables.  Use `createsuperuser_docker` even though you are not creating a docker container.  
-It is a locally modified version of `createsuperuser` that allows you to enter the password on the command line.
-
-```
-python manage.py createsuperuser_docker --email admin@nextgenwaterprediction.com --password admin
-```
-Run `init_sql` and `init_gages` to initialize the static tables
-```
-python manage.py init_sql
-python manage.py init_gages
-```
 
 **_Important:_**
 During development, there might be times when the entire database needs to be initialized.  
@@ -219,7 +182,7 @@ To run the server, use `runCerf.sh`.  If you are running for the first time, or 
 ./runCerf.sh [--load-static]
 ```
 
-**Note:** If running with NGEN_ENVIRONMENT=LOCAL or DOCKER, then it is import to run `pre_start.py` from `manage.py` before the
+**Note:** If running with NGEN_ENVIRONMENT=LOCAL or DOCKER, then it is important to run `pre_start.py` from `manage.py` before the
 server starts in order to clean up any Calibrations or Validations that were running at the time the server went down.
 This is not necessary when running on Parallel Works
 
@@ -274,7 +237,7 @@ NGEN_ENVIRONMENT = DOCKER
 ```
 
 
-1. LOCAL - ngen and ngen-cal, as well as ngen-fcst and ngen-forcing, must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
+1. LOCAL - ngen and cal-mgr, as well as ngen-fcst and ngen-forcing, must be installed on your local machine, for example, in `~/noaa-owp/ngen` and `~/noaa-owp/cal-mgr`
 Create a symbolic link to match the specifying in settings.py.
 All the repos should be installed in the same directory.  It can be anything, but a symbolic link needs to be created to match the location in the Docker containers, 
 which is `/ngen-app`.
@@ -282,10 +245,10 @@ which is `/ngen-app`.
    sudo mkdir /ngen-app
    sudo ln -s ~/noaa-owp /ngen-app
    ```
-   This environment is the hardest to set up because of the steps involved in installing ngen and ngen-cal, and is not recommended.
+   This environment is the hardest to set up because of the steps involved in installing ngen and cal-mgr, and is not recommended.
 
 
-2. DOCKER - ngen and ngen-cal are installed in a docker container.  This is the easiest for running locally.
+2. DOCKER - ngen and cal-mgr are installed in a docker container.  This is the easiest for running locally.
 Follow these steps to pull the latest docker containers. 
 
    1. If you don't have Docker installed, follow the instructions here: https://confluence.nextgenwaterprediction.com/display/NGWPC/AWS+Ubuntu+22.04+LTS+Workspace+for+Docker#AWSUbuntu22.04LTSWorkspaceforDocker-InstallDocker
@@ -293,16 +256,16 @@ Follow these steps to pull the latest docker containers.
    3. (Use your AWS credentials to login)
    ```
    docker login registry.sh.nextgenwaterprediction.com
-   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-cal:latest ngen-cal
+   docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/cal-mgr:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/cal-mgr:latest cal-mgr
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-fcst:latest ngen-fcst
    docker pull registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-bmi-forcing:latest && docker tag registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngen-forcing/ngen-bmi-forcing:latest ngen-bmi-forcing
    ```
 
    **Note:** If you are developing and have updates to the repos that you want to include, use one of the following from the appropriate repo directory:
    ```
-   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-cal . 
-   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --tag=ngen-fcst . 
-   GITLAB_TOKEN=$(cat ~/.gitlab_token) docker build --secret id=GITLAB_TOKEN,env=GITLAB_TOKEN --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing . 
+  docker build --tag=cal-mgr . 
+  docker build --tag=ngen-fcst . 
+  docker build --file Dockerfile.bmi-forcings --tag=ngen-bmi-forcing . 
    ```
  
 3. PARALLEL_WORKS - The dockers containers are built for you and the server uses Slurm to communicate.
@@ -315,14 +278,14 @@ By convention with the Docker images, the mount point is at `/ngencerf/data`.   
 
 `/ngencerf/data` contains `ngen-static-files` and `ngen-cal-work`
 
-`ngen-cal-work/run_calib` contains the data for ngen and ngen-cal
+`ngen-cal-work/run_calib` contains the data for ngen and cal-mgr
 
 Files from Data Services are in `s3/ngwpc-dev/hyrofabric`.  This is an S3 bucket that is mounted as a file system.  This allows us not to have to worry about downloading files from S3. 
 This is a shared location, since these files can be re-used by different jobs for the same gage.
 
 If the user chooses to upload the forcing, observation or geopackage files, they will be put into the instance specific directory, which is `ngen-cal-work/run_calib/{id}_{user}`, 
 where `id` is the id of the calibration run and `user` is the owner of the run.  
-The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and ngen-cal.
+The instance-specific directory is also where `create-input` creates the directory structure that is used at run-time by ngen and cal-mgr.
 
 Prior to running the job, the Observation and Forcing files from Data Services will be subsetted to conform to the time range of the job.
 These files will be placed in the instance specific directory, as described above.
@@ -370,19 +333,19 @@ peter.a.kronenberg@U-12SMBYD5450YI:~$ tree /ngencerf -L 4 -n -A
 ```
 
 
-# Installing ngen and ngen-cal
-**Note:** This process is not recommended.  Run ngen and ngen-cal in a docker container as described in Runtime Environments
+# Installing ngen and cal-mgr
+**Note:** This process is not recommended.  Run ngen and cal-mgr in a docker container as described in Runtime Environments
 
 Follow the instructions at https://confluence.nextgenwaterprediction.com/display/NGWPC/Build+ngen-cal+and+ngen+from+GitLab. 
 
 Use these recommended directory names to avoid having to change your settings.
 * It is recommended that you create a directory called `~/ngwpc/data/ngen-cal-work`
-* It is recommended that you clone ngen and ngen-cal in a directory called `~/noaa-owp/ngen` and `~/noaa-owp/ngen-cal`
+* It is recommended that you clone ngen and cal-mgr in a directory called `~/noaa-owp/ngen` and `~/noaa-owp/cal-mgr`
 
 
-* Create the ngen-cal virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
-* Clone ngen-cal from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/ngen-cal`
-* Follow instructions for installing ngen-cal
+* Create the cal-mgr virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
+* Clone cal-mgr from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/cal-mgr`
+* Follow instructions for installing cal-mgr
 * Clone ngen from Gitlab into `~/noaa-owp/ngen`
 * Follow instructions for installing ngen
 * It is **not** necessary to create the ROOT_DIR_RUN_NGEN_CAL directory or to run the script that creates symbolic links in that directory
