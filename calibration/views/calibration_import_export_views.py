@@ -310,8 +310,6 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
     if eds_errors:
         messages['eds_errors'] = eds_errors
         
-    print('messages', messages)
-
     return run, messages, None
 
 
