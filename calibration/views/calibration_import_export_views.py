@@ -201,7 +201,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if gage_id:
                     get_observational_data_from_data_services(run)
                     if run.forcing_source_requested != run.forcing_source_actual:
-                        warnings.append(f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name}')
+                        warnings.append(f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}')
             except DataServicesException as e:
                 errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({

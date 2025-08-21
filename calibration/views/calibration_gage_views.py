@@ -314,9 +314,9 @@ def save_gage_tab(request: Request):
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments,
-                'forcing_source_requested': run.forcing_source_requested.name, 'forcing_source_actual': run.forcing_source_actual.name}
+                'forcing_source_requested': run.forcing_source_requested.name, 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
     if run.forcing_source_requested != run.forcing_source_actual:
-        response['warnings'] = [f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name}']
+        response['warnings'] = [f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}']
     if eds_errors:
         response['eds_errors'] = eds_errors
 
