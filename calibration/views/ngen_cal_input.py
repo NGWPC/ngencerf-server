@@ -220,9 +220,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
 
         # Determine the source of the forcing data (user-uploaded or EDS)
-        if not is_missing(run.forcing_source, 'Forcing source', error_object):
+        if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
             forcing_dir = get_forcing_dir_for_job(run)
-            is_forcing_upload = run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance
+            is_forcing_upload = run.forcing_source_requested == ForcingSourceEnum.UPLOAD.db_instance
 
             if is_forcing_upload and (not forcing_dir or not os.path.exists(forcing_dir)):
                 error_object.add_warning('Forcing data must be uploaded')

@@ -625,7 +625,7 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
     errors: list[str] = []
 
     # Subset forcing data
-    if run.forcing_source != ForcingSourceEnum.UPLOAD.db_instance:
+    if run.forcing_source_requested != ForcingSourceEnum.UPLOAD.db_instance:
         subset_directory_by_time_range(
             run,
             run.forcing_eds_dir_path,

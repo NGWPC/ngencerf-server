@@ -28,7 +28,7 @@ from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path, get_user_email, get_elapsed_str
 from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
-    get_forcing_data_from_data_services, DataServicesException, get_module_metadata_from_data_services, clear_times
+    get_forcing_data_from_s3, DataServicesException, get_module_metadata_from_data_services, clear_times
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ def save_gage_tab(request: Request):
 
     calibration_run_id = validator.get('calibration_run_id')
     gage_id = validator.get('gage_id')
-    forcing_source_name = validator.get('forcing_source')
+    forcing_source_requested_name = validator.get('forcing_source_requested')
     observational_source_name = validator.get('observational_source')
     geopackage_source_name = validator.get('geopackage_source')
 
@@ -287,14 +287,14 @@ def save_gage_tab(request: Request):
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         # Process forcing source and delete user-uploaded files if necessary
-        if forcing_source_name and forcing_source_name != ForcingSourceEnum.UPLOAD.value:
+        if forcing_source_requested_name and forcing_source_requested_name != ForcingSourceEnum.UPLOAD.value:
             # Delete any user-upload, if there
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir):
                 shutil.rmtree(user_uploaded_forcing_dir)
-            if not run.forcing_eds_dir_path or run.forcing_source != forcing_source_name:
+            if not run.forcing_eds_dir_path or run.forcing_source_requested.name != forcing_source_requested_name:
                 try:
-                    get_forcing_data_from_data_services(run, forcing_source_name)
+                    get_forcing_data_from_s3(run, forcing_source_requested_name)
                 except DataServicesException as e:
                     logger.exception("Error retrieving forcing data from Data Services")
                     eds_errors.append({
@@ -305,7 +305,7 @@ def save_gage_tab(request: Request):
         else:
             run.forcing_eds_dir_path = None
 
-        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
+        run.forcing_source_requested = ForcingSourceEnum.get_instance(forcing_source_requested_name) if forcing_source_requested_name else None
 
     with transaction.atomic():
         run.save()
@@ -313,7 +313,10 @@ def save_gage_tab(request: Request):
     ngen_cal_input.ready_to_run(run)
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
-                'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments}
+                'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments,
+                'forcing_source_requested': run.forcing_source_requested.name, 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
+    if run.forcing_source_requested != run.forcing_source_actual:
+        response['warnings'] = [f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}']
     if eds_errors:
         response['eds_errors'] = eds_errors
 
@@ -526,7 +529,7 @@ def upload_forcing_data(request: Request) -> Response:
     if error_return:
         return error_return
 
-    run.forcing_source = ForcingSourceEnum.UPLOAD.db_instance
+    run.forcing_source_requested = run.forcing_source_actual = ForcingSourceEnum.UPLOAD.db_instance
 
     # Validate the file keys and how many there are
     key = 'forcing_files'

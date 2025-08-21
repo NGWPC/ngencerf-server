@@ -32,13 +32,13 @@ from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, create_calibration_run_internal, \
     validate_request, get_valid_path, truncate_large_fields, get_user_email, generate_ngen_logging_config, get_elapsed_str
 from calibration.views.data_services import DataServicesException, get_module_metadata_from_data_services, get_geopackage_from_data_services, \
-    get_forcing_data_from_data_services, get_observational_data_from_data_services
+    get_forcing_data_from_s3, get_observational_data_from_data_services
 
 logger = logging.getLogger(__name__)
 
 
 def import_calibration_run_data(request: Request, calibration_run_data: dict, genesis: JobGenesis, run: CalibrationRun = None) -> tuple[
-    CalibrationRun | None, dict | None, ResponseError]:
+    CalibrationRun | None, dict | None, Response | None]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
@@ -52,7 +52,13 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         run = run if run else create_calibration_run_internal(request.user, genesis)
 
         errors = []
+        warnings = []
         eds_errors = []
+
+        formulation_errors: list[str] = []
+        formulation_warnings: list[str] = []
+        modules = None
+        have_lstm = False
 
         #############################
         # Gage
@@ -152,10 +158,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         forcing_source_name = calibration_run_data.get('forcing_source')
         forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
 
-        run.forcing_source = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
+        if forcing_source_name:
+            run.forcing_source_requested = run.forcing_source_actual = ForcingSourceEnum.get_instance(forcing_source_name)
 
-        if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
-            forcing_user_uploaded_dir_path = forcing_user_uploaded_dir_path
+        if run.forcing_source_requested == ForcingSourceEnum.UPLOAD.db_instance:
             if forcing_user_uploaded_dir_path and os.path.exists(forcing_user_uploaded_dir_path):
                 # Copy directory to job-specific path
                 copy_directory(forcing_user_uploaded_dir_path, get_forcing_dir_for_job(run))
@@ -163,10 +169,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
                 if forcing_user_uploaded_dir_path:
                     errors.append(f"User uploaded forcing data from '{forcing_user_uploaded_dir_path}' not found")
         else:
-            # Fetch forcing data from Data Services
+            # Fetch forcing data from S3
             try:
-                if gage_id:
-                    get_forcing_data_from_data_services(run, run.forcing_source.name)
+                if gage_id and run.forcing_source_requested:
+                    get_forcing_data_from_s3(run, run.forcing_source_requested.name)
             except DataServicesException as e:
                 errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -184,7 +190,6 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         if run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance:
-
             if observational_user_uploaded_file_path and os.path.exists(observational_user_uploaded_file_path):
                 # Copy file to job-specific path
                 copy_file_to_directory(observational_user_uploaded_file_path, get_observational_dir_for_job(run))
@@ -195,6 +200,8 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             try:
                 if gage_id:
                     get_observational_data_from_data_services(run)
+                    if run.forcing_source_requested != run.forcing_source_actual:
+                        warnings.append(f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}')
             except DataServicesException as e:
                 errors.append(f"Error retrieving observational data from Data Services - status code: {e.status_code} - {str(e)}")
                 eds_errors.append({
@@ -271,7 +278,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
 
         # Set run parameters and save
         run.save_plot_iteration_frequency = save_plot_iteration_frequency
-        run.save_output_iteration = save_output_iteration if not save_output_iteration else False
+        run.save_output_iteration = bool(save_output_iteration) if save_output_iteration is not None else False
         run.streamflow_threshold = streamflow_threshold
         run.peak_flow_threshold = peak_flow_threshold
 
@@ -298,9 +305,11 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         messages['errors'] = errors + formulation_errors
     if formulation_warnings:
         messages['warnings'] = formulation_warnings
+    if warnings:
+        messages.setdefault('warnings', []).extend(warnings)
     if eds_errors:
         messages['eds_errors'] = eds_errors
-
+        
     return run, messages, None
 
 
@@ -429,7 +438,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
                 'observational_user_uploaded_file_path'] = user_uploaded_observational_file if user_uploaded_observational_file and os.path.exists(
                 user_uploaded_observational_file) else None
 
-        if run.forcing_source == ForcingSourceEnum.UPLOAD.db_instance:
+        if run.forcing_source_requested == ForcingSourceEnum.UPLOAD.db_instance:
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
             calibration_run_data['forcing_user_uploaded_dir_path'] = user_uploaded_forcing_dir if user_uploaded_forcing_dir and os.path.exists(
                 user_uploaded_forcing_dir) else None
@@ -483,7 +492,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     #############################
     logger.info("Processing gage data")
     gage_start = time.time()
-    calibration_run_data['forcing_source'] = run.forcing_source.name if run.forcing_source else None
+    calibration_run_data['forcing_source_requested'] = run.forcing_source_requested.name if run.forcing_source_requested else None
+    calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
     logger.info(f"Gage data processed in {time.time() - gage_start:.2f}s")
