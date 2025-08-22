@@ -292,7 +292,7 @@ def save_gage_tab(request: Request):
             user_uploaded_forcing_dir = get_forcing_dir_for_job(run)
             if user_uploaded_forcing_dir and os.path.exists(user_uploaded_forcing_dir):
                 shutil.rmtree(user_uploaded_forcing_dir)
-            if not run.forcing_eds_dir_path or run.forcing_source_requested.name != forcing_source_requested_name:
+            if not run.forcing_eds_dir_path or (run.forcing_source_requested and run.forcing_source_requested.name != forcing_source_requested_name):
                 try:
                     get_forcing_data_from_s3(run, forcing_source_requested_name)
                 except DataServicesException as e:
