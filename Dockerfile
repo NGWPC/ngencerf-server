@@ -21,9 +21,7 @@ ENV PATH=${VIRTUAL_ENV}/bin:${PATH}
 
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     set -eux && \
-    python3.11 -m venv ${VIRTUAL_ENV} && \
-    # Lock numpy and netcdf4 versions so t-route doesn't break
-    pip3 install --upgrade pip "numpy==1.26.4" "pandas~=2.2.2"
+    python3.11 -m venv ${VIRTUAL_ENV}
 
 WORKDIR /ngencerf/ngencerf-server/
 
@@ -32,6 +30,7 @@ COPY requirements.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     set -eux && \
+    pip3 install --upgrade pip && \
     pip3 install -r requirements.txt && \
     rm -f requirements.txt
 
