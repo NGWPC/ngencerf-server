@@ -139,21 +139,20 @@ if [ "${CERF_VENV}" != "Docker" ]; then
         echo "Installing mswm"
         if pip show "mswm" > /dev/null 2>&1; then
             # Package is installed, reinstall without dependencies
-            pip install --force-reinstall --no-deps --no-cache-dir "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/mswm.git@${MSWM_BRANCH}#egg=mswm"
+            pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/NGWPC/nwm-msw-mgr.git@${MSWM_BRANCH}#egg=mswm"
         else
             # Package is not installed, install with dependencies
-            pip install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/mswm.git@${MSWM_BRANCH}#egg=mswm"
-
+            pip install "git+https://github.com/NGWPC/nwm-msw-mgr.git@${MSWM_BRANCH}#egg=mswm"
         fi
 
         echo
         echo "Installing swe_mapping"
         if pip show "swe_mapping" > /dev/null 2>&1; then
             # Package is installed, reinstall without dependencies
-            pip install --force-reinstall --no-deps --no-cache-dir "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
+            pip install --force-reinstall --no-deps --no-cache-dir "git+https://github.com/NGWPC/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
         else
             # Package is not installed, install with dependencies
-            pip install "git+https://gitlab.sh.nextgenwaterprediction.com/NGWPC/nwm-ngen/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
+            pip install "git+https://github.com/NGWPC/ngen-forcing.git@${NGEN_FORCING_BRANCH}#egg=swe_processing&subdirectory=swe_processing"
         fi
 
         generate_git_info

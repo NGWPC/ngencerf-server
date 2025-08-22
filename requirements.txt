@@ -1,8 +1,8 @@
 Django~=5.2.5
 djangorestframework~=3.16.1
 djangorestframework-simplejwt~=5.5.1
-geopandas~=1.0.1
-matplotlib~=3.10.3
+geopandas~=1.1.1
+matplotlib~=3.10.5
 fiona~=1.10.1
 shapely~=2.1.1
 toml~=0.10.2
@@ -16,16 +16,16 @@ pyjwt~=2.10.1
 PyYAML~=6.0.2
 drf_spectacular~=0.28.0
 django-cors-headers~=4.7.0
-requests~=2.32.4
-# Leave it at this version for create_input
-pandas~=2.2.2
+requests~=2.32.5
 pyarrow~=21.0.0
 pyogrio~=0.11.1
-# Need this version for create_input
-numpy<2.3
 tabulate~=0.9.0
 boto3~=1.39.8
 botocore~=1.39.8
+
+# Use the same versions as mswm
+numpy < 2.0, >= 1.23
+pandas~=2.3.1
 
 
 # There is also a dependancy on these 2 entries
