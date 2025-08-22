@@ -122,9 +122,7 @@ def data_validation_job(
             logger.info('')
             logger.info("Gages with validation errors:")
             gages_sorted = sorted(gages_with_errors)
-            for i in range(0, len(gages_sorted), 10):
-                line = ', '.join(gages_sorted[i:i + 10])
-                logger.info("    %s", line)
+            logger.info(' '.join(gages_sorted))
 
         logger.info("Data validation completed.")
 
