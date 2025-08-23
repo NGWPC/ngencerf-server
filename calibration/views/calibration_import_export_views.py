@@ -415,7 +415,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'source_status': run.status.name,
             'time_range': serialized_time_range,
             'job_data_dir': resolve_job_data_dir(run),
-            'num_catchments': num_catchments
+            'num_catchments': num_catchments,
+            'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None
+
         }
         calibration_run_data['metadata'] = metadata
 
@@ -492,8 +494,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     #############################
     logger.info("Processing gage data")
     gage_start = time.time()
-    calibration_run_data['forcing_source_requested'] = run.forcing_source_requested.name if run.forcing_source_requested else None
-    calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None
+    calibration_run_data['forcing_source'] = run.forcing_source_requested.name if run.forcing_source_requested else None
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
     logger.info(f"Gage data processed in {time.time() - gage_start:.2f}s")
