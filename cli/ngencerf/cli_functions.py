@@ -61,7 +61,7 @@ def about(output_path: str | None = None) -> int:
     Returns:
         int: Exit code (0 for success, 1 for failure).
     """
-    response = post_with_spinner("Sending to server", lambda: requests.post(
+    response = post_with_spinner("Sending request to server...", lambda: requests.post(
         f"{API_BASE}/calibration/get_git_info/",
         headers=get_auth_headers()
     ))
@@ -255,7 +255,7 @@ def run_job(calibration_run_id: int) -> int:
     print(f"Submitting calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
 
-    response = post_with_spinner("Submitting job", lambda: requests.post(
+    response = post_with_spinner("Submitting job...", lambda: requests.post(
         f"{API_BASE}/calibration/run_calibration/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
@@ -273,6 +273,51 @@ def run_job(calibration_run_id: int) -> int:
         print("Warnings:")
         for w in warnings:
             print(f"   {w}")
+    return 0
+
+
+def job_status(calibration_run_id: int) -> int:
+    """
+    Display status for a calibration job and related jobs.
+
+    :param calibration_run_id: ID of the calibration run.
+    :returns: 0 on success, 1 on failure.
+    """
+    payload = {"calibration_run_id": calibration_run_id}
+
+    response = post_with_spinner("Getting job status...", lambda: requests.post(
+        f"{API_BASE}/calibration/get_status/",
+        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload,
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
+
+    # Display top-level fields first (excluding validations and forecasts)
+    print("\nCalibration Job Info:")
+    top_level = {
+        k: v for k, v in response_json.items()
+        if k not in ("validations", "forecasts")
+    }
+    print(json.dumps(top_level, indent=2))
+
+    # Display validations, if present
+    if validations := response_json.get("validations"):
+        print("\nValidations:")
+        for v in validations:
+            print(json.dumps(v, indent=2))
+
+    # Display forecasts, if present
+    if forecasts := response_json.get("forecasts"):
+        print("\nForecasts:")
+        for f in forecasts:
+            print(json.dumps(f, indent=2))
+
     return 0
 
 
@@ -304,7 +349,7 @@ def delete_job(calibration_run_ids: list[int]) -> int:
     print(f"\nDeleting calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids}
 
-    response = post_with_spinner("Deleting jobs", lambda: requests.post(
+    response = post_with_spinner("Deleting jobs...", lambda: requests.post(
         f"{API_BASE}/calibration/delete_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
@@ -496,7 +541,7 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     if calibration_run_id is not None:
         payload["calibration_run_id"] = calibration_run_id
 
-    response = post_with_spinner(f"{action} job", lambda: requests.post(
+    response = post_with_spinner(f"{action} job...", lambda: requests.post(
         f"{API_BASE}/calibration/import/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload
