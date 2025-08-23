@@ -21,7 +21,7 @@ from ngencerf.cli_functions import (
     upload_observational_data,
     upload_forcing_data,
     upload_geopackage_data,
-    download_zip, archive_job, unarchive_job, about, generate_regionalization_files,
+    download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
 
@@ -193,12 +193,12 @@ def main():
         "run_ids",
         type=int,
         nargs="+",  # One or more space-separated integers
-        help="One or more calibration run IDs"
+        help="One or more calibration job IDs"
     )
     archive_parser.set_defaults(func=lambda cmd_args: archive_job(cmd_args.run_ids))
 
     cancel_parser = add_parser("cancel", "Cancel job")
-    cancel_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    cancel_parser.add_argument("run_id", type=int, help="Calibration job ID")
     cancel_parser.set_defaults(func=lambda cmd_args: cancel_job(cmd_args.run_id))
 
     delete_parser = add_parser("delete", "Delete job")
@@ -206,12 +206,12 @@ def main():
         "run_ids",
         type=int,
         nargs="+",  # One or more space-separated integers
-        help="One or more calibration run IDs"
+        help="One or more calibration job IDs"
     )
     delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_ids))
 
-    download_parser = add_parser("download", "Download ZIP file for calibration run")
-    download_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    download_parser = add_parser("download", "Download ZIP file for a calibration job")
+    download_parser.add_argument("run_id", type=int, help="Calibration job ID")
     download_parser.add_argument(
         "--output", "-o",
         dest="output_path",
@@ -223,7 +223,7 @@ def main():
     download_parser.set_defaults(func=lambda cmd_args: download_zip(cmd_args.run_id, output_path=cmd_args.output_path))
 
     export_parser = add_parser("export", "Export job to JSON")
-    export_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    export_parser.add_argument("run_id", type=int, help="Calibration job ID")
     export_parser.add_argument(
         "--output", "-o",
         dest="output_path",
@@ -247,13 +247,13 @@ def main():
         display=cmd_args.show
     ))
 
-    forcing_parser = add_parser("upload-forcing", "Upload a directory of forcing files for a calibration run")
-    forcing_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    forcing_parser = add_parser("upload-forcing", "Upload a directory of forcing files for a calibration job")
+    forcing_parser.add_argument("run_id", type=int, help="Calibration job ID")
     forcing_parser.add_argument("forcing_dir", help="Path to directory containing forcing files")
     forcing_parser.set_defaults(func=lambda cmd_args: upload_forcing_data(cmd_args.forcing_dir, cmd_args.run_id))
 
-    gpkg_parser = add_parser("upload-geopkg", "Upload a GPKG file for a calibration run")
-    gpkg_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    gpkg_parser = add_parser("upload-geopkg", "Upload a GPKG file for a calibration job")
+    gpkg_parser.add_argument("run_id", type=int, help="Calibration job ID")
     gpkg_parser.add_argument("gpkg_file", help="Path to the geopackage (.gpkg) file")
     gpkg_parser.set_defaults(func=lambda cmd_args: upload_geopackage_data(cmd_args.gpkg_file, cmd_args.run_id))
 
@@ -285,8 +285,8 @@ def main():
     )
     jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(output_path=cmd_args.output_path))
 
-    observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration run")
-    observation_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration job")
+    observation_parser.add_argument("run_id", type=int, help="Calibration job ID")
     observation_parser.add_argument("csv_file", help="Path to the observational CSV file")
     observation_parser.set_defaults(func=lambda cmd_args: upload_observational_data(cmd_args.csv_file, cmd_args.run_id))
 
@@ -299,14 +299,14 @@ def main():
         "run_ids",
         type=int,
         nargs="*",  # <-- allow 0 or more positional run IDs
-        help="One or more calibration run IDs"
+        help="One or more calibration job IDs"
     )
 
     # Optional file input
     regionalization_parser.add_argument(
         "--id-file",
         dest="id_file",
-        help="Path to file containing calibration run IDs (comma, space, or newline separated)"
+        help="Path to file containing calibration job IDs (comma, space, or newline separated)"
     )
 
     regionalization_parser.add_argument(
@@ -331,12 +331,12 @@ def main():
 
     regionalization_parser.set_defaults(func=_handle_regionalization_args)
 
-    run_parser = add_parser("run", "Submit calibration run")
-    run_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    run_parser = add_parser("run", "Submit calibration job")
+    run_parser.add_argument("run_id", type=int, help="Calibration job ID")
     run_parser.set_defaults(func=lambda cmd_args: run_job(cmd_args.run_id))
 
     show_parser = add_parser("show", "Display job details")
-    show_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    show_parser.add_argument("run_id", type=int, help="Calibration job ID")
     show_parser.add_argument(
         "--export", "-e",
         dest="output_path",
@@ -349,18 +349,22 @@ def main():
         output_path=cmd_args.output_path,
         display=True
     ))
+    
+    status_parser = add_parser("status", "Show status of calibration job and related jobs")
+    status_parser.add_argument("run_id", type=int, help="Calibration job ID")
+    status_parser.set_defaults(func=lambda cmd_args: job_status(cmd_args.run_id))
 
     unarchive_parser = add_parser("unarchive", "Unarchive one or more jobs")
     unarchive_parser.add_argument(
         "run_ids",
         type=int,
         nargs="+",  # One or more space-separated integers
-        help="One or more calibration run IDs"
+        help="One or more calibration job IDs"
     )
     unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(cmd_args.run_ids))
 
     update_parser = add_parser("update", "Update job from a JSON file")
-    update_parser.add_argument("run_id", type=int, help="Calibration run ID")
+    update_parser.add_argument("run_id", type=int, help="Calibration job ID")
     update_parser.add_argument("input_file", help="Path to the JSON file")
     update_parser.add_argument(
         "--run", "-r",
