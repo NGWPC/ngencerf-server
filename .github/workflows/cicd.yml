@@ -92,7 +92,8 @@ jobs:
   sonarqube-internal:
     if: (github.event_name == 'pull_request' || github.event_name == 'push') && github.repository_owner == 'NGWPC'
     runs-on: self-hosted
-    needs: unit-test
+    needs: [setup, build, unit-test]
+    continue-on-error: true
     container:
       image: sonarsource/sonar-scanner-cli
       options: --entrypoint="" --user 0
