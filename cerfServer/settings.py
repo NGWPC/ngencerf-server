@@ -215,7 +215,7 @@ REPO_ROOT = '/ngen-app'
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 # directory that Ngen-cal is cloned into
-NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
+CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
 NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-fcst')
 NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 
@@ -253,14 +253,14 @@ NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 # Used when running in NGEN_ENVIRONMENT=DOCKER
 # This assumes that the docker containers have been appropriately tagged as ngen-cal, ngen-fcst or ngen-forcing
-NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-cal'
+CAL_MGR_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
 NGEN_FORCING_DOCKER_CMD = f'docker run --entrypoint /ngen-app/bin/run-ngen-forcing.sh -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-bmi-forcing'
 NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
 
 NGEN_CONTAINERS = ['ngen', 'ngen-cal', 'ngen-bmi-forcing', 'ngen-fcst']
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
-NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
 NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
 FORECAST_FORCING_SCRIPT = os.path.join(NGEN_FORCING_REPO_ROOT, 'docker', 'run-ngen-forcing.sh')
 
@@ -275,11 +275,12 @@ SIMULATE_FLAGS = {
 }
 
 RUNTIME_INFO = {
-    ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
-    ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
-    ScriptEnum.VALIDATION_ITERATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
+    ScriptEnum.VALIDATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
+    ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
     ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
     ScriptEnum.FORECAST_FORCING: (NGEN_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
+    # TODO Add for Verification
 }
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)

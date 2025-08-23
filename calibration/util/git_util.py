@@ -46,15 +46,15 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
 
     # For each image, copy its git_info.json into the shared directory.
 
-    # Get both ngen and ngen-cal git_info files from ngen-cal container
-    image_name = 'ngen-cal'
+    # Get both ngen and cal-mgr git_info files from ngen-cal container
+    image_name = 'nwm-cal-mgr'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen_git_info.json')
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
-    container_file_name = os.path.join(settings.REPO_ROOT, 'ngen-cal_git_info.json')
-    local_file_name = os.path.join(git_info_directory, 'ngen-cal_git_info.json')
+    container_file_name = os.path.join(settings.REPO_ROOT, 'nwm-cal-mgr_git_info.json')
+    local_file_name = os.path.join(git_info_directory, 'nwm-cal-mgr_git_info.json')
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
     image_name = 'ngen-fcst'
