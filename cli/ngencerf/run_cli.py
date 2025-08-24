@@ -21,7 +21,7 @@ from ngencerf.cli_functions import (
     upload_observational_data,
     upload_forcing_data,
     upload_geopackage_data,
-    download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status,
+    download_zip, archive_job, unarchive_job, about, generate_regionalization_files, job_status, update_and_get_gage_status,
 )
 from ngencerf.cli_user import ngen_login, ngen_register
 
@@ -37,6 +37,7 @@ class SmartArgumentParser(argparse.ArgumentParser):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._subparsers: None | argparse._SubParsersAction = None
+        self.hidden_commands: set[str] = set()  # track hidden subcommands
 
     def set_subparsers(self, subparsers_action: argparse._SubParsersAction) -> None:
         """
@@ -78,13 +79,38 @@ class SmartArgumentParser(argparse.ArgumentParser):
         # Handle unknown commands
         if self._subparsers and cmd not in self._subparsers._name_parser_map:
             print(f"\nerror: unknown command '{cmd}'\n", flush=True)
-            self.print_help()
+            # Show only visible (non-hidden) commands
+            visible = [
+                name for name in self._subparsers._name_parser_map.keys()
+                if name not in getattr(self, "hidden_commands", set())
+            ]
+            if visible:
+                print("valid commands:\n  " + "\n  ".join(sorted(visible)), flush=True)
+            # Optionally still show generic help (already omits hidden via SUPPRESS)
+            # self.print_help()
             self.exit(2)
 
         # Default error handling for known commands
         print(f"\nerror: {message}\n", flush=True)
         self.print_help()
         self.exit(2)
+
+    def print_help(self):
+        if self._subparsers and hasattr(self._subparsers, "_choices_actions"):
+            orig = list(self._subparsers._choices_actions)
+            try:
+                self._subparsers._choices_actions = [
+                    a for a in orig
+                    # hide explicitly-hidden commands
+                    if getattr(a, "name", None) not in self.hidden_commands
+                       # and also hide anything whose help was SUPPRESS (== '==SUPPRESS==')
+                       and getattr(a, "help", None) != argparse.SUPPRESS
+                ]
+                return super().print_help()
+            finally:
+                self._subparsers._choices_actions = orig
+        else:
+            return super().print_help()
 
 
 def str_to_bool(value):
@@ -138,42 +164,37 @@ def main():
     # Attach the subparsers to the main parser
     parser.set_subparsers(subparsers)
 
-    def add_parser(name, help_text):
+    def add_parser(name, help_text, *, hidden: bool = False):
         """
         Create a subparser for a specific command.
 
         :param name: The name of the subcommand (e.g., 'import', 'update').
         :param help_text: The description text for the subcommand.
+        :param hidden: If True, hide this command from top-level --help but keep its own help.
         :return: The created subparser.
         """
         # Create the subparser without the default help action
         subparser = parser._subparsers.add_parser(
             name,
-            help=help_text,
+            help=(argparse.SUPPRESS if hidden else help_text),
             add_help=False,  # Prevent the default -h/--help conflict
-            description=help_text,
+            description=help_text,  # always show description when running `subcmd --help`
             formatter_class=argparse.HelpFormatter,
             conflict_handler='resolve',  # Avoid conflict when adding the help action
             usage=f"{parser.prog} {name} [-h] [--flags] <args>"
         )
 
-        # Remove any pre-existing -h/--help actions (if present)
+        # re-add -h/--help cleanly
         help_actions = [a for a in subparser._actions if isinstance(a, argparse._HelpAction)]
         for action in help_actions:
             subparser._remove_action(action)
 
         # Add the custom help action back
-        subparser.add_argument(
-            '-h', '--help',
-            action='help',
-            help='show this help message and exit'
-        )
+        subparser.add_argument('-h', '--help', action='help', help='show this help message and exit')
 
-        # Ensure the subparser is properly registered
-        if isinstance(parser._subparsers, argparse._SubParsersAction):
-            subparser_action = parser._subparsers
-            subparser_action.choices[name] = subparser
-
+        # Track hidden for help/error filtering
+        if hidden:
+            parser.hidden_commands.add(name)
         return subparser
 
     # Registering all the subcommands
@@ -251,6 +272,16 @@ def main():
     forcing_parser.add_argument("run_id", type=int, help="Calibration job ID")
     forcing_parser.add_argument("forcing_dir", help="Path to directory containing forcing files")
     forcing_parser.set_defaults(func=lambda cmd_args: upload_forcing_data(cmd_args.forcing_dir, cmd_args.run_id))
+
+    gage_status_parser = add_parser("gage-status", "Query or update gage active status", hidden=True)
+    gage_status_parser.add_argument("gage_id", type=str, help="Gage id")
+    gage_status_parser.add_argument(
+        "is_active",
+        type=str_to_bool,
+        nargs="?",
+        help="Desired active state (true/false). If omitted, just query current status."
+    )
+    gage_status_parser.set_defaults(func=lambda cmd_args: update_and_get_gage_status(cmd_args.gage_id, cmd_args.is_active))
 
     gpkg_parser = add_parser("upload-geopkg", "Upload a GPKG file for a calibration job")
     gpkg_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -349,7 +380,7 @@ def main():
         output_path=cmd_args.output_path,
         display=True
     ))
-    
+
     status_parser = add_parser("status", "Show status of calibration job and related jobs")
     status_parser.add_argument("run_id", type=int, help="Calibration job ID")
     status_parser.set_defaults(func=lambda cmd_args: job_status(cmd_args.run_id))

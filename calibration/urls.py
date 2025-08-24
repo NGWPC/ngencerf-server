@@ -38,6 +38,7 @@ urlpatterns = [
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
     path('calibration/upload_geopackage_data/', calibration_gage_views.upload_geopackage_data, name="uploadGeopackageData"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
+    path('calibration/update_and_get_gage_status/', calibration_gage_views.update_and_get_gage_status, name="updateAndGetGageStatus"),
 
     ##################################
     # Plot Definitions tab
