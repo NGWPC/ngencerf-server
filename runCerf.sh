@@ -118,6 +118,63 @@ generate_git_info() {
     echo "Generated $GIT_INFO_PATH"
 }
 
+#=======================================================================
+# Fingerprint logic for init_gages inputs
+#=======================================================================
+CERF_GAGES_FPRINT="${CERF_GAGES_FPRINT:-$SCRIPT_DIR/.gages_fingerprint}"
+
+# Compute a stable combined SHA256 of init_gages.py + all files in gage_data
+compute_gages_fingerprint() {
+    set -o pipefail
+    local base="$SCRIPT_DIR/calibration/management/commands"
+    local files=()
+
+    # Must have init_gages.py
+    if [ ! -f "$base/init_gages.py" ]; then
+        echo "compute_gages_fingerprint: missing $base/init_gages.py" >&2
+        return 1
+    fi
+    files+=("$base/init_gages.py")
+
+    # Hash everything inside gage_data/ if present
+    if [ -d "$base/gage_data" ]; then
+        while IFS= read -r -d '' f; do
+            files+=("$f")
+        done < <(find "$base/gage_data" -type f ! -name '*.pyc' ! -path '*/__pycache__/*' -print0 | sort -z)
+    fi
+
+    # Hash each file then hash the list into a single digest
+    sha256sum "${files[@]}" | sha256sum | awk '{print $1}'
+}
+
+# Store fingerprint (only call this immediately after a successful init_gages)
+store_gages_fingerprint() {
+    local fp="$1"
+    if [ -z "$fp" ]; then
+        echo "store_gages_fingerprint: empty fingerprint" >&2
+        return 1
+    fi
+    echo "$fp" > "$CERF_GAGES_FPRINT"
+    echo "Saved gage fingerprint: ${fp:0:12}… -> $CERF_GAGES_FPRINT"
+}
+
+# Helper: run init_gages and store a provided fingerprint (or recompute if empty)
+run_init_gages_and_store() {
+    local fp="$1"
+    if ! run_manage_command init_gages; then
+      echo "init_gages failed"; exit 1
+    fi
+    if [ -n "$fp" ]; then
+        store_gages_fingerprint "$fp"
+    else
+        if FP_NOW="$(compute_gages_fingerprint)"; then
+            store_gages_fingerprint "$FP_NOW"
+        else
+            echo "Warning: could not compute fingerprint after init_gages"
+        fi
+    fi
+}
+
 if [ "${CERF_VENV}" != "Docker" ]; then
     # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
@@ -163,11 +220,14 @@ if [ "${CERF_VENV}" != "Docker" ]; then
 fi
 
 # Run management commands with proper logging
+echo
+echo --------------------------------------------------------
 if ! run_manage_command migrate; then
   echo "migrate failed"
   exit 1
 fi
 
+echo
 # Only load static data if the flag is provided or the CERF_LOAD_STATIC_DATA file doesn't exist
 if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
     echo
@@ -175,23 +235,46 @@ if [ "$LOAD_STATIC_DATA" = true ] || [ ! -f "${CERF_LOAD_STATIC_DATA}" ]; then
 
     run_manage_command createsuperuser_docker --noinput --password admin --email admin@nextgenwaterprediction.com
     echo
+    echo --------------------------------------------------------
     if ! run_manage_command init_sql; then
       echo "init_sql failed"
       exit 1
     fi
 
     echo
-    if ! run_manage_command init_gages; then
-      echo "init_gages failed"
-      exit 1
-    fi
+    echo --------------------------------------------------------
+    # Unconditional run in this branch
+    run_init_gages_and_store ""
 
     touch "${CERF_LOAD_STATIC_DATA}"
 else
     # Run this every time, since sometimes there are updates and it is very quick
+    echo
+    echo --------------------------------------------------------
     if ! run_manage_command init_sql; then
       echo "init_sql failed"
       exit 1
+    fi
+
+    echo
+    echo --------------------------------------------------------
+    # Auto-run init_gages if inputs changed; if hashing fails, run to be safe.
+    if FP_NOW="$(compute_gages_fingerprint)"; then
+        if [ ! -f "$CERF_GAGES_FPRINT" ]; then
+            echo "No prior gage fingerprint found; running init_gages..."
+            run_init_gages_and_store "$FP_NOW"
+        else
+            read -r FP_OLD < "$CERF_GAGES_FPRINT" || FP_OLD=""
+            if [ "$FP_NOW" != "$FP_OLD" ]; then
+                echo "Gage inputs changed; running init_gages..."
+                run_init_gages_and_store "$FP_NOW"
+            else
+                echo "Gage inputs unchanged; skipping init_gages."
+            fi
+        fi
+    else
+        echo "Fingerprinting failed. Running init_gages to be safe…"
+        run_init_gages_and_store ""
     fi
 fi
 
