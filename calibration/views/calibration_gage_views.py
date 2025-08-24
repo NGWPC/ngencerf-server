@@ -96,7 +96,7 @@ def load_gage_tab(request: Request) -> Response:
         'headwater_calibration': gage.get('headwater_calibration'),
         'nws_id': gage.get('nws_id'),
         'domain': gage.get('domain').replace('_', ' ') if gage.get('domain') else None
-    } for gage in get_cached_gages().values()]
+    } for gage in get_cached_gages().values() if gage.get('is_active')]
 
     ngen_cal_input.ready_to_run(run)
 

@@ -30,8 +30,9 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     gages_lookup = cache.get(cache_key)
     if not gages_lookup:
         # Fetch from the database and cache the results as a dictionary
-        gages = Gage.objects.filter(is_active=True).values(
-            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'headwater_calibration', 'domain__name'
+        gages = Gage.objects.all().values(
+            'gage_id', 'agency', 'station_name', 'latitude', 'longitude',
+            'altitude', 'nws_id', 'headwater_calibration', 'domain__name', 'is_active'
         )
         gages_lookup = {gage['gage_id']: gage for gage in gages}
         # Adjust key for domain names
@@ -53,11 +54,11 @@ def get_gage_by_id(gage_id: str) -> dict[str, str | float | int | None] | None:
     gages = get_cached_gages()
     gage = gages.get(gage_id)
 
-    if gage:
-        # Exclude 'nws_id', 'domain', and 'headwater_calibration' from the result
-        gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration']}
+    if not gage or not gage.get('is_active'):
+        return None
 
-    return gage
+    # Exclude 'nws_id', 'domain', and 'headwater_calibration' from the result
+    return {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration']}
 
 
 def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str | int | float]]:
