@@ -323,7 +323,7 @@ def validate_csv_directory(dir_path: str) -> bool:
             path = futures[future]
             try:
                 result = future.result()
-                logger.debug(f"validate_csv_directory saw result={result} from {path}")
+                # logger.debug(f"validate_csv_directory saw result={result} from {path}")
                 if result:  # validate_csv_file returns True if it had errors
                     had_errors = True
             except Exception as e:

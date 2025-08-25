@@ -424,6 +424,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['run_after_import'] = False
 
         calibration_run_data['gage_id'] = run.gage.gage_id if run.gage else None
+
+        calibration_run_data['forcing_source'] = run.forcing_source_requested.name if run.forcing_source_requested else None
+
         calibration_run_data['parameters'] = get_parameters_for_export(module_objects)  # type: ignore
 
         # For export, we need these paths only for user-uploaded data, so we can copy the data to the newly imported job
@@ -470,6 +473,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['num_catchments'] = num_catchments
         calibration_run_data['status'] = run.status.name
 
+        calibration_run_data['forcing_source_requested'] = run.forcing_source_requested.name if run.forcing_source_requested else None
+        calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None
+
         # Generate Geopackage map if requested
         if include_gpkg_map:
             gpkg_map_start = time.time()
@@ -494,7 +500,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     #############################
     logger.info("Processing gage data")
     gage_start = time.time()
-    calibration_run_data['forcing_source'] = run.forcing_source_requested.name if run.forcing_source_requested else None
     calibration_run_data['observational_source'] = run.observational_source.name if run.observational_source else None
     calibration_run_data['geopackage_source'] = run.geopackage_source.name if run.geopackage_source else None
     logger.info(f"Gage data processed in {time.time() - gage_start:.2f}s")
