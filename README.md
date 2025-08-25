@@ -344,7 +344,7 @@ Use these recommended directory names to avoid having to change your settings.
 
 
 * Create the cal-mgr virtual environment.  This directory is defined in `settings.py` as `NGEN_CAL_VENV`.   Default location is `~/ngen-cal-work/venv-cal`
-* Clone cal-mgr from Gitlab.  This directory is defined in `settings.py` as `NGEN_CAL_REPO_ROOT`.  Default location is `~/noaa-owp/cal-mgr`
+* Clone cal-mgr from Gitlab.  This directory is defined in `settings.py` as `CAL_MGR__REPO_ROOT`.  Default location is `~/noaa-owp/cal-mgr`
 * Follow instructions for installing cal-mgr
 * Clone ngen from Gitlab into `~/noaa-owp/ngen`
 * Follow instructions for installing ngen
