@@ -511,6 +511,40 @@ def list_jobs(output_path: str | None = None) -> int:
     return 0
 
 
+def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> int:
+
+    """
+    Update (or query) the cached gage status through the API.
+
+    :param gage_id: The gage ID
+    :param is_active: Desired state (True/False) or None to just query
+    :return: 0 on success, 1 on failure
+    """
+    payload: dict[str, str | bool] = {"gage_id": gage_id}
+    if is_active is not None:
+        payload["is_active"] = is_active
+
+    response = post_with_spinner("Updating gage status...", lambda: requests.post(
+        f"{API_BASE}/calibration/update_and_get_gage_status/",
+        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload,
+    ))
+
+    if response is None:
+        return 1  # Interrupted
+
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
+
+    message = response_json.get("message", "")
+    gage_id = response_json.get("gage_id")
+    is_active = response_json.get("is_active")
+
+    print(message or f"Gage {gage_id} is {'active' if is_active else 'not active'}")
+    return 0
+
+
 def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
     """
     Submits job data to the import or update endpoint.

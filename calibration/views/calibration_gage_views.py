@@ -15,10 +15,11 @@ from rest_framework.response import Response
 
 from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum, StatusEnum
 from calibration.models import Gage, CalibrationRun, CalibrationFormulation
-from calibration.util.caching import get_cached_gages, get_gage_by_id
+from calibration.util.caching import get_cached_gages, get_gage_by_id, update_and_get_cached_gage_status
 from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
-    UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer
+    UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer, UpdateGageStatusRequestSerializer, \
+    UpdateGageStatusResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory, get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
 from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
@@ -96,7 +97,7 @@ def load_gage_tab(request: Request) -> Response:
         'headwater_calibration': gage.get('headwater_calibration'),
         'nws_id': gage.get('nws_id'),
         'domain': gage.get('domain').replace('_', ' ') if gage.get('domain') else None
-    } for gage in get_cached_gages().values()]
+    } for gage in get_cached_gages().values() if gage.get('is_active')]
 
     ngen_cal_input.ready_to_run(run)
 
@@ -178,7 +179,8 @@ def get_gage(request: Request) -> Response:
     response_validator, error_response = validate_response(GageSerializer, gage_dict)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -314,9 +316,11 @@ def save_gage_tab(request: Request):
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments,
-                'forcing_source_requested': run.forcing_source_requested.name, 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
+                'forcing_source_requested': run.forcing_source_requested.name,
+                'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
     if run.forcing_source_requested != run.forcing_source_actual:
-        response['warnings'] = [f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}']
+        response['warnings'] = [
+            f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}']
     if eds_errors:
         response['eds_errors'] = eds_errors
 
@@ -327,6 +331,63 @@ def save_gage_tab(request: Request):
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["geopackage_image_url"]))}'
     )
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=UpdateGageStatusRequestSerializer,
+    responses={
+        200: UpdateGageStatusResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get and optionally set a gage statusa"
+)
+@api_view(['POST'])
+@handle_exceptions
+def update_and_get_gage_status(request: Request) -> Response:
+    """
+    Update (or query) a gage's cached 'is_active' flag, and return its current state.
+
+    Body: { "gage_id": "<str>", "is_active": <bool> }  # 'is_active' optional; omit to query only
+    Response: { "message": "<str>", "gage_id": "<str>", "is_active": <bool> }
+    """
+    data = request.data
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(UpdateGageStatusRequestSerializer, data)
+    if error_return:
+        return error_return
+
+    gage_id = validator.get('gage_id')
+    desired_active = validator.get('is_active')  # may be None
+
+    result = update_and_get_cached_gage_status(gage_id, desired_active)
+    if result is None:
+        return ResponseError(f"Gage '{gage_id}' does not exist", http_status=status.HTTP_404_NOT_FOUND)
+
+    gage_id, is_active = result
+
+    # Optional: differentiate query-only vs update in the message
+    action = "now " if desired_active is not None else "currently "
+    response = {
+        'message': f"Gage {gage_id} is {action}{'active' if is_active else 'inactive'}",
+        'gage_id': gage_id,
+        'is_active': is_active
+    }
+
+    response_validator, error_response = validate_response(UpdateGageStatusResponseSerializer, response)
+    if error_response:
+        return error_response
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -483,7 +544,8 @@ def upload_observational_data(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -569,7 +631,8 @@ def upload_forcing_data(request: Request) -> Response:
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 

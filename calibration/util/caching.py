@@ -19,6 +19,9 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
     return cached_modules.get(module_name)
 
 
+CACHED_GAGES_KEY = 'cached_gages'
+
+
 def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     """
     Retrieves all active gages from the cache or the database if not cached.
@@ -26,20 +29,53 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     :return: A dictionary of gages with gage_id as the key and gage details as values.
     """
     # Check if the gages are already cached
-    cache_key = 'cached_gages'
-    gages_lookup = cache.get(cache_key)
+
+    gages_lookup = cache.get(CACHED_GAGES_KEY)
     if not gages_lookup:
         # Fetch from the database and cache the results as a dictionary
-        gages = Gage.objects.filter(is_active=True).values(
-            'gage_id', 'agency', 'station_name', 'latitude', 'longitude', 'altitude', 'nws_id', 'headwater_calibration', 'domain__name'
+        gages = Gage.objects.all().values(
+            'gage_id', 'agency', 'station_name', 'latitude', 'longitude',
+            'altitude', 'nws_id', 'headwater_calibration', 'domain__name', 'is_active'
         )
         gages_lookup = {gage['gage_id']: gage for gage in gages}
         # Adjust key for domain names
         for gage in gages_lookup.values():
             gage['domain'] = gage.pop('domain__name')
 
-        cache.set(cache_key, gages_lookup, timeout=None)
+        cache.set(CACHED_GAGES_KEY, gages_lookup, timeout=None)
     return gages_lookup
+
+
+def update_and_get_cached_gage_status(gage_id: str, is_active: bool | None = None) -> tuple[str, bool] | None:
+    """
+    Update (or query) the cached 'is_active' flag for a gage.
+
+    - If is_active is provided, update the flag if needed.
+    - If is_active is None, just return the current state.
+    - Returns (gage_id, current_is_active) in either case.
+    - Returns None if the gage_id doesn't exist in the cached map.
+
+    :param gage_id: ID of the gage to update/query
+    :param is_active: Desired active state, or None to just query
+    :return: A tuple of (gage_id, is_active) reflecting the current state, or None if not found
+    """
+    gages = get_cached_gages()  # ensures cache is populated
+
+    gage = gages.get(gage_id)
+    if not gage:
+        return None
+
+    current_status = bool(gage.get('is_active'))
+    # If state differs, update and write back
+    if is_active is not None and current_status != is_active:
+        # copy-on-write to avoid backend aliasing quirks
+        updated_gage = {**gage, 'is_active': is_active}
+        updated_map = {**gages, gage_id: updated_gage}
+        cache.set(CACHED_GAGES_KEY, updated_map, timeout=None)
+        current_status = is_active
+
+    # Always return (gage_id, current_status)
+    return gage_id, current_status
 
 
 def get_gage_by_id(gage_id: str) -> dict[str, str | float | int | None] | None:
@@ -53,11 +89,11 @@ def get_gage_by_id(gage_id: str) -> dict[str, str | float | int | None] | None:
     gages = get_cached_gages()
     gage = gages.get(gage_id)
 
-    if gage:
-        # Exclude 'nws_id', 'domain', and 'headwater_calibration' from the result
-        gage = {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration']}
+    if not gage or not gage.get('is_active'):
+        return None
 
-    return gage
+    # Exclude 'nws_id', 'domain', and 'headwater_calibration' from the result
+    return {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration']}
 
 
 def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str | int | float]]:

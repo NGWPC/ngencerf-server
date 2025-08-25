@@ -49,19 +49,19 @@ def data_validation_job(
     Accepts either local or S3 forcing directories, verifies they exist, and
     runs file validation for selected gages or ranges.
 
-    Determines the output file path, validates the list of gage IDs (if provided),
+    Determines the output file path, validates the list of gage_id IDs (if provided),
     resolves the list of forcing directories, and writes a log file summarizing
     errors found during validation.
 
-    :param gages: Optional list of gage IDs to validate.
+    :param gages: Optional list of gage_id IDs to validate.
     :param forcing_dir: Optional root directory to look for forcing data. Defaults to settings.FORCING_DATA_DIRS_AORC
-    :param start: Optional starting index into the full headwater gage list.
+    :param start: Optional starting index into the full headwater gage_id list.
     :param limit: Optional number of gages to validate, starting from `start`.
     """
     # Determine suffix and description for output file
     if gages:
         suffix = "selected_gages"
-        # Break the gage list into lines of 10
+        # Break the gage_id list into lines of 10
         gage_lines = [', '.join(gages[i:i + 10]) for i in range(0, len(gages), 10)]
         filter_description = "selected gages:\n" + '\n'.join(f"    {line}" for line in gage_lines)
     elif start is not None and limit is not None:
@@ -104,8 +104,8 @@ def data_validation_job(
                     raise ValueError(f"Invalid forcing_dir: '{d}' is not a valid directory")
             forcing_directories.append(d)
 
-        # Validate gage_ids before proceeding
-        cached_gage_map = get_cached_gages()
+        # Validate active gage_ids before proceeding
+        cached_gage_map = {gage_id: gage for gage_id, gage in get_cached_gages().items() if gage.get('is_active')}
         gage_ids_filter = set(gages) if gages else None
 
         if gage_ids_filter:
@@ -528,7 +528,7 @@ def get_headwater_gages() -> list[dict]:
     """
     cached_gage_map = get_cached_gages()
     return sorted(
-        [gage for gage in cached_gage_map.values() if gage.get('headwater_calibration')],
+        [g for g in cached_gage_map.values() if g.get('headwater_calibration') and g.get('is_active')],
         key=lambda g: g.get('gage_id')
     )
 
