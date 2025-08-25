@@ -9,7 +9,7 @@ services:
       - ../data/db:/var/lib/postgresql/data
     env_file:
       - path: ./postgres_db.env
-        required: true 
+        required: true
       - path: ./postgres_db.override.env
         required: false
     healthcheck:
@@ -19,15 +19,13 @@ services:
       timeout: 5s
 
   ngencerf-services:
-    build: 
+    build:
       context: .
       args:
         - MSWM_TAG=${MSWM_TAG}
         - NGEN_FORCING_TAG=${NGEN_FORCING_TAG}
         - CACHE_BUST=${CACHE_BUST}
-      secrets:
-        - gitlab_token
-    image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:latest
+    image: ghcr.io/ngwpc/ngencerf-server:latest
     pull_policy: build
     ports:
       - "8000:8000"
@@ -41,14 +39,10 @@ services:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
       - path: ./ngencerf_services.env
-        required: true 
+        required: true
       - path: ./ngencerf_services.override.env
         required: false
     depends_on:
       db:
         condition: service_healthy
         restart: true
-
-secrets:
-  gitlab_token:
-    file: ${GITLAB_TOKEN_PATH}
