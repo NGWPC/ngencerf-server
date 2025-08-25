@@ -2,16 +2,14 @@ name: ngencerf-server
 
 services:
   ngencerf-services:
-    build: 
+    build:
       dockerfile: ./Dockerfile.production-pw
       context: .
       args:
         - MSWM_TAG=${MSWM_TAG}
         - NGEN_FORCING_TAG=${NGEN_FORCING_TAG}
         - CACHE_BUST=${CACHE_BUST}
-      secrets:
-        - gitlab_token
-    image: registry.sh.nextgenwaterprediction.com/ngwpc/nwm-ngen/ngencerf-server:prod
+    image: ghcr.io/ngwpc/ngencerf-server:prod
     pull_policy: always
     ports:
       - "8000:8000"
@@ -27,11 +25,7 @@ services:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
       - path: ./ngencerf_services.env
-        required: true 
+        required: true
       - path: ./ngencerf_services.override.env
         required: false
     privileged: true
-
-secrets:
-  gitlab_token:
-    file: ${GITLAB_TOKEN_PATH}
