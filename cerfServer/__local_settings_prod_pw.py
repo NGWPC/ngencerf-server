@@ -39,7 +39,9 @@ DATABASES = {
         'CONN_MAX_AGE': 10,
         'OPTIONS': {
             'connect_timeout': 10,
-            'options': '-c statement_timeout=10000ms'
+            'options': '-c statement_timeout=10000ms',
+            'sslmode': 'requre',
+            # 'sslrootcert': '/etc/ssl/certs/rds-combined-ca-bundle.pem',
         }
     }
 }
