@@ -1,6 +1,8 @@
 import logging
+import os
 import re
 import socket
+import ssl
 import threading
 import time
 import traceback
@@ -72,6 +74,7 @@ def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | 
       - The DB connection parameters (host, port, user, name).
       - Timeout-related config: CONN_MAX_AGE, OPTIONS.connect_timeout, OPTIONS.options (parsed for statement_timeout).
       - Connection usage statistics, IF we can get a cursor (often not possible on hard failures).
+      = SSL settings and CA certs
 
     Intended to help diagnose OperationalError / psycopg errors (timeouts, auth failures, etc.).
     """
@@ -98,6 +101,25 @@ def log_db_diagnostics_on_failure(alias: str = 'default', settings_dict: dict | 
         logger.error(f"  OPTIONS.connect_timeout: {connect_timeout!r}")
         logger.error(f"  OPTIONS.options: {options_raw!r}")
         logger.error(f"  Parsed statement_timeout: {stmt_timeout!r}")
+
+        # ---- SSL info ----
+        sslmode = opts.get('sslmode', 'not set')
+        sslrootcert = opts.get('sslrootcert')
+
+        logger.error("[DB Diagnostics] SSL configuration:")
+        logger.error(f"  OPTIONS.sslmode: {sslmode!r}")
+        if sslrootcert:
+            logger.error(f"  OPTIONS.sslrootcert: {sslrootcert!r}")
+            if os.path.isfile(sslrootcert):
+                logger.error(f"  SSL root cert exists: YES ({os.path.getsize(sslrootcert)} bytes)")
+            else:
+                logger.error("  SSL root cert exists: NO (check path)")
+        else:
+            # No explicit sslrootcert; log system defaults
+            default_paths = ssl.get_default_verify_paths()
+            logger.error("  OPTIONS.sslrootcert: None (using system defaults)")
+            logger.error(f"    Default CA file: {default_paths.cafile!r}")
+            logger.error(f"    Default CA path: {default_paths.capath!r}")
 
         # Log client hostname and thread info
         hostname = socket.gethostname()
