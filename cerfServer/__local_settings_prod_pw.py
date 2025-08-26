@@ -40,7 +40,7 @@ DATABASES = {
         'OPTIONS': {
             'connect_timeout': 10,
             'options': '-c statement_timeout=10000ms',
-            'sslmode': 'requre',
+            'sslmode': 'require',
             # 'sslrootcert': '/etc/ssl/certs/rds-combined-ca-bundle.pem',
         }
     }
