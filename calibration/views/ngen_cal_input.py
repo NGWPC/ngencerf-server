@@ -208,6 +208,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 if run.geopackage_eds_file_path and build:
                     # For data from Data Services, normalize the CRS and copy to job-specific location
                     try:
+                        # TODO Need to read from S3
                         normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
                     except FileNotFoundError:
                         run.geopackage_eds_file_path = None

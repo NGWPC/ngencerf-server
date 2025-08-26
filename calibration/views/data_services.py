@@ -13,7 +13,7 @@ from calibration.models import CalibrationParameter, CalibrationFormulation, Cal
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator
-from calibration.util.file_util import copy_directory
+from calibration.util.cloud_util import copy_tree, path_exists
 from calibration.util.ngen_locations import get_bmi_config_dir_for_module
 from calibration.views.common import validate_response_data
 from data_services_test_data import data_services_test_data
@@ -145,9 +145,8 @@ def get_geopackage_from_data_services(run: CalibrationRun):
 
         eds_data = validate_response_data(S3FileValidator, geopackage_json, 'Geopackage data from Data Services is not in the expected format')
 
-        s3_uri = eds_data.get('uri')
-        run.geopackage_eds_file_path = convert_s3_uri_to_fs(s3_uri)
-        if run.geopackage_eds_file_path and not os.path.exists(run.geopackage_eds_file_path):
+        run.geopackage_eds_file_path = eds_data.get('uri')
+        if run.geopackage_eds_file_path and not path_exists(run.geopackage_eds_file_path):
             raise DataServicesException(f"Geopackage from Data Services, {run.geopackage_eds_file_path} does not exist")
         logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')
 
@@ -315,9 +314,12 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
             module_instance = get_cached_module_by_name(module_name)
             calibration_formulation = calibration_formulations.get(module=module_instance)
 
-            # Copy the BMI configuration file to the appropriate directory
-            bmi_config = convert_s3_uri_to_fs(module['parameter_file']['uri'])
-            copy_directory(bmi_config, get_bmi_config_dir_for_module(run, module_name))
+            # New (cloud-agnostic, no FUSE mount needed):
+            src_prefix = module['parameter_file']['uri']  # e.g. "s3://bucket/path/to/dir/"
+            dst_dir = get_bmi_config_dir_for_module(run, module_name)  # local directory path
+
+            # copy everything under src_prefix into dst_dir
+            _ = copy_tree(src_prefix, dst_dir, workers=16)
 
             # Save or update parameters for the module
             parameters = module.get('calibrate_parameters', [])
