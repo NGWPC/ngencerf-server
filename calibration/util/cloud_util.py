@@ -1,5 +1,6 @@
-import json
+import datetime
 import hashlib
+import json
 import logging
 import os
 import re
@@ -17,10 +18,15 @@ from calibration.views.called_from import called_from
 
 logger = logging.getLogger(__name__)
 
-# Where to persist cached copies of remote objects.
-# Default to /var/tmp so cache survives reboots (per FHS).
-# Override with FSSPEC_CACHE_DIR if you want a different location (e.g., /tmp for ephemeral).
-CACHEDIR_DEFAULT = os.environ.get("FSSPEC_CACHE_DIR", "/var/tmp/fsspec-cache")
+# Persistent cache for localized cloud files.
+# /var/tmp survives reboots; /tmp is usually wiped at boot.
+CLOUD_CACHE_DIR = "/var/tmp/fsspec-cache"
+
+# Regexes for detecting Windows local paths
+_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
+_UNC_RE = re.compile(r"^\\\\")  # UNC paths like \\server\share
+
+_REMOTE_SCHEMES = {"s3", "gs", "gcs", "az", "abfs", "abfss"}
 
 
 # You can pass auth via env (AWS_*, GOOGLE_APPLICATION_CREDENTIALS, AZURE_*),
@@ -79,29 +85,22 @@ def _server_side_cp_supported(fs: fsspec.AbstractFileSystem) -> bool:
     return hasattr(fs, "cp_file") or hasattr(fs, "copy") or hasattr(fs, "cp")
 
 
-def _cp_file_server_side(fs: fsspec.AbstractFileSystem,
-                         src: str,
-                         dst: str) -> None:
+def _cp_file_server_side(fs: fsspec.AbstractFileSystem, src: str, dest: str) -> None:
     """
     Attempt to perform a server-side copy using whichever method the
     backend exposes. Raises NotImplementedError if not supported.
 
     :param fs: The fsspec filesystem object.
     :param src: Source file URL.
-    :param dst: Destination file URL.
+    :param dest: Destination file URL.
     """
     if hasattr(fs, "cp_file"):
-        return fs.cp_file(src, dst)
+        return fs.cp_file(src, dest)
     if hasattr(fs, "copy"):
-        return fs.copy(src, dst)
+        return fs.copy(src, dest)
     if hasattr(fs, "cp"):
-        return fs.cp(src, dst)
+        return fs.cp(src, dest)
     raise NotImplementedError("No server-side copy method available for this backend")
-
-
-# Regexes for detecting Windows local paths
-_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")
-_UNC_RE = re.compile(r"^\\\\")  # UNC paths like \\server\share
 
 
 def is_probably_local_path(p: str) -> bool:
@@ -141,6 +140,23 @@ def normalize_url(p: str) -> str:
     return p
 
 
+def _join_url(base: str, *parts: str) -> str:
+    """
+    Join a URL base and path parts with single slashes, preserving scheme form.
+    - If base ends with '://', do not strip slashes (keeps 'file://' intact).
+    - Ensures 'file://' is normalized to 'file:///' if needed.
+    """
+    if base.endswith("://"):
+        b = base
+    else:
+        b = base.rstrip("/")
+    segs = [p.strip("/") for p in parts if p]
+    url = f"{b}/{'/'.join(segs)}" if segs else b
+    if url.startswith("file://") and not url.startswith("file:///"):
+        url = url.replace("file://", "file:///")
+    return url
+
+
 def copy_tree(src_url: str,
               dst_url: str,
               workers: int = 16,
@@ -154,7 +170,9 @@ def copy_tree(src_url: str,
 
 
     :param src_url: Source prefix URL (e.g. s3://bucket/prefix or file:///dir).
+                    A bare path is also allowed; it will be normalized to file://.
     :param dst_url: Destination prefix URL (e.g. file:///localdir or s3://otherbucket/target).
+                    A bare path is also allowed; it will be normalized to file://.
     :param workers: Number of parallel threads to use.
     :param buffer_size: Buffer size for streamed copies (default 8 MiB).
     :return: Number of files successfully copied.
@@ -168,8 +186,8 @@ def copy_tree(src_url: str,
     dst_base, dst_prefix = _norm_prefix(dst_url)
 
     # Find all source files
-    # fs.find may return scheme-less paths for some backends,
-    # so rebuild full URLs explicitly
+    # fs.find may return scheme-less paths for some backends (e.g., s3fs returns "bucket/key").
+    # Build src_root for listing.
     src_root = f"{src_base}/{src_prefix}".rstrip("/")
     files = [p for p in fs_src.find(src_root) if not p.endswith("/")]
 
@@ -184,10 +202,14 @@ def copy_tree(src_url: str,
 
     def _dst_path(src_path: str) -> str:
         """
-        Compute destination path by replacing src_root with dst_base/prefix.
+        Compute destination path by removing the src_root prefix and prepending the destination base/prefix.
+        Falls back to just the basename if src_path doesn't start with src_root.
         """
-        rel = src_path[len(src_root):].lstrip("/")
-        return f"{dst_base}/{dst_prefix}/{rel}".replace("//", "/")
+        if src_path.startswith(src_root):
+            relative = src_path[len(src_root):].lstrip("/")
+        else:
+            relative = os.path.basename(src_path)
+        return _join_url(dst_base, dst_prefix, relative)
 
     def _copy_one(src_path: str) -> tuple[str, float, int]:
         """
@@ -195,78 +217,79 @@ def copy_tree(src_url: str,
         - Try server-side copy if possible.
         - Otherwise stream through this process with buffer_size.
 
-        Returns: (dst_path, seconds, size_bytes)
+        Returns: (out_path, elapsed_sec, src_size_bytes)
         """
-        t0 = time.perf_counter()
-        dst_path = _dst_path(src_path)
+        t_start_sec = time.perf_counter()
+        out_path = _dst_path(src_path)
 
-        # Ensure parent exists (some fs backends require explicit directory creation)
-        parent = os.path.dirname(urlparse(dst_path).path).lstrip("/")
+        parent = os.path.dirname(urlparse(out_path).path).lstrip("/")
         try:
-            fs_dst.mkdirs(f"{dst_base}/{parent}", exist_ok=True)
+            fs_dst.mkdirs(_join_url(dst_base, parent), exist_ok=True)
         except Exception:
             pass
 
         # Attempt to get size for throughput reporting (best-effort)
-        size_bytes = -1
+        src_size_bytes = -1
         try:
             info = fs_src.info(src_path)
-            size_bytes = int(info.get("size", -1))
+            src_size_bytes = int(info.get("size", -1))
         except Exception:
             pass
 
         if use_server_side:
             # Server-side copy within the same provider (fast, no data over your machine)
-            _cp_file_server_side(fs_src, src_path, dst_path)
+            _cp_file_server_side(fs_src, src_path, out_path)
         else:
             # Stream through memory with a large buffer; threads handle parallelism
-            with fs_src.open(src_path, "rb") as r, fs_dst.open(dst_path, "wb") as w:
+            with fs_src.open(src_path, "rb") as r, fs_dst.open(out_path, "wb") as w:
                 shutil.copyfileobj(r, w, length=buffer_size)
 
-        dt = time.perf_counter() - t0
+        elapsed_sec = time.perf_counter() - t_start_sec
 
         # Per-file timing/throughput log
-        if size_bytes and size_bytes > 0:
-            mb = size_bytes / (1024 * 1024)
-            mbps = mb / dt if dt > 0 else 0.0
-            logger.info(f"Finished copying {src_path} -> {dst_path} in {dt:.3f}s "
-                        f"({mb:.2f} MiB @ {mbps:.2f} MiB/s)")
+        if src_size_bytes and src_size_bytes > 0:
+            mebibytes = src_size_bytes / (1024 * 1024)
+            mib_per_sec = mebibytes / elapsed_sec if elapsed_sec > 0 else 0.0
+            logger.info(
+                f"Finished copying {src_path} -> {out_path} in {elapsed_sec:.3f}s "
+                f"({mebibytes:.2f} MiB @ {mib_per_sec:.2f} MiB/s)"
+            )
         else:
-            logger.info(f"Finished copying {src_path} -> {dst_path} in {dt:.3f}s")
+            logger.info(f"Finished copying {src_path} -> {out_path} in {elapsed_sec:.3f}s")
 
-        return dst_path, dt, max(size_bytes, 0)
+        return out_path, elapsed_sec, max(src_size_bytes, 0)
 
     # Threaded fan-out over files
-    start_wall = time.perf_counter()
+    wall_start_sec = time.perf_counter()
     completed = 0
-    total_bytes = 0
-    total_cpu_time = 0.0  # sum of per-file times (not equal to wall time with parallelism)
+    sum_bytes = 0
+    sum_cpu_time_sec = 0.0  # sum of per-file times (not equal to wall time with parallelism)
 
     with ThreadPoolExecutor(max_workers=workers) as ex:
-        futs = [ex.submit(_copy_one, p) for p in files]
-        for fut in as_completed(futs):
-            dst_path, dt, nbytes = fut.result()  # will raise if error
+        futures = [ex.submit(_copy_one, p) for p in files]
+        for fut in as_completed(futures):
+            ret_path, ret_elapsed_sec, ret_size_bytes = fut.result()  # raises if error
             completed += 1
-            total_bytes += nbytes
-            total_cpu_time += dt
+            sum_bytes += ret_size_bytes
+            sum_cpu_time_sec += ret_elapsed_sec
 
-    wall_dt = time.perf_counter() - start_wall
+    wall_elapsed_sec = time.perf_counter() - wall_start_sec
 
     logger.info(f"Successfully copied {completed}/{len(files)} files from {src_url} to {dst_url}")
 
     # Summary timing/throughput (added)
-    if total_bytes > 0:
-        mb = total_bytes / (1024 * 1024)
-        wall_mbps = mb / wall_dt if wall_dt > 0 else 0.0
-        avg_per_file = wall_dt / completed if completed else 0.0
+    if sum_bytes > 0:
+        total_mib = sum_bytes / (1024 * 1024)
+        wall_mib_per_sec = total_mib / wall_elapsed_sec if wall_elapsed_sec > 0 else 0.0
+        avg_per_file_sec = wall_elapsed_sec / completed if completed else 0.0
         logger.info(
-            f"Copy summary: {mb:.2f} MiB in {wall_dt:.3f}s "
-            f"({wall_mbps:.2f} MiB/s, avg per file {avg_per_file:.3f}s, workers={workers}, "
+            f"Copy summary: {total_mib:.2f} MiB in {wall_elapsed_sec:.3f}s "
+            f"({wall_mib_per_sec:.2f} MiB/s, avg per file {avg_per_file_sec:.3f}s, workers={workers}, "
             f"{'server-side' if use_server_side else 'streamed'})"
         )
     else:
         logger.info(
-            f"Copy summary: duration {wall_dt:.3f}s (workers={workers}, "
+            f"Copy summary: duration {wall_elapsed_sec:.3f}s (workers={workers}, "
             f"{'server-side' if use_server_side else 'streamed'})"
         )
 
@@ -297,12 +320,30 @@ def path_exists(path: str) -> bool:
         return False
 
 
+def is_dir(path: str) -> bool:
+    """
+    Cloud/local agnostic directory check.
+    Works for file://, s3://, gcs://, az://, etc.
+
+    :param path: URL or local filesystem path.
+    :return: True if path exists and is a directory/prefix, False otherwise.
+    """
+    parsed = urlparse(normalize_url(path))
+    scheme = parsed.scheme or "file"
+
+    if scheme == "file":
+        return os.path.isdir(parsed.path or path)
+
+    try:
+        fs = fsspec.filesystem(scheme)
+        return fs.isdir(path)
+    except Exception:
+        return False
+
+
 # ----------------------------
 # Caching + localization
 # ----------------------------
-
-_REMOTE_SCHEMES = {"s3", "gs", "gcs", "az", "abfs", "abfss"}
-
 
 def _is_remote(url_or_path: str) -> bool:
     p = urlparse(url_or_path)
@@ -346,11 +387,10 @@ def _info_for(fs, url: str) -> dict:
 
 @contextmanager
 def localize_to_path(
-    url_or_path: str,
-    *,
-    enable_cache: bool = True,
-    cache_dir: str = CACHEDIR_DEFAULT,
-    suffix: str = ".gpkg"
+        url_or_path: str,
+        *,
+        enable_cache: bool = True,
+        suffix: str = ".gpkg",
 ) -> Iterator[Tuple[str, str]]:
     """
     Yield (original_path, local_path) for local or remote resources.
@@ -359,15 +399,18 @@ def localize_to_path(
       - Yields (p, p) without copying or caching.
 
     Remote URLs (s3/gs/az/abfs):
-      - If enable_cache=True (default): persist under `cache_dir` and REUSE across runs.
+      - If enable_cache=True (default): persist under CLOUD_CACHE_DIR and REUSE across runs.
         Cache validation uses provider metadata:
-          - If both local file exists AND (ETag matches AND size matches) => cache hit.
+          - Cache hit when local file exists AND (ETag matches AND size matches).
           - Otherwise download to <file>.downloading and atomically promote it.
-        We store sidecar JSON with {etag, size, mtime, url, t}.
-      - If enable_cache=False: we download to a NamedTemporaryFile and delete on exit.
-        (Use this for truly one-shot reads.)
+        A sidecar JSON is stored alongside the file with: {etag, size, mtime, url, t}.
+        Note: /var/tmp is used by default so the cache survives reboots; /tmp is often
+        cleared by the OS and is better for purely ephemeral scratch.
 
-    Note: This is separate from copy_tree(); copy_tree does not populate or read
+      - If enable_cache=False: download to a NamedTemporaryFile and delete it on exit.
+        (Use this only for truly one-shot reads.)
+
+    Note: This is separate from copy_tree(); copy_tree does NOT populate or read
     this cache. If you want copy_tree to reuse the same artifacts across runs,
     refactor it to localize each source file via this function first.
     """
@@ -377,7 +420,7 @@ def localize_to_path(
         yield orig, orig
         return
 
-    os.makedirs(cache_dir, exist_ok=True)
+    os.makedirs(CLOUD_CACHE_DIR, exist_ok=True)
     p = urlparse(orig)
     scheme = p.scheme.lower()
     fs = fsspec.filesystem(scheme)
@@ -386,18 +429,29 @@ def localize_to_path(
     meta_remote = _info_for(fs, orig)
     etag = str(meta_remote.get("ETag") or meta_remote.get("etag") or "")
     size = int(meta_remote.get("Size") or meta_remote.get("size") or -1)
-    mtime = int(meta_remote.get("LastModified") or meta_remote.get("last_modified") or 0)
+    lm = meta_remote.get("LastModified") or meta_remote.get("last_modified")
+    if isinstance(lm, datetime.datetime):
+        mtime = int(lm.timestamp())
+    elif isinstance(lm, (int, float)):
+        mtime = int(lm)
+    elif isinstance(lm, str):
+        try:
+            mtime = int(float(lm))
+        except Exception:
+            mtime = 0
+    else:
+        mtime = 0
 
     if enable_cache:
         key = _cache_key(orig)
-        data_path = _data_path(cache_dir, key, suffix=suffix)
-        meta_path = _meta_path(cache_dir, key)
+        data_path = _data_path(CLOUD_CACHE_DIR, key, suffix=suffix)
+        meta_path = _meta_path(CLOUD_CACHE_DIR, key)
 
         meta_local = _read_meta(meta_path)
         ok = (
-            os.path.exists(data_path)
-            and meta_local.get("etag") == etag
-            and meta_local.get("size") == size
+                os.path.exists(data_path)
+                and meta_local.get("etag") == etag
+                and meta_local.get("size") == size
         )
 
         if ok:
@@ -406,19 +460,19 @@ def localize_to_path(
             return
 
         # Cache miss → download then promote
-        tmp = data_path + ".downloading"
+        tmp_download = data_path + ".downloading"
         logger.info(f"Downloading remote file to cache: original '{orig}' (local cache: {data_path})")
         try:
             # Use fs.get to persist efficiently; same-bucket copies may be server-side
-            fs.get(orig, tmp)
-            os.replace(tmp, data_path)
+            fs.get(orig, tmp_download)
+            os.replace(tmp_download, data_path)
             _write_meta(meta_path, {"etag": etag, "size": size, "mtime": mtime, "url": orig, "t": time.time()})
             yield orig, data_path
             return
         finally:
             try:
-                if os.path.exists(tmp):
-                    os.remove(tmp)
+                if os.path.exists(tmp_download):
+                    os.remove(tmp_download)
             except Exception:
                 pass
 

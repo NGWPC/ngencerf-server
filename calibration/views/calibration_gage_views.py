@@ -261,7 +261,6 @@ def save_gage_tab(request: Request):
 
         geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
-        print('get image url')
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
         num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path else None
 
@@ -397,11 +396,9 @@ def get_geopackage_image_url(geopackage_path: str) -> str | None:
     :param geopackage_path: The file path of the GeoPackage.
     :return: A base64-encoded URL string of the PNG image if conversion is successful; otherwise, None.
     """
-    print('get_geopackage_image_url', geopackage_path)
     if geopackage_path and path_exists(geopackage_path):
         try:
             # Attempt to convert the GeoPackage to PNG for selected layers
-            # TODO S3
             geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
             return png_str_to_base64_url(geopackage_png.getvalue())
         except DataLayerError as e:
