@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
+from pathlib import Path
 
 import fiona
 import geopandas as gpd
@@ -368,7 +369,8 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
                             f"for {_pp(orig_path, local_path)}.")
                 gdf_out = gdf.to_crs(epsg=4326)
 
-            gdf_out.to_file(output_path, layer=layer_name, driver="GPKG")
+            gdf_out.to_file(Path(output_path), layer=layer_name, driver="GPKG")
+
             spatial_layers.append(layer_name)
 
         # Second pass: copy non-spatial tables using SQLite
@@ -396,7 +398,8 @@ def copy_non_spatial_table_one(table_name: str, src_conn: sqlite3.Connection, ds
     src_cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?;", (table_name,))
     create_stmt = src_cursor.fetchone()
     if not create_stmt:
-        logger.warning("Table '{table_name}' not found in source.")
+        logger.warning(f"Table '{table_name}' not found in source.")
+
         return
 
     dst_cursor.execute(create_stmt[0])
@@ -405,7 +408,7 @@ def copy_non_spatial_table_one(table_name: str, src_conn: sqlite3.Connection, ds
     rows = src_cursor.execute(f'SELECT * FROM "{table_name}";').fetchall()
     if rows:
         placeholders = ", ".join(["?"] * len(rows[0]))
-        dst_cursor.executemany(f"INSERT INTO '{table_name}'VALUES ({placeholders});", rows)
+        dst_cursor.executemany(f"INSERT INTO '{table_name}' VALUES ({placeholders});", rows)
 
     dst_conn.commit()
 
