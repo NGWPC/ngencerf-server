@@ -419,7 +419,9 @@ def main():
     # Authenticate if needed
     if args.command not in COMMANDS_AUTH_EXEMPT and "ACCESS_TOKEN" not in os.environ:
         try:
-            ngen_login()
+            if not ngen_login():
+                print("Error logging in.  Use 'ngencerf register' to register a new userid")
+                sys.exit(1)
         except Exception as e:
             print(f'Error communicating with server - {e}')
             sys.exit(1)
