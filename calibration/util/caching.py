@@ -93,7 +93,7 @@ def get_gage_by_id(gage_id: str) -> dict[str, str | float | int | None] | None:
         return None
 
     # Exclude 'nws_id', 'domain', and 'headwater_calibration' from the result
-    return {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration']}
+    return {key: value for key, value in gage.items() if key not in ['nws_id', 'domain', 'headwater_calibration', 'is_active']}
 
 
 def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str | int | float]]:
