@@ -262,13 +262,13 @@ def get_jobs(
 
         # Include validation IDs and count if requested
         if include_validation_data in [GetValidationJobsScope.IDS, GetValidationJobsScope.STATUS]:
-            validation_ids = get_validation_jobs_internal(run_id, GetValidationJobsScope.IDS)
+            validation_ids = get_validation_jobs_internal(run.id, GetValidationJobsScope.IDS)
             result['validation_run_ids'] = validation_ids
             result['validation_runs'] = len(validation_ids)
 
         # Include detailed validation status if requested
         if include_validation_data == GetValidationJobsScope.STATUS:
-            result['validations'] = get_validation_jobs_internal(run_id, include_validation_data)
+            result['validations'] = get_validation_jobs_internal(run.id, include_validation_data)
 
         # Include stop criteria if requested
         if include_stop_criteria:
