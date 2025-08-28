@@ -22,6 +22,7 @@ from .module import Module
 from .module_group import ModuleGroup
 from .nwm_retrospective_metrics import NWMRetrospectiveMetrics
 from .observational_source import ObservationalSource
+from .output_variable import OutputVariable
 from .optimization import Optimization
 from .optimization_input import OptimizationInput
 from .performance_metrics import PerformanceMetrics

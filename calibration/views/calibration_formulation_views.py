@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, Module, OutputVariable
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
@@ -350,8 +350,7 @@ formulation_validations = {
                 "must_have": ["CFE-S", "CFE-X", "LASAM"],
                 "fatal": True
             }
-        },
-        "complete_module_list": [["CFE-S", "CFE-X"], "SMP", "SFT", "Noah-OWP-Modular", "T-Route"]
+        }
     }
 }
 
@@ -398,8 +397,9 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
         if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
             info_messages.append('Formulation is Calibratable.')
         
-        # If LSTM passes all checks, check for completeness
-        check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+        # No need to check for completeleness - we know an LSTM formulation is incomplete and will not
+        # produce output variables
+        nonfatal_errors.append('Formulation Incomplete. NWM v3 Output Variables will not be produced by LSTM.')
         
         return fatal_errors, nonfatal_errors, info_messages
 
@@ -478,23 +478,28 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
     :param info_messages: The list to append informational messages.
     :return: None.
     """
-    module_complete = True
-    for module_name in formulation_validations["formulation_rules"]["complete_module_list"]:
-        if type(module_name) is list:
-            # One or more modules from a list must be found
-            module_option_found = any(m in module_names for m in module_name)
-            if not module_option_found:
-                module_complete = False
-                break
-        elif module_name not in module_names:
-            # Exact module name must be found
-            module_complete = False
-            break
 
-    if not module_complete:
-        nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.')
+    modules_included = Module.objects.filter(name__in=module_names)
+    output_variables_excluded = [output_variable.name for output_variable in OutputVariable.objects.all()]
+    output_variables_included = []
+
+    for module in modules_included:
+        logger.debug(f'OUTPUT VARIABLES FOR {module.name}:')
+        for output_variable in module.output_variables.all():
+            logger.debug(f'{output_variable.name}')
+            if output_variable.name in output_variables_excluded:
+                output_variables_excluded.remove(output_variable.name)
+                output_variables_included.append(output_variable.name)
+    
+    output_variables_excluded.sort()
+    output_variables_included.sort()
+
+    if len(output_variables_excluded) > 0:
+        nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced. ' + 
+                               'Missing Output Variables: ' + ", ".join(output_variables_excluded))
     else:
         info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
+    info_messages.append('Output Variables Produced: ' + ", ".join(output_variables_included))
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:

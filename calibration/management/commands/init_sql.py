@@ -13,6 +13,7 @@ from calibration.models import Domain, ObservationalSource, Optimization, Metric
 from calibration.models.forcing_source import ForcingSource
 from calibration.models.module import Module
 from calibration.models.module_group import ModuleGroup
+from calibration.models.output_variable import OutputVariable
 from calibration.models.rfc import Rfc
 from calibration.models.status import Status
 
@@ -52,6 +53,7 @@ class Command(BaseCommand):
         logger.info(f"In init_sql: email: {cast(CustomUser, self.user).email}")
 
         self.define_module_groups()
+        self.define_output_variables()
         self.define_modules()
         self.define_domains()
         self.define_rfc()
@@ -80,6 +82,43 @@ class Command(BaseCommand):
             ModuleGroup.objects.update_or_create(name=v['name'], defaults={"order": v['order'], "is_active": v.get('is_active', True),
                                                                            "created_by": self.user})
 
+    def define_output_variables(self):
+        if self.DELETE_FLAG:
+            OutputVariable.objects.all().delete()
+        
+        output_variable_names = ["sfcheadsubrt",
+          "inflow",
+          "outflow",
+          "reservoir_assimilated_value",
+          "water_sfc_elev",
+          "nudge",
+          "qBucket",
+          "streamflow",
+          "velocity",
+          "ACSNOM",
+          "SNOWT_AVG",
+          "SOILICE",
+          "SOILSAT_TOP",
+          "QRAIN",
+          "FSNO",
+          "SNOWH",
+          "SNLIQ",
+          "SNEQV",
+          "QSNOW",
+          "SOIL_T",
+          "SOIL_M",
+          "SFCRNOFF",
+          "TRAD",
+          "LH",
+          "FIRA",
+          "HFX"
+        ]
+
+        values = [{"name": name, "order": order+1} for order, name in enumerate(output_variable_names)]
+
+        for v in values:
+            OutputVariable.objects.update_or_create(name=v['name'], defaults={"order": v['order'], "created_by": self.user})
+
     def define_modules(self):
         if self.DELETE_FLAG:
             Module.objects.all().delete()
@@ -87,43 +126,58 @@ class Command(BaseCommand):
         values = [{"name": "Topoflow",
                    "description": "description",
                    "groups": ["Glacier"],
+                   "output_variables": ["ACSNOM","SNOWH","SNEQV","QSNOW","TRAD","LH","FIRA","HFX"],
                    "is_active": False},
                   {"name": "Noah-OWP-Modular",
                    "description": "An extended, refactored version of the Noah-MP land surface model",
-                   "groups": ["Snowmelt", "Evapotranspiration"]},
+                   "groups": ["Snowmelt", "Evapotranspiration"],
+                   "output_variables": ["ACSNOM","SNOWT_AVG","QRAIN","FSNO","SNOWH","SNLIQ","SNEQV","QSNOW","TRAD","LH","FIRA","HFX"]},
                   {"name": "Snow-17",
                    "description": "Snow17 is a snow accumulation and melt model that has been used by the National Weather Service since the late 1970s for operational streamflow forecasting.  It is a temperature-index model",
-                   "groups": ["Snowmelt"]},
-                  {"name": "UEB", "description": "description", "groups": ["Snowmelt"]},
+                   "groups": ["Snowmelt"],
+                   "output_variables": ["ACSNOM","SNOWH","SNEQV"]},
+                  {"name": "UEB", "description": 
+                   "description", 
+                   "groups": ["Snowmelt"],
+                   "output_variables": ["ACSNOM","SNOWT_AVG","QRAIN","SNEQV","QSNOW","TRAD","LH","FIRA","HFX"]},
                   {"name": "CFE-S",
                    "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The X represents the Xinanjiang function (configuration: surface_partitioning_scheme= Xinanjiang)",
-                   "groups": ["Rainfall Runoff"]},
+                   "groups": ["Rainfall Runoff"],
+                   "output_variables": ["sfcheadsubrt","qBucket","streamflow","QRAIN","SFCRNOFF"]},
                   {"name": "CFE-X",
                    "description": "The Conceptual Functional Equivalent (CFE) model to the National Water Model. The S represents the Schaake function (configuration: surface_partitioning_scheme=Schaake)",
-                   "groups": ["Rainfall Runoff"]},
+                   "groups": ["Rainfall Runoff"],
+                   "output_variables": ["sfcheadsubrt","qBucket","streamflow","QRAIN","SFCRNOFF"]},
                   {"name": "LSTM",
                    "description": "description",
                    "groups": ["Glacier", "Snowmelt", "Evapotranspiration", "Soil Moisture", "Rainfall Runoff"]},
-                  {"name": "PET", "description": "description", "groups": ["Evapotranspiration"], "is_active": False},
+                  {"name": "PET", "description": 
+                   "description", "groups": ["Evapotranspiration"],
+                   "is_active": False},
                   {"name": "TopModel",
                    "description": "A physically based, distributed watershed model that simulates hydrologic fluxes of water.",
-                   "groups": ["Rainfall Runoff"]},
+                   "groups": ["Rainfall Runoff"],
+                   "output_variables": ["streamflow","QRAIN","SFCRNOFF"]},
                   {"name": "Sac-SMA",
                    "description": "A BMI enabled version of the Sacramento Soil Moisture Accounting (Sac-SMA) model.  This version of Sac-SMA allows for multiple hydrological response units (HRUs) to be modeled at once.",
-                   "groups": ["Rainfall Runoff"]},
+                   "groups": ["Rainfall Runoff"],
+                   "output_variables": ["qBucket","streamflow","SFCRNOFF"]},
                   {"name": "LASAM",
                    "description": "Lumped Arid/Semi-arid Model (LASAM) for infiltration and surface runoff.  The LASAM simulates infiltration and runoff based on Layered Green & Ampt with redistribution (LGAR) model.).",
-                   "groups": ["Rainfall Runoff"]},
+                   "groups": ["Rainfall Runoff"],
+                   "output_variables": ["qBucket","streamflow","SOILSAT_TOP","QRAIN","SOIL_M","SFCRNOFF"]},
                   {"name": "SMP",
                    "description": "The soil moisture profiles (SMP schemes provide soil moisture distributed over a one-dimensional vertical column and depth to water table. These schemes facilitate coupling among hydrological and thermal models such as (CFE and SFT or LASAM and SFT).",
-                   "groups": ["Soil Moisture"]},
+                   "groups": ["Soil Moisture"],
+                   "output_variables": ["SOILSAT_TOP","SOIL_M"]},
                   {"name": "SFT",
                    "description": "The soil freeze-thaw model simulates the transport of heat in soil using a one-dimensional vertical column. The model uses a standard diffusion equation discretized using a fully-implicit scheme at the interior and a semi-implicit scheme at the top and bottom boundaries, similar to NOAH-MP. More details are provided below.",
-                   "groups": ["Soil Moisture"]},
+                   "groups": ["Soil Moisture"],
+                   "output_variables": ["SOILICE","SOIL_T"]},
                   {"name": "T-Route",
                    "description": "Tree-Based Channel Routing -  a dynamic channel routing model, offers a comprehensive solution for river network routing problems. Provides a series lateral inflows for each node in a channel network and computes the resulting streamflows.",
-                   "groups": ["Routing"]},
-
+                   "groups": ["Routing"],
+                   "output_variables": ["inflow","outflow","reservoir_assimilated_value","water_sfc_elev","nudge","streamflow","velocity",""]}
                   ]
 
         for v in values:
@@ -131,10 +185,14 @@ class Command(BaseCommand):
                                                                                            "description": v['description'],
                                                                                            "created_by": self.user})
 
-            group_names = v['groups']
+            group_names = v['groups'] if 'groups' in v else []
             groups = ModuleGroup.objects.filter(name__in=group_names)
+            
+            output_variable_names = v['output_variables'] if 'output_variables' in v else []
+            output_variables = OutputVariable.objects.filter(name__in=output_variable_names)
 
             module_instance.groups.set(groups)
+            module_instance.output_variables.set(output_variables)
             module_instance.save()
 
     def define_domains(self):
