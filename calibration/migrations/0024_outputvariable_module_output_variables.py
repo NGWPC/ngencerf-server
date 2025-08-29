@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('calibration', '0023_rename_forcing_source_calibrationrun_forcing_source_requested.py'),
+        ('calibration', '0023_rename_forcing_source_calibrationrun_forcing_source_requested'),
     ]
 
     operations = [
