@@ -394,7 +394,7 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
             )
             return fatal_errors, nonfatal_errors, info_messages
         
-        if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
+        if len(fatal_errors) == 0:
             info_messages.insert(0, 'Formulation is Calibratable.')
         else:
             fatal_errors.insert(0, 'Formulation is not Calibratable.')
@@ -460,8 +460,8 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
             else:
                 nonfatal_errors.append(msg)
 
-    # 3) If no errors or warnings, indicate that the formulation is Calibratable
-    if len(fatal_errors) == 0 and len(nonfatal_errors) == 0:
+    # 3) If no fatal errors, indicate that the formulation is Calibratable
+    if len(fatal_errors) == 0:
         info_messages.insert(0, 'Formulation is Calibratable.')
     else:
         fatal_errors.insert(0, 'Formulation is not Calibratable.')
@@ -500,11 +500,11 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
 
     if len(output_variables_excluded) > 0:
         nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.') 
-        nonfatal_errors.append('Missing Output Variables: ' + ", ".join(output_variables_excluded))
+        nonfatal_errors.append('Missing NWM v3 Output Variables: ' + ", ".join(output_variables_excluded))
     else:
         info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
     if len(output_variables_included) > 0:
-        info_messages.append('Output Variables Produced: ' + ", ".join(output_variables_included))
+        info_messages.append('NWM v3 Output Variables Produced: ' + ", ".join(output_variables_included))
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:
