@@ -395,11 +395,11 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
             return fatal_errors, nonfatal_errors, info_messages
         
         if len(fatal_errors) == 0:
-            info_messages.insert(0, 'Formulation is Calibratable.')
+            info_messages.append('Formulation is Calibratable.')
         else:
-            fatal_errors.insert(0, 'Formulation is not Calibratable.')
+            fatal_errors.append('Formulation is not Calibratable.')
         
-        # No need to check for completeleness - we know an LSTM formulation is incomplete and will not
+        # No need to check for completeness - we know an LSTM formulation is incomplete and will not
         # produce output variables
         nonfatal_errors.append('Formulation Incomplete. NWM v3 Output Variables will not be produced by LSTM.')
         
@@ -460,14 +460,14 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
             else:
                 nonfatal_errors.append(msg)
 
-    # 3) If no fatal errors, indicate that the formulation is Calibratable
-    if len(fatal_errors) == 0:
-        info_messages.insert(0, 'Formulation is Calibratable.')
-    else:
-        fatal_errors.insert(0, 'Formulation is not Calibratable.')
-
-    # 4) Check for completeness
+    # 3) Check for completeness
     check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+
+    # 4) If no fatal errors, indicate that the formulation is Calibratable
+    if len(fatal_errors) == 0:
+        info_messages.append('Formulation is Calibratable.')
+    else:
+        fatal_errors.append('Formulation is not Calibratable.')
 
     return fatal_errors, nonfatal_errors, info_messages
 
