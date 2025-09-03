@@ -170,7 +170,7 @@ def validate_files(
         # Filter and sort gages
         gage_list = [{
             'gage_id': gage.get('gage_id'),
-            'domain': gage.get('domain').replace('_', ' '),
+            'domain': gage.get('domain').replace(' ', '_'),
         } for gage in get_headwater_gages()
             if (gage_ids_filter and gage.get('gage_id') in gage_ids_filter)
                or (gage_ids_filter is None)]
