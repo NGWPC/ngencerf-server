@@ -381,10 +381,39 @@ fi
 echo
 echo "Starting server"
 
+ASGI_FLAG="${CERF_ASGI:-}" # explicit override
+PROD_FLAG="${CERF_PRODUCTION:-}" # general prod indicator
+
 # Restore original stdout and stderr before starting the server
 exec >/dev/tty 2>/dev/tty
 
-python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+# use ASGI server if ASGI_FLAG or PROD_FLAG are set
+if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
+    echo "Launching Gunicorn (Uvicorn workers) ASGI server"
+    # Default workers: 1 per CPU core * 2 + 1 (common heuristic) but cap small; allow override
+    WORKERS=${GUNICORN_WORKERS:-$(python - <<'PY'
+import multiprocessing, math
+cpu = multiprocessing.cpu_count()
+print(min(8, max(2, cpu*2+1)))
+PY
+)}
+    TIMEOUT=${GUNICORN_TIMEOUT:-120}
+    BIND_ADDR=${GUNICORN_BIND:-0.0.0.0:8000}
+    # --graceful-timeout extra time to finish in-flight requests on restart
+    exec gunicorn cerfServer.asgi:application \
+            --name ngencerf \
+            --workers ${WORKERS} \
+            --worker-class uvicorn.workers.UvicornWorker \
+            --bind ${BIND_ADDR} \
+            --log-level ${GUNICORN_LOG_LEVEL:-info} \
+            --timeout ${TIMEOUT} \
+            --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} \
+            --access-logfile - \
+            --error-logfile -
+else
+    echo "Launching Django development server (runserver)"
+    python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+fi
 
 if [ -n "${CERF_VENV}" ]; then
     deactivate

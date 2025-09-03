@@ -72,6 +72,8 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
     set -eux && \
     pip3 install --upgrade pip && \
     pip3 install -r requirements.txt && \
+    # Production-only ASGI server deps (kept out of base requirements to avoid forcing them on dev envs) \
+    pip3 install gunicorn uvicorn && \
     rm -f requirements.txt
 
 # Build partitionGenerator
