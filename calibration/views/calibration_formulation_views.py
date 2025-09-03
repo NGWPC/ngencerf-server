@@ -393,15 +393,14 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
                 f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
             )
             return fatal_errors, nonfatal_errors, info_messages
+
+        # Check for completeness
+        check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
         
         if len(fatal_errors) == 0:
             info_messages.append('Formulation is Calibratable.')
         else:
             fatal_errors.append('Formulation is not Calibratable.')
-        
-        # No need to check for completeness - we know an LSTM formulation is incomplete and will not
-        # produce output variables
-        nonfatal_errors.append('Formulation Incomplete. NWM v3 Output Variables will not be produced by LSTM.')
         
         return fatal_errors, nonfatal_errors, info_messages
 
