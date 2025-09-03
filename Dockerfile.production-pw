@@ -1,21 +1,31 @@
 FROM rockylinux:8
 
-# Install runtime dependencies
+# Install build and runtime dependencies
 RUN set -eux && \
     dnf install -y yum-utils epel-release && \
     dnf install -y \
-        file \
+        # Singularity build requirements
+        golang \
+        libseccomp-devel \
+        squashfs-tools \
+        cryptsetup \
+        wget \
+        git \
+        make \
+        gcc \
+        openssl-devel \
+        glib2-devel \
         findutils \
+        # General utilities
+        file \
         jq \
         libpq \
-        git \
         openssl openssl-devel \
+        # Python 3.11 stack
         python3.11 python3.11-libs python3.11-devel \
         python3.11-pip \
         python3.11-setuptools \
-        singularity-ce \
-        # The following needed for partitionGenerator
-        make \
+        # partitionGenerator requirements
         cmake \
         gcc-c++ \
         sqlite-devel \
@@ -23,7 +33,18 @@ RUN set -eux && \
         dnf-plugins-core && \
     dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo && \
     dnf install -y docker-ce-cli && \
-    dnf clean all
+    dnf clean all && \
+    # Build and install SingularityCE 3.11.4 from source
+    git clone https://github.com/sylabs/singularity.git /tmp/singularity && \
+    cd /tmp/singularity && \
+    git checkout v3.11.4 && \
+    git submodule update --init --recursive && \
+    ./mconfig && \
+    make -C builddir && \
+    make -C builddir install && \
+    cd / && \
+    rm -rf /tmp/singularity
+
 
 # Install Boost 1.79.0 from source
 ARG BOOST_VERSION=1.79.0
