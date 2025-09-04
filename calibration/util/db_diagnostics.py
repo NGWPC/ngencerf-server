@@ -89,26 +89,33 @@ def _test_ssl_handshake(settings_dict: dict):
                 except Exception as cert_exc:
                     logger.error(f"  Could not extract server cert details: {cert_exc}")
 
-                # NEW: Log which CA file OpenSSL actually used
+                # Log number of CA certs loaded
                 try:
-                    ca_file_used = ssl_obj.context.get_ca_certs()
-                    logger.error(f"  Trusted CA certs loaded: {len(ca_file_used)}")
+                    ca_certs = ssl_obj.context.get_ca_certs()
+                    logger.error(f"  Number of trusted CA certs loaded: {len(ca_certs)}")
                     if sslrootcert:
                         logger.error(f"  Requested sslrootcert: {sslrootcert}")
                         logger.error("  psycopg is expected to honor this file if valid.")
                     else:
                         logger.error("  No sslrootcert specified; psycopg relied on system defaults.")
+                        default_paths = ssl.get_default_verify_paths()
+                        logger.error(f"  Default CA file path: {default_paths.cafile}")
+                        logger.error(f"  Default CA path dir: {default_paths.capath}")
                 except Exception as ca_exc:
-                    logger.error(f"  Could not confirm CA file used: {ca_exc}")
+                    logger.error(f"  Could not confirm CA certs loaded: {ca_exc}")
             else:
                 logger.error("  No SSL object available — server may not require SSL.")
+
     except Exception as ssl_exc:
-        logger.error(f"[DB Diagnostics] SSL handshake test FAILED: {ssl_exc}")
         msg = str(ssl_exc).lower()
-        if "certificate verify failed" in msg:
-            logger.error("[DB Diagnostics] Certificate validation failed — likely missing or incorrect sslrootcert.")
-        elif "connection reset" in msg:
-            logger.error("[DB Diagnostics] Connection reset during SSL handshake — possible mismatch between client and server SSL settings.")
+        if "fe_sendauth: no password supplied" in msg:
+            logger.error("[DB Diagnostics] SSL handshake succeeded (authentication failed: no password).")
+        else:
+            logger.error(f"[DB Diagnostics] SSL handshake test FAILED: {ssl_exc}")
+            if "certificate verify failed" in msg:
+                logger.error("[DB Diagnostics] Certificate validation failed — likely missing or incorrect sslrootcert.")
+            elif "connection reset" in msg:
+                logger.error("[DB Diagnostics] Connection reset during SSL handshake — possible mismatch between client and server SSL settings.")
 
 
 def _parse_statement_timeout(options_str: str | None) -> str | None:
