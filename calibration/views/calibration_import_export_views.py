@@ -521,6 +521,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     calibration_run_data['modules'] = modules
 
+    calibration_run_data['is_aet_rootzone'] = run.is_aet_rootzone
+
     # Validation warnings
     formulation_errors, formulation_warnings, _ = validate_formulation(modules)
     if formulation_warnings and not export:

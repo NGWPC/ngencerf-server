@@ -200,6 +200,11 @@ def save_formulation_tab(request) -> Response:
     if error_message:
         return ResponseError(error_message)
 
+    # Only allow AET Rootzone to be True if CFE is included in the formulation
+    run.is_aet_rootzone = validator.get('is_aet_rootzone',False)
+    if run.is_aet_rootzone and not ('CFE-S' in new_module_names or 'CFE-X' in new_module_names):
+        return ResponseError(f'AET Rootzone cannot be True for formulations not using CFE.')
+
     formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names)
 
     if not use_sloth and sloth_parameters:
