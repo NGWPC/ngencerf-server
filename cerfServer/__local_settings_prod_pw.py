@@ -38,7 +38,7 @@ DATABASES = {
         # Blackhole ip for timeout testing
         # 'HOST': '10.255.255.1',
         'PORT': 5432,
-        'CONN_MAX_AGE': 10,
+        'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'connect_timeout': 10,
             'options': '-c statement_timeout=10000ms',
