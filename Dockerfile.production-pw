@@ -103,8 +103,8 @@ RUN --mount=type=cache,target=/ngencerf/partitionGenerator_build,id=partition-ge
           -DNGEN_WITH_BMI_C=OFF \
           -DNGEN_WITH_PYTHON=OFF \
           -DNGEN_WITH_TESTS=OFF \
-          -DNGEN_WITH_ROUTING=OFF \
-          -DNGEN_QUIET=OFF \
+          -DNGEN_WITH_ROUTING=ON \
+          -DNGEN_QUIET=ON \
           -DNGEN_UPDATE_GIT_SUBMODULES=OFF \
           -DNGEN_WITH_EXTERN_ALL=OFF \
           -DNGEN_WITH_EXTERN_SLOTH=OFF \
