@@ -37,7 +37,7 @@ DATABASES = {
         'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'connect_timeout': 10,
-            'options': '-c statement_timeout=10000ms',
+            'options': '-c statement_timeout=20000ms',
             'sslmode': 'require',
             # 'sslrootcert': /ngencerf/aws_cert/global-bundle.pem',
         }
