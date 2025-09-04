@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import os
+import shutil
 import subprocess
 
 from django.conf import settings
@@ -9,6 +10,14 @@ from django.core.cache import cache
 from calibration.enums_vanilla import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
+
+
+def _indent_output(output: str, indent: int = 2) -> str:
+    """Indent each line of output by `indent` spaces."""
+    if not output:
+        return ""
+    prefix = " " * indent
+    return "\n".join(prefix + line for line in output.splitlines())
 
 
 # noinspection PyTypeChecker
@@ -24,25 +33,74 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
     """
     success = False  # Default to failure
 
-    try:
-        # Step 1: Create a temporary container
-        create_cmd = ["docker", "create", "--name", container_name, image_name]
-        logger.debug(create_cmd)
-        subprocess.run(create_cmd, check=True, capture_output=True, text=True)
+    # Basic sanity checks that often explain "exit status 1" quickly
+    if shutil.which("docker") is None:
+        logger.error("Docker binary not found on PATH.")
+        return False
 
-        # Step 2: Copy the file from the container
-        copy_cmd = ["docker", "cp", f"{container_name}:{src_path}", dest_path]
-        logger.debug(copy_cmd)
-        subprocess.run(copy_cmd, check=True)
+    dest_parent = os.path.dirname(dest_path) or "."
+    if not os.path.isdir(dest_parent):
+        logger.error(f"Destination directory does not exist: {dest_parent}")
+        return False
+
+    # Step 1: Create a temporary container
+    create_cmd = ["docker", "create", "--name", container_name, image_name]
+    logger.debug(create_cmd)
+    try:
+        create_response = subprocess.run(create_cmd, check=True, capture_output=True, text=True)
+        if create_response.stdout:
+            container_id = create_response.stdout.strip()
+            logger.info(f"Created temporary container {container_name} (ID={container_id})")
+        if create_response.stderr:
+            logger.debug(f"[docker create stderr]\n{_indent_output(create_response.stderr.strip())}")
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            "Failed to create temporary container "
+            f"(exit={e.returncode}).\n"
+            f"Command: {' '.join(create_cmd)}\n"
+            f"STDOUT:\n{_indent_output((e.stdout or '').strip())}\n"
+            f"STDERR:\n{_indent_output((e.stderr or '').strip())}"
+        )
+        # Attempt best-effort cleanup in case the name was already taken
+        try:
+            subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True)
+        except Exception:
+            pass
+        return False
+
+    # Step 2: Copy the file from the container
+    copy_cmd = ["docker", "cp", f"{container_name}:{src_path}", dest_path]
+    logger.debug(copy_cmd)
+    try:
+        copy_response = subprocess.run(copy_cmd, check=True, capture_output=True, text=True)
+        if copy_response.stdout:
+            logger.debug(f"[docker cp stdout]\n{_indent_output(copy_response.stdout.strip())}")
+        if copy_response.stderr:
+            # docker cp commonly prints nothing, but capture it if present
+            logger.debug(f"[docker cp stderr]\n{_indent_output(copy_response.stderr.strip())}")
 
         logger.info(f"Successfully copied {src_path} to {dest_path}")
         success = True
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error copying file: {e.stderr or str(e)}")
+        logger.error(
+            "Error copying file from Docker container "
+            f"(exit={e.returncode}).\n"
+            f"Command: {' '.join(copy_cmd)}\n"
+            f"STDOUT:\n{_indent_output((e.stdout or '').strip())}\n"
+            f"STDERR:\n{_indent_output((e.stderr or '').strip())}"
+        )
     finally:
         # Step 3: Remove the temporary container (always runs, even if copy fails)
         rm_cmd = ["docker", "rm", "-f", container_name]
-        subprocess.run(rm_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # Suppress output
+        rm_response = subprocess.run(rm_cmd, capture_output=True, text=True)
+        if rm_response.returncode != 0:
+            logger.warning(
+                "Failed to remove temporary container "
+                f"(exit={rm_response.returncode}).\n"
+                f"Command: {' '.join(rm_cmd)}\n"
+                f"STDOUT:\n{_indent_output((rm_response.stdout or '').strip())}\n"
+                f"STDERR:\n{_indent_output((rm_response.stderr or '').strip())}"
+            )
 
     return success
 
@@ -60,6 +118,11 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
 
     logger.info(f'Copy file {src_path} from image {image_path}')
 
+    # Quick checks that commonly cause exit=1
+    if shutil.which("singularity") is None:
+        logger.error("singularity binary not found on PATH.")
+        return False
+
     # Check if the path exists
     if not os.path.exists(image_path):
         # If it's a symlink, check whether it's broken
@@ -70,15 +133,40 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
             logger.error(f"Image {image_path} does not exist.")
         return False
 
-    try:
-        copy_cmd = ["singularity", "exec", image_path, "cp", src_path, dest_path]
-        subprocess.run(copy_cmd, check=True)
+    dest_parent = os.path.dirname(dest_path) or "."
+    if not os.path.isdir(dest_parent):
+        logger.error(f"Destination directory does not exist on host: {dest_parent}")
+        # This *still* might fail inside the container due to missing bind, but start with host-side basics.
+        return False
 
+    # Build and run the copy command
+    copy_cmd = ["singularity", "exec", image_path, "cp", src_path, dest_path]
+    logger.debug(copy_cmd)
+    try:
+        res = subprocess.run(copy_cmd, check=True, capture_output=True, text=True)
+        if res.stdout:
+            logger.debug(f"[singularity exec cp stdout]\n{_indent_output(res.stdout.strip())}")
+        if res.stderr:
+            # Some singularity builds are chatty on stderr; still capture it
+            logger.debug(f"[singularity exec cp stderr]\n{_indent_output(res.stderr.strip())}")
         logger.info(f"Successfully copied {src_path} from {image_path} to {dest_path}")
         success = True
     except subprocess.CalledProcessError as e:
-        logger.error(f"Error copying file: {e.stderr or str(e)}")
+        # Provide maximum context for troubleshooting bind vs. path vs. perms
+        logger.error(
+            "Error copying file from Singularity image "
+            f"(exit={e.returncode}).\n"
+            f"Command: {' '.join(copy_cmd)}\n"
+            f"STDOUT:\n{_indent_output((e.stdout or '').strip())}\n"
+            f"STDERR:\n{_indent_output((e.stderr or '').strip())}"
+        )
 
+        logger.error(
+            "If STDERR shows 'No such file or directory' for the destination, "
+            "ensure the host path is bind-mounted into the container context. "
+            "If it shows 'No such file or directory' for the source, verify the path inside the image. "
+            "If 'Permission denied', check file/dir permissions and container user."
+        )
     return success
 
 
