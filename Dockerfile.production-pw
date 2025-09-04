@@ -76,13 +76,14 @@ RUN --mount=type=cache,target=/root/.cache/pip,id=pip-cache \
 
 # Build partitionGenerator
 ARG NGEN_ORG=NGWPC
+ARG NGEN_BRANCH=development
 
 WORKDIR /ngencerf/ngen-sparse
 RUN --mount=type=cache,target=/ngencerf/partitionGenerator_build,id=partition-generator-build \
     --mount=type=cache,target=/root/.cache/cmake,id=cmake-cache \
     set -eux && \
     # Clone only the required directories
-    git clone --depth 1 --filter=blob:none --sparse https://github.com/${NGEN_ORG}/ngen.git . && \
+    git clone --depth 1 --filter=blob:none --branch "${NGEN_BRANCH}" --single-branch --sparse "https://github.com/${NGEN_ORG}/ngen.git" . && \
     git sparse-checkout init --cone && \
     git sparse-checkout set \
         src \
