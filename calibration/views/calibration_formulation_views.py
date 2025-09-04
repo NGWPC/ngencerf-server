@@ -487,12 +487,12 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
     output_variables_included = []
 
     for module in modules_included:
-        logger.debug(f'OUTPUT VARIABLES FOR {module.name}:')
-        for output_variable in module.output_variables.all():
-            logger.debug(f'{output_variable.name}')
-            if output_variable.name in output_variables_excluded:
-                output_variables_excluded.remove(output_variable.name)
-                output_variables_included.append(output_variable.name)
+        output_names = [ov.name for ov in module.output_variables.all()]
+        logger.debug(f'Output variables for {module.name}: {", ".join(output_names)}')
+        for ov_name in output_names:
+            if ov_name in output_variables_excluded:
+                output_variables_excluded.remove(ov_name)
+                output_variables_included.append(ov_name)
     
     output_variables_excluded.sort()
     output_variables_included.sort()
