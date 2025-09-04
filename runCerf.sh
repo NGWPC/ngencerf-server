@@ -390,10 +390,13 @@ exec >/dev/tty 2>/dev/tty
 # use ASGI server if ASGI_FLAG or PROD_FLAG are set
 if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
     echo "Launching Gunicorn (Uvicorn workers) ASGI server"
-    # Default workers: 1 per CPU core * 2 + 1 (common heuristic) but cap small; allow override
+    # if GUNICORN_WORKERS is not set, calculate default value for WORKERS
+    # Gunicorn recommends (2 x num of cores) + 1 as a reasonable default
+    # but we cap it at 8 workers to avoid excessive memory use on small servers
+    # and set a minimum of 2 workers to handle multiple requests
     WORKERS=${GUNICORN_WORKERS:-$(python - <<'PY'
 import multiprocessing, math
-cpu = multiprocessing.cpu_count()
+cpu = multiprocessing.cpu_count() # number of CPU cores
 print(min(8, max(2, cpu*2+1)))
 PY
 )}
