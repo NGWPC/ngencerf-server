@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import subprocess
+import shlex
 
 from django.conf import settings
 from django.core.cache import cache
@@ -50,7 +51,7 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
         create_response = subprocess.run(create_cmd, check=True, capture_output=True, text=True)
         if create_response.stdout:
             container_id = create_response.stdout.strip()
-            logger.info(f"Created temporary container {container_name} (ID={container_id})")
+            logger.info(f"Created temporary container {container_name} (ID={container_id[:12]})")
         if create_response.stderr:
             logger.debug(f"[docker create stderr]\n{_indent_output(create_response.stderr.strip())}")
     except subprocess.CalledProcessError as e:
@@ -136,11 +137,20 @@ def copy_file_from_singularity_image(image_path: str, src_path: str, dest_path: 
     dest_parent = os.path.dirname(dest_path) or "."
     if not os.path.isdir(dest_parent):
         logger.error(f"Destination directory does not exist on host: {dest_parent}")
-        # This *still* might fail inside the container due to missing bind, but start with host-side basics.
         return False
 
-    # Build and run the copy command
-    copy_cmd = ["singularity", "exec", image_path, "cp", src_path, dest_path]
+    # IMPORTANT: Bind the host dest directory at the same absolute path so `cp` can write to it.
+    # We also run through /bin/sh -lc so we can use simple quoting safely.
+    quoted_src = shlex.quote(src_path)
+    quoted_dst = shlex.quote(dest_path)
+    shell_cmd = f"cp {quoted_src} {quoted_dst}"
+
+    copy_cmd = [
+        "singularity", "exec",
+        "--bind", f"{dest_parent}:{dest_parent}",
+        image_path,
+        "/bin/sh", "-lc", shell_cmd,
+    ]
     logger.debug(copy_cmd)
     try:
         res = subprocess.run(copy_cmd, check=True, capture_output=True, text=True)
