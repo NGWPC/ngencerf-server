@@ -272,7 +272,7 @@ def get_jobs(
 
         # Include stop criteria if requested
         if include_stop_criteria:
-            calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
+            calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run_id=run_id).first()
             result['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
 
         results.append(result)
