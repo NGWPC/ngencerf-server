@@ -20,7 +20,7 @@ ALLOWED_HOSTS = ['*']
 DEBUG = True
 
 # SQL logging
-LOGGING['loggers']['django.db.backends']['level'] = 'INFO'
+LOGGING['loggers']['django.db.backends']['level'] = 'DEBUG'
 
 # Calibration logging
 LOGGING['loggers']['calibration']['level'] = 'DEBUG'

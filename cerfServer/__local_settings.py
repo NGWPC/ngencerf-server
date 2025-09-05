@@ -12,11 +12,8 @@ print('Loading local settings from', __name__)
 
 ALLOWED_HOSTS = ['.localhost', '127.0.0.1']
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
 # SQL logging
-LOGGING['loggers']['django.db.backends']['level'] = 'INFO'
+LOGGING['loggers']['django.db.backends']['level'] = 'DEBUG'
 
 # Calibration logging
 LOGGING['loggers']['calibration']['level'] = 'DEBUG'

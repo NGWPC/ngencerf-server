@@ -23,6 +23,8 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("1", "true", "yes")
+
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
@@ -340,11 +342,22 @@ LOGGING = {
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },
+        'file_db': {
+            'level': 'DEBUG',
+            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
+            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
+            'when': 'MIDNIGHT',
+            'interval': 1,
+            'backupCount': 10,
+            'formatter': 'dev_format',
+            'encoding': 'utf-8',
+        },
+
     },
     'loggers': {
         'django.db.backends': {
-            'handlers': ['console', 'file_dev'],
-            'level': 'INFO',
+            'handlers': ['file_db'],
+            'level': 'DEBUG',
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {
