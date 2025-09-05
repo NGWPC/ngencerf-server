@@ -66,9 +66,21 @@ def data_validation_job(
         filter_description = "selected gages:\n" + '\n'.join(f"    {line}" for line in gage_lines)
     elif start is not None and limit is not None:
         headwater_gages = get_headwater_gages()
+        total_gages = len(headwater_gages)
+
+        logger.info(f"Total number of available headwater gages: {total_gages}")
+        if total_gages == 0:
+            raise ValueError("No headwater gages available for validation.")
+        if start >= total_gages:
+            raise ValueError(f"Start index {start} is greater than or equal to total number of gages ({total_gages})")
+
+        # Automatically adjust limit if it exceeds available range
+        limit = min(limit, total_gages - start)
+
         sliced = headwater_gages[start:start + limit]
         gage_ids = [g['gage_id'] for g in sliced]
         suffix = f"range_{start}_{start + limit - 1}"
+
         gage_lines = [', '.join(gage_ids[i:i + 10]) for i in range(0, len(gage_ids), 10)]
         filter_description = f"range {start} to {start + limit - 1}, gages:\n" + '\n'.join(f"    {line}" for line in gage_lines)
     else:
