@@ -381,10 +381,47 @@ fi
 echo
 echo "Starting server"
 
+ASGI_FLAG="${CERF_ASGI:-}" # explicit override
+PROD_FLAG="${CERF_PRODUCTION:-}" # general prod indicator
+
 # Restore original stdout and stderr before starting the server
 exec >/dev/tty 2>/dev/tty
 
-python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+# use ASGI server if ASGI_FLAG or PROD_FLAG are set
+if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
+    echo "Launching Gunicorn (Uvicorn workers) ASGI server"
+    # if GUNICORN_WORKERS is not set, calculate default value for WORKERS
+    # Gunicorn recommends (2 x num of cores) + 1 as a reasonable default
+    # but we cap it at 8 workers to avoid excessive memory use on small servers
+    # and set a minimum of 2 workers to handle multiple requests
+    WORKERS=${GUNICORN_WORKERS:-$(
+    cpu=$(nproc)
+    workers=$((cpu * 2 + 1))
+    if [ "$workers" -lt 2 ]; then
+        workers=2
+    elif [ "$workers" -gt 8 ]; then
+        workers=8
+    fi
+    echo "$workers"
+    )}
+
+    TIMEOUT=${GUNICORN_TIMEOUT:-120}
+    BIND_ADDR=${GUNICORN_BIND:-0.0.0.0:8000}
+    # --graceful-timeout extra time to finish in-flight requests on restart
+    exec gunicorn cerfServer.asgi:application \
+            --name ngencerf \
+            --workers ${WORKERS} \
+            --worker-class uvicorn.workers.UvicornWorker \
+            --bind ${BIND_ADDR} \
+            --log-level ${GUNICORN_LOG_LEVEL:-info} \
+            --timeout ${TIMEOUT} \
+            --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} \
+            --access-logfile - \
+            --error-logfile -
+else
+    echo "Launching Django development server (runserver)"
+    python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+fi
 
 if [ -n "${CERF_VENV}" ]; then
     deactivate
