@@ -75,6 +75,7 @@ def load_gage_tab(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
 
+    # This ensures we don’t fetch unnecessary fields
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
@@ -101,11 +102,6 @@ def load_gage_tab(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    domain_values = [
-        {**item, 'name': item['name'].replace('_', ' ')}
-        for item in domain_values
-    ]
-
     response = {
         'calibration_run_id': run.id,
         'status': run.status.name,
@@ -116,6 +112,7 @@ def load_gage_tab(request: Request) -> Response:
         'gages': gages
     }
 
+    # Strip empty values from the payload
     response = {key: value for key, value in response.items() if value not in [None, '', [], {}]}
 
     response_validator, error_response = validate_response(
@@ -264,8 +261,7 @@ def save_gage_tab(request: Request):
         geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
-        num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
-            geopackage_path) else None
+        num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path else None
 
         # Process observational source and delete user-uploaded file if necessary
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
@@ -316,7 +312,7 @@ def save_gage_tab(request: Request):
 
     response = {'message': f'Calibration Job {run.id} updated', 'calibration_run_id': run.id, 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url, 'num_catchments': num_catchments,
-                'forcing_source_requested': run.forcing_source_requested.name,
+                'forcing_source_requested': run.forcing_source_requested.name if run.forcing_source_requested else None,
                 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
     if run.forcing_source_requested != run.forcing_source_actual:
         response['warnings'] = [
@@ -420,17 +416,20 @@ def save_gage(run: CalibrationRun, gage_id: str) -> dict | None:
     """
     Update the calibration run with a new gage and remove any previously uploaded files.
 
-    If the gage for the calibration run changes, this function clears any existing user-uploaded or EDS files and
-    updates initial parameter values via data services.
+    If the gage for the calibration run changes, this function clears any existing user-uploaded
+    or EDS files and updates initial parameter values via data services.
 
     :param run: The calibration run instance to update.
-    :param gage_id: The ID of the new gage.
+    :param gage_id: The gage_id of the new gage.
     :return: A dictionary with error details if an error occurs; otherwise, None.
-    :raises: Gage.DoesNotExist if the specified gage does not exist.
+    :raises: Gage.DoesNotExist if the specified gage does not exist or is not active.
     """
+    # Check cache first to confirm the gage exists and is active
     gage_dict = get_gage_by_id(gage_id)
     if not gage_dict:
         raise Gage.DoesNotExist(f"Gage '{gage_id}' does not exist or is not active")
+
+    # Fetch the actual DB object to assign to the FK
     gage = Gage.objects.only('gage_id').get(gage_id=gage_id)
 
     # Only update if the gage has changed
@@ -459,8 +458,9 @@ def save_gage(run: CalibrationRun, gage_id: str) -> dict | None:
 
         run.gage = gage
 
-        # Update initial parameter values if formulations exist
-        my_formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+        # Compute once and reuse
+        my_formulations = CalibrationFormulation.objects.filter(calibration_run_id=run.id)
+
         if my_formulations.exists():
             try:
                 get_module_metadata_from_data_services(run, my_formulations, gage_changed=True)  # type: ignore
@@ -625,7 +625,7 @@ def upload_forcing_data(request: Request) -> Response:
 
     ngen_cal_input.ready_to_run(run)
 
-    response_message = f"{number_of_files} forcing file{'s' if len(files) > 1 else ''} saved for Calibration Job {run.id}"
+    response_message = f"{number_of_files} forcing file{'s' if number_of_files != 1 else ''} saved for Calibration Job {run.id}"
     response = {'message': response_message, 'calibration_run_id': run.id, 'status': run.status.name}
 
     response_validator, error_response = validate_response(GenericResponseSerializer, response)
@@ -696,8 +696,7 @@ def upload_geopackage_data(request: Request) -> Response:
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
     geopackage_image_url = get_geopackage_image_url(geopackage_path) if return_geopackage_url else None
 
-    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(
-        geopackage_path) else None
+    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path else None
 
     with transaction.atomic():
         run.save()

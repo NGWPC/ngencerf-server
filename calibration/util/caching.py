@@ -1,7 +1,7 @@
 import json
+from functools import lru_cache
 
 from django.core.cache import cache
-from django.db.models import Prefetch
 
 from calibration.enums import PlotDefinitionsEnum
 from calibration.enums_vanilla import JobType
@@ -15,8 +15,7 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
     :param module_name: The name of the module.
     :return: The cached module instance if it exists; otherwise None.
     """
-    cached_modules: dict[str, Module] = get_cached_modules_with_groups()
-    return cached_modules.get(module_name)
+    return get_cached_modules_with_groups().get(module_name)
 
 
 CACHED_GAGES_KEY = 'cached_gages'
@@ -26,13 +25,13 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     """
     Retrieves all active gages from the cache or the database if not cached.
 
-    :return: A dictionary of gages with gage_id as the key and gage details as values.
+    :return: A dictionary of gages keyed by gage_id, each containing gage details plus its DB id.
     """
     # Check if the gages are already cached
 
     gages_lookup = cache.get(CACHED_GAGES_KEY)
     if not gages_lookup:
-        # Fetch from the database and cache the results as a dictionary
+        # Fetch from DB and cache results as a dictionary
         gages = Gage.objects.all().values(
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude',
             'altitude', 'nws_id', 'headwater_calibration', 'domain__name', 'is_active'
@@ -68,10 +67,8 @@ def update_and_get_cached_gage_status(gage_id: str, is_active: bool | None = Non
     current_status = bool(gage.get('is_active'))
     # If state differs, update and write back
     if is_active is not None and current_status != is_active:
-        # copy-on-write to avoid backend aliasing quirks
-        updated_gage = {**gage, 'is_active': is_active}
-        updated_map = {**gages, gage_id: updated_gage}
-        cache.set(CACHED_GAGES_KEY, updated_map, timeout=None)
+        gages[gage_id] = {**gage, 'is_active': is_active}
+        cache.set(CACHED_GAGES_KEY, gages, timeout=None)
         current_status = is_active
 
     # Always return (gage_id, current_status)
@@ -120,27 +117,15 @@ def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str
     return optimization_inputs
 
 
-MODULE_CACHE_WITH_GROUPS_KEY = 'module_cache_with_groups'
-
-
+@lru_cache(maxsize=1)
 def get_cached_modules_with_groups() -> dict[str, Module]:
     """
     Retrieve active Module objects with prefetched groups from cache or database if not cached.
 
     :return: A dictionary where keys are active module names, and values are Module objects, each with prefetched groups.
     """
-    cached_modules: dict[str, Module] = cache.get(MODULE_CACHE_WITH_GROUPS_KEY)
-
-    if cached_modules is None:
-        # Prefetch related groups when querying for modules
-        modules = Module.objects.filter(is_active=True).prefetch_related(
-            Prefetch('groups', queryset=ModuleGroup.objects.only('name'))
-        )
-        # Cache active modules
-        cached_modules = {module.name: module for module in modules}
-        cache.set(MODULE_CACHE_WITH_GROUPS_KEY, cached_modules, None)
-
-    return cached_modules
+    modules = Module.objects.filter(is_active=True).prefetch_related("groups")
+    return {m.name: m for m in modules}
 
 
 MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
@@ -179,13 +164,15 @@ def get_filtered_plot_definitions(
 
     have_LSTM_flag = have_LSTM(run if isinstance(run, CalibrationRun) else run.calibration_run)
 
+    plot_name_lower = plot_name.lower() if plot_name else None
+
     def matches_common_criteria(plot: dict) -> bool:
         return (
-                (plot_name is None or plot['name'].lower() == plot_name.lower())
-                and (
-                        plot['job_type'] == JobType.CALIBRATION.value or
-                        (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
-                )
+            (plot_name is None or plot['name'].lower() == plot_name_lower)
+            and (
+                    plot['job_type'] == JobType.CALIBRATION.value or
+                    (include_validation_plots and plot['job_type'] == JobType.VALIDATION.value)
+            )
         )
 
     if isinstance(run, ForecastRun):
@@ -224,6 +211,7 @@ def get_filtered_plot_definitions(
 
 # Weird place for this function, but needed to be here to avoid circular imports
 def have_LSTM(run: CalibrationRun) -> bool:
-    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+    formulations = CalibrationFormulation.objects.filter(calibration_run=run).select_related("module")
     module_names = {formulation.module.name for formulation in formulations}
+
     return 'LSTM' in module_names

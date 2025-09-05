@@ -10,7 +10,7 @@ from typing import Literal
 import pandas as pd
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -77,9 +77,23 @@ def load_tuning_tab(request: Request) -> Response:
     time_range = get_time_range(run)
     calibration_times, validation_times = get_times(run)
 
-    formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
-        'calibrationparameter_set'
+    formulations = (
+        CalibrationFormulation.objects
+        .filter(calibration_run=run)
+        .select_related('module')
+        .prefetch_related(
+            Prefetch(
+                'calibrationparameter_set',
+                queryset=CalibrationParameter.objects.only(
+                    'calibration_formulation_id',
+                    'name', 'minimum', 'maximum', 'initial_value',
+                    'units', 'data_type', 'description', 'user_selected_for_tuning'
+                ),
+                to_attr='prefetched_params',
+            )
+        )
     )
+
 
     # For each module, get the Parameters and Output Variables
     module_list = get_parameters(formulations)
@@ -113,26 +127,39 @@ def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation
 
 def get_parameters(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
     """
-    Retrieves the calibration parameters and output variables for each module in the specified calibration formulation.
+    Retrieves the calibration parameters for each module in the specified calibration formulation.
 
     :param modules: QuerySet of CalibrationFormulation objects.
-    :return: List of dictionaries, each containing module name, parameters, and output variables.
+    :return: List of dicts with the module name and its parameters.
     """
-    module_list = []
+    module_list: list[dict] = []
 
-    for formulation in modules.prefetch_related('calibrationparameter_set'):
+    # 'modules' must be built with select_related('module') and the Prefetch above.
+    for formulation in modules:
         module = get_cached_module_by_name(formulation.module.name)
+        if not module:
+            continue
 
-        if module:
-            # Gather calibration parameters and for each module
-            calibration_parameters = formulation.calibrationparameter_set.values(
-                'name', 'minimum', 'maximum', 'initial_value', 'units', 'data_type', 'description', 'user_selected_for_tuning'
-            )
-            module_entry = {
-                'name': formulation.module.name,
-                'parameters': list(calibration_parameters),
+        # Use the prefetched list (no DB hits here)
+        params = [
+            {
+                'name': p.name,
+                'minimum': p.minimum,
+                'maximum': p.maximum,
+                'initial_value': p.initial_value,
+                'units': p.units,
+                'data_type': p.data_type,
+                'description': p.description,
+                'user_selected_for_tuning': p.user_selected_for_tuning,
             }
-            module_list.append(module_entry)
+            for p in getattr(formulation, 'prefetched_params', [])
+        ]
+
+        module_list.append({
+            'name': formulation.module.name,
+            'parameters': params,
+        })
+
     return module_list
 
 
@@ -143,15 +170,32 @@ def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]) -> list
     :param modules: QuerySet of CalibrationFormulation instances associated with a calibration run.
     :return: List of dictionaries containing selected parameter details, including module name.
     """
-    parameter_list = []
-    for m in modules:
-        calibration_parameters = list(CalibrationParameter.objects
-                                      .filter(calibration_formulation=m, user_selected_for_tuning=True)
-                                      .values('name', 'minimum', 'maximum', 'initial_value'))
+    # Materialize the formulation IDs once; avoids a subquery in the filter
+    formulation_ids = list(modules.values_list('id', flat=True))
+    if not formulation_ids:
+        return []
 
-        for p in calibration_parameters:
-            p['module'] = m.module.name
-            parameter_list.append(p)
+    rows = (
+        CalibrationParameter.objects
+        .filter(calibration_formulation_id__in=formulation_ids, user_selected_for_tuning=True)
+        .values(
+            'name',
+            'minimum',
+            'maximum',
+            'initial_value',
+            'calibration_formulation__module__name',
+        )
+    )
+
+    parameter_list: list[dict[str, str | float]] = []
+    for r in rows:
+        parameter_list.append({
+            'name': r['name'],
+            'minimum': r['minimum'],
+            'maximum': r['maximum'],
+            'initial_value': r['initial_value'],
+            'module': r['calibration_formulation__module__name'],
+        })
 
     return parameter_list
 
@@ -906,19 +950,34 @@ def get_csv_daterange(file: str) -> DateTimeRange:
         if not os.path.exists(file):
             raise CerfException(f"File {file} does not exist")
 
-        # Read only the first row to get the min date
-        first_row = pd.read_csv(file, delimiter=',', nrows=1, engine='python')
-        first_time = pd.to_datetime(first_row.iloc[0, 0], errors='coerce')
+        # Read first data row (skip header)
+        with open(file, 'r', encoding='utf-8') as f:
+            _ = f.readline()  # skip header
+            first_line = f.readline()
+        if not first_line:
+            raise CerfException(f"File {file} does not contain data rows")
+        first_line = first_line.strip()
+        first_time = pd.to_datetime(first_line.split(',', 1)[0], errors='coerce')
 
         # Read only the last line efficiently using seek()
-        with open(file, 'rb') as f:
-            f.seek(-2, os.SEEK_END)  # Move to the end of the file
-            while f.read(1) != b'\n':  # Move backwards until a newline is found
-                f.seek(-2, os.SEEK_CUR)
-            last_line = f.readline().decode('utf-8').strip()
+        try:
+            with open(file, 'rb') as f:
+                f.seek(-2, os.SEEK_END)  # Move to the end of the file
+                while f.read(1) != b'\n':  # Step backwards until a newline is found
+                    f.seek(-2, os.SEEK_CUR)
+                last_line = f.readline().decode('utf-8').strip()
+        except OSError:
+            # This happens if the file is too small for the backwards seek (e.g., only a few bytes).
+            # In that case, fall back to reading all lines in text mode. This is safe because such files
+            # are tiny, and ensures we still get the last line without seek errors.
+            with open(file, 'r', encoding='utf-8') as f:
+                lines = f.read().splitlines()
+                if len(lines) < 2:
+                    raise CerfException(f"File {file} does not contain data rows")
+                last_line = lines[-1].strip()
 
         # Extract the last timestamp from the last line (assuming CSV format)
-        last_time = pd.to_datetime(last_line.split(',')[0], errors='coerce')
+        last_time = pd.to_datetime(last_line.split(',', 1)[0], errors='coerce')
 
         if pd.isna(first_time) or pd.isna(last_time):
             raise CerfException(f"Invalid datetime values found in {file}")
@@ -950,7 +1009,7 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
         return get_csv_daterange(str(file))  # Convert Path to string
 
     # Use ThreadPoolExecutor for parallel processing
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)) as executor:
         ranges = list(executor.map(process_file, csv_files))
 
     # Combine all individual ranges into a single encompassing range

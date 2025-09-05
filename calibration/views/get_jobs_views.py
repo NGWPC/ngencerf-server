@@ -211,61 +211,66 @@ def get_jobs(
     if run_status:
         query &= Q(status__in=[s.db_instance for s in run_status])
 
-    # Prepare Prefetch object to optimize fetching formulations, ensuring we get module names
-    formulations_prefetch = Prefetch(
-        'calibrationformulation_set',
-        queryset=CalibrationFormulation.objects.select_related('module').only('calibration_run_id', 'module__name'),
-        to_attr='prefetched_formulations'
+    # Base query for CalibrationRun (dict results, lighter than ORM instances)
+    calibration_runs_qs = (
+        CalibrationRun.objects
+        .filter(query)
+        .select_related("gage", "status", "objective_function", "optimization")
+        .prefetch_related(formulations_prefetch)
+        .values(
+            "id", "gage__gage_id", "submit_date", "user_formulation_name",
+            "calibration_start_period", "calibration_end_period",
+            "status__name", "job_genesis", "created_at",
+            "objective_function__name", "optimization__name",
+            "is_archived", "is_locked"
+        )
     )
-
-    calibration_runs_qs = CalibrationRun.objects.filter(query).only(
-        'id', 'gage__gage_id', 'submit_date', 'user_formulation_name',
-        'calibration_start_period', 'calibration_end_period',
-        'status__name', 'job_genesis', 'created_at',
-        'objective_function__name', 'optimization__name',
-        'is_archived', 'is_locked'
-    ).select_related(
-        'gage', 'status', 'objective_function', 'optimization'
-    ).prefetch_related(formulations_prefetch)
 
     calibration_runs = list(calibration_runs_qs)
 
-    # Retrieve associated formulations
-    formulations_map = {
-        run.id: [f.module.name for f in run.prefetched_formulations]  # type: ignore[attr-defined]
-        for run in calibration_runs
-    }
+    # Fetch formulations separately and map them to run IDs
+    formulations_qs = (
+        CalibrationFormulation.objects
+        .filter(calibration_run_id__in=[r["id"] for r in calibration_runs])
+        .select_related("module")
+        .values_list("calibration_run_id", "module__name")
+    )
+
+    formulations_map: dict[int, list[str]] = {}
+    for run_id, module_name in formulations_qs:
+        formulations_map.setdefault(run_id, []).append(module_name)
 
     results = []
     for run in calibration_runs:
+        run_id = run["id"]
         result = {
-            'calibration_run_id': run.id,
-            'gage_id': run.gage.gage_id if run.gage else None,
-            'status': run.status.name,
-            'objective_function': run.objective_function.name if run.objective_function else None,
-            'optimization_algorithm': run.optimization.name if run.optimization else None,
-            'is_archived': run.is_archived,
-            'is_locked': run.is_locked,
-            'submit_date': run.submit_date,
-            'formulation_name': run.user_formulation_name,
-            'calibration_start_period': run.calibration_start_period,
-            'calibration_end_period': run.calibration_end_period,
-            'job_genesis': run.job_genesis,
-            'created_at': run.created_at,
-            'modules': formulations_map.get(run.id, []),
-            'is_downloadable': StatusEnum.from_name(run.status.name) in downloadable_statuses
+            'calibration_run_id': run_id,
+            'gage_id': run['gage__gage_id'],
+            'status': run['status__name'],
+            'objective_function': run.get('objective_function__name'),   # may be None
+            'optimization_algorithm': run.get('optimization__name'),     # may be None
+            'is_archived': run['is_archived'],
+            'is_locked': run['is_locked'],
+            'submit_date': run['submit_date'],
+            'formulation_name': run['user_formulation_name'],
+            'calibration_start_period': run['calibration_start_period'],
+            'calibration_end_period': run['calibration_end_period'],
+            'job_genesis': run['job_genesis'],
+            'created_at': run['created_at'],
+            'modules': formulations_map.get(run_id, []),
+            'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
         }
 
         # Include validation IDs and count if requested
-        if include_validation_data in [GetValidationJobsScope.IDS,GetValidationJobsScope.STATUS]:
-            validation_ids = get_validation_jobs_internal(run.id, GetValidationJobsScope.IDS)
+        if include_validation_data in [GetValidationJobsScope.IDS, GetValidationJobsScope.STATUS]:
+            validation_ids = get_validation_jobs_internal(run_id, GetValidationJobsScope.IDS)
             result['validation_run_ids'] = validation_ids
             result['validation_runs'] = len(validation_ids)
 
         # Include detailed validation status if requested
         if include_validation_data == GetValidationJobsScope.STATUS:
-            result['validations'] = get_validation_jobs_internal(run.id, include_validation_data)
-        
+            result['validations'] = get_validation_jobs_internal(run_id, include_validation_data)
+
         # Include stop criteria if requested
         if include_stop_criteria:
             calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run=run).first()
@@ -395,7 +400,8 @@ def get_validation_jobs(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
