@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Prefetch
+from django.db.models import Q
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -216,7 +216,6 @@ def get_jobs(
         CalibrationRun.objects
         .filter(query)
         .select_related("gage", "status", "objective_function", "optimization")
-        .prefetch_related(formulations_prefetch)
         .values(
             "id", "gage__gage_id", "submit_date", "user_formulation_name",
             "calibration_start_period", "calibration_end_period",
