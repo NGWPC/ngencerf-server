@@ -394,12 +394,17 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
     # Gunicorn recommends (2 x num of cores) + 1 as a reasonable default
     # but we cap it at 8 workers to avoid excessive memory use on small servers
     # and set a minimum of 2 workers to handle multiple requests
-    WORKERS=${GUNICORN_WORKERS:-$(python - <<'PY'
-import multiprocessing, math
-cpu = multiprocessing.cpu_count() # number of CPU cores
-print(min(8, max(2, cpu*2+1)))
-PY
-)}
+    WORKERS=${GUNICORN_WORKERS:-$(
+    cpu=$(nproc)
+    workers=$((cpu * 2 + 1))
+    if [ "$workers" -lt 2 ]; then
+        workers=2
+    elif [ "$workers" -gt 8 ]; then
+        workers=8
+    fi
+    echo "$workers"
+    )}
+
     TIMEOUT=${GUNICORN_TIMEOUT:-120}
     BIND_ADDR=${GUNICORN_BIND:-0.0.0.0:8000}
     # --graceful-timeout extra time to finish in-flight requests on restart
