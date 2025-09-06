@@ -205,23 +205,23 @@ FORCING_DATA_DIRS_RETRO = {
 S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
 
 # -----------------------------
-# Ngen/Ngen-cal Locations
+# ngen/nwm-cal-mgr Locations
 # -----------------------------
 
-# Locations for running ngen-cal
+# Locations for running nwm-cal-mgr
 
 # Must match the repo root used in the docker container.
-# It is not necessary for you to have local copies of the ngen and ngen-cal repos if you are using Docker
+# It is not necessary for you to have local copies of the ngen and nwm-cal-mgr repos if you are using Docker
 # But these directories still need to be set to reflect the directory of the repos in the docker container.
 REPO_ROOT = '/ngen-app'
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
-# directory that Ngen-cal is cloned into
-CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
-NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-fcst')
+# directory that nwm-cal-mgr is cloned into
+CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
+NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
 NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 
-# This must match the data location in the ngen/ngen-cal docker
+# This must match the data location in the ngen/nwm-cal-mgr docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
@@ -249,17 +249,17 @@ FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# Directory containing the ngen-cal virtual environment
+# Directory containing the nwm-cal-mgr virtual environment
 # This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 # Used when running in NGEN_ENVIRONMENT=DOCKER
-# This assumes that the docker containers have been appropriately tagged as ngen-cal, ngen-fcst or ngen-forcing
+# This assumes that the docker containers have been appropriately tagged as nwm-cal-mgr, nwm-fcst-mgr or ngen-forcing
 CAL_MGR_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
 NGEN_FORCING_DOCKER_CMD = f'docker run --entrypoint /ngen-app/bin/run-ngen-forcing.sh -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-bmi-forcing'
-NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
+NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
 
-NGEN_CONTAINERS = ['ngen', 'ngen-cal', 'ngen-bmi-forcing', 'ngen-fcst']
+NGEN_CONTAINERS = ['ngen', 'nwm-cal-mgr', 'ngen-bmi-forcing', 'nwm-fcst-mgr']
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
 CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
@@ -295,7 +295,7 @@ except KeyError:
         f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in NgenEnvironmentEnum])}")
 
 # -----------------------------
-# Slurm 
+# Slurm
 # -----------------------------
 
 SLURM_URL = os.getenv("SLURM_URL")
