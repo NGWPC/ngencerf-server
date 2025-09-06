@@ -77,7 +77,7 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
         copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
     else:
         ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf-ui')
-        git_info = os.path.join(ui_directory, 'ngencerf_ui_git_info.json')
+        git_info = os.path.join(ui_directory, 'ngencerf-ui_git_info.json')
         try:
             copy_file(git_info, os.path.join(git_info_directory, os.path.basename(git_info)))
         except FileNotFoundError:
