@@ -31,6 +31,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
+from calibration.views.ngen_cal_input import ready_to_run
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -340,6 +341,12 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     :return: None if successful; a DRF Response object if the job is not ready or fails preprocessing.
     :raises CerfException: If the run type is unsupported or job execution fails.
     """
+    if isinstance(run, CalibrationRun):
+        # Before we attempt to submit, make sure it's ready
+        error_object, _ = ready_to_run(run)
+        if error_object:
+            return ResponseError(error_object)
+
     with transaction.atomic():
         # Set submission date and status
         run.submit_date = datetime.now(timezone.utc)

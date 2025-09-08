@@ -740,6 +740,8 @@ def import_job(request: Request) -> Response:
         response['messages'] = messages
     if error_object.warnings:
         response['warnings'] = error_object.warnings
+    if error_object.errors:
+        response['errors'] = error_object.errors
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
