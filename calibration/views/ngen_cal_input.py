@@ -40,6 +40,7 @@ CONFIG_TEMPLATE = {
         "basin": "",
         "models": "",
         "formulation": "",
+        "is_qet_rootzone" : False,
         "run_type": "calibration",
         "main_dir": "",
         # Snow Water equivalent output - Only True for snow models
@@ -287,6 +288,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         # Dynamically add keys and values directly using the formulation list
         for f in formulations:
             datafile[get_bmi_config_key(f.module.name)] = get_bmi_config_dir_for_module(run, f.module.name)
+        
+        general['is_aet_rootzone'] = run.is_aet_rootzone
 
     job_data_dir = run.job_data_dir
     general['main_dir'] = job_data_dir

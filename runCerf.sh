@@ -276,10 +276,10 @@ if [ "${CERF_VENV}" != "Docker" ]; then
         pip install -r "$SCRIPT_DIR/requirements.txt"
 
         # Doing a pip install with requirements.txt does not reliably pick up changes to the other repos, so we have to force a re-install every time
+        #MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
         MSWM_BRANCH='development'
         NGEN_FORCING_BRANCH='development'
-#       MSWM_BRANCH='129809ac'
-#       NGEN_FORCING_BRANCH='xxxx'
+
         echo
         echo "Installing mswm"
         if pip show "mswm" > /dev/null 2>&1; then
