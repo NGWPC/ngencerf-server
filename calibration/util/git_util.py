@@ -72,7 +72,7 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         image_name = 'ngencerf-ngencerf-ui'
         container_name = f'{image_name}_temp_container'
-        container_file_name = "/var/www//ngencerf/nuxt-app/ngencerf-ui_git_info.json"
+        container_file_name = "/var/www/ngencerf/nuxt-app/ngencerf-ui_git_info.json"
         # This will always be from docker
         copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
     else:
