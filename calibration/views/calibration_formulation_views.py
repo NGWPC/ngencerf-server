@@ -304,18 +304,18 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
     formulations_to_delete_qs = CalibrationFormulation.objects.filter(
         calibration_run=run,
         module__name__in=to_delete_modules
-    )
+    ).only("id")
 
     # Delete CalibrationParameters related to the formulations_to_delete
     param_qs = CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete_qs)
     while True:
-        batch = list(param_qs[:500])
-        if not batch:
+        batch_ids = list(param_qs.values_list("id", flat=True)[:500])
+        if not batch_ids:
             break
-        CalibrationParameter.objects.filter(id__in=[p.id for p in batch]).delete()
+        CalibrationParameter.objects.filter(id__in=batch_ids).delete()
 
     # Finally, delete the formulations
-    formulations_to_delete.delete()
+    formulations_to_delete_qs.delete()
 
 
 def validate_modules(module_names: set[str]) -> str | None:
