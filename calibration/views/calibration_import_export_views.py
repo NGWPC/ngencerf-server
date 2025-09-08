@@ -267,10 +267,10 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             if optimization_inputs:
                 return None, None, ResponseError('Optimization inputs cannot be specified without an optimization name')
         else:
-            optimization, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
+            optimization, prepared_inputs, error_message = validate_optimizations(run, optimization_name, optimization_inputs)
             if error_message:
                 return None, None, ResponseError(error_message)
-            write_optimization_inputs(run, optimization, optimization_inputs)
+            write_optimization_inputs(run, prepared_inputs)
 
         error_message = validate_objective_function(run, objective_function_name, streamflow_threshold, peak_flow_threshold)
         if error_message:

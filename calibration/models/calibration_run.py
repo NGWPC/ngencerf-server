@@ -45,6 +45,9 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
 
     class Meta:
         db_table = 'calibration_run'
+        indexes = [
+            models.Index(fields=['owner', 'status', 'is_archived'], name='idx_run_owner_status_archived'),
+        ]
 
     def __str__(self):
         gage_info = f"Gage: {self.gage.gage_id}" if self.gage else "No Gage"

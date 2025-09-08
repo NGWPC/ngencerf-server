@@ -10,7 +10,13 @@ class CalibrationFormulation(BaseModel):
     class Meta:
         db_table = 'calibration_formulation'
         constraints = [
-            models.UniqueConstraint(fields=['module', 'calibration_run'], name='calibration_formulation__module__calibration_run__unique')
+            models.UniqueConstraint(
+                fields=['module', 'calibration_run'],
+                name='calibration_formulation__module__calibration_run__unique'
+            )
+        ]
+        indexes = [
+            models.Index(fields=['calibration_run'], name='idx_formulation_run'),
         ]
 
     def __str__(self):

@@ -73,7 +73,8 @@ def get_modules(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -144,7 +145,8 @@ def validate_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -210,10 +212,10 @@ def save_formulation_tab(request) -> Response:
     eds_errors = []
 
     # Fetch all formulations and determine changes
-    existing_formulations_qs = CalibrationFormulation.objects.filter(
-        calibration_run=run
-    )
-    existing_module_names = set(existing_formulations_qs.values_list('module__name', flat=True))
+    existing_formulations_qs = CalibrationFormulation.objects.filter(calibration_run=run)
+    existing_formulations_list = list(existing_formulations_qs.select_related('module'))
+    existing_module_names = {f.module.name for f in existing_formulations_list}
+
     # Determine which modules to delete and add
     to_be_added = new_module_names - existing_module_names
     to_be_unused = existing_module_names - new_module_names
@@ -227,12 +229,22 @@ def save_formulation_tab(request) -> Response:
         # Add new formulations
         for module_name in to_be_added:
             module_instance = get_cached_module_by_name(module_name)
-            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
+            # Only create if it doesn't already exist to avoid expensive indexing
+            if not any(f.module_id == module_instance.id for f in existing_formulations_list):
+                CalibrationFormulation.objects.create(calibration_run=run, module=module_instance)
 
         # Identify formulations without any calibration parameters, in case there was an error retrieving them
-        formulations_without_params_qs = existing_formulations_qs.filter(calibrationparameter__isnull=True)
+        param_formulation_ids = set(
+            CalibrationParameter.objects
+            .filter(calibration_formulation__in=existing_formulations_list)
+            .values_list('calibration_formulation_id', flat=True)
+        )
 
-        required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs  # type: ignore
+        formulations_without_params_qs = existing_formulations_qs.exclude(id__in=param_formulation_ids)
+
+        required_formulations_qs = existing_formulations_qs.filter(
+            module__name__in=to_be_added
+        ) | formulations_without_params_qs  # type: ignore
 
         # Retrieve metadata for required formulations
         if required_formulations_qs.exists() and run.gage:
@@ -276,7 +288,8 @@ def save_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -288,13 +301,18 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
     :param run: The calibration run instance.
     :return: None.
     """
-    formulations_to_delete = CalibrationFormulation.objects.filter(
+    formulations_to_delete_qs = CalibrationFormulation.objects.filter(
         calibration_run=run,
         module__name__in=to_delete_modules
     )
 
     # Delete CalibrationParameters related to the formulations_to_delete
-    CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
+    param_qs = CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete_qs)
+    while True:
+        batch = list(param_qs[:500])
+        if not batch:
+            break
+        CalibrationParameter.objects.filter(id__in=[p.id for p in batch]).delete()
 
     # Finally, delete the formulations
     formulations_to_delete.delete()
@@ -396,18 +414,18 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
 
         # Check for completeness
         check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
-        
+
         if len(fatal_errors) == 0:
             info_messages.append('Formulation is Calibratable.')
         else:
             fatal_errors.append('Formulation is not Calibratable.')
-        
+
         return fatal_errors, nonfatal_errors, info_messages
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
 
     # Perform checks for non-LSTM case
-    my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
+    my_modules = [get_cached_module_by_name(name) for name in module_names]
 
     # Count how many selected modules belong to each group
     group_defs = formulation_validations["formulation_rules"]["group_requirements"]
@@ -446,7 +464,7 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], 
             # Build the “1” vs “0 or 2” string
             expected_str = join_with_or([str(c) for c in expected_counts])
             # Choose singular if exactly [1], otherwise plural
-            word = "module" if expected_counts == [1] else "modules"
+            word = "module" if len(expected_counts) == 1 and expected_counts[0] == 1 else "modules"
             msg = (
                 f"{group_name} group is expected to have "
                 f"{expected_str} {word}, but it has {count}"
@@ -493,12 +511,12 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
             if ov_name in output_variables_excluded:
                 output_variables_excluded.remove(ov_name)
                 output_variables_included.append(ov_name)
-    
+
     output_variables_excluded.sort()
     output_variables_included.sort()
 
     if len(output_variables_excluded) > 0:
-        nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.') 
+        nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.')
         nonfatal_errors.append('Missing NWM v3 Output Variables: ' + ", ".join(output_variables_excluded))
     else:
         info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
