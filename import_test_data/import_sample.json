@@ -17,6 +17,7 @@
     "modules": [
         "Noah-OWP-Modular",
         "CFE-S",
+        "SFT",
         "T-Route"
     ],
     "formulation_name": "my-cfe-noah",
