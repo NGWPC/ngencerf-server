@@ -336,8 +336,6 @@ LOGGING = {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_dev.log'),
-            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
-            'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'dev_format',
             'encoding': 'utf-8',
@@ -346,8 +344,6 @@ LOGGING = {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
-            'when': 'MIDNIGHT',
-            'interval': 1,
             'backupCount': 10,
             'formatter': 'dev_format',
             'encoding': 'utf-8',

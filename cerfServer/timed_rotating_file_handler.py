@@ -1,55 +1,118 @@
 import os
 import time
-from logging.handlers import TimedRotatingFileHandler
-from pathlib import Path
-from typing import Optional, IO
+from datetime import timedelta, datetime, timezone
+from logging.handlers import BaseRotatingHandler
 
 
-class CustomTimedRotatingFileHandler(TimedRotatingFileHandler):
-    stream: Optional[IO] = None
+class CustomTimedRotatingFileHandler(BaseRotatingHandler):
+    """
+    A custom log handler that rotates log files at fixed times of day (10:00 and 22:00 UTC, which is 6:00 AM ET and 6:00 PM ET),
+    rather than using fixed intervals like the built-in TimedRotatingFileHandler.
 
-    def __init__(self, filename, when='midnight', interval=1, backupCount=7, encoding='utf-8'):
-        super().__init__(filename, when=when, interval=interval, backupCount=backupCount, encoding=encoding)
+    Log files are renamed with a UTC timestamp, and old files are pruned based on backup count.
+    """
+
+    def __init__(self, filename, backupCount=7, encoding=None):
+        """
+        Initialize the handler.
+
+        :param filename: Base log file name.
+        :param backupCount: Maximum number of rotated log files to retain.
+        :param encoding: Encoding used to open the log file.
+        """
+        self.backupCount = backupCount
+        self.encoding = encoding
+        self.utc = True  # Always rotate based on UTC
+        self.custom_times = [10, 22]  # Rotation times (hours in UTC)
+        self.rolloverAt = self.compute_next_rollover(time.time())
+        super().__init__(filename, 'a', encoding)
+
+    def compute_next_rollover(self, now_ts):
+        """
+        Compute the next rollover time in UTC.
+
+        Rolls at 10:00 and 22:00 UTC. If both times have passed today, roll at 10:00 UTC tomorrow.
+
+        :param now_ts: Current time in seconds since epoch.
+        :return: Timestamp (float) of the next scheduled rollover.
+        """
+        now = datetime.fromtimestamp(now_ts, tz=timezone.utc)
+
+        today_rollovers = [
+            now.replace(hour=h, minute=0, second=0, microsecond=0)
+            for h in self.custom_times
+        ]
+
+        for rt in today_rollovers:
+            if rt.timestamp() > now_ts:
+                return rt.timestamp()
+
+        # All today's rollovers passed; use first time tomorrow
+        tomorrow = now + timedelta(days=1)
+        return tomorrow.replace(hour=self.custom_times[0], minute=0, second=0, microsecond=0).timestamp()
+
+    def shouldRollover(self, record):
+        """
+        Determine if rollover should occur before writing the next log record.
+
+        :param record: The log record to be written.
+        :return: True if current time is past the scheduled rollover time.
+        """
+        _ = record  # Unused
+        t = int(time.time())
+        return t >= self.rolloverAt
 
     def doRollover(self):
         """
-        Overriding doRollover to rename the log files with the desired format.
+        Perform the rollover:
+        - Close the current log file.
+        - Rename it with the timestamp of the completed interval.
+        - Delete old log files beyond backup count.
+        - Reopen a new log file.
+        - Schedule the next rollover time.
         """
         if self.stream:
             self.stream.close()
-            self.stream = None
+            self.stream = None  # type: ignore[assignment]
 
-        # Get the time when this log file was created
-        current_time = self.rolloverAt - self.interval
-        time_tuple = self.utc and time.gmtime(current_time) or time.localtime(current_time)
+        timestamp_str = datetime.fromtimestamp(self.rolloverAt - 1, tz=timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
 
-        # Get the base log filename and directory
-        dir_name, base_filename = os.path.split(self.baseFilename)
-        log_filename, log_extension = os.path.splitext(base_filename)
+        # Split base name and extension
+        base, ext = os.path.splitext(self.baseFilename)
+        rollover_filename = f"{base}.{timestamp_str}{ext}"
 
-        # Format the date and insert it before the extension
-        date_suffix = time.strftime("%Y-%m-%dT%H:%M:%S", time_tuple)
-        new_filename = f"{log_filename}.{date_suffix}{log_extension}"
+        if os.path.exists(self.baseFilename):
+            os.rename(self.baseFilename, rollover_filename)
 
-        # Rename the current log file to the new filename
-        dfn = Path(dir_name) / new_filename
-        if Path(self.baseFilename).exists():
-            os.rename(self.baseFilename, dfn)
-
-        # Handle file rotation
+        # Delete old log files beyond backupCount
         if self.backupCount > 0:
-            for s in self.getFilesToDelete():
+            dir_name = os.path.dirname(self.baseFilename)
+            base_name = os.path.basename(base)  # base without extension
+            log_files = sorted(
+                [f for f in os.listdir(dir_name) if f.startswith(base_name + ".") and f.endswith(ext)],
+                reverse=True
+            )
+            for old_file in log_files[self.backupCount:]:
                 try:
-                    os.remove(s)
+                    os.remove(os.path.join(dir_name, old_file))
                 except FileNotFoundError:
                     pass
 
-        # Reopen the file for the new log entries
-        self.mode = 'w'
+        # Reopen log file and compute next rollover
         self.stream = self._open()
 
-        # Update the rollover time for the next interval
-        new_rollover_at = self.computeRollover(self.rolloverAt)
-        while new_rollover_at <= current_time:
-            new_rollover_at += self.interval
-        self.rolloverAt = new_rollover_at
+        # Update rollover time
+        self.rolloverAt = self.compute_next_rollover(time.time())
+
+    def emit(self, record):
+        """
+        Emit a log record. Checks if rollover is needed before writing.
+
+        :param record: The log record to be emitted.
+        """
+        try:
+            if self.shouldRollover(record):
+                self.doRollover()
+            super().emit(record)
+        except Exception:
+            self.handleError(record)
