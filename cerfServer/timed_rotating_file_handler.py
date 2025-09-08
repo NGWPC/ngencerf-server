@@ -25,6 +25,12 @@ class CustomTimedRotatingFileHandler(BaseRotatingHandler):
         self.utc = True  # Always rotate based on UTC
         self.custom_times = [10, 22]  # Rotation times (hours in UTC)
         self.rolloverAt = self.compute_next_rollover(time.time())
+
+        print_once = not hasattr(CustomTimedRotatingFileHandler, "_printed_rollover_debug")
+        if print_once:
+            print("Next rollover at:", datetime.fromtimestamp(self.rolloverAt, tz=timezone.utc))
+            CustomTimedRotatingFileHandler._printed_rollover_debug = True
+
         super().__init__(filename, 'a', encoding)
 
     def compute_next_rollover(self, now_ts):
