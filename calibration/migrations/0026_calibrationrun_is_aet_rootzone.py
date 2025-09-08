@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('calibration', '0024_outputvariable_module_output_variables'),
+        ('calibration', '0025_calibrationformulation_idx_formulation_run_and_more'),
     ]
 
     operations = [
