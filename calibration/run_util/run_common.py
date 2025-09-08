@@ -344,7 +344,7 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     if isinstance(run, CalibrationRun):
         # Before we attempt to submit, make sure it's ready
         error_object, _ = ready_to_run(run)
-        if error_object:
+        if error_object.has_errors() or error_object.has_warnings():
             return ResponseError(error_object)
 
     with transaction.atomic():
