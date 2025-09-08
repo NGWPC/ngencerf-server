@@ -81,6 +81,14 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
             if error_message:
                 return None, None, ResponseError(error_message)
 
+            # TODO Eventually, we will have more user properties that are specific to certain modules
+            # so we'll need a separate table to control those.
+            # For now, we are forced to hard-code module names and specific flags
+            # Only allow AET Rootzone to be True if CFE is included in the formulation
+            run.is_aet_rootzone = calibration_run_data.get('is_aet_rootzone', False)
+            if run.is_aet_rootzone and not any(cfe in module_names for cfe in ('CFE-S', 'CFE-X')):
+                return None, None, ResponseError('AET Rootzone cannot be True for formulations not using CFE.')
+
             formulation_errors, formulation_warnings, _ = validate_formulation(module_names)
             have_lstm = 'LSTM' in module_names
 
