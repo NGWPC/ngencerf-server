@@ -44,6 +44,12 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     if os.path.exists(src_git_info):
         copy_file(src_git_info, dest_git_info)
 
+    # Copy our local nwm-msw-mgr_git_info.json into the shared directory.
+    src_git_info = os.path.join(settings.BASE_DIR, 'nwm-msw-mgr_git_info.json')
+    dest_git_info = os.path.join(git_info_directory, 'nwm-msw-mgr_git_info_git_info.json')
+    if os.path.exists(src_git_info):
+        copy_file(src_git_info, dest_git_info)
+
     # For each image, copy its git_info.json into the shared directory.
 
     # Get both ngen and cal-mgr git_info files from nwm-cal-mgr container
