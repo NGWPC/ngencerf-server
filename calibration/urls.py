@@ -6,7 +6,7 @@ import calibration.views.calibration_landing_views
 import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
-    calibration_evaluation_views, calibration_forecast_views, calibration_swe_views
+    calibration_evaluation_views, calibration_forecast_views, calibration_swe_views, calibration_regionalization_views
 
 urlpatterns = [
     ##################################
@@ -38,6 +38,7 @@ urlpatterns = [
     path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
     path('calibration/upload_geopackage_data/', calibration_gage_views.upload_geopackage_data, name="uploadGeopackageData"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
+    path('calibration/update_and_get_gage_status/', calibration_gage_views.update_and_get_gage_status, name="updateAndGetGageStatus"),
 
     ##################################
     # Plot Definitions tab
@@ -110,16 +111,17 @@ urlpatterns = [
     ##################################
     path('calibration/get_swe_images_by_date/', calibration_swe_views.get_swe_images_by_date, name="getSweImagesByDate"),
     path('calibration/get_swe_timeseries_data/', calibration_swe_views.get_swe_timeseries_data, name="getSweTimeseriesData"),
-    
-    # Testing
-    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
-    path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 
     ##################################
     # Import/Export
     ##################################
     path('calibration/export/', calibration_import_export_views.export_job, name="export"),
     path('calibration/import/', calibration.views.calibration_landing_views.import_job, name="import"),
+
+    ##################################
+    # Regionalization
+    ##################################
+    path('calibration/get_regionalization_files_zip/', calibration_regionalization_views.get_regionalization_files_zip, name="getRegionalizationFilesZip"),
 
     ##################################
     # Swagger - drf_spectacular
@@ -132,5 +134,7 @@ urlpatterns = [
     # Testing
     ##################################
     path('calibration/get_slurm_token/', calibration_run_views.get_slurm_token, name="getSlurmToken"),
+    path('calibration/process_calibration_output/', calibration_run_views.process_calibration_output, name="processCalibrationOutput"),
+    path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 
 ]

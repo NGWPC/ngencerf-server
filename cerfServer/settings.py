@@ -23,6 +23,8 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("1", "true", "yes")
+
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
 load_dotenv(dotenv_path)
@@ -49,7 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django_dbconn_retry',
+    # 'django_dbconn_retry',
     'django.contrib.staticfiles',
     'drf_spectacular',
     'calibration.apps.CalibrationConfig',
@@ -187,34 +189,39 @@ ENTERPRISE_DATA_VERSION = "2.2"
 ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT = [True, 'hydrofabric/geopackages?gage_id={gage_id}&source={source}&domain={domain}&version={version}']
 ENTERPRISE_DATA_MODULE_METADATA_ENDPOINT = [True, 'hydrofabric/modules/parameters/']
 ENTERPRISE_DATA_OBSERVATION_DATA_ENDPOINT = [True, 'hydrofabric/2.1/observational?gage_id={gage_id}&source={agency}&domain={domain}']
-ENTERPRISE_DATA_FORCING_DATA_ENDPOINT = [False, 'hydrofabric/2.1/forcing']
 
 ENTERPRISE_DATA_URL = os.getenv('ENTERPRISE_DATA_URL', 'http://localhost:8001')
 
-FORCING_DATA_DIRS = ['s3://ngwpc-forcing/aorc_2.2',
-                     's3://ngwpc-forcing/retrospective_2.2']
+# Due to circular imports, can't use the enums as keys.  But the values must match exactly
+FORCING_DATA_DIRS_AORC = {
+    "AORC": 's3://ngwpc-forcing/aorc_2.2',
+    "NWM Retrospective":  's3://ngwpc-forcing/retrospective_2.2'
+}
+FORCING_DATA_DIRS_RETRO = {
+    "NWM Retrospective":  's3://ngwpc-forcing/retrospective_2.2'
+}
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
 
 # -----------------------------
-# Ngen/Ngen-cal Locations
+# ngen/nwm-cal-mgr Locations
 # -----------------------------
 
-# Locations for running ngen-cal
+# Locations for running nwm-cal-mgr
 
 # Must match the repo root used in the docker container.
-# It is not necessary for you to have local copies of the ngen and ngen-cal repos if you are using Docker
+# It is not necessary for you to have local copies of the ngen and nwm-cal-mgr repos if you are using Docker
 # But these directories still need to be set to reflect the directory of the repos in the docker container.
 REPO_ROOT = '/ngen-app'
 # Directory that Ngen is cloned into
 NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
-# directory that Ngen-cal is cloned into
-NGEN_CAL_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-cal')
-NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-fcst')
+# directory that nwm-cal-mgr is cloned into
+CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
+NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
 NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
 
-# This must match the data location in the ngen/ngen-cal docker
+# This must match the data location in the ngen/nwm-cal-mgr docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
 # sudo mkdir /ngencerf
 # sudo ln -s ~/your/data/dir /ngencerf/data
@@ -242,20 +249,20 @@ FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
-# Directory containing the ngen-cal virtual environment
+# Directory containing the nwm-cal-mgr virtual environment
 # This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 
 # Used when running in NGEN_ENVIRONMENT=DOCKER
-# This assumes that the docker containers have been appropriately tagged as ngen-cal, ngen-fcst or ngen-forcing
-NGEN_CAL_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-cal'
+# This assumes that the docker containers have been appropriately tagged as nwm-cal-mgr, nwm-fcst-mgr or ngen-forcing
+CAL_MGR_DOCKER_CMD = f'docker run --network host -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
 NGEN_FORCING_DOCKER_CMD = f'docker run --entrypoint /ngen-app/bin/run-ngen-forcing.sh -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-bmi-forcing'
-NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} ngen-fcst'
+NGEN_FORECAST_DOCKER_CMD = f'docker run -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
 
-NGEN_CONTAINERS = ['ngen', 'ngen-cal', 'ngen-bmi-forcing', 'ngen-fcst']
+NGEN_CONTAINERS = ['ngen', 'nwm-cal-mgr', 'ngen-bmi-forcing', 'nwm-fcst-mgr']
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
-NGEN_CAL_SCRIPT = os.path.join(NGEN_CAL_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
+CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
 NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
 FORECAST_FORCING_SCRIPT = os.path.join(NGEN_FORCING_REPO_ROOT, 'docker', 'run-ngen-forcing.sh')
 
@@ -270,15 +277,17 @@ SIMULATE_FLAGS = {
 }
 
 RUNTIME_INFO = {
-    ScriptEnum.CALIBRATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
-    ScriptEnum.VALIDATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
-    ScriptEnum.VALIDATION_ITERATION: (NGEN_CAL_DOCKER_CMD, NGEN_CAL_SCRIPT),
+    ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
+    ScriptEnum.VALIDATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
+    ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
     ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
     ScriptEnum.FORECAST_FORCING: (NGEN_FORCING_DOCKER_CMD, FORECAST_FORCING_SCRIPT)
+    # TODO Add for Verification
 }
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
 try:
+    # noinspection PyTypeHints
     NGEN_ENVIRONMENT = NgenEnvironmentEnum[NGEN_ENVIRONMENT_STR]
 except KeyError:
     # noinspection PyUnresolvedReferences
@@ -286,7 +295,7 @@ except KeyError:
         f"Invalid environment value for NGEN_ENVIRONMENT: {NGEN_ENVIRONMENT_STR}.  Must be one of {', '.join([e.name for e in NgenEnvironmentEnum])}")
 
 # -----------------------------
-# Slurm 
+# Slurm
 # -----------------------------
 
 SLURM_URL = os.getenv("SLURM_URL")
@@ -327,17 +336,24 @@ LOGGING = {
             'level': 'DEBUG',
             'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_dev.log'),
-            'when': 'MIDNIGHT',  # Rotate the file every day at midnight
-            'interval': 1,  # Rotate every 1 day
             'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },
+        'file_db': {
+            'level': 'DEBUG',
+            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
+            'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
+            'backupCount': 10,
+            'formatter': 'dev_format',
+            'encoding': 'utf-8',
+        },
+
     },
     'loggers': {
         'django.db.backends': {
-            'handlers': ['console', 'file_dev'],
-            'level': 'INFO',
+            'handlers': ['file_db'],
+            'level': 'DEBUG',
             'propagate': False  # Prevents these logs from reaching the root logger (avoids duplication)
         },
         'django': {

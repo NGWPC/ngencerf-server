@@ -68,6 +68,9 @@ class GenericMessageWithIdResponseSerializer(GenericMessageResponseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
 
 
+class DataValidationResponseSerializer(GenericMessageResponseSerializer):
+    data_validation_id = serializers.IntegerField(required=True)
+
 class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
     message = serializers.CharField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
@@ -382,11 +385,14 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
+    validation_runs = serializers.IntegerField(required=False)
+    validation_run_ids = serializers.ListSerializer(required=False,child=serializers.IntegerField())
     validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
     modules = serializers.ListSerializer(child=serializers.CharField(required=True, allow_null=False, allow_blank=False), required=True)
     is_archived = serializers.BooleanField(required=True, allow_null=True)
     is_locked = serializers.BooleanField(required=True, allow_null=True)
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
+    stop_criteria = serializers.IntegerField(required=False, allow_null=True)
 
 
 class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
@@ -438,12 +444,14 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     job_data_dir = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     gage = GageSerializer(required=True, allow_null=True)
-    forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_requested = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_actual = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_image_url = serializers.CharField(required=False)
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=False))
+    is_aet_rootzone = serializers.BooleanField(required=False)
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
@@ -503,6 +511,7 @@ class GetGitInfoResponseSerializer(BaseSerializer):
 
 class ArchiveJobRequestSerializer(CalibrationRunIdList):
     archive = serializers.BooleanField(default=True, allow_null=False, required=False)
+
 
 class LockJobRequestSerializer(CalibrationRunIdList):
     lock = serializers.BooleanField(default=True, allow_null=False, required=False)
@@ -574,7 +583,7 @@ class UploadGeopackageResponseSerializer(GenericResponseSerializer):
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
-    forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
 
@@ -582,7 +591,11 @@ class SaveGageRequestSerializer(BaseSerializer):
 class SaveGageResponseSerializer(GenericResponseSerializer):
     geopackage_image_url = serializers.CharField(required=False, allow_null=True)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
+    forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+    forcing_source_actual = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
+
 
 
 class DomainResponseSerializer(BaseSerializer):
@@ -622,6 +635,16 @@ class LoadGageResponseSerializer(BaseSerializer):
     gage = GageSerializer(required=False)
     geopackage_image_url = serializers.CharField(required=False)
     domain_values = DomainResponseSerializer(many=True)
+
+
+class UpdateGageStatusRequestSerializer(BaseSerializer):
+    gage_id = serializers.CharField(required=True)
+    is_active = serializers.BooleanField(required=False)
+
+
+class UpdateGageStatusResponseSerializer(GenericMessageResponseSerializer):
+    gage_id = serializers.CharField(required=True)
+    is_active = serializers.BooleanField(required=True)
 
 
 class CreateCalibrationRunResponseSerializer(GenericMessageResponseSerializer):
@@ -742,6 +765,7 @@ class ValidateFormulationRequestSerializer(BaseSerializer):
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     formulation_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
+    is_aet_rootzone = serializers.BooleanField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
     use_sloth = serializers.BooleanField(required=True)
     sloth_parameters = SlothParameters(required=False, many=True)
@@ -750,11 +774,13 @@ class SaveFormulationRequestSerializer(BaseSerializer):
 class ValidateFormulationResponseSerializer(BaseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
+    formulation_messages = serializers.JSONField(required=False)
 
 
 class SaveFormulationResponseSerializer(GenericResponseSerializer):
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
+    formulation_messages = serializers.JSONField(required=False)
     eds_errors = EdsErrorsSerializer(many=True, required=False)
 
 
@@ -1105,6 +1131,7 @@ class ImportDataSerializer(BaseSerializer):
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
+    is_aet_rootzone = serializers.BooleanField(required=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)

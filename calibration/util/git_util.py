@@ -24,7 +24,7 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     The function performs the following steps:
       1. Clears and recreates a temporary directory (git_info) in BASE_DIR.
       2. Copies the local 'ngencerf-server_git_info.json' into this directory.
-      3. For each defined image (ngen, ngen-cal, ngen-bmi-forcing, ngen-fcst), it copies its
+      3. For each defined image (ngen, nwm-cal-mgr, ngen-bmi-forcing, nwm-fcst-mgr), it copies its
          'git_info.json' from Docker (or Singularity) into the directory.
       4. Iterates over all JSON files in the directory and merges their contents into a single dict.
       5. Transforms each component in the merged data using transform_component().
@@ -46,18 +46,18 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
 
     # For each image, copy its git_info.json into the shared directory.
 
-    # Get both ngen and ngen-cal git_info files from ngen-cal container
-    image_name = 'ngen-cal'
+    # Get both ngen and cal-mgr git_info files from nwm-cal-mgr container
+    image_name = 'nwm-cal-mgr'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, 'ngen_git_info.json')
     local_file_name = os.path.join(git_info_directory, 'ngen_git_info.json')
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
-    container_file_name = os.path.join(settings.REPO_ROOT, 'ngen-cal_git_info.json')
-    local_file_name = os.path.join(git_info_directory, 'ngen-cal_git_info.json')
+    container_file_name = os.path.join(settings.REPO_ROOT, 'nwm-cal-mgr_git_info.json')
+    local_file_name = os.path.join(git_info_directory, 'nwm-cal-mgr_git_info.json')
     copy_file_from_image(image_name, container_name, container_file_name, local_file_name)
 
-    image_name = 'ngen-fcst'
+    image_name = 'nwm-fcst-mgr'
     container_name = f'{image_name}_temp_container'
     container_file_name = os.path.join(settings.REPO_ROOT, f"{image_name}_git_info.json")
     local_file_name = os.path.join(git_info_directory, f"{image_name}_git_info.json")
@@ -72,12 +72,12 @@ def get_git_info_internal() -> dict[str, dict[str, str]]:
     if settings.NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
         image_name = 'ngencerf-ngencerf-ui'
         container_name = f'{image_name}_temp_container'
-        container_file_name = "/var/www//ngencerf/nuxt-app/ngencerf_ui_git_info.json"
+        container_file_name = "/var/www/ngencerf/nuxt-app/ngencerf-ui_git_info.json"
         # This will always be from docker
         copy_file_from_docker_image(image_name, container_name, container_file_name, local_file_name)
     else:
-        ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf_ui')
-        git_info = os.path.join(ui_directory, 'ngencerf_ui_git_info.json')
+        ui_directory = os.path.join(os.path.dirname(settings.BASE_DIR), 'ngencerf-ui')
+        git_info = os.path.join(ui_directory, 'ngencerf-ui_git_info.json')
         try:
             copy_file(git_info, os.path.join(git_info_directory, os.path.basename(git_info)))
         except FileNotFoundError:

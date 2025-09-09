@@ -895,6 +895,21 @@ class ErrorReport:
     def errors(self) -> list[str]:
         return self._errors
 
+    def __str__(self) -> str:
+        """
+        Return a human-readable string representation of the error report.
+        """
+        output = []
+        if self._warnings:
+            output.append("Warnings:")
+            output.extend(f"  - {w}" for w in self._warnings)
+        if self._errors:
+            output.append("Errors:")
+            output.extend(f"  - {e}" for e in self._errors)
+        if not output:
+            return "No warnings or errors."
+        return "\n".join(output)
+
 
 def get_elapsed_str(request: Request) -> str:
     """

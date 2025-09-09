@@ -11,6 +11,9 @@ class ValidationRun(BaseRun):
 
     class Meta:
         db_table = 'validation_run'
+        indexes = [
+            models.Index(fields=['calibration_run', 'validation_type'], name='idx_validationrun_run_type'),
+        ]
 
     @property
     def worker_name(self):

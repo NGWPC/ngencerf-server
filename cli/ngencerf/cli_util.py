@@ -1,18 +1,23 @@
 import json
+import ast
 
 
-def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool]:
+def check_http_error(http_status: int, response: str, content_type: str | None = None) -> tuple[dict | None, bool]:
     """
     Handles HTTP errors, returning the parsed response for 200 status codes,
     and printing appropriate error messages for other status codes.
 
     :param http_status: The HTTP status code returned by the server.
     :param response: The raw response text from the server.
+    :param content_type: Optional content type string for handling non-JSON responses.
     :return: A tuple containing the parsed JSON response (or None) and a boolean indicating success.
     """
     try:
-        # Treat 200 as success and return the parsed response
+        # If it's a binary response (e.g., ZIP file), don't try to parse it as JSON
         if http_status == 200:
+            if content_type and not content_type.startswith("application/json"):
+                return None, True
+
             try:
                 response_json = json.loads(response)
                 return response_json, True
@@ -22,24 +27,52 @@ def check_http_error(http_status: int, response: str) -> tuple[dict | None, bool
 
         # Handle 400 Bad Request with specific error handling
         if http_status == 400:
-            print("Server returned HTTP 400 Bad Request. ")
+            print("Server returned HTTP 400 Bad Request.")
             response_json = json.loads(response)
             response_type = response_json.get("response_type", "")
 
             # Handle known response types separately
             if response_type == "error":
-                print(response_json.get("message", "Unknown error occurred."))
+                raw_message = response_json.get("message", "Unknown error occurred.")
+
+                # Handle stringified list or dict
+                if isinstance(raw_message, str):
+                    try:
+                        if raw_message.strip().startswith(("[", "{")):
+                            try:
+                                # Try parsing as JSON first
+                                parsed = json.loads(raw_message)
+                            except json.JSONDecodeError:
+                                parsed = ast.literal_eval(raw_message)
+
+                            if isinstance(parsed, list):
+                                for item in parsed:
+                                    print(item.get("message", str(item)))
+                            elif isinstance(parsed, dict):
+                                print(parsed.get("message", str(parsed)))
+                            else:
+                                print(parsed)
+                        else:
+                            print(raw_message)
+                    except Exception as e:
+                        print("Fallback parse failed:", e)
+                        print(raw_message)
+                else:
+                    print(raw_message)
+
                 if validation_errors := response_json.get("validation_errors"):
                     _print_validation_errors(validation_errors)
                 if errors := response_json.get("errors"):
                     print("Errors:")
                     for e in errors:
                         print(f"   {e}")
+
             elif response_type == "validation_error":
                 message = response_json.get("message", "Validation error occurred.")
                 print(message)
                 validation_errors = response_json.get("validation_errors", {})
                 _print_validation_errors(validation_errors)
+
             else:
                 _pretty_print_json(response)
 

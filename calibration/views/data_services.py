@@ -8,10 +8,11 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
 
+from calibration.enums import ForcingSourceEnum
 from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
-from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator, S3DirectoryValidator
+from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator
 from calibration.util.file_util import copy_directory
 from calibration.util.ngen_locations import get_bmi_config_dir_for_module
 from calibration.views.common import validate_response_data
@@ -206,47 +207,32 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.validation_eval_end_period = None
 
 
-def get_forcing_data_from_data_services(run: CalibrationRun):
-    """
-    Retrieves forcing data from Data Services and updates the CalibrationRun instance.
-
-    :param run: A CalibrationRun object with associated gage information.
-    """
-    if settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[0]:
-        logger.info('Getting forcing data from Data Services')
-        url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_FORCING_DATA_ENDPOINT[1].format(gage_id=run.gage.gage_id))
-        forcing_json = fetch_from_data_services('GET', url, headers=default_headers)
-    else:
-        get_forcing_data_from_s3(run)
-        return
-
-    forcing_data = validate_response_data(S3DirectoryValidator, forcing_json, 'Forcing data from Data Services is not in the expected format')
-
-    s3_uri = forcing_data.get('uri')
-
-    run.forcing_eds_dir_path = convert_s3_uri_to_fs(s3_uri)
-    clear_times(run)
-    logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
-
-
-def get_forcing_data_from_s3(run: CalibrationRun):
+def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
     """
     Attempts to retrieve forcing data from local S3 directories.
 
     :param run: A CalibrationRun object with associated gage information.
+    :param forcing_source_name: The name of the forcing source to retrieve data for.
     :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
     """
-    for s3_uri in settings.FORCING_DATA_DIRS:
+    forcing_containers = (
+        settings.FORCING_DATA_DIRS_AORC
+        if forcing_source_name == ForcingSourceEnum.AORC.value
+        else settings.FORCING_DATA_DIRS_RETRO
+    )
+
+    for src_key, s3_uri in forcing_containers.items():
         dir_path = convert_s3_uri_to_fs(s3_uri)
-        gage_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
-        if os.path.isdir(gage_dir):
-            logger.info(f"Found forcing directory {gage_dir}")
-            run.forcing_eds_dir_path = gage_dir
+        forcing_dir = os.path.join(dir_path, run.gage.domain.name, f"Gage_{run.gage.gage_id}")
+        if os.path.isdir(forcing_dir):
+            logger.info(f"Found forcing directory {forcing_dir}")
+            run.forcing_eds_dir_path = forcing_dir
+            run.forcing_source_actual = ForcingSourceEnum.get_instance(src_key)  # save the enum key that succeeded
             clear_times(run)
-            logger.info(f'Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}')
+            logger.info(f"Setting run.forcing_eds_dir_path to {run.forcing_eds_dir_path}; forcing_source_actual={run.forcing_source_actual}")
             return
         else:
-            logger.info(f"Forcing directory doesn't exist for {gage_dir}")
+            logger.info(f"Forcing directory for gage {run.gage.gage_id} doesn't exist in {forcing_dir} (key: {src_key})")
 
     raise DataServicesException(f"Could not find forcing data for gage {run.gage.gage_id}")
 

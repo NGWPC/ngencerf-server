@@ -1,4 +1,3 @@
-import csv
 import json
 import logging
 import os
@@ -9,10 +8,10 @@ from datetime import datetime, timezone
 from typing import Callable
 
 import pandas as pd
-from createInput import create_input
 from datetimerange import DateTimeRange
 from django.conf import settings
 from django.db import transaction
+from mswm.build_inputs import RealizationBuilder
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum, ForcingSourceEnum, ObservationalSourceEnum
@@ -27,11 +26,12 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_forecast_forcing_download_stdout_file, get_forecast_stdout_file, get_geopackage_dir_for_job, get_forecast_forcing_download_path, \
     get_forecast_dir, get_forecast_forcing_config_file, get_validation_iteration_git_info_file, get_forecast_download_git_info_file, \
     get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, \
-    get_observational_file_for_job, get_observational_dir_for_job
+    get_observational_file_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output
 from calibration.views.forecast_forcing_input import build_forecast_forcing_download_config
+from calibration.views.ngen_cal_input import ready_to_run
 from cerfServer.settings import NgenEnvironmentEnum
 
 logger = logging.getLogger(__name__)
@@ -341,6 +341,12 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     :return: None if successful; a DRF Response object if the job is not ready or fails preprocessing.
     :raises CerfException: If the run type is unsupported or job execution fails.
     """
+    if isinstance(run, CalibrationRun):
+        # Before we attempt to submit, make sure it's ready
+        error_object, _ = ready_to_run(run)
+        if error_object.has_errors() or error_object.has_warnings():
+            return ResponseError(error_object)
+
     with transaction.atomic():
         # Set submission date and status
         run.submit_date = datetime.now(timezone.utc)
@@ -433,15 +439,17 @@ def prepare_calibration_job(calibration_run: CalibrationRun) -> tuple[bool, Resp
                 errors=validation_errors
             )
 
-        logger.info(f'Running create_input for Calibration Job {calibration_run.id}')
-        create_input(config_file)
+        logger.info(f'Running RealizationBuilder.build_calib_realization for Calibration Job {calibration_run.id}')
+        # create_input(config_file)
+        rb = RealizationBuilder(config_file)
+        rb.build_calib_realization()
     except Exception as e:
         CalibrationRun.objects.filter(id=calibration_run.id).update(status=StatusEnum.FAILED.db_instance)
-        msg = f'Exception during create_input for Calibration Job {calibration_run.id} - {str(e)}'
+        msg = f'Exception during build_calib_realization for Calibration Job {calibration_run.id} - {str(e)}'
         logger.exception(msg)
         raise CerfException(msg) from e
 
-    logger.info(f'Return from create_input for Calibration Job {calibration_run.id}')
+    logger.info(f'Return from build_calib_realization for Calibration Job {calibration_run.id}')
     return False, None
 
 
@@ -623,9 +631,8 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
     """
     errors: list[str] = []
 
-    # Validate and subset forcing data
-    if run.forcing_source != ForcingSourceEnum.UPLOAD.db_instance:
-        # errors += validate_csv_directory(run.forcing_eds_dir_path)
+    # Subset forcing data
+    if run.forcing_source_requested != ForcingSourceEnum.UPLOAD.db_instance:
         subset_directory_by_time_range(
             run,
             run.forcing_eds_dir_path,
@@ -635,13 +642,9 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
                 max(run.calibration_end_period, run.validation_end_period)
             )
         )
-    else:
-        # errors += validate_csv_directory(get_forcing_dir_for_job(run))
-        pass
 
-    # Validate and subset observational data
+    # Subset observational data
     if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
-        # errors += validate_csv_file(run.observational_eds_file_path, is_observational=True)
         subset_by_time_range(
             run,
             run.observational_eds_file_path,
@@ -651,9 +654,6 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
                 max(run.calibration_end_period, run.validation_end_period)
             )
         )
-    else:
-        observational_file = get_single_file(get_observational_dir_for_job(run))
-        # errors += validate_csv_file(observational_file, is_observational=True)
 
     return errors
 
@@ -811,95 +811,6 @@ def subset_by_time_range(
             start_line = end_line + 1
 
     logger.info(f'Finished subsetting file {input_file} to {output_file} for Calibration Job {run.id}')
-
-
-# This is really not a good place for this type of validation.  It takes a long time and is repeated even if this
-# Forcing or Observation data has been validated before
-# We really need to do validation of the data outside of the server.  This is static data that can just be validated in one fell swoop.
-# Ngen should also be updated to issue more readable and understandable error messages when it comes across bad data.
-def validate_csv_file(path: str, is_observational: bool) -> list[str]:
-    """
-    Validates a forcing or observational CSV file for structure and numeric value expectations.
-
-    :param path: Path to the CSV file.
-    :param is_observational: Whether this is observational (2-column) or forcing (9-column) data.
-    :return: A list of validation error strings.
-    """
-    data_type = 'observational' if is_observational else 'forcing'
-    logger.info(f"Validating {data_type} file {path}")
-    errors = []
-    expected_columns = 2 if is_observational else 9
-    rows = []
-
-    # Check column count on each row manually first
-    try:
-        with open(path, newline='') as f:
-            reader = csv.reader(f)
-            for i, row in enumerate(reader, start=1):
-
-                # Simulate malformed row by dropping a column from row 2
-                # if i == 2:
-                #     row = row[:-1]  # remove last column to simulate structural error
-
-                if len(row) != expected_columns:
-                    errors.append(f"{path}: Row {i} has {len(row)} columns, expected {expected_columns}")
-                    logger.error(errors)
-                    # Only report the first structural error to avoid duplication
-                    return errors
-
-                rows.append(row)
-    except Exception as e:
-        return [f"{path}: Failed to read CSV (structural check): {e}"]
-
-    if len(rows) < 2:
-        return [f"{path}: File does not contain data rows"]
-
-    if len(rows[0]) != expected_columns:
-        return [f"{path}: Header has {len(rows[0])} columns, expected {expected_columns}"]
-
-    # Now read the file fully with pandas for per-column type checking
-    try:
-        df = pd.DataFrame(rows[1:], columns=rows[0])  # Assumes header is first row
-        df = df.reset_index(drop=True)  # Ensure numeric row indices
-    except Exception as e:
-        return [f"{os.path.basename(path)}: Failed to read CSV: {e}"]
-
-    # Inject bad value to simulate an error
-    # df.iloc[0, 1] = "not_a_number"
-
-    # Validate all value columns (non-timestamp)
-    value_columns = df.columns[1:]
-    for row_number, (_, row) in enumerate(df.iterrows(), start=2):  # start=2 = header + 1-indexed
-        for col in value_columns:
-            try:
-                float(row[col])
-            except (ValueError, TypeError):
-                errors.append(f"{path}: Row {row_number}, column '{col}' must be numeric (value='{row[col]}')")
-
-    return errors
-
-
-def validate_csv_directory(dir_path: str) -> list[str]:
-    """
-    Validates all forcing CSV files in a directory using validate_csv_file.
-    Groups errors by file for easier debugging.
-
-    :param dir_path: Path to the directory.
-    :return: List of all error messages across files.
-    """
-    if not dir_path or not os.path.isdir(dir_path):
-        return [f"{dir_path} is not a directory"]
-
-    errors = []
-    for f in sorted(os.listdir(dir_path)):
-        full_path = os.path.join(dir_path, f)
-        if os.path.isfile(full_path) and f.lower().endswith(".csv"):
-            file_errors = validate_csv_file(full_path, is_observational=False)
-            if file_errors:
-                logger.error(file_errors)
-                errors.extend(file_errors)
-
-    return errors
 
 
 def get_performance_chunksize(file_path: str) -> int:

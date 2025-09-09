@@ -10,7 +10,7 @@ from typing import Literal
 import pandas as pd
 from datetimerange import DateTimeRange
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import QuerySet, Prefetch
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -77,9 +77,23 @@ def load_tuning_tab(request: Request) -> Response:
     time_range = get_time_range(run)
     calibration_times, validation_times = get_times(run)
 
-    formulations = CalibrationFormulation.objects.filter(calibration_run=run).prefetch_related(
-        'calibrationparameter_set'
+    formulations = (
+        CalibrationFormulation.objects
+        .filter(calibration_run=run)
+        .select_related('module')
+        .prefetch_related(
+            Prefetch(
+                'calibrationparameter_set',
+                queryset=CalibrationParameter.objects.only(
+                    'calibration_formulation_id',
+                    'name', 'minimum', 'maximum', 'initial_value',
+                    'units', 'data_type', 'description', 'user_selected_for_tuning'
+                ),
+                to_attr='prefetched_params',
+            )
+        )
     )
+
 
     # For each module, get the Parameters and Output Variables
     module_list = get_parameters(formulations)
@@ -113,26 +127,39 @@ def has_user_selected_tuning_parameters(modules: QuerySet[CalibrationFormulation
 
 def get_parameters(modules: QuerySet[CalibrationFormulation]) -> list[dict[str, str | list[dict[str, str | float | int]]]]:
     """
-    Retrieves the calibration parameters and output variables for each module in the specified calibration formulation.
+    Retrieves the calibration parameters for each module in the specified calibration formulation.
 
     :param modules: QuerySet of CalibrationFormulation objects.
-    :return: List of dictionaries, each containing module name, parameters, and output variables.
+    :return: List of dicts with the module name and its parameters.
     """
-    module_list = []
+    module_list: list[dict] = []
 
-    for formulation in modules.prefetch_related('calibrationparameter_set'):
+    # 'modules' must be built with select_related('module') and the Prefetch above.
+    for formulation in modules:
         module = get_cached_module_by_name(formulation.module.name)
+        if not module:
+            continue
 
-        if module:
-            # Gather calibration parameters and for each module
-            calibration_parameters = formulation.calibrationparameter_set.values(
-                'name', 'minimum', 'maximum', 'initial_value', 'units', 'data_type', 'description', 'user_selected_for_tuning'
-            )
-            module_entry = {
-                'name': formulation.module.name,
-                'parameters': list(calibration_parameters),
+        # Use the prefetched list (no DB hits here)
+        params = [
+            {
+                'name': p.name,
+                'minimum': p.minimum,
+                'maximum': p.maximum,
+                'initial_value': p.initial_value,
+                'units': p.units,
+                'data_type': p.data_type,
+                'description': p.description,
+                'user_selected_for_tuning': p.user_selected_for_tuning,
             }
-            module_list.append(module_entry)
+            for p in getattr(formulation, 'prefetched_params', [])
+        ]
+
+        module_list.append({
+            'name': formulation.module.name,
+            'parameters': params,
+        })
+
     return module_list
 
 
@@ -143,15 +170,32 @@ def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]) -> list
     :param modules: QuerySet of CalibrationFormulation instances associated with a calibration run.
     :return: List of dictionaries containing selected parameter details, including module name.
     """
-    parameter_list = []
-    for m in modules:
-        calibration_parameters = list(CalibrationParameter.objects
-                                      .filter(calibration_formulation=m, user_selected_for_tuning=True)
-                                      .values('name', 'minimum', 'maximum', 'initial_value'))
+    # Materialize the formulation IDs once; avoids a subquery in the filter
+    formulation_ids = list(modules.values_list('id', flat=True))
+    if not formulation_ids:
+        return []
 
-        for p in calibration_parameters:
-            p['module'] = m.module.name
-            parameter_list.append(p)
+    rows = (
+        CalibrationParameter.objects
+        .filter(calibration_formulation_id__in=formulation_ids, user_selected_for_tuning=True)
+        .values(
+            'name',
+            'minimum',
+            'maximum',
+            'initial_value',
+            'calibration_formulation__module__name',
+        )
+    )
+
+    parameter_list: list[dict[str, str | float]] = []
+    for r in rows:
+        parameter_list.append({
+            'name': r['name'],
+            'minimum': r['minimum'],
+            'maximum': r['maximum'],
+            'initial_value': r['initial_value'],
+            'module': r['calibration_formulation__module__name'],
+        })
 
     return parameter_list
 
@@ -325,10 +369,21 @@ def upload_user_parameters(request: Request) -> Response:
         return error_return
 
     files = request.FILES.getlist('user_parameter_file')
+    if not files:
+        return ResponseError('No file uploaded under field "user_parameter_file".')
+    if len(files) > 1:
+        logger.warning(f'{get_caller_name()}() multiple files uploaded; using the first one')
 
     # Process the first file in the list
     parameter_file = files[0]
-    file_contents = parameter_file.read().decode('utf-8')
+    try:
+        file_contents = parameter_file.read().decode('utf-8')
+    except Exception as exc:
+        logger.exception('Failed to read/decode uploaded file as UTF-8')
+        return ResponseError(f'Failed to read file as UTF-8: {exc}')
+
+    if not file_contents.strip():
+        return ResponseError('Uploaded file is empty.')
 
     # Detect delimiter type by checking the first few rows
     first_line = file_contents.splitlines()[0]
@@ -343,11 +398,46 @@ def upload_user_parameters(request: Request) -> Response:
         delimiter = r'\s+'
         logger.debug("Detected space delimiter.")
 
+    # Expected columns
+    required_columns = ['param', 'min', 'max', 'init', 'model']
+    expected_cols = len(required_columns)
+
+    # Pre-validate consistent column counts when we have a simple delimiter
+    # (csv.reader can't handle regex separators, so we skip this for r'\s+')
+    if delimiter in (',', '\t'):
+        import csv
+        lines = file_contents.splitlines()
+        # Header check (strict match on header names after trim)
+        header_cols = [c.strip() for c in next(csv.reader([lines[0]], delimiter=delimiter))]
+        if header_cols != required_columns:
+            return ResponseError(
+                f'Header mismatch. Expected: {required_columns}, Found: {header_cols}'
+            )
+        # Validate each data line has exactly the expected number of columns
+        for i, row in enumerate(lines[1:], start=2):  # human line numbers
+            cols = next(csv.reader([row], delimiter=delimiter))
+            if len(cols) != expected_cols:
+                return ResponseError(
+                    f'Row {i} has {len(cols)} fields; expected {expected_cols}. Offending row: {row}'
+                )
+
+    # Parse with pandas; enforce dtypes so we fail fast on bad numerics
     try:
         # Handle file parsing based on detected delimiter
-        df = pd.read_csv(io.StringIO(file_contents), sep=delimiter, engine='python', skipinitialspace=True)
-    except pd.errors.ParserError:
-        return Response({'error': 'The uploaded file could not be parsed with the detected delimiter.'}, status=400)
+        df = pd.read_csv(
+            io.StringIO(file_contents),
+            sep=delimiter,
+            engine='python',
+            skipinitialspace=True,
+            dtype={'param': str, 'min': float, 'max': float, 'init': float, 'model': str},
+        )
+    except pd.errors.ParserError as exc:
+        logger.debug(f'Pandas parser error: {exc}')
+        return Response({'error': f'Could not parse file with detected delimiter: {exc}'}, status=400)
+    except ValueError as exc:
+        # Typically raised when dtype conversion fails with informative message
+        logger.debug(f'Pandas dtype error: {exc}')
+        return Response({'error': f'Invalid data types in file: {exc}'}, status=400)
 
     # Strip any leading/trailing whitespace in the column headers
     df.columns = df.columns.str.strip()
@@ -356,32 +446,78 @@ def upload_user_parameters(request: Request) -> Response:
     logger.debug(f"Detected columns: {df.columns.tolist()}")
 
     # Ensure that the DataFrame contains the correct columns
-    required_columns = ['param', 'min', 'max', 'init', 'model']
     missing_cols = [col for col in required_columns if col not in df.columns]
-
     if missing_cols:
         # Log the actual DataFrame to inspect it
         logger.debug(f"DataFrame content:\n{df.head()}")
         return ResponseError(f'Missing required columns: {missing_cols}')
 
-    # Ensure numeric columns are properly converted to floats and validate values
-    invalid_values = {}
-    for col in ['min', 'max', 'init']:
-        df[col] = pd.to_numeric(df[col], errors='coerce')  # Coerce invalid values to NaN
-        invalid_rows = df[df[col].isna()]
-        if not invalid_rows.empty:
-            invalid_values[col] = invalid_rows.index.tolist()
+    # Ensure no unexpected columns (common when a row has too many fields and pandas shifts things)
+    unexpected = [c for c in df.columns if c not in required_columns]
+    if unexpected:
+        return ResponseError(f'Unexpected columns present: {unexpected}. Expected only {required_columns}.')
 
-    if invalid_values:
-        error_message = f"Invalid values found in columns: {invalid_values}"
-        logger.debug(error_message)
-        return Response({'error': error_message}, status=400)
+    # Ensure there is at least one data row
+    if df.empty:
+        return ResponseError('No data rows found. Provide at least one parameter row.')
+
+    # Validate numeric columns and report exact offending lines/values
+    invalid_details = {}
+    for col in ['min', 'max', 'init']:
+        # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
+        coerced = pd.to_numeric(df[col], errors='coerce')
+        bad_mask = coerced.isna()
+        if bad_mask.any():
+            bad_rows = df[bad_mask]
+            # +2 => header is line 1; df index 0 is line 2
+            invalid_details[col] = [
+                {'line': int(idx) + 2, 'param': str(row.get('param')), 'value': row.get(col)}
+                for idx, row in bad_rows.iterrows()
+            ]
+
+    if invalid_details:
+        logger.debug(f"Invalid numeric values: {invalid_details}")
+        return Response({'error': 'Invalid numeric values', 'details': invalid_details}, status=400)
+
+    # Range checks: min <= max and init within [min, max]
+    range_errors = {}
+
+    bad_minmax_mask = df['min'] > df['max']
+    if bad_minmax_mask.any():
+        rows = df[bad_minmax_mask]
+        range_errors['min_gt_max'] = [
+            {'line': int(idx) + 2, 'param': str(row['param']), 'min': row['min'], 'max': row['max']}
+            for idx, row in rows.iterrows()
+        ]
+
+    bad_init_low = df['init'] < df['min']
+    if bad_init_low.any():
+        rows = df[bad_init_low]
+        range_errors.setdefault('init_lt_min', [])
+        range_errors['init_lt_min'].extend(
+            {'line': int(idx) + 2, 'param': str(row['param']), 'init': row['init'], 'min': row['min']}
+            for idx, row in rows.iterrows()
+        )
+
+    bad_init_high = df['init'] > df['max']
+    if bad_init_high.any():
+        rows = df[bad_init_high]
+        range_errors.setdefault('init_gt_max', [])
+        range_errors['init_gt_max'].extend(
+            {'line': int(idx) + 2, 'param': str(row['param']), 'init': row['init'], 'max': row['max']}
+            for idx, row in rows.iterrows()
+        )
+
+    if range_errors:
+        logger.debug(f"Range validation errors: {range_errors}")
+        return Response({'error': 'Range validation failed', 'details': range_errors}, status=400)
 
     logger.debug(f"Parsed DataFrame after stripping and numeric conversion: \n{df}")
 
     # Convert DataFrame to a list of dictionaries
     parsed_data = df.to_dict(orient='records')
 
+    # Persist filename on the run
     run.user_parameter_filename = parameter_file.name
     run.save(update_fields=['user_parameter_filename'])
 
@@ -814,19 +950,34 @@ def get_csv_daterange(file: str) -> DateTimeRange:
         if not os.path.exists(file):
             raise CerfException(f"File {file} does not exist")
 
-        # Read only the first row to get the min date
-        first_row = pd.read_csv(file, delimiter=',', nrows=1, engine='python')
-        first_time = pd.to_datetime(first_row.iloc[0, 0], errors='coerce')
+        # Read first data row (skip header)
+        with open(file, 'r', encoding='utf-8') as f:
+            _ = f.readline()  # skip header
+            first_line = f.readline()
+        if not first_line:
+            raise CerfException(f"File {file} does not contain data rows")
+        first_line = first_line.strip()
+        first_time = pd.to_datetime(first_line.split(',', 1)[0], errors='coerce')
 
         # Read only the last line efficiently using seek()
-        with open(file, 'rb') as f:
-            f.seek(-2, os.SEEK_END)  # Move to the end of the file
-            while f.read(1) != b'\n':  # Move backwards until a newline is found
-                f.seek(-2, os.SEEK_CUR)
-            last_line = f.readline().decode('utf-8').strip()
+        try:
+            with open(file, 'rb') as f:
+                f.seek(-2, os.SEEK_END)  # Move to the end of the file
+                while f.read(1) != b'\n':  # Step backwards until a newline is found
+                    f.seek(-2, os.SEEK_CUR)
+                last_line = f.readline().decode('utf-8').strip()
+        except OSError:
+            # This happens if the file is too small for the backwards seek (e.g., only a few bytes).
+            # In that case, fall back to reading all lines in text mode. This is safe because such files
+            # are tiny, and ensures we still get the last line without seek errors.
+            with open(file, 'r', encoding='utf-8') as f:
+                lines = f.read().splitlines()
+                if len(lines) < 2:
+                    raise CerfException(f"File {file} does not contain data rows")
+                last_line = lines[-1].strip()
 
         # Extract the last timestamp from the last line (assuming CSV format)
-        last_time = pd.to_datetime(last_line.split(',')[0], errors='coerce')
+        last_time = pd.to_datetime(last_line.split(',', 1)[0], errors='coerce')
 
         if pd.isna(first_time) or pd.isna(last_time):
             raise CerfException(f"Invalid datetime values found in {file}")
@@ -858,7 +1009,7 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
         return get_csv_daterange(str(file))  # Convert Path to string
 
     # Use ThreadPoolExecutor for parallel processing
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=min(32, (os.cpu_count() or 1) + 4)) as executor:
         ranges = list(executor.map(process_file, csv_files))
 
     # Combine all individual ranges into a single encompassing range

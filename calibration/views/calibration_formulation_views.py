@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, Module, OutputVariable
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
@@ -73,7 +73,8 @@ def get_modules(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -127,22 +128,25 @@ def validate_formulation_tab(request) -> Response:
     validator, error_return = validate_request(ValidateFormulationRequestSerializer, data)
     if error_return:
         return error_return
-    
+
     new_module_names = set(validator.get('modules'))
 
-    formulation_errors, formulation_warnings = validate_formulation(new_module_names)
-    
+    formulation_errors, formulation_warnings, formulation_messages = validate_formulation(new_module_names)
+
     response = {}
     if formulation_warnings:
         response['formulation_warnings'] = formulation_warnings
     if formulation_errors:
         response['formulation_errors'] = formulation_errors
+    if formulation_messages:
+        response['formulation_messages'] = formulation_messages
 
     response_validator, error_response = validate_response(ValidateFormulationResponseSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -196,7 +200,15 @@ def save_formulation_tab(request) -> Response:
     if error_message:
         return ResponseError(error_message)
 
-    formulation_errors, formulation_warnings = validate_formulation(new_module_names)
+    # TODO Eventually, we will have more user properties that are specific to certain modules
+    # so we'll need a separate table to control those.
+    # For now, we are forced to hard-code module names and specific flags
+    # Only allow AET Rootzone to be True if CFE is included in the formulation
+    run.is_aet_rootzone = validator.get('is_aet_rootzone', False)
+    if run.is_aet_rootzone and not any(cfe in new_module_names for cfe in ('CFE-S', 'CFE-X')):
+        return ResponseError('AET Rootzone cannot be True for formulations not using CFE.')
+
+    formulation_errors, formulation_warnings, _ = validate_formulation(new_module_names)
 
     if not use_sloth and sloth_parameters:
         return ResponseError(f'You must check the box to allow {SLOTH} parameters to be specified')
@@ -208,10 +220,10 @@ def save_formulation_tab(request) -> Response:
     eds_errors = []
 
     # Fetch all formulations and determine changes
-    existing_formulations_qs = CalibrationFormulation.objects.filter(
-        calibration_run=run
-    )
-    existing_module_names = set(existing_formulations_qs.values_list('module__name', flat=True))
+    existing_formulations_qs = CalibrationFormulation.objects.filter(calibration_run=run)
+    existing_formulations_list = list(existing_formulations_qs.select_related('module'))
+    existing_module_names = {f.module.name for f in existing_formulations_list}
+
     # Determine which modules to delete and add
     to_be_added = new_module_names - existing_module_names
     to_be_unused = existing_module_names - new_module_names
@@ -225,12 +237,22 @@ def save_formulation_tab(request) -> Response:
         # Add new formulations
         for module_name in to_be_added:
             module_instance = get_cached_module_by_name(module_name)
-            CalibrationFormulation.objects.get_or_create(calibration_run=run, module=module_instance)
+            # Only create if it doesn't already exist to avoid expensive indexing
+            if not any(f.module_id == module_instance.id for f in existing_formulations_list):
+                CalibrationFormulation.objects.create(calibration_run=run, module=module_instance)
 
         # Identify formulations without any calibration parameters, in case there was an error retrieving them
-        formulations_without_params_qs = existing_formulations_qs.filter(calibrationparameter__isnull=True)
+        param_formulation_ids = set(
+            CalibrationParameter.objects
+            .filter(calibration_formulation__in=existing_formulations_list)
+            .values_list('calibration_formulation_id', flat=True)
+        )
 
-        required_formulations_qs = existing_formulations_qs.filter(module__name__in=to_be_added) | formulations_without_params_qs  # type: ignore
+        formulations_without_params_qs = existing_formulations_qs.exclude(id__in=param_formulation_ids)
+
+        required_formulations_qs = existing_formulations_qs.filter(
+            module__name__in=to_be_added
+        ) | formulations_without_params_qs  # type: ignore
 
         # Retrieve metadata for required formulations
         if required_formulations_qs.exists() and run.gage:
@@ -274,7 +296,8 @@ def save_formulation_tab(request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -286,16 +309,21 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
     :param run: The calibration run instance.
     :return: None.
     """
-    formulations_to_delete = CalibrationFormulation.objects.filter(
+    formulations_to_delete_qs = CalibrationFormulation.objects.filter(
         calibration_run=run,
         module__name__in=to_delete_modules
-    )
+    ).only("id")
 
     # Delete CalibrationParameters related to the formulations_to_delete
-    CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete).delete()
+    param_qs = CalibrationParameter.objects.filter(calibration_formulation__in=formulations_to_delete_qs)
+    while True:
+        batch_ids = list(param_qs.values_list("id", flat=True)[:500])
+        if not batch_ids:
+            break
+        CalibrationParameter.objects.filter(id__in=batch_ids).delete()
 
     # Finally, delete the formulations
-    formulations_to_delete.delete()
+    formulations_to_delete_qs.delete()
 
 
 def validate_modules(module_names: set[str]) -> str | None:
@@ -353,35 +381,34 @@ formulation_validations = {
 }
 
 
-def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
+def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str], list[str]]:
     """
     Validate formulation rules based on group requirements and exclusions.
 
     :param module_names: A set of module names to validate.
-    :return: A tuple (fatal_errors, nonfatal_errors), where each is a list of messages.
-             If there are no errors of a given severity, that list will be empty.
+    :return: A tuple of lists (fatal_errors, nonfatal_errors, info_messages).
+             Each list contains validation messages of the corresponding severity.
+             If there are no messages of a given severity, that list will be empty.
     """
 
-    # Filter cached modules to match the given module names
-    my_modules = [get_cached_module_by_name(module_name) for module_name in module_names]
-
-    # Prepare containers for fatal vs. non-fatal messages
+    # Prepare containers for fatal vs. non-fatal vs. info messages
     fatal_errors: list[str] = []
     nonfatal_errors: list[str] = []
+    info_messages: list[str] = []
 
     # --- Special case: if LSTM is present, enforce LSTM-specific rules and skip the rest ---
     if "LSTM" in module_names:
         if len(module_names) > 2:
             # More than two modules with LSTM is not allowed
             fatal_errors.append("LSTM cannot be combined with more than one other module.")
-            return fatal_errors, nonfatal_errors
+            return fatal_errors, nonfatal_errors, info_messages
 
         if len(module_names) < 2:
             # LSTM alone (no other module) is not allowed
             fatal_errors.append(
                 "When LSTM is specified, exactly one other Routing module must be included."
             )
-            return fatal_errors, nonfatal_errors
+            return fatal_errors, nonfatal_errors, info_messages
 
         # At this point, len(module_names) == 2 and one of them is LSTM
         other_name = next(name for name in module_names if name != "LSTM")
@@ -391,9 +418,22 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
             fatal_errors.append(
                 f"When LSTM is specified, the other module must be in the Routing group; found: {other_name}"
             )
-        return fatal_errors, nonfatal_errors
+            return fatal_errors, nonfatal_errors, info_messages
+
+        # Check for completeness
+        check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+
+        if len(fatal_errors) == 0:
+            info_messages.append('Formulation is Calibratable.')
+        else:
+            fatal_errors.append('Formulation is not Calibratable.')
+
+        return fatal_errors, nonfatal_errors, info_messages
 
     # --- End of LSTM special case. All further checks assume LSTM is NOT present. ---
+
+    # Perform checks for non-LSTM case
+    my_modules = [get_cached_module_by_name(name) for name in module_names]
 
     # Count how many selected modules belong to each group
     group_defs = formulation_validations["formulation_rules"]["group_requirements"]
@@ -429,21 +469,67 @@ def validate_formulation(module_names: set[str]) -> tuple[list[str], list[str]]:
 
         # Validate the count against expected_counts
         if count not in expected_counts:
-            # build the “1” vs “0 or 2” string
+            # Build the “1” vs “0 or 2” string
             expected_str = join_with_or([str(c) for c in expected_counts])
-            # choose singular if exactly [1], otherwise plural
-            word = "module" if expected_counts == [1] else "modules"
+            # Choose singular if exactly [1], otherwise plural
+            word = "module" if len(expected_counts) == 1 and expected_counts[0] == 1 else "modules"
             msg = (
                 f"{group_name} group is expected to have "
                 f"{expected_str} {word}, but it has {count}"
             )
+            if count > 1 and 'Noah-OWP-Modular' in module_names:
+                msg += f", and Noah-OWP-Modular will not be used for {group_name}."
             logger.warning(msg)
             if group_rules.get("fatal", False):
                 fatal_errors.append(msg)
             else:
                 nonfatal_errors.append(msg)
 
-    return fatal_errors, nonfatal_errors
+    # 3) Check for completeness
+    check_completeness(module_names, fatal_errors, nonfatal_errors, info_messages)
+
+    # 4) If no fatal errors, indicate that the formulation is Calibratable
+    if len(fatal_errors) == 0:
+        info_messages.append('Formulation is Calibratable.')
+    else:
+        fatal_errors.append('Formulation is not Calibratable.')
+
+    return fatal_errors, nonfatal_errors, info_messages
+
+
+def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal_errors: list[str], info_messages: list[str]) -> None:
+    """
+    Check if the formulation is complete by ensuring all necessary modules are included.
+
+    :param module_names: A set of module names to check for completeness.
+    :param fatal_errors: The list to append fatal errors.
+    :param nonfatal_errors: The list to append nonfatal errors.
+    :param info_messages: The list to append informational messages.
+    :return: None.
+    """
+
+    modules_included = Module.objects.filter(name__in=module_names)
+    output_variables_excluded = [output_variable.name for output_variable in OutputVariable.objects.all()]
+    output_variables_included = []
+
+    for module in modules_included:
+        output_names = [ov.name for ov in module.output_variables.all()]
+        logger.debug(f'Output variables for {module.name}: {", ".join(output_names)}')
+        for ov_name in output_names:
+            if ov_name in output_variables_excluded:
+                output_variables_excluded.remove(ov_name)
+                output_variables_included.append(ov_name)
+
+    output_variables_excluded.sort()
+    output_variables_included.sort()
+
+    if len(output_variables_excluded) > 0:
+        nonfatal_errors.append('Formulation Incomplete. Not all NWM v3 Output Variables can be produced.')
+        nonfatal_errors.append('Missing NWM v3 Output Variables: ' + ", ".join(output_variables_excluded))
+    else:
+        info_messages.append('Formulation Complete. All NWM v3 Output Variables can be produced.')
+    if len(output_variables_included) > 0:
+        info_messages.append('NWM v3 Output Variables Produced: ' + ", ".join(output_variables_included))
 
 
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:

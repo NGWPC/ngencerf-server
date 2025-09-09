@@ -64,7 +64,7 @@ def create_calibration_run(request: Request) -> Response:
     :param request: The HTTP request object, containing user and calibration run details.
     :return: A Response object with the serialized calibration run data.
     """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
+    data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} ')
 
     validator, error_return = validate_request(EmptySerializer, data)
@@ -80,7 +80,10 @@ def create_calibration_run(request: Request) -> Response:
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(
+            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+            f'{json.dumps(response_validator.data)}'
+        )
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -126,13 +129,17 @@ def create_and_run_validation(request: Request) -> Response:
         return error_return
 
     # Check if a ValidationRun already exists for this CalibrationRun and Iteration
-    existing_validation_run = ValidationRun.objects.filter(
-        calibration_run=calibration_run,
-        iteration_id=iteration_id,
-        status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
-    ).first()
-    if existing_validation_run:
-        return ResponseError(f'Validation Job {existing_validation_run.id} already exists for '
+    existing_validation_run_id = (
+        ValidationRun.objects.filter(
+            calibration_run=calibration_run,
+            iteration_id=iteration_id,
+            status__in=[StatusEnum.DONE.db_instance, StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
+        )
+        .values_list('id', flat=True)
+        .first()
+    )
+    if existing_validation_run_id:
+        return ResponseError(f'Validation Job {existing_validation_run_id} already exists for '
                              f'Calibration Job {calibration_run.id}, iteration id {iteration_id}')
 
     validation_run = create_validation_run_internal(
@@ -154,7 +161,8 @@ def create_and_run_validation(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -215,7 +223,8 @@ def create_and_run_forecast(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
 
 
@@ -259,7 +268,8 @@ def get_footer(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
 
 
@@ -297,7 +307,8 @@ def get_git_info(request: Request) -> Response:
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data, default=str)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data, default=str)}')
     return Response(response_validator.data)
 
 
@@ -339,7 +350,7 @@ def clone_job(request: Request) -> Response:
         return error_return
 
     calibration_run_data = load_calibration_run_data(run, export=True)
-    new_run, response_dict, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
+    new_run, _, fatal_error = import_calibration_run_data(request, calibration_run_data, JobGenesis.CLONE)
     if fatal_error:
         return fatal_error
 
@@ -367,9 +378,13 @@ def clone_job(request: Request) -> Response:
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
+
+
+RUNNING_STATUSES = [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
 
 
 def has_running_associated_jobs(run: CalibrationRun) -> str | None:
@@ -382,22 +397,22 @@ def has_running_associated_jobs(run: CalibrationRun) -> str | None:
     :return: A message indicating if the job or its associated jobs are running, or None if there are no running jobs.
     """
     # Check if the calibration run itself is running
-    if run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+    if run.status in RUNNING_STATUSES:
         return f'Calibration Job {run.id} is running. Cannot proceed while the job is running.'
 
     # Check if any associated validation jobs are running
     if ValidationRun.objects.filter(calibration_run=run,
-                                    status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
+                                    status__in=RUNNING_STATUSES).exists():
         return f'Calibration Job {run.id} has associated validation jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forecast jobs are running
     if ForecastRun.objects.filter(calibration_run=run,
-                                  status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
+                                  status__in=RUNNING_STATUSES).exists():
         return f'Calibration Job {run.id} has associated forecast jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forcing download jobs are running
     if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run,
-                                                 status__in=[StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]).exists():
+                                                 status__in=RUNNING_STATUSES).exists():
         return f'Calibration Job {run.id} has associated forcing download jobs that are still running. Cannot proceed until they are completed.'
 
     # No running jobs found
@@ -483,7 +498,8 @@ def delete_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -570,7 +586,8 @@ def archive_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -588,7 +605,7 @@ def archive_jobs(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Lock of unlock a list of calibration jobs"
+    description="Lock or unlock a list of calibration jobs"
 )
 @api_view(['POST', 'GET'])
 @handle_exceptions
@@ -644,7 +661,8 @@ def lock_jobs(request: Request) -> Response:
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -660,22 +678,19 @@ def hard_delete(run: CalibrationRun) -> None:
     # Collect related objects that will be deleted due to cascade
     collector.collect([run])
 
-    with transaction.atomic():
-        # Collect related objects that will be deleted due to cascade
-        collector.collect([run])
+    job_data_dir = run.job_data_dir  # stash before delete
 
+    with transaction.atomic():
         logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
         # Iterate through the collected objects and list IDs and other fields
         for model, instances in collector.data.items():
             logger.debug(f"Calibration Job {run.id} - {model.__name__}: {len(instances)} instance(s) will be deleted")
             for instance in instances:
                 logger.debug(f' - {instance}')
-
-        job_data_dir = run.job_data_dir
         run.delete()
-        logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
-        if os.path.exists(job_data_dir):
-            shutil.rmtree(job_data_dir)
+    logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
+    if os.path.exists(job_data_dir):
+        shutil.rmtree(job_data_dir)
 
 
 @extend_schema(
@@ -740,10 +755,13 @@ def import_job(request: Request) -> Response:
         response['messages'] = messages
     if error_object.warnings:
         response['warnings'] = error_object.warnings
+    if error_object.errors:
+        response['errors'] = error_object.errors
 
     response_validator, error_response = validate_response(ImportResponseSerializer, response)
     if error_response:
         return error_response
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)

@@ -7,10 +7,13 @@ import itertools
 import json
 import os
 import sys
+import tempfile
 import threading
 import time
+import zipfile
 from contextlib import ExitStack
 from datetime import datetime
+from typing import Callable
 
 import requests
 import tabulate
@@ -31,7 +34,7 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
-def post_with_spinner(message: str, post_func: callable) -> requests.Response | None:
+def post_with_spinner(message: str, post_func: Callable) -> requests.Response | None:
     """
     Displays a spinner while executing a POST request callable.
     Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
@@ -58,7 +61,7 @@ def about(output_path: str | None = None) -> int:
     Returns:
         int: Exit code (0 for success, 1 for failure).
     """
-    response = post_with_spinner("Sending to server", lambda: requests.post(
+    response = post_with_spinner("Sending request to server...", lambda: requests.post(
         f"{API_BASE}/calibration/get_git_info/",
         headers=get_auth_headers()
     ))
@@ -203,7 +206,7 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     Downloads the ZIP archive for a calibration run from the server.
 
     :param calibration_run_id: ID of the calibration run to download.
-    :param output_path: Path to save the ZIP file or directory (default: ~/Downloads).
+    :param output_path: Path to save the ZIP file or directory.  If not provided, defaults to the current working directory.
     :returns: 0 on success, 1 on failure.
     """
     print(f"Downloading ZIP for calibration run: {calibration_run_id}")
@@ -220,7 +223,7 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     if response is None:
         return 1  # Interrupted by user
 
-    response_json, success = check_http_error(response.status_code, response.text)
+    response_json, success = check_http_error(response.status_code, response.text, response.headers.get("Content-Type"))
     if not success:
         return 1
 
@@ -252,7 +255,7 @@ def run_job(calibration_run_id: int) -> int:
     print(f"Submitting calibration run job {calibration_run_id}")
     payload = {"calibration_run_id": calibration_run_id}
 
-    response = post_with_spinner("Submitting job", lambda: requests.post(
+    response = post_with_spinner("Submitting job...", lambda: requests.post(
         f"{API_BASE}/calibration/run_calibration/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
@@ -270,6 +273,51 @@ def run_job(calibration_run_id: int) -> int:
         print("Warnings:")
         for w in warnings:
             print(f"   {w}")
+    return 0
+
+
+def job_status(calibration_run_id: int) -> int:
+    """
+    Display status for a calibration job and related jobs.
+
+    :param calibration_run_id: ID of the calibration run.
+    :returns: 0 on success, 1 on failure.
+    """
+    payload = {"calibration_run_id": calibration_run_id}
+
+    response = post_with_spinner("Getting job status...", lambda: requests.post(
+        f"{API_BASE}/calibration/get_status/",
+        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload,
+    ))
+
+    if response is None:
+        return 1  # Interrupted by user
+
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
+
+    # Display top-level fields first (excluding validations and forecasts)
+    print("\nCalibration Job Info:")
+    top_level = {
+        k: v for k, v in response_json.items()
+        if k not in ("validations", "forecasts")
+    }
+    print(json.dumps(top_level, indent=2))
+
+    # Display validations, if present
+    if validations := response_json.get("validations"):
+        print("\nValidations:")
+        for v in validations:
+            print(json.dumps(v, indent=2))
+
+    # Display forecasts, if present
+    if forecasts := response_json.get("forecasts"):
+        print("\nForecasts:")
+        for f in forecasts:
+            print(json.dumps(f, indent=2))
+
     return 0
 
 
@@ -301,7 +349,7 @@ def delete_job(calibration_run_ids: list[int]) -> int:
     print(f"\nDeleting calibration run jobs {calibration_run_ids}")
     payload = {"calibration_run_ids": calibration_run_ids}
 
-    response = post_with_spinner("Deleting jobs", lambda: requests.post(
+    response = post_with_spinner("Deleting jobs...", lambda: requests.post(
         f"{API_BASE}/calibration/delete_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload,
@@ -414,7 +462,7 @@ def list_jobs(output_path: str | None = None) -> int:
     :return: 0 on success, 1 on failure
     """
     response = post_with_spinner("Fetching job list...", lambda: requests.post(
-        f"{API_BASE}/calibration/get_jobs/",
+        f"{API_BASE}/calibration/get_calibration_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
     ))
 
@@ -463,6 +511,40 @@ def list_jobs(output_path: str | None = None) -> int:
     return 0
 
 
+def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> int:
+
+    """
+    Update (or query) the cached gage status through the API.
+
+    :param gage_id: The gage ID
+    :param is_active: Desired state (True/False) or None to just query
+    :return: 0 on success, 1 on failure
+    """
+    payload: dict[str, str | bool] = {"gage_id": gage_id}
+    if is_active is not None:
+        payload["is_active"] = is_active
+
+    response = post_with_spinner("Updating gage status...", lambda: requests.post(
+        f"{API_BASE}/calibration/update_and_get_gage_status/",
+        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload,
+    ))
+
+    if response is None:
+        return 1  # Interrupted
+
+    response_json, success = check_http_error(response.status_code, response.text)
+    if not success:
+        return 1
+
+    message = response_json.get("message", "")
+    gage_id = response_json.get("gage_id")
+    is_active = response_json.get("is_active")
+
+    print(message or f"Gage {gage_id} is {'active' if is_active else 'not active'}")
+    return 0
+
+
 def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None = None, run_after_import: bool | None = None) -> int:
     """
     Submits job data to the import or update endpoint.
@@ -493,7 +575,7 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     if calibration_run_id is not None:
         payload["calibration_run_id"] = calibration_run_id
 
-    response = post_with_spinner(f"{action} job", lambda: requests.post(
+    response = post_with_spinner(f"{action} job...", lambda: requests.post(
         f"{API_BASE}/calibration/import/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
         json=payload
@@ -505,16 +587,42 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     response_json, success = check_http_error(response.status_code, response.text)
     if not success:
         return 1
+
+    # Print top-level message
     if message := response_json.get("message"):
         print(message)
-    if warnings := response_json.get("warnings"):
-        print("Warnings:")
-        for w in warnings:
-            print('  ', w)
+
+    # Collect errors into one list
+    combined_errors = []
+    combined_warnings = []
+
+    # Nested messages block
+    if messages := response_json.get("messages"):
+        if errors := messages.get("errors"):
+            combined_errors.extend(errors)
+
+        if eds_errors := messages.get("eds_errors"):
+            combined_errors.extend(e.get("message", str(e)) for e in eds_errors)
+
+        if warnings := messages.get("warnings"):
+            combined_warnings.extend(warnings)
+
+    # Top-level blocks
     if errors := response_json.get("errors"):
+        combined_errors.extend(errors)
+    if warnings := response_json.get("warnings"):
+        combined_warnings.extend(warnings)
+
+    # Print all collected errors and warnings
+    if combined_errors:
         print("Errors:")
-        for e in errors:
+        for e in combined_errors:
             print('  ', e)
+
+    if combined_warnings:
+        print("Warnings:")
+        for w in combined_warnings:
+            print('  ', w)
 
     return 0
 
@@ -549,7 +657,7 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     Exports a calibration job to a file or displays it.
 
     :param calibration_run_id: ID of the calibration run to export
-    :param output_path: Path to save the export file (default: ~/Downloads)
+    :param output_path: Path to save the export file. If not provided, defaults to the current working directory.
     :param display: Whether to print the job to the console
     :return: 0 on success, 1 on failure
     """
@@ -579,6 +687,71 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
 
     print(f"Job {calibration_run_id} exported to {final_path}")
     return 0
+
+
+def generate_regionalization_files(calibration_run_ids: list[int] | str, output_path: str | None = None) -> int:
+    """
+    Triggers ZIP file generation for regionalization and saves contents to output_path.
+
+    :param calibration_run_ids: List of calibration run IDs or a path to a file containing them.
+    :param output_path: Directory to unzip files into. If None, current working directory is used.
+    :return: 0 on success, 1 on failure.
+    """
+    # Allow file input
+    if isinstance(calibration_run_ids, str):
+        try:
+            with open(calibration_run_ids, "r") as f:
+                contents = f.read()
+            # Support space/comma/line-separated values
+            calibration_run_ids = [int(x) for x in contents.replace(",", " ").split()]
+        except Exception as e:
+            print(f"Failed to read calibration run IDs from file: {e}")
+            return 1
+
+    print(f"Generating regionalization files for calibration run jobs {calibration_run_ids}")
+    payload = {"calibration_run_ids": calibration_run_ids}
+
+    # Create a temporary directory for downloading the ZIP
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, "regionalization_files.zip")
+
+        def post_zip():
+            return requests.post(
+                f"{API_BASE}/calibration/get_regionalization_files_zip/",
+                headers=get_auth_headers(),
+                json=payload,
+                stream=True,
+            )
+
+        response = post_with_spinner("Downloading regionalization ZIP...", post_zip)
+
+        if response is None:
+            return 1
+
+        if not response.ok:
+            print(f"Download failed with status code {response.status_code}")
+            check_http_error(response.status_code, response.text)
+            return 1
+
+        # Save ZIP to temp path
+        with open(zip_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+
+        # Resolve final output directory
+        final_dir = os.path.dirname(resolve_output_path(output_path, "regionalization_files.zip"))
+
+        # Extract ZIP contents to output directory
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(final_dir)
+        except zipfile.BadZipFile:
+            print("Error: The downloaded file is not a valid ZIP archive.")
+            return 1
+
+        print(f"Unzipped regionalization files to: {final_dir}")
+        return 0
 
 
 def _pretty_print_job(calibration_run_id: int, data: dict) -> None:

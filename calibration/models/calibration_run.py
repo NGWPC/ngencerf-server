@@ -27,7 +27,8 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     peak_flow_threshold = models.FloatField(null=True)
     geopackage_source = models.ForeignKey('GeopackageSource', null=True, on_delete=models.RESTRICT)
     geopackage_eds_file_path = models.TextField(null=True)
-    forcing_source = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT)
+    forcing_source_requested = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
+    forcing_source_actual = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     forcing_eds_dir_path = models.TextField(null=True)
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
     observational_eds_file_path = models.TextField(null=True)
@@ -35,6 +36,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     realization_file_path = models.TextField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
     user_formulation_name = models.CharField(max_length=50, null=True)
+    is_aet_rootzone = models.BooleanField(null=False, default=False)
     save_plot_iteration_frequency = models.PositiveIntegerField(null=True)
     save_output_iteration = models.BooleanField(default=False)
     automatic_validation = models.BooleanField(null=False, default=False)
@@ -44,6 +46,9 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
 
     class Meta:
         db_table = 'calibration_run'
+        indexes = [
+            models.Index(fields=['owner', 'status', 'is_archived'], name='idx_run_owner_status_archived'),
+        ]
 
     def __str__(self):
         gage_info = f"Gage: {self.gage.gage_id}" if self.gage else "No Gage"
