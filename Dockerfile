@@ -54,7 +54,9 @@ RUN cli/build_cli.sh
 # Should parallel similar functionality in the run_cerf.sh
 COPY .git .git
 
+# Create git_info files for server and nwm-msw-mgr
 RUN set -eux && \
+    # ----- Server git_info -----
     # Get the remote URL from Git configuration
     repo_url=$(git config --get remote.origin.url) && \
     # Extract the repo name (everything after the last slash) and remove any trailing .git
@@ -71,7 +73,37 @@ RUN set -eux && \
       --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
       --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
       "{\"$key\": {commit_hash: \$commit_hash, branch: \$branch, tags: \$tags, author: \$author, commit_date: \$commit_date, message: \$message, build_date: \$build_date}}" \
-      > $GIT_INFO_PATH
+      > $GIT_INFO_PATH && \
+    \
+    # ----- nwm-msw-mgr git_info -----
+    GIT_INFO_PATH="/ngencerf/ngencerf-server/nwm-msw-mgr_git_info.json" && \
+    if [ "$MSWM_TAG" = "development" ]; then \
+        tmpdir=$(mktemp -d) && \
+        git clone --depth 1 --branch development https://github.com/${MSWM_ORG}/nwm-msw-mgr.git "$tmpdir" && \
+        cd "$tmpdir" && \
+        jq -n \
+          --arg commit_hash "$(git rev-parse HEAD)" \
+          --arg branch "development" \
+          --arg tags "" \
+          --arg author "$(git log -1 --pretty=format:'%an')" \
+          --arg commit_date "$(date -u -d @$(git log -1 --pretty=format:'%ct') +'%Y-%m-%d %H:%M:%S UTC')" \
+          --arg message "$(git log -1 --pretty=format:'%s' | tr '\n' ';')" \
+          --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+          '{"nwm-msw-mgr": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
+          > "$GIT_INFO_PATH" && \
+        cd / && rm -rf "$tmpdir"; \
+    else \
+        jq -n \
+          --arg commit_hash "" \
+          --arg branch "" \
+          --arg tags "$MSWM_TAG" \
+          --arg author "" \
+          --arg commit_date "" \
+          --arg message "" \
+          --arg build_date "$(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+          '{"nwm-msw-mgr": {commit_hash: $commit_hash, branch: $branch, tags: $tags, author: $author, commit_date: $commit_date, message: $message, build_date: $build_date}}' \
+          > "$GIT_INFO_PATH"; \
+    fi
 
 # Copy application code
 COPY . /ngencerf/ngencerf-server/
