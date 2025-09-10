@@ -41,8 +41,7 @@ DATABASES = {
         'CONN_MAX_AGE': 60,
         'OPTIONS': {
             'connect_timeout': 10,
-            # Making this ridiculously high to see if it's the problem
-            'options': '-c statement_timeout=60000ms',
+            'options': '-c statement_timeout=10000ms',
             'sslmode': 'verify-full',
             'sslrootcert': '/ngencerf/aws_cert/global-bundle.pem',
         }

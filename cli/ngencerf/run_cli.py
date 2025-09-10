@@ -95,7 +95,7 @@ class SmartArgumentParser(argparse.ArgumentParser):
         self.print_help()
         self.exit(2)
 
-    def print_help(self):
+    def print_help(self, file=None):
         if self._subparsers and hasattr(self._subparsers, "_choices_actions"):
             orig = list(self._subparsers._choices_actions)
             try:
@@ -106,7 +106,7 @@ class SmartArgumentParser(argparse.ArgumentParser):
                        # and also hide anything whose help was SUPPRESS (== '==SUPPRESS==')
                        and getattr(a, "help", None) != argparse.SUPPRESS
                 ]
-                return super().print_help()
+                return super().print_help(file=file)
             finally:
                 self._subparsers._choices_actions = orig
         else:
