@@ -18,7 +18,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
-from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, ForecastRun
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
@@ -346,6 +346,7 @@ def get_log(request: Request) -> Response:
             return error_return
         validation_run = None
 
+    log_path = None
     match log_category:
         case LogCategory.CALIBRATION:
             log_path = get_calibration_log(calibration_run, log_name)

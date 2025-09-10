@@ -71,6 +71,7 @@ class GenericMessageWithIdResponseSerializer(GenericMessageResponseSerializer):
 class DataValidationResponseSerializer(GenericMessageResponseSerializer):
     data_validation_id = serializers.IntegerField(required=True)
 
+
 class GenericMessageAndStatusResponseSerializer(GenericMessageResponseSerializer):
     message = serializers.CharField(required=True)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
@@ -386,7 +387,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
     validation_runs = serializers.IntegerField(required=False)
-    validation_run_ids = serializers.ListSerializer(required=False,child=serializers.IntegerField())
+    validation_run_ids = serializers.ListSerializer(required=False, child=serializers.IntegerField())
     validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
     modules = serializers.ListSerializer(child=serializers.CharField(required=True, allow_null=False, allow_blank=False), required=True)
     is_archived = serializers.BooleanField(required=True, allow_null=True)
@@ -595,7 +596,6 @@ class SaveGageResponseSerializer(GenericResponseSerializer):
     num_catchments = serializers.IntegerField(required=True, allow_null=True)
     forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_source_actual = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-
 
 
 class DomainResponseSerializer(BaseSerializer):

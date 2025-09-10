@@ -20,7 +20,6 @@ class CalibrationOptimizationInput(BaseModel):
             models.Index(fields=['calibration_run', 'optimization_input'], name='idx_optinput_run_input'),
         ]
 
-
     def __str__(self):
         return (
             f"CalibrationOptimizationInput: {self.id}, "
