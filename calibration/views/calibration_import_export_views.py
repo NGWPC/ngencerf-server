@@ -491,7 +491,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             geopackage_path = get_single_file(
                 get_geopackage_dir_for_job(run)) if run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance else run.geopackage_eds_file_path
             if geopackage_path and path_exists(geopackage_path):
-                print('reading from geopackage', geopackage_path)
                 geopackage_png = gpkg_to_png_selected_layers(geopackage_path)
                 base64_str = base64.b64encode(geopackage_png.getvalue()).decode('utf-8')
                 calibration_run_data['geopackage_image_url'] = f'data:image/png;base64,{base64_str}'
