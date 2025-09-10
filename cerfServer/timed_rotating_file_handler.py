@@ -112,13 +112,16 @@ class CustomTimedRotatingFileHandler(BaseRotatingHandler):
 
     def emit(self, record):
         """
-        Emit a log record. Checks if rollover is needed before writing.
-
-        :param record: The log record to be emitted.
+        Emit a log record. Checks for rollover, writes the record, and flushes.
         """
         try:
             if self.shouldRollover(record):
                 self.doRollover()
-            super().emit(record)
+
+            msg = self.format(record)
+            stream = self.stream
+            stream.write(msg + self.terminator)
+            stream.flush()
+
         except Exception:
             self.handleError(record)
