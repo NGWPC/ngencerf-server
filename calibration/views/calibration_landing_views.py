@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+from functools import lru_cache
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -384,7 +385,12 @@ def clone_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-RUNNING_STATUSES = [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
+@lru_cache
+def get_running_statuses():
+    return [
+        StatusEnum.RUNNING.db_instance,
+        StatusEnum.SUBMITTED.db_instance,
+    ]
 
 
 def has_running_associated_jobs(run: CalibrationRun) -> str | None:
@@ -396,23 +402,22 @@ def has_running_associated_jobs(run: CalibrationRun) -> str | None:
     :param run: The CalibrationRun instance to check.
     :return: A message indicating if the job or its associated jobs are running, or None if there are no running jobs.
     """
+    running_statuses = get_running_statuses()
+
     # Check if the calibration run itself is running
-    if run.status in RUNNING_STATUSES:
+    if run.status in running_statuses:
         return f'Calibration Job {run.id} is running. Cannot proceed while the job is running.'
 
     # Check if any associated validation jobs are running
-    if ValidationRun.objects.filter(calibration_run=run,
-                                    status__in=RUNNING_STATUSES).exists():
+    if ValidationRun.objects.filter(calibration_run=run, status__in=running_statuses).exists():
         return f'Calibration Job {run.id} has associated validation jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forecast jobs are running
-    if ForecastRun.objects.filter(calibration_run=run,
-                                  status__in=RUNNING_STATUSES).exists():
+    if ForecastRun.objects.filter(calibration_run=run, status__in=running_statuses).exists():
         return f'Calibration Job {run.id} has associated forecast jobs that are still running. Cannot proceed until they are completed.'
 
     # Check if any associated forcing download jobs are running
-    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run,
-                                                 status__in=RUNNING_STATUSES).exists():
+    if ForecastForcingDownloadRun.objects.filter(forecast_run__calibration_run=run, status__in=running_statuses).exists():
         return f'Calibration Job {run.id} has associated forcing download jobs that are still running. Cannot proceed until they are completed.'
 
     # No running jobs found
