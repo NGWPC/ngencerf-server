@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from urllib.parse import urljoin
 
@@ -9,6 +10,7 @@ from django.db.models import QuerySet
 
 from calibration.enums import ForcingSourceEnum
 from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
+from calibration.util.aws_util import convert_s3_uri_to_fs
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator
 from calibration.util.cloud_util import copy_tree, path_exists, _join_url, is_dir
@@ -170,8 +172,10 @@ def get_observational_data_from_data_services(run: CalibrationRun):
     observational_data = validate_response_data(S3FileValidator, observational_json,
                                                 'Observational data from Data Services is not in the expected format')
 
-    run.observational_eds_file_path = observational_data.get('uri')
-    if run.observational_eds_file_path and not path_exists(run.observational_eds_file_path):
+    s3_uri = observational_data.get('uri')
+
+    run.observational_eds_file_path = convert_s3_uri_to_fs(s3_uri)
+    if run.observational_eds_file_path and not os.path.exists(run.observational_eds_file_path):
         logger.error(f"Observational file from Data Services, {run.observational_eds_file_path} does not exist")
     clear_times(run)
     logger.info(f'Setting run.observational_eds_file_path to {run.observational_eds_file_path}')
