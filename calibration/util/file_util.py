@@ -7,7 +7,6 @@ from calibration.views.called_from import called_from
 logger = logging.getLogger(__name__)
 
 
-# Unused
 def copy_file(source_file: str, destination_file: str):
     """
     Copy a file to another file. The destination file will be created or overwritten.
@@ -32,7 +31,6 @@ def copy_file(source_file: str, destination_file: str):
     logger.info(f"File successfully copied from {source_file} to {destination_file}")
 
 
-# Unused
 def copy_directory(source_dir: str, destination_dir: str):
     """
     Copy the contents of source_dir to destination_dir. If destination_dir
@@ -57,7 +55,6 @@ def copy_directory(source_dir: str, destination_dir: str):
     logger.info(f"Directory successfully copied from {source_dir} to {destination_dir}.")
 
 
-# Unused
 def copy_file_to_directory(source_file: str, destination_dir: str):
     """
     Copy a file to a directory. The file will be copied with the same name
