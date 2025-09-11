@@ -269,7 +269,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         ):
             return None, None, ResponseError(
                 "You cannot specify optimization_name, objective_function_name, streamflow_threshold, peak_flow_threshold, "
-                "optimization_name, stop_criteria, save_plot_iteration_frequency or save_output_iteration when using LSTM")
+                "stop_criteria, save_plot_iteration_frequency or save_output_iteration when using LSTM")
 
         if not optimization_name:
             if optimization_inputs:

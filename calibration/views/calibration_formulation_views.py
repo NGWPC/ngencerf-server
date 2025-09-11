@@ -6,7 +6,8 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, Module, OutputVariable
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, \
+  Module, OutputVariable, CalibrationStopCriteria, CalibrationOptimizationInput, OptimizationInput
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
@@ -275,6 +276,25 @@ def save_formulation_tab(request) -> Response:
         if error_message:
             logger.error(f"Error adding Sloth parameters: {error_message}")
             return ResponseError(error_message)
+        
+        # If formulation uses LSTM, we need to clear all irrelevant fields
+        if have_lstm:
+            # clear core CalibrationRun fields
+            run.optimization = None
+            run.objective_function = None
+            run.streamflow_threshold = None
+            run.peak_flow_threshold = None
+            run.save_plot_iteration_frequency = None
+            run.save_output_iteration = False
+
+            # remove stop criteria
+            CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
+
+            # remove optimization inputs
+            for optimization_input in CalibrationOptimizationInput.objects.filter(calibration_run=run):
+                if optimization_input.optimization_input_id:
+                  OptimizationInput.objects.filter(id=optimization_input.optimization_input_id).delete()
+                optimization_input.delete()
 
         run.save()
 
