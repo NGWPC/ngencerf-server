@@ -13,6 +13,7 @@ from calibration.util.calibration_validators import ValidateFormulationRequestSe
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
     SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
+from calibration.views.calibration_optimization_views import write_optimization_inputs
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
     get_user_email, join_with_or, get_elapsed_str
@@ -290,11 +291,8 @@ def save_formulation_tab(request) -> Response:
             # remove stop criteria
             CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
 
-            # remove optimization inputs
-            for optimization_input in CalibrationOptimizationInput.objects.filter(calibration_run=run):
-                if optimization_input.optimization_input_id:
-                  OptimizationInput.objects.filter(id=optimization_input.optimization_input_id).delete()
-                optimization_input.delete()
+            # No optimization inputs
+            write_optimization_inputs(run, [])
 
         run.save()
 
