@@ -114,7 +114,7 @@ class CustomTimedRotatingFileHandler(BaseRotatingHandler):
                 self.rolloverAt = self.compute_next_rollover(time.time())
                 self.terminator = '\n'  # Optional: ensure newline
 
-            except Exception
+            except Exception:
                 # Log the full traceback for debugging
                 traceback.print_exc()
 
