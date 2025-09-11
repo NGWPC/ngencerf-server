@@ -35,7 +35,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     user_parameter_filename = models.TextField(null=True)
     realization_file_path = models.TextField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
-    user_formulation_name = models.CharField(max_length=50, null=True)
+    user_formulation_name = models.CharField(max_length=100, null=True)
     is_aet_rootzone = models.BooleanField(null=False, default=False)
     save_plot_iteration_frequency = models.PositiveIntegerField(null=True)
     save_output_iteration = models.BooleanField(default=False)
