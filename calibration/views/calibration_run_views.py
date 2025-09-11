@@ -618,7 +618,7 @@ def get_iteration(request: Request) -> Response:
     # Allow status Ready for UI polling immediately after submission.
     run, error_return = get_calibration_run(calibration_run_id, request.user,
                                             run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE,
-                                                        StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+                                                        StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
