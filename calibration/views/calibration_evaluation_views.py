@@ -212,7 +212,7 @@ def get_log_names(request: Request) -> Response:
         validation_run, error_return = get_validation_run(
             validation_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -228,7 +228,7 @@ def get_log_names(request: Request) -> Response:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -331,7 +331,7 @@ def get_log(request: Request) -> Response:
         validation_run, error_return = get_validation_run(
             validation_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -340,7 +340,7 @@ def get_log(request: Request) -> Response:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -449,7 +449,7 @@ def get_log_status(request: Request) -> Response:
         validation_run, error_return = get_validation_run(
             validation_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -458,7 +458,7 @@ def get_log_status(request: Request) -> Response:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return

@@ -59,7 +59,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
 
     jobs = get_jobs(request.user,
                     include_validation_data=GetValidationJobsScope.STATUS,
-                    run_status=[StatusEnum.DONE],
+                    run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
                     include_archived=include_archived,
                     include_stop_criteria=True
                     )
