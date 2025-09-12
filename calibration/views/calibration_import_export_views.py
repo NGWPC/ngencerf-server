@@ -387,7 +387,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     :return: Dictionary containing the calibration run data.
     """
     start_time = time.time()
-    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id} - {run.status.name}")
+    logger.info(f"Starting load_calibration_run_data for Calibration Job {run.id} - {run.status.name}")
 
     calibration_run_data = {}
 
@@ -583,7 +583,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # Export the logging data.
     calibration_run_data['logging_config'] = generate_ngen_logging_config(run)
 
-    logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
+    logger.info(f"load_calibration_run_data completed for Calibration Job {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data
 
 
