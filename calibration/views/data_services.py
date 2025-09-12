@@ -249,7 +249,7 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
                          - If False: Indicates the modules have changed.
                          - If True: Indicates the gage has changed, and we want to retain the min/max values
                            for existing parameters while updating their initial values.
-    :return A list of dictionaries containing potential errors
+    :return: A list of dictionaries containing potential errors.
     :raises DataServicesException: If required module metadata is missing.
     """
     gage = run.gage
@@ -283,7 +283,7 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     fix_module_metadata(module_metadata)
 
     # Extract module names from the response for comparison
-    eds_module_names = set([module['module_name'] for module in module_metadata['modules']])
+    eds_module_names = {module['module_name'] for module in module_metadata['modules']}
     my_module_names_set = set(my_module_names_set)
 
     # Determine discrepancies between requested and returned modules
@@ -291,6 +291,12 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     extra_names = eds_module_names - my_module_names_set
 
     eds_errors = []
+
+    # Preload formulations into a dict (avoid per-loop .get())
+    formulation_map = {f.module_id: f for f in calibration_formulations.select_related("module")}
+
+    new_params: list[CalibrationParameter] = []
+    to_update: list[CalibrationParameter] = []
 
     # Save module parameters to the database
     with transaction.atomic():
@@ -313,7 +319,9 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
 
             # Fetch the corresponding module instance
             module_instance = get_cached_module_by_name(module_name)
-            calibration_formulation = calibration_formulations.get(module=module_instance)
+            calibration_formulation = formulation_map.get(module_instance.id)
+            if not calibration_formulation:
+                raise DataServicesException(f"No formulation found for module {module_name}")
 
             # Copy the BMI configuration file to the appropriate directory
             bmi_config = convert_s3_uri_to_fs(module['parameter_file']['uri'])
@@ -332,28 +340,37 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
                     min_value = safe_float(param.get('min'), "Minimum value", param.get('name'), module_name)
                     max_value = safe_float(param.get('max'), "Maximum value", param.get('name'), module_name)
 
-                    # Using get_or_create because we don't want to override any values the user has already entered
-                    calibration_parameter, created = CalibrationParameter.objects.get_or_create(
+                    new_param = CalibrationParameter(
                         name=param['name'],
                         calibration_formulation=calibration_formulation,
-                        defaults={
-                            'data_type': param['data_type'],
-                            'description': param['description'],
-                            'initial_value': initial_value,
-                            'minimum': min_value,
-                            'maximum': max_value,
-                            'units': param['units']
-                        }
+                        data_type=param['data_type'],
+                        description=param['description'],
+                        initial_value=initial_value,
+                        minimum=min_value,
+                        maximum=max_value,
+                        units=param['units']
                     )
+                    new_params.append(new_param)
 
-                    # Update initial value if the gage changed and the parameter already exists
-                    if gage_changed and not created:
-                        logger.info(
-                            f"Updating initial value for parameter {param['name']} for module {module_name} to {initial_value}"
-                        )
-                        # We want to overwrite the initial_value from Data Services
-                        calibration_parameter.initial_value = initial_value
-                        calibration_parameter.save(update_fields=['initial_value'])
+        # Bulk insert (ignore_conflicts ensures no crash if they already exist)
+        if new_params:
+            CalibrationParameter.objects.bulk_create(new_params, ignore_conflicts=True)
+
+        # If gage_changed, bulk update initial_value for existing params
+        if gage_changed and new_params:
+            existing_params = CalibrationParameter.objects.filter(
+                calibration_formulation__in=formulation_map.values(),
+                name__in=[p.name for p in new_params]
+            )
+            existing_lookup = {(p.calibration_formulation_id, p.name): p for p in existing_params}
+            for param in new_params:
+                key = (param.calibration_formulation.id, param.name)
+                if key in existing_lookup:
+                    existing_lookup[key].initial_value = param.initial_value
+                    to_update.append(existing_lookup[key])
+
+            if to_update:
+                CalibrationParameter.objects.bulk_update(to_update, ['initial_value'])
 
     # Raise an exception if any requested modules are missing in the response
     if missing_names:
