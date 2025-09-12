@@ -318,6 +318,7 @@ LOGGING = {
         'handlers': ['console'],
         'level': 'DEBUG'
     },
+
     'formatters': {
         'dev_format': {
             'format': '{asctime}.{msecs:03.0f} {module:15s} {levelname:8s} {funcName} {message}',
@@ -330,26 +331,29 @@ LOGGING = {
             'style': '{',
         },
     },
+
     'handlers': {
-        'console': {'level': 'DEBUG', 'class': 'logging.StreamHandler', 'formatter': 'simple'},
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
         'file_dev': {
             'level': 'DEBUG',
-            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
+            'class': 'logging.FileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_dev.log'),
-            'backupCount': 10,  # Keep 10 days worth of logs (adjust as needed)
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },
         'file_db': {
             'level': 'DEBUG',
-            'class': 'cerfServer.timed_rotating_file_handler.CustomTimedRotatingFileHandler',
+            'class': 'logging.FileHandler',
             'filename': os.path.join(NGEN_LOGGING_DIR, 'ngencerf_db.log'),
-            'backupCount': 10,
             'formatter': 'dev_format',
             'encoding': 'utf-8',
         },
-
     },
+
     'loggers': {
         'django.db.backends': {
             'handlers': ['file_db'],
@@ -377,11 +381,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,  # Prevents these logs from reaching the root logger (avoids duplication)
         },
-        'createInput': {
-            'handlers': ['console'],
-            'level': 'INFO',
-            'propagate': False,
-        },
+        # 'createInput': {
+        #     'handlers': ['console'],
+        #     'level': 'INFO',
+        #     'propagate': False,
+        # },
 
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
