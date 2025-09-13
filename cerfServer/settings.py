@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    # 'django_dbconn_retry',
+    'django_dbconn_retry',
     'django.contrib.staticfiles',
     'drf_spectacular',
     'calibration.apps.CalibrationConfig',
@@ -315,7 +315,7 @@ LOGGING = {
 
     # Root Logger: Sends everything to the console
     'root': {
-        'handlers': ['console'],
+        'handlers': ['console', 'file_dev'],
         'level': 'DEBUG'
     },
 
@@ -386,7 +386,11 @@ LOGGING = {
         #     'level': 'INFO',
         #     'propagate': False,
         # },
-
+        'django_dbconn_retry': {
+            'handlers': ['console', 'file_dev'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
         # Add these loggers for 'requests' and 'urllib3'
         'requests': {
             'handlers': ['console', 'file_dev'],
