@@ -259,6 +259,16 @@ def get_jobs(
         for v in validations_qs:
             validations_map.setdefault(v["calibration_run_id"], []).append(v)
 
+    # Preload stop criteria if requested
+    stop_criteria_map: dict[int, str] = {}
+    if include_stop_criteria:
+        stop_qs = (
+            CalibrationStopCriteria.objects
+            .filter(calibration_run_id__in=run_ids)
+            .values("calibration_run_id", "value")
+        )
+        stop_criteria_map = {sc["calibration_run_id"]: sc["value"] for sc in stop_qs}
+
     results = []
     for run in calibration_runs:
         run_id = run["id"]
@@ -267,7 +277,7 @@ def get_jobs(
             'gage_id': run['gage__gage_id'],
             'status': run['status__name'],
             'objective_function': run.get('objective_function__name'),  # may be None
-            'optimization_algorithm': run.get('optimization__name'),  # may be None
+            'optimization_algorithm': run.get('optimization__name'),    # may be None
             'is_archived': run['is_archived'],
             'is_locked': run['is_locked'],
             'submit_date': run['submit_date'],
@@ -301,8 +311,7 @@ def get_jobs(
 
         # Include stop criteria if requested
         if include_stop_criteria:
-            calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run_id=run_id).first()
-            result['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
+            result['stop_criteria'] = stop_criteria_map.get(run_id)
 
         results.append(result)
 
