@@ -243,7 +243,7 @@ def get_jobs(
     # Preload validation runs if requested
     validations_map: dict[int, list] = {}
     if include_validation_data in [GetValidationJobsScope.IDS, GetValidationJobsScope.STATUS]:
-        validation_filter = {}
+        validation_filter = Q()  # default to "no filter"
         if include_validation_data == GetValidationJobsScope.IDS:
             # Exclude VALID_CONTROL for IDS
             validation_filter = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
@@ -332,35 +332,66 @@ def get_validation_jobs_internal(
         - 'detailed': Returns full validation job details including parameters.
     :return: A list of validation job IDs, status summaries, or detailed dicts.
     """
-    # Keep DETAILS mode as-is since it requires parameter queries
-    if detail_level == GetValidationJobsScope.DETAILS:
-        validation_jobs_query = ValidationRun.objects.filter(calibration_run_id=calibration_run_id)
+    # Keep batch logic only for DETAILS; IDS/STATUS are already handled in get_jobs
+    if detail_level != GetValidationJobsScope.DETAILS:
+        return []
 
-        return [
-            {
-                "validation_run_id": job.id,
-                "submit_date": job.submit_date,
-                "status": job.status.name,
-                "validation_type": job.validation_type,
-                "iteration_num": job.iteration_num if job.iteration else None,
-                "parameters": [
-                    {"name": param["calibration_parameter__name"], "value": param["tuned_value"]}
-                    for param in (
-                        IterationParameter.objects.filter(
-                            iteration__calibration_run=job.calibration_run,
-                            iteration__best_params=True
-                        )
-                        if job.validation_type == ValidationType.VALID_BEST.value
-                        else IterationParameter.objects.filter(iteration=job.iteration)
-                    ).values("calibration_parameter__name", "tuned_value")
-                ],
-                "best": job.validation_type == ValidationType.VALID_BEST.value,
-            }
-            for job in validation_jobs_query
-        ]
+    # 1) Fetch all validation runs for this calibration run
+    validation_runs = list(
+        ValidationRun.objects
+        .filter(calibration_run_id=calibration_run_id)
+        .exclude(validation_type=ValidationType.VALID_CONTROL.value)
+        .select_related("status", "iteration")
+    )
 
-    # For IDS and STATUS, everything is batched in get_jobs()
-    return []
+    if not validation_runs:
+        return []
+
+    # Collect iteration IDs
+    iteration_ids = [v.iteration_id for v in validation_runs if v.iteration_id]
+
+    # 2) Preload iteration parameters in one query
+    iteration_params_qs = IterationParameter.objects.filter(iteration_id__in=iteration_ids).values(
+        "iteration_id", "calibration_parameter__name", "tuned_value"
+    )
+
+    params_map: dict[int, list[dict[str, Any]]] = {}
+    for p in iteration_params_qs:
+        params_map.setdefault(p["iteration_id"], []).append({
+            "name": p["calibration_parameter__name"],
+            "value": p["tuned_value"]
+        })
+
+    # 3) Preload all "best params" for the calibration run in one query
+    best_params_qs = IterationParameter.objects.filter(
+        iteration__calibration_run_id=calibration_run_id,
+        iteration__best_params=True
+    ).values("calibration_parameter__name", "tuned_value")
+
+    best_params = [
+        {"name": bp["calibration_parameter__name"], "value": bp["tuned_value"]}
+        for bp in best_params_qs
+    ]
+
+    # Build result
+    results: list[dict[str, Any]] = []
+    for job in validation_runs:
+        if job.validation_type == ValidationType.VALID_BEST.value:
+            parameters = best_params
+        else:
+            parameters = params_map.get(job.iteration_id, [])
+
+        results.append({
+            "validation_run_id": job.id,
+            "submit_date": job.submit_date,
+            "status": job.status.name,
+            "validation_type": job.validation_type,
+            "iteration_num": job.iteration_num if job.iteration else None,
+            "parameters": parameters,
+            "best": job.validation_type == ValidationType.VALID_BEST.value,
+        })
+
+    return results
 
 
 @extend_schema(
