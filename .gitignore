@@ -36,3 +36,6 @@ postgres_db.override.env
 cli/build
 cli/dist
 ngencerf.spec
+
+logrotate.status
+logrotate-ngencerf.dev.conf

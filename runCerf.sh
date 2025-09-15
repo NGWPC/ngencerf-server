@@ -26,6 +26,10 @@ cerfServer="$SCRIPT_DIR"
 mkdir -p "$cerfServer/logs"
 LOGFILE_DEV="$cerfServer/logs/ngencerf_dev.log"
 printf "\n------- Server starting at %s --------\n" "$(date)" | tee -a "$LOGFILE_DEV"
+
+# Save original stdout/stderr
+exec 3>&1 4>&2
+# Redirect everything to the logfile
 exec > >(tee -a "$LOGFILE_DEV") 2>&1
 
 #=======================================================================
@@ -49,9 +53,6 @@ ensure_virtualenv() {
     fi
 }
 
-# Redirect stdout and stderr to LOGFILE_DEV
-exec > >(tee -a "$LOGFILE_DEV") 2>&1
-
 #=======================================================================
 # Function: run_manage_command
 #   - Temporarily un-redirect stdout/stderr for interactive output
@@ -60,12 +61,11 @@ exec > >(tee -a "$LOGFILE_DEV") 2>&1
 #=======================================================================
 run_manage_command() {
     echo "Running manage.py $*"
-    # Temporarily disable redirection
-    exec >/dev/tty 2>/dev/tty
-
+    # Restore original fds
+    exec 1>&3 2>&4
     python "$SCRIPT_DIR/manage.py" "$@"
 
-    # Restore redirection
+    # Re-redirect to logfile
     exec > >(tee -a "$LOGFILE_DEV") 2>&1
 }
 
@@ -301,6 +301,37 @@ if [ "${CERF_VENV}" != "Docker" ]; then
         fi
 
         generate_git_info
+
+        echo
+        echo --------------------------------------------------------
+
+        #=======================================================================
+        # Generate dev logrotate config from template using the user's path to the log directory
+        #=======================================================================
+        DEV_LOGROTATE_CONF="$SCRIPT_DIR/logrotate-ngencerf.dev.conf"
+        if [ -f "$SCRIPT_DIR/logrotate-ngencerf.dev.template" ]; then
+            sed "s#__LOG_DIR__#${SCRIPT_DIR}/logs#g" \
+                "$SCRIPT_DIR/logrotate-ngencerf.dev.template" > "$DEV_LOGROTATE_CONF"
+            echo "Generated dev logrotate config at $DEV_LOGROTATE_CONF"
+        else
+            echo "WARNING: dev logrotate template not found at $SCRIPT_DIR/logrotate-ngencerf.dev.template"
+        fi
+
+        #=======================================================================
+        # Install dev logrotate cron job
+        #=======================================================================
+        echo "Setting up dev logrotate cron job..."
+        # Remove any existing ngencerf dev cron jobs
+        crontab -l 2>/dev/null | grep -v 'logrotate-ngencerf.dev.conf' > /tmp/mycron
+
+        # Add the new cron job (points at the generated dev config)
+        echo "0 10,22 * * * /usr/sbin/logrotate -f $DEV_LOGROTATE_CONF" >> /tmp/mycron
+
+        crontab /tmp/mycron
+        rm /tmp/mycron
+
+        echo "Current crontab:"
+        crontab -l
     else
         echo "CERF_VENV is not set. Please set the virtual environment variable."
         exit 1
@@ -384,8 +415,8 @@ echo "Starting server"
 ASGI_FLAG="${CERF_ASGI:-}" # explicit override
 PROD_FLAG="${CERF_PRODUCTION:-}" # general prod indicator
 
-# Restore original stdout and stderr before starting the server
-exec >/dev/tty 2>/dev/tty
+# Restore original stdout/stderr before starting the server (no /dev/tty dependency)
+exec 1>&3 2>&4
 
 # use ASGI server if ASGI_FLAG or PROD_FLAG are set
 if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
