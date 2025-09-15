@@ -132,6 +132,8 @@ generate_git_info() {
 #   - Stores/compares to decide whether to re-run init_gages
 #=======================================================================
 CERF_GAGES_FPRINT="${CERF_GAGES_FPRINT:-$SCRIPT_DIR/.gages_fingerprint}"
+echo Gages fingerprint $CERF_GAGES_FPRINT
+ls -al $CERF_GAGES_FPRINT
 
 # Compute a stable combined SHA256 of init_gages.py + all files in gage_data
 compute_gages_fingerprint() {
