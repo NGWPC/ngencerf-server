@@ -45,7 +45,6 @@ Environment:
   * Cache is stored in /var/tmp by default, which typically survives reboots.
 """
 
-import datetime
 import hashlib
 import json
 import logging
@@ -56,6 +55,7 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator, Tuple
 from urllib.parse import urlparse
 
@@ -571,24 +571,13 @@ def localize_to_path(
     meta_remote = _info_for(fs, orig)
     etag = str(meta_remote.get("ETag") or meta_remote.get("etag") or "")
     size = int(meta_remote.get("Size") or meta_remote.get("size") or -1)
-    lm = meta_remote.get("LastModified") or meta_remote.get("last_modified")
-    if isinstance(lm, datetime.datetime):
-        mtime = int(lm.timestamp())
-    elif isinstance(lm, (int, float)):
-        mtime = int(lm)
-    elif isinstance(lm, str):
-        try:
-            mtime = int(float(lm))
-        except Exception:
-            mtime = 0
-    else:
-        mtime = 0
+
+    # Always use original basename for local cache filename
+    basename = Path(p.path).name
+    data_path = os.path.join(CLOUD_CACHE_DIR, basename)
+    meta_path = data_path + ".meta.json"
 
     if enable_cache:
-        key = _cache_key(orig)
-        data_path = _data_path(CLOUD_CACHE_DIR, key, suffix=suffix)
-        meta_path = _meta_path(CLOUD_CACHE_DIR, key)
-
         meta_local = _read_meta(meta_path)
         ok = (
                 os.path.exists(data_path)
@@ -603,30 +592,25 @@ def localize_to_path(
 
         # Cache miss → download then promote
         tmp_download = data_path + ".downloading"
-        logger.info(f"Downloading remote file to cache: original '{orig}' (local cache: {data_path})")
+        logger.info(f"Downloading remote file to cache: {orig} → {data_path}")
         try:
             # Use fs.get to persist efficiently; same-bucket copies may be server-side
             fs.get(orig, tmp_download)
             os.replace(tmp_download, data_path)
-            _write_meta(meta_path, {"etag": etag, "size": size, "mtime": mtime, "url": orig, "t": time.time()})
+            _write_meta(meta_path, {"etag": etag, "size": size, "url": orig, "t": time.time()})
             yield orig, data_path
             return
         finally:
-            try:
-                if os.path.exists(tmp_download):
-                    os.remove(tmp_download)
-            except Exception:
-                pass
+            if os.path.exists(tmp_download):
+                os.remove(tmp_download)
 
-    # No persistent cache requested → one-shot temp file
+    # Fallback: temp file if cache disabled
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmpf:
         tmp_path = tmpf.name
     try:
-        logger.info(f"Downloading remote file to temp: original '{orig}' (local copy: {tmp_path})")
+        logger.info(f"Downloading remote file to temp: {orig} → {tmp_path}")
         fs.get(orig, tmp_path)
         yield orig, tmp_path
     finally:
-        try:
+        if os.path.exists(tmp_path):
             os.remove(tmp_path)
-        except Exception:
-            pass
