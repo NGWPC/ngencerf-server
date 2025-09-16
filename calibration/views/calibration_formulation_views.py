@@ -6,12 +6,14 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, Module, OutputVariable
+from calibration.models import CalibrationFormulation, CalibrationSlothParam, CalibrationParameter, CalibrationRun, \
+    Module, OutputVariable, CalibrationStopCriteria
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_with_groups, get_cached_module_groups
 from calibration.util.calibration_validators import ValidateFormulationRequestSerializer, \
     SaveFormulationRequestSerializer, ErrorResponseSerializer, ValidateFormulationResponseSerializer, \
     SaveFormulationResponseSerializer, EmptySerializer, GetModulesResponseSerializer
 from calibration.views import ngen_cal_input
+from calibration.views.calibration_optimization_views import write_optimization_inputs
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
     get_user_email, join_with_or, get_elapsed_str
@@ -275,6 +277,22 @@ def save_formulation_tab(request) -> Response:
         if error_message:
             logger.error(f"Error adding Sloth parameters: {error_message}")
             return ResponseError(error_message)
+        
+        # If formulation uses LSTM, we need to clear all irrelevant fields
+        if have_lstm:
+            # clear core CalibrationRun fields
+            run.optimization = None
+            run.objective_function = None
+            run.streamflow_threshold = None
+            run.peak_flow_threshold = None
+            run.save_plot_iteration_frequency = None
+            run.save_output_iteration = False
+
+            # remove stop criteria
+            CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
+
+            # No optimization inputs
+            write_optimization_inputs(run, [])
 
         run.save()
 

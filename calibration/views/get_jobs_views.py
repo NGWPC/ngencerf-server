@@ -17,7 +17,7 @@ from calibration.util.calibration_validators import EmptySerializer, GetCalibrat
 from calibration.views.calibration_evaluation_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
-    get_user_email, get_elapsed_str
+    get_user_email, get_elapsed_str, readonly_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
 
     jobs = get_jobs(request.user,
                     include_validation_data=GetValidationJobsScope.STATUS,
-                    run_status=[StatusEnum.DONE],
+                    run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
                     include_archived=include_archived,
                     include_stop_criteria=True
                     )
@@ -190,6 +190,7 @@ def get_jobs(
 ) -> list[dict[str, Any]]:
     """
     Retrieves calibration jobs for the given user with optional status filtering and validation data inclusion.
+    Runs in READ ONLY mode to reduce contention.
 
     :param user: The user for whom the jobs are being fetched.
     :param run_status: List of statuses to filter jobs (e.g., DONE, FAILED).
@@ -200,84 +201,123 @@ def get_jobs(
     :param include_stop_criteria: Whether to include stop_criteria in the queryset.
     :return: List of calibration jobs with selected fields.
     """
-    # Base query: filter jobs for the user
-    query = Q(owner=user)
+    with readonly_transaction():
+        # Base query: filter jobs for the user
+        query = Q(owner=user)
 
-    # If include_archived=False, exclude archived jobs
-    if not include_archived:
-        query &= Q(is_archived=False)
+        # If include_archived=False, exclude archived jobs
+        if not include_archived:
+            query &= Q(is_archived=False)
 
-    # If a specific status list is provided, filter by those statuses
-    if run_status:
-        query &= Q(status__in=[s.db_instance for s in run_status])
+        # If a specific status list is provided, filter by those statuses
+        if run_status:
+            query &= Q(status__in=[s.db_instance for s in run_status])
 
-    # Base query for CalibrationRun (dict results, lighter than ORM instances)
-    calibration_runs_qs = (
-        CalibrationRun.objects
-        .filter(query)
-        .select_related("gage", "status", "objective_function", "optimization")
-        .values(
-            "id", "gage__gage_id", "submit_date", "user_formulation_name",
-            "calibration_start_period", "calibration_end_period",
-            "status__name", "job_genesis", "created_at",
-            "objective_function__name", "optimization__name",
-            "is_archived", "is_locked"
+        # Base query for CalibrationRun (dict results, lighter than ORM instances)
+        calibration_runs_qs = (
+            CalibrationRun.objects
+            .filter(query)
+            .select_related("gage", "status", "objective_function", "optimization")
+            .values(
+                "id", "gage__gage_id", "submit_date", "user_formulation_name",
+                "calibration_start_period", "calibration_end_period",
+                "status__name", "job_genesis", "created_at",
+                "objective_function__name", "optimization__name",
+                "is_archived", "is_locked"
+            )
         )
-    )
 
-    calibration_runs = list(calibration_runs_qs)
+        calibration_runs = list(calibration_runs_qs)
+        run_ids = [r["id"] for r in calibration_runs]
 
-    # Fetch formulations separately and map them to run IDs
-    formulations_qs = (
-        CalibrationFormulation.objects
-        .filter(calibration_run_id__in=[r["id"] for r in calibration_runs])
-        .select_related("module")
-        .values_list("calibration_run_id", "module__name")
-    )
+        # Fetch formulations separately and map them to run IDs
+        formulations_qs = (
+            CalibrationFormulation.objects
+            .filter(calibration_run_id__in=run_ids)
+            .select_related("module")
+            .values_list("calibration_run_id", "module__name")
+        )
 
-    formulations_map: dict[int, list[str]] = {}
-    for run_id, module_name in formulations_qs:
-        formulations_map.setdefault(run_id, []).append(module_name)
+        formulations_map: dict[int, list[str]] = {}
+        for run_id, module_name in formulations_qs:
+            formulations_map.setdefault(run_id, []).append(module_name)
 
-    results = []
-    for run in calibration_runs:
-        run_id = run["id"]
-        result = {
-            'calibration_run_id': run_id,
-            'gage_id': run['gage__gage_id'],
-            'status': run['status__name'],
-            'objective_function': run.get('objective_function__name'),   # may be None
-            'optimization_algorithm': run.get('optimization__name'),     # may be None
-            'is_archived': run['is_archived'],
-            'is_locked': run['is_locked'],
-            'submit_date': run['submit_date'],
-            'formulation_name': run['user_formulation_name'],
-            'calibration_start_period': run['calibration_start_period'],
-            'calibration_end_period': run['calibration_end_period'],
-            'job_genesis': run['job_genesis'],
-            'created_at': run['created_at'],
-            'modules': formulations_map.get(run_id, []),
-            'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
-        }
-
-        # Include validation IDs and count if requested
+        # Preload validation runs if requested
+        validations_map: dict[int, list] = {}
         if include_validation_data in [GetValidationJobsScope.IDS, GetValidationJobsScope.STATUS]:
-            validation_ids = get_validation_jobs_internal(run_id, GetValidationJobsScope.IDS)
-            result['validation_run_ids'] = validation_ids
-            result['validation_runs'] = len(validation_ids)
+            validation_filter = Q()  # default to "no filter"
+            if include_validation_data == GetValidationJobsScope.IDS:
+                # Exclude VALID_CONTROL for IDS
+                validation_filter = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
 
-        # Include detailed validation status if requested
-        if include_validation_data == GetValidationJobsScope.STATUS:
-            result['validations'] = get_validation_jobs_internal(run_id, include_validation_data)
+            validations_qs = (
+                ValidationRun.objects
+                .filter(calibration_run_id__in=run_ids)
+                .filter(validation_filter)
+                .select_related("status")
+                .values("id", "calibration_run_id", "validation_type", "status__name")
+            )
 
-        # Include stop criteria if requested
+            for v in validations_qs:
+                validations_map.setdefault(v["calibration_run_id"], []).append(v)
+
+        # Preload stop criteria if requested
+        stop_criteria_map: dict[int, str] = {}
         if include_stop_criteria:
-            calibration_stop_criteria = CalibrationStopCriteria.objects.filter(calibration_run_id=run_id).first()
-            result['stop_criteria'] = calibration_stop_criteria.value if calibration_stop_criteria else None
+            stop_qs = (
+                CalibrationStopCriteria.objects
+                .filter(calibration_run_id__in=run_ids)
+                .values("calibration_run_id", "value")
+            )
+            stop_criteria_map = {sc["calibration_run_id"]: sc["value"] for sc in stop_qs}
 
-        results.append(result)
+        results = []
+        for run in calibration_runs:
+            run_id = run["id"]
+            result = {
+                'calibration_run_id': run_id,
+                'gage_id': run['gage__gage_id'],
+                'status': run['status__name'],
+                'objective_function': run.get('objective_function__name'),  # may be None
+                'optimization_algorithm': run.get('optimization__name'),  # may be None
+                'is_archived': run['is_archived'],
+                'is_locked': run['is_locked'],
+                'submit_date': run['submit_date'],
+                'formulation_name': run['user_formulation_name'],
+                'calibration_start_period': run['calibration_start_period'],
+                'calibration_end_period': run['calibration_end_period'],
+                'job_genesis': run['job_genesis'],
+                'created_at': run['created_at'],
+                'modules': formulations_map.get(run_id, []),
+                'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
+            }
 
-    return results
+            # Include validation IDs and count if requested
+            if include_validation_data == GetValidationJobsScope.IDS:
+                ids = [v["id"] for v in validations_map.get(run_id, [])]
+                result['validation_run_ids'] = ids
+                result['validation_runs'] = len(ids)
+
+            # Include detailed validation status if requested
+            if include_validation_data == GetValidationJobsScope.STATUS:
+                result['validations'] = [
+                    {
+                        "validation_run_id": v["id"],
+                        "validation_type": v["validation_type"],
+                        "status": v["status__name"],
+                    }
+                    for v in validations_map.get(run_id, [])
+                ]
+                result['validation_run_ids'] = [v["id"] for v in validations_map.get(run_id, [])]
+                result['validation_runs'] = len(validations_map.get(run_id, []))
+
+            # Include stop criteria if requested
+            if include_stop_criteria:
+                result['stop_criteria'] = stop_criteria_map.get(run_id)
+
+            results.append(result)
+
+        return results
 
 
 def get_validation_jobs_internal(
@@ -294,61 +334,68 @@ def get_validation_jobs_internal(
         - 'detailed': Returns full validation job details including parameters.
     :return: A list of validation job IDs, status summaries, or detailed dicts.
     """
-    # Filter validation jobs based on the detail level
-    if detail_level in [GetValidationJobsScope.IDS, GetValidationJobsScope.DETAILS]:
-        # Exclude VALID_CONTROL for 'ids' detail level
-        validation_filter_condition = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
-    else:
-        # No filtering for other detail levels
-        validation_filter_condition = Q()
+    # Keep batch logic only for DETAILS; IDS/STATUS are already handled in get_jobs
+    if detail_level != GetValidationJobsScope.DETAILS:
+        return []
 
-    # Query for validation jobs associated with the given calibration run
-    validation_jobs_query = ValidationRun.objects.filter(
-        calibration_run_id=calibration_run_id
-    ).filter(validation_filter_condition)
+    with readonly_transaction():
 
-    if detail_level == GetValidationJobsScope.IDS:
-        # Return a list of validation job IDs
-        return list(validation_jobs_query.values_list('id', flat=True))
+        # 1) Fetch all validation runs for this calibration run
+        validation_runs = list(
+            ValidationRun.objects
+            .filter(calibration_run_id=calibration_run_id)
+            .exclude(validation_type=ValidationType.VALID_CONTROL.value)
+            .select_related("status", "iteration")
+        )
 
-    if detail_level == GetValidationJobsScope.STATUS:
-        # Include all validation types for status-level detail
-        return [
-            {
-                "validation_run_id": job.id,
-                "validation_type": job.validation_type,
-                "status": job.status.name,
-            }
-            for job in validation_jobs_query
+        if not validation_runs:
+            return []
+
+        # Collect iteration IDs
+        iteration_ids = [v.iteration_id for v in validation_runs if v.iteration_id]
+
+        # 2) Preload iteration parameters in one query
+        iteration_params_qs = IterationParameter.objects.filter(iteration_id__in=iteration_ids).values(
+            "iteration_id", "calibration_parameter__name", "tuned_value"
+        )
+
+        params_map: dict[int, list[dict[str, Any]]] = {}
+        for p in iteration_params_qs:
+            params_map.setdefault(p["iteration_id"], []).append({
+                "name": p["calibration_parameter__name"],
+                "value": p["tuned_value"]
+            })
+
+        # 3) Preload all "best params" for the calibration run in one query
+        best_params_qs = IterationParameter.objects.filter(
+            iteration__calibration_run_id=calibration_run_id,
+            iteration__best_params=True
+        ).values("calibration_parameter__name", "tuned_value")
+
+        best_params = [
+            {"name": bp["calibration_parameter__name"], "value": bp["tuned_value"]}
+            for bp in best_params_qs
         ]
 
-    if detail_level == GetValidationJobsScope.DETAILS:
-        # Return a detailed list of validation job information, including parameters
-        return [
-            {
+        # Build result
+        results: list[dict[str, Any]] = []
+        for job in validation_runs:
+            if job.validation_type == ValidationType.VALID_BEST.value:
+                parameters = best_params
+            else:
+                parameters = params_map.get(job.iteration_id, [])
+
+            results.append({
                 "validation_run_id": job.id,
                 "submit_date": job.submit_date,
                 "status": job.status.name,
                 "validation_type": job.validation_type,
                 "iteration_num": job.iteration_num if job.iteration else None,
-                "parameters": [
-                    {"name": param["calibration_parameter__name"], "value": param["tuned_value"]}
-                    for param in (
-                        IterationParameter.objects.filter(
-                            iteration__calibration_run=job.calibration_run,
-                            iteration__best_params=True
-                        )
-                        if job.validation_type == ValidationType.VALID_BEST.value
-                        else IterationParameter.objects.filter(iteration=job.iteration)
-                    ).values("calibration_parameter__name", "tuned_value")
-                ],
+                "parameters": parameters,
                 "best": job.validation_type == ValidationType.VALID_BEST.value,
-            }
-            for job in validation_jobs_query
-        ]
+            })
 
-    # Raise an error for invalid detail levels
-    raise ValueError(f"Invalid detail_level: {detail_level}")
+        return results
 
 
 @extend_schema(
@@ -371,6 +418,8 @@ def get_validation_jobs_internal(
 def get_validation_jobs(request: Request) -> Response:
     """
     Retrieves validation jobs for a specific calibration run along with initial parameter values.
+    This endpoint itself doesn’t need a read-only wrapper, because
+    `get_validation_jobs_internal` already enforces READ ONLY.
 
     - Handles user authentication and request validation.
     - Fetches validation jobs linked to a calibration run.
@@ -391,7 +440,7 @@ def get_validation_jobs(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Retrieve validation jobs using internal helper
+    # Retrieve validation jobs using internal helper - already runs in READ ONLY mode
     validation_jobs = get_validation_jobs_internal(calibration_run_id, detail_level=GetValidationJobsScope.DETAILS)
 
     response = {'validation_jobs': validation_jobs}
@@ -424,6 +473,7 @@ def get_validation_jobs(request: Request) -> Response:
 def get_forecast_jobs(request: Request) -> Response:
     """
     Retrieves all forecast jobs for a user
+    Runs in READ ONLY mode to reduce contention.
 
     :param request: The HTTP request object containing calibration run data.
     :return: JSON response with validation jobs or error information.
@@ -435,10 +485,18 @@ def get_forecast_jobs(request: Request) -> Response:
     if error_return:
         return error_return
 
-    forecast_jobs = list(ForecastRun.objects
-                         .filter(calibration_run__owner=request.user)
-                         .values('id', 'calibration_run_id', 'cycle__name', 'submit_date', 'calibration_run__gage__gage_id', 'status__name',
-                                 'forcing_download_run__status__name'))
+    with readonly_transaction():
+
+        forecast_jobs = list(
+            ForecastRun.objects
+            .filter(calibration_run__owner=request.user)
+            .values(
+                'id', 'calibration_run_id', 'cycle__name', 'submit_date',
+                'calibration_run__gage__gage_id', 'status__name',
+                'forcing_download_run__status__name'
+            )
+        )
+
     for f in forecast_jobs:
         f['forecast_run_id'] = f.pop('id')
         f['cycle'] = f.pop('cycle__name')
@@ -447,8 +505,10 @@ def get_forecast_jobs(request: Request) -> Response:
         f['forcing_download_status'] = f.pop('forcing_download_run__status__name')
 
     response = {'forecast_jobs': forecast_jobs}
-    response_validator, error_response = validate_response(GetForecastJobsResponseSerializer, response, fields_to_truncate=['forecast_jobs'],
-                                                           max_length=10)
+    response_validator, error_response = validate_response(
+        GetForecastJobsResponseSerializer, response,
+        fields_to_truncate=['forecast_jobs'], max_length=10
+    )
     if error_response:
         return error_response
 

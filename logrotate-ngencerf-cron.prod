@@ -1,0 +1,8 @@
+# Sample cron job for rotating ngencerf logs (production)
+# Copy the contents of this file into root's crontab using:
+#   sudo crontab -e
+#
+# Runs logrotate twice daily at 10:00 and 22:00 UTC (i.e., 6am ET and 6pm ET).
+# Uses the production logrotate config with hard-coded paths.
+
+0 10,22 * * * root /usr/sbin/logrotate -f /ngen-app/ngencerf-server/logrotate-ngencerf.prod.conf

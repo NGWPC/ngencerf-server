@@ -212,11 +212,12 @@ def get_log_names(request: Request) -> Response:
         validation_run, error_return = get_validation_run(
             validation_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
-        calibration_run = validation_run.calibration_run
+        # TODO calibration_run variable not used right now, but we might need later for forecast
+        # calibration_run = validation_run.calibration_run
 
         # Define available log categories and names
         log_names = [
@@ -228,7 +229,7 @@ def get_log_names(request: Request) -> Response:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -241,8 +242,8 @@ def get_log_names(request: Request) -> Response:
 
     # Include forecast logs if applicable
     # Commenting out for now since we have nowhere for the UI to display these
-    #if ForecastRun.objects.filter(calibration_run=calibration_run).exists():
-    #    log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
+    # if ForecastRun.objects.filter(calibration_run=calibration_run).exists():
+    #     log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
 
     response = {'log_names': log_names}
 
@@ -331,7 +332,7 @@ def get_log(request: Request) -> Response:
         validation_run, error_return = get_validation_run(
             validation_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -340,7 +341,7 @@ def get_log(request: Request) -> Response:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -449,7 +450,7 @@ def get_log_status(request: Request) -> Response:
         validation_run, error_return = get_validation_run(
             validation_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -458,7 +459,7 @@ def get_log_status(request: Request) -> Response:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
-            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
