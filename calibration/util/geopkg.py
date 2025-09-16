@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
+from pathlib import Path
 
 import fiona
 import geopandas as gpd
@@ -368,7 +369,8 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
                             f"for {_pp(orig_path, local_path)}.")
                 gdf_out = gdf.to_crs(epsg=4326)
 
-            gdf_out.to_file(output_path, layer=layer_name, driver="GPKG")
+            gdf_out.to_file(Path(output_path), layer=layer_name, driver="GPKG")
+
             spatial_layers.append(layer_name)
 
         # Second pass: copy non-spatial tables using SQLite
