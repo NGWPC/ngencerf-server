@@ -11,7 +11,7 @@ from calibration.enums import ForcingSourceEnum
 from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator
-from calibration.util.cloud_util import copy_tree, path_exists, _join_url, is_dir
+from calibration.util.cloud_util import copy_tree, path_exists
 from calibration.util.ngen_locations import get_bmi_config_dir_for_module
 from calibration.views.common import validate_response_data
 from data_services_test_data import data_services_test_data
