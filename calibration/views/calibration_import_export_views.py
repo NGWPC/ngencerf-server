@@ -270,7 +270,7 @@ def import_calibration_run_data(request: Request, calibration_run_data: dict, ge
         ):
             return None, None, ResponseError(
                 "You cannot specify optimization_name, objective_function_name, streamflow_threshold, peak_flow_threshold, "
-                "optimization_name, stop_criteria, save_plot_iteration_frequency or save_output_iteration when using LSTM")
+                "stop_criteria, save_plot_iteration_frequency or save_output_iteration when using LSTM")
 
         if not optimization_name:
             if optimization_inputs:
@@ -388,7 +388,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     :return: Dictionary containing the calibration run data.
     """
     start_time = time.time()
-    logger.info(f"Starting load_calibration_run_data for CalibrationRun ID {run.id} - {run.status.name}")
+    logger.info(f"Starting load_calibration_run_data for Calibration Job {run.id} - {run.status.name}")
 
     calibration_run_data = {}
 
@@ -584,7 +584,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # Export the logging data.
     calibration_run_data['logging_config'] = generate_ngen_logging_config(run)
 
-    logger.info(f"load_calibration_run_data completed for CalibrationRun ID {run.id} in {time.time() - start_time:.2f}s")
+    logger.info(f"load_calibration_run_data completed for Calibration Job {run.id} in {time.time() - start_time:.2f}s")
     return calibration_run_data
 
 

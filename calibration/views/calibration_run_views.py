@@ -122,9 +122,14 @@ def get_status(request: Request) -> Response:
             'iteration_num': run.iteration_num,
             'submit_date': run.submit_date,
             'run_start': run.run_start,
-            'run_end': run.run_end,
-            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
+            'run_end': run.run_end
         }
+
+        if run.performance_metrics:
+            validation_data['elapsed_time'] = run.performance_metrics.elapsed_time
+        else:
+            validation_data['elapsed_time'] = run.run_end - run.run_start if run.run_end and run.run_start else None
+
         if should_include_metrics(run.status, include_performance_metrics):
             validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
         validation_response.append(validation_data)
@@ -139,9 +144,14 @@ def get_status(request: Request) -> Response:
             'cycle': run.cycle.name,
             'submit_date': run.submit_date,
             'run_start': run.run_start,
-            'run_end': run.run_end,
-            'elapsed_time': run.performance_metrics.elapsed_time if run.performance_metrics else None
+            'run_end': run.run_end
         }
+        
+        if run.performance_metrics:
+            forecast_data['elapsed_time'] = run.performance_metrics.elapsed_time
+        else:
+            forecast_data['elapsed_time'] = run.run_end - run.run_start if run.run_end and run.run_start else None
+        
         if should_include_metrics(run.status):
             forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
 
@@ -165,10 +175,15 @@ def get_status(request: Request) -> Response:
         'submit_date': calibration_run.submit_date,
         'run_start': calibration_run.run_start,
         'run_end': calibration_run.run_end,
-        'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
         'validations': validation_response,
         'forecasts': forecast_response
     }
+
+    # if performance metrics are unavailable, find the difference between start and end time as a fallback
+    if calibration_run.performance_metrics:
+        response['elapsed_time'] = calibration_run.performance_metrics.elapsed_time
+    else:
+        response['elapsed_time'] = calibration_run.run_end - calibration_run.run_start if calibration_run.run_end and calibration_run.run_start else None
 
     # Conditionally add calibration run performance metrics to response if requested and status is DONE or FAIL
     if calibration_metrics:
@@ -259,9 +274,14 @@ def get_status_for_comparison(request: Request) -> Response:
                 'status': calibration_run.status.name,
                 'submit_date': calibration_run.submit_date,
                 'run_start': calibration_run.run_start,
-                'run_end': calibration_run.run_end,
-                'elapsed_time': calibration_run.performance_metrics.elapsed_time if calibration_run.performance_metrics else None,
+                'run_end': calibration_run.run_end
             }
+
+            if calibration_run.performance_metrics:
+                status_response['elapsed_time'] = calibration_run.performance_metrics.elapsed_time
+            else:
+                status_response['elapsed_time'] = calibration_run.run_end - calibration_run.run_start if calibration_run.run_end and calibration_run.run_start else None
+
             if calibration_metrics:
                 status_response['performance_metrics'] = calibration_metrics
 
@@ -618,7 +638,7 @@ def get_iteration(request: Request) -> Response:
     # Allow status Ready for UI polling immediately after submission.
     run, error_return = get_calibration_run(calibration_run_id, request.user,
                                             run_status=[StatusEnum.READY, StatusEnum.RUNNING, StatusEnum.DONE,
-                                                        StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+                                                        StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
