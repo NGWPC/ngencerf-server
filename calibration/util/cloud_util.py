@@ -1,3 +1,50 @@
+"""
+cloud_util.py
+
+Filesystem abstraction utilities built on top of fsspec.
+
+This module provides a unified interface for working with both local and cloud
+storage (S3, GCS, Azure Blob/ADLS, etc.). It includes helpers for:
+
+- Path normalization (`normalize_url`, `get_filesystem`):
+  Ensures that bare paths are converted into proper URLs so that fsspec can
+  operate consistently across providers.
+
+- File operations (`open_file`, `path_exists`, `is_dir`, `list_files`):
+  Cloud/local agnostic wrappers that mimic Python’s built-in file and os.path
+  utilities but work transparently with remote storage.
+
+- Bulk copy (`copy_tree`):
+  Recursively copy entire directory trees. Uses provider-native server-side copy
+  when possible (fast, no local I/O). Otherwise streams through this process
+  with multi-threaded workers.
+
+- Caching and localization (`localize_to_path`):
+  Provides persistent or ephemeral caching for remote files. Remote objects can
+  be downloaded once into /var/tmp/fsspec-cache and reused across multiple runs,
+  avoiding redundant S3/GCS downloads. Cache entries are validated with provider
+  metadata (etag/size). For one-shot ephemeral usage, files can be staged into a
+  NamedTemporaryFile and removed after use.
+
+⚠️ Cache persistence note:
+  The cache under `/var/tmp/fsspec-cache` is never automatically cleaned up.
+  It may grow indefinitely as new files are downloaded. However, the cache
+  contents can be deleted at any time without harm; missing files will simply
+  be re-fetched from the remote provider.
+
+Typical usage:
+  * Use `open_file` when you want to stream a file directly (no caching).
+  * Use `localize_to_path` when the same remote file will be accessed multiple
+    times within a workflow (e.g., geopackages or forcing CSVs).
+  * Use `copy_tree` for bulk movement of files between providers or to local
+    disk.
+
+Environment:
+  * Relies on fsspec’s standard authentication (AWS_*, GOOGLE_APPLICATION_CREDENTIALS,
+    AZURE_*).
+  * Cache is stored in /var/tmp by default, which typically survives reboots.
+"""
+
 import datetime
 import hashlib
 import json
@@ -168,6 +215,9 @@ def copy_tree(src_url: str,
       server-side copy, use that (fast, no local I/O).
     - Otherwise stream through this process with multiple threads.
 
+    Note: copy_tree does not use the caching layer (localize_to_path).
+    If you want persistent reuse across runs, call localize_to_path
+    on each source file first.
 
     :param src_url: Source prefix URL (e.g. s3://bucket/prefix or file:///dir).
                     A bare path is also allowed; it will be normalized to file://.
@@ -341,29 +391,108 @@ def is_dir(path: str) -> bool:
         return False
 
 
+def open_file(path: str, mode: str = "r", **kwargs):
+    """
+    Open a local or cloud file for reading or writing.
+
+    Uses fsspec under the hood, so `s3://`, `gs://`, `az://`, etc. all work.
+    This does not use the caching layer — it always streams directly.
+
+    :param path: Local path or cloud URL.
+    :param mode: File mode, e.g. "r", "rb", "w".
+    :param kwargs: Passed through to fsspec.open().
+    :return: A file-like object.
+    """
+    fs, norm_url = get_filesystem(path)
+    return fs.open(norm_url, mode, **kwargs)
+
+
+def list_files(path: str, pattern: str = "*.csv") -> list[str]:
+    """
+    List files under a local or cloud directory and return normalized URLs.
+
+    Works for file://, s3://, gs://, az://, etc.
+    Uses fsspec.glob, then normalizes outputs so all results are fully-qualified URLs.
+
+    :param path: Directory path (local or cloud).
+    :param pattern: Glob pattern (default "*.csv").
+    :return: List of normalized file URLs.
+    """
+    fs, norm_url = get_filesystem(path)
+    # Ensure trailing slash on directory
+    norm_url = norm_url.rstrip("/")
+    if not fs.isdir(norm_url):
+        raise FileNotFoundError(f"{norm_url} is not a directory")
+
+    # fsspec's glob may return bare keys (like "bucket/key.csv")
+    files = fs.glob(f"{norm_url}/{pattern}")
+
+    out_files = []
+    base, _ = _norm_prefix(norm_url)
+
+    for f in files:
+        if f.endswith("/"):  # skip dirs
+            continue
+
+        # Case 1: already a fully-qualified URL
+        if "://" in f:
+            out_files.append(f)
+            continue
+
+        # Case 2: s3fs-style "bucket/key"
+        if f.startswith(base.split("://", 1)[1] + "/"):
+            out_files.append(f"{base}/{f.split('/', 1)[1]}")
+            continue
+
+        # Case 3: plain key ("aorc_2.2/...") — prepend base
+        out_files.append(f"{base}/{f}")
+
+    return [normalize_url(f) for f in out_files]
+
+
 # ----------------------------
 # Caching + localization
 # ----------------------------
 
 def _is_remote(url_or_path: str) -> bool:
+    """
+    Return True if the given path is remote (cloud storage).
+
+    Remote schemes include: s3, gs/gcs, az/abfs/abfss.
+    """
     p = urlparse(url_or_path)
     return bool(p.scheme) and p.scheme.lower() in _REMOTE_SCHEMES
 
 
 def _cache_key(url: str) -> str:
-    # Stable filename from URL
+    """
+    Generate a stable SHA256 hash for a URL.
+
+    Used as the basename for cached files and metadata sidecars.
+    """
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
 def _meta_path(cache_dir: str, key: str) -> str:
+    """
+    Construct the path to the JSON metadata file in the cache directory.
+    Metadata is stored alongside cached files to record etag/size/mtime.
+    """
     return os.path.join(cache_dir, f"{key}.meta.json")
 
 
 def _data_path(cache_dir: str, key: str, suffix=".gpkg") -> str:
+    """
+    Construct the path to the cached file contents in the cache directory.
+    The suffix is typically the file type (.gpkg, .csv, etc.).
+    """
     return os.path.join(cache_dir, f"{key}{suffix}")
 
 
 def _read_meta(path: str) -> dict:
+    """
+    Read a JSON metadata file, returning {} if unreadable or missing.
+    """
     try:
         with open(path, "r") as f:
             return json.load(f)
@@ -372,6 +501,10 @@ def _read_meta(path: str) -> dict:
 
 
 def _write_meta(path: str, meta: dict) -> None:
+    """
+    Atomically write JSON metadata to disk for a cached file.
+    Ensures partially-written metadata files aren’t left behind.
+    """
     tmp = f"{path}.tmp"
     with open(tmp, "w") as f:
         json.dump(meta, f)
@@ -379,6 +512,10 @@ def _write_meta(path: str, meta: dict) -> None:
 
 
 def _info_for(fs, url: str) -> dict:
+    """
+    Wrapper for fs.info(url) that returns {} instead of raising.
+    Safe for missing files or backends with limited support.
+    """
     try:
         return fs.info(url)
     except Exception:
@@ -399,20 +536,25 @@ def localize_to_path(
       - Yields (p, p) without copying or caching.
 
     Remote URLs (s3/gs/az/abfs):
-      - If enable_cache=True (default): persist under CLOUD_CACHE_DIR and REUSE across runs.
-        Cache validation uses provider metadata:
-          - Cache hit when local file exists AND (ETag matches AND size matches).
-          - Otherwise download to <file>.downloading and atomically promote it.
-        A sidecar JSON is stored alongside the file with: {etag, size, mtime, url, t}.
-        Note: /var/tmp is used by default so the cache survives reboots; /tmp is often
-        cleared by the OS and is better for purely ephemeral scratch.
+      - If enable_cache=True (default): persist under CLOUD_CACHE_DIR (/var/tmp/fsspec-cache)
+        and reuse across runs.
+        * Cache validation uses provider metadata: {etag, size}.
+        * Cache hit when local file exists and metadata matches → reuse cached file.
+        * Cache miss → download to <file>.downloading, then atomically rename and update metadata.
+        * Metadata stored in JSON sidecar with {etag, size, mtime, url, t}.
 
-      - If enable_cache=False: download to a NamedTemporaryFile and delete it on exit.
-        (Use this only for truly one-shot reads.)
+      - If enable_cache=False: download into a NamedTemporaryFile and delete on exit.
+        (Use this for one-shot reads that do not need persistence.)
 
-    Note: This is separate from copy_tree(); copy_tree does NOT populate or read
-    this cache. If you want copy_tree to reuse the same artifacts across runs,
-    refactor it to localize each source file via this function first.
+    Typical use cases:
+      * Geopackage inputs or forcing/observational CSVs that are read multiple times in a workflow —
+        avoid redundant downloads by reusing the cached copy.
+      * Pipelines where a file is validated (first pass) and then copied or transformed (second pass).
+        Both passes will use the same cached local file.
+      * Unit tests or short-lived processes may set enable_cache=False to avoid polluting /var/tmp.
+
+    This mechanism is separate from copy_tree(); copy_tree streams directly and
+    does not populate this cache.
     """
     orig = url_or_path
     if not _is_remote(orig):
