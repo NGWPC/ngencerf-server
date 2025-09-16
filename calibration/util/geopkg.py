@@ -67,9 +67,9 @@ def _pp(orig: str, local: str) -> str:
 
 @contextmanager
 def _localize_gpkg(gpkg_path: str):
-    # Delegate to cloud_util; enable persistent cache. Infer suffix for future-proofing.
+    # Always use persistent cache for GeoPackages. Infer suffix for robustness.
     ext = os.path.splitext(str(gpkg_path))[1] or ".gpkg"
-    with localize_to_path(gpkg_path, enable_cache=True, cache_dir="/var/tmp/fsspec-cache", suffix=ext) as (orig, local):
+    with localize_to_path(gpkg_path, enable_cache=True, suffix=ext) as (orig, local):
         yield orig, local
 
 
@@ -220,7 +220,7 @@ def get_geometry_from_gpkg(gpkg_path: str, catchment_layer: str = None, gage_lay
     """
     Extracts both catchment boundaries (as WKT) and gage coordinates (latitude & longitude) from a GeoPackage.
 
-    Accepts a local path or a remote URL (downloads to a temp file first).
+    Accepts a local path or a remote URL (downloaded to the persistent cache first).
 
     :param gpkg_path: Path/URL to the GeoPackage file.
     :param catchment_layer: Name of the layer containing catchment boundaries. Defaults to 'divides'.
@@ -314,7 +314,7 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
     - If output_path is a directory (explicitly or by detection), saves the output using the same filename as gpkg_path
     - If output_path is a file and does not end with '.gpkg', appends the extension
 
-    Accepts a local path or a remote URL for gpkg_path (downloads to a temp file first).
+    Accepts a local path or a remote URL for gpkg_path (downloaded to the persistent cache first).
 
     :param gpkg_path: Path/URL to the source GeoPackage file.
     :param output_path: Path to the output directory or output file.
@@ -330,7 +330,6 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
             output_path = os.path.join(output_path, input_filename)
         elif not output_path.lower().endswith(".gpkg"):
             logger.warning(f"Output path '{output_path}' does not end with '.gpkg'. Appending '.gpkg'.")
-
             output_path += ".gpkg"
 
         logger.info(f"Normalizing {_pp(orig_path, local_path)} to '{output_path}'")
@@ -416,7 +415,8 @@ def list_layers(gpkg_path: str) -> list[str]:
     """
     Retrieve all layer names from a GeoPackage file.
 
-    Accepts a local path or a remote URL (downloads to a temp file first).
+    Accepts a local path or a remote URL. Callers in this module typically pass
+    the localized (cached) path returned by `_localize_gpkg`.
 
     :param gpkg_path: Path/URL to the GeoPackage (.gpkg) file.
     :return: A list of layer names available in the file.
@@ -436,7 +436,7 @@ def find_gage_id(gpkg_path: str, layer_name: str = "hydrolocations", field_name:
     """
     Extract unique gage IDs from a specified layer and field in the GeoPackage.
 
-    Accepts a local path or a remote URL (downloads to a temp file first).
+    Accepts a local path or a remote URL (downloaded to the persistent cache first).
 
     :param gpkg_path: Path/URL to the GeoPackage file.
     :param layer_name: Layer expected to contain gage IDs (default is 'hydrolocations').
@@ -468,7 +468,7 @@ def validate_catchments_in_layer(gpkg_path: str, layer_name: str) -> list[str]:
     """
     Extract catchment identifiers from a layer that contains a 'divide_id' column.
 
-    Accepts a local path or a remote URL (downloads to a temp file first).
+    Accepts a local path or a remote URL (downloaded to the persistent cache first).
 
     :param gpkg_path: Path/URL to the GeoPackage file.
     :param layer_name: Name of the layer to inspect.
@@ -491,7 +491,7 @@ def find_catchments(gpkg_path: str, target_layers: list[str] = ["divides", "catc
     """
     Search for catchment geometries across a set of likely layer names and print findings.
 
-    Accepts a local path or a remote URL (downloads to a temp file first).
+    Accepts a local path or a remote URL (downloaded to the persistent cache first).
 
     :param gpkg_path: Path/URL to the GeoPackage file.
     :param target_layers: Ordered list of candidate layer names to inspect for catchments.
@@ -521,7 +521,7 @@ def display_layer_metadata(gpkg_path: str, layer_name: str) -> None:
     """
     Print metadata and a sample of records from a specific layer.
 
-    Accepts a local path or a remote URL (downloads to a temp file first).
+    Accepts a local path or a remote URL (downloaded to the persistent cache first).
 
     :param gpkg_path: Path/URL to the GeoPackage file.
     :param layer_name: Name of the layer to inspect.
