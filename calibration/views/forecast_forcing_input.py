@@ -89,7 +89,6 @@ def build_short_range_config(run: ForecastForcingDownloadRun):
         'ForecastShift': 0,
         'ForecastInputHorizons': [1080],
         'ForecastInputOffsets': [0],
-        'GeogridIn': "",
         'SpatialMetaIn': "",
         'GRID_TYPE': "hydrofabric",
         'NodeCoords': 'nodeCoords',
