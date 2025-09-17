@@ -45,6 +45,7 @@ Environment:
   * Cache is stored in /var/tmp by default, which typically survives reboots.
 """
 
+import datetime
 import hashlib
 import json
 import logging
@@ -595,10 +596,10 @@ def localize_to_path(
     if enable_cache:
         meta_local = _read_meta(meta_path)
         ok = (
-            os.path.exists(data_path)
-            and meta_local.get("etag") == etag
-            and meta_local.get("size") == size
-            and meta_local.get("mtime") == mtime
+                os.path.exists(data_path)
+                and meta_local.get("etag") == etag
+                and meta_local.get("size") == size
+                and meta_local.get("mtime") == mtime
         )
 
         if ok:
