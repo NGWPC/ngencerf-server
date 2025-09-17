@@ -538,10 +538,12 @@ def localize_to_path(
     Remote URLs (s3/gs/az/abfs):
       - If enable_cache=True (default): persist under CLOUD_CACHE_DIR (/var/tmp/fsspec-cache)
         and reuse across runs.
-        * Cache validation uses provider metadata: {etag, size}.
+        * Cache validation uses provider metadata: {etag, size, mtime}.
         * Cache hit when local file exists and metadata matches → reuse cached file.
-        * Cache miss → download to <file>.downloading, then atomically rename and update metadata.
+        * Cache miss → download to <basename>.downloading, then atomically rename and update metadata.
         * Metadata stored in JSON sidecar with {etag, size, mtime, url, t}.
+        * If two different remote files share the same basename, the newer download
+          will overwrite the older one.  We don't expect this to happen
 
       - If enable_cache=False: download into a NamedTemporaryFile and delete on exit.
         (Use this for one-shot reads that do not need persistence.)
@@ -572,6 +574,19 @@ def localize_to_path(
     etag = str(meta_remote.get("ETag") or meta_remote.get("etag") or "")
     size = int(meta_remote.get("Size") or meta_remote.get("size") or -1)
 
+    lm = meta_remote.get("LastModified") or meta_remote.get("last_modified")
+    if isinstance(lm, datetime.datetime):
+        mtime = int(lm.timestamp())
+    elif isinstance(lm, (int, float)):
+        mtime = int(lm)
+    elif isinstance(lm, str):
+        try:
+            mtime = int(float(lm))
+        except Exception:
+            mtime = 0
+    else:
+        mtime = 0
+
     # Always use original basename for local cache filename
     basename = Path(p.path).name
     data_path = os.path.join(CLOUD_CACHE_DIR, basename)
@@ -580,9 +595,10 @@ def localize_to_path(
     if enable_cache:
         meta_local = _read_meta(meta_path)
         ok = (
-                os.path.exists(data_path)
-                and meta_local.get("etag") == etag
-                and meta_local.get("size") == size
+            os.path.exists(data_path)
+            and meta_local.get("etag") == etag
+            and meta_local.get("size") == size
+            and meta_local.get("mtime") == mtime
         )
 
         if ok:
@@ -597,7 +613,13 @@ def localize_to_path(
             # Use fs.get to persist efficiently; same-bucket copies may be server-side
             fs.get(orig, tmp_download)
             os.replace(tmp_download, data_path)
-            _write_meta(meta_path, {"etag": etag, "size": size, "url": orig, "t": time.time()})
+            _write_meta(meta_path, {
+                "etag": etag,
+                "size": size,
+                "mtime": mtime,
+                "url": orig,
+                "t": time.time()
+            })
             yield orig, data_path
             return
         finally:

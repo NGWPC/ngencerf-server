@@ -331,8 +331,8 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
             src_prefix = module['parameter_file']['uri']  # e.g. "s3://bucket/path/to/dir/"
             dst_dir = get_bmi_config_dir_for_module(run, module_name)  # local directory path
 
-            # copy everything under src_prefix into dst_dir
-            _ = copy_tree(src_prefix, dst_dir, workers=16)
+            # copy the BMI parameters
+            _ = copy_tree(src_prefix, dst_dir)
 
             # Save or update parameters for the module
             parameters = module.get('calibrate_parameters', [])
