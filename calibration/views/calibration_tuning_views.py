@@ -51,7 +51,7 @@ MAX_TIME = datetime(MINYEAR, 1, 1, 0, 0, 0).replace(tzinfo=timezone.utc)
     parameters=[
         OpenApiParameter(name='calibration_run_id', description='ID of the calibration run', required=True, type=int)
     ],
-    description="Load tuning tab data"
+    description="Load tuning tab data for a calibration run"
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions

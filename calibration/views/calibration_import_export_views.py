@@ -43,7 +43,7 @@ def import_calibration_run_data(request: Request,
                                 calibration_run_data: dict,
                                 genesis: JobGenesis,
                                 run: CalibrationRun = None
-) -> tuple[CalibrationRun | None, dict | None, Response | None]:
+                                ) -> tuple[CalibrationRun | None, dict | None, Response | None]:
     """
     Imports calibration run data and creates a new CalibrationRun instance if successful.  Also used in cloning
 
@@ -125,10 +125,10 @@ def import_calibration_run_data(request: Request,
         if have_lstm and (sloth_parameters or use_sloth):
             return None, None, ResponseError("You cannot specify sloth_parameters or use_sloth when using LSTM")
         if have_lstm and (
-            optimization_name or objective_function_name or
-            streamflow_threshold is not None or peak_flow_threshold is not None or
-            stop_criteria is not None or
-            save_plot_iteration_frequency is not None or save_output_iteration
+                optimization_name or objective_function_name or
+                streamflow_threshold is not None or peak_flow_threshold is not None or
+                stop_criteria is not None or
+                save_plot_iteration_frequency is not None or save_output_iteration
         ):
             return None, None, ResponseError(
                 "You cannot specify optimization_name, objective_function_name, streamflow_threshold, peak_flow_threshold, "
@@ -375,6 +375,9 @@ def export_job(request: Request) -> Response:
     API endpoint to export calibration job data.
     Runs in READ ONLY mode to reduce contention.
 
+    Read-only block: fetch run and load data.
+    Post-processing: run ready_to_run (outside transactions).
+
     :param request: Django HTTP request, with parameters in the body for POST or query params for GET.
     :return: Response containing the exported calibration run data or an error.
     """
@@ -387,6 +390,9 @@ def export_job(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
 
+    # -------------------------------------------------------------
+    # Read-only block: fetch run and load data
+    # -------------------------------------------------------------
     with readonly_transaction():
         run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
         if error_return:
@@ -394,6 +400,9 @@ def export_job(request: Request) -> Response:
 
         calibration_run_data, _ = load_calibration_run_data(run, export=True)
 
+    # -------------------------------------------------------------
+    # Post-processing (not inside any transaction)
+    # -------------------------------------------------------------
     error_object, _ = ngen_cal_input.ready_to_run(run)
     if error_object:
         if error_object.has_warnings():
@@ -670,19 +679,32 @@ def load_calibration_run(request: Request) -> Response:
     calibration_run_id = validator.get('calibration_run_id')
     include_gpkg_map = validator.get('include_gpkg_map')
 
+    # -------------------------------------------------------------
+    # Read-only block: fetch run and load data
+    # -------------------------------------------------------------
     with readonly_transaction():
         run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
         if error_return:
             return error_return
 
         # Do all the heavy lifting in read-only mode
-        calibration_run_data, time_range = load_calibration_run_data(run, export=False, include_gpkg_map=include_gpkg_map)
+        calibration_run_data, time_range = load_calibration_run_data(
+            run,
+            export=False,
+            include_gpkg_map=include_gpkg_map
+        )
 
+    # -------------------------------------------------------------
+    # Short write block: persist computed time range if needed
+    # -------------------------------------------------------------
     # Persist only if we computed a valid time range
     if time_range and (not run.time_range_start or not run.time_range_end):
         with transaction.atomic():
             persist_time_range(run, time_range)
 
+    # -------------------------------------------------------------
+    # Validate and return response
+    # -------------------------------------------------------------
     response_validator, error_response = validate_response(
         LoadCalibrationRunResponseSerializer,
         calibration_run_data,
