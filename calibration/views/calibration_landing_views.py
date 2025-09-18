@@ -31,7 +31,7 @@ from calibration.views.calibration_import_export_views import load_calibration_r
 from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
-    validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email, get_elapsed_str
+    validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email, get_elapsed_str, readonly_transaction
 
 logger = logging.getLogger(__name__)
 
