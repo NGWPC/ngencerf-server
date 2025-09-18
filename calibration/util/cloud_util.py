@@ -23,8 +23,8 @@ storage (S3, GCS, Azure Blob/ADLS, etc.). It includes helpers for:
   Provides persistent or ephemeral caching for remote files. Remote objects can
   be downloaded once into /var/tmp/fsspec-cache and reused across multiple runs,
   avoiding redundant S3/GCS downloads. Cache entries are validated with provider
-  metadata (etag/size). For one-shot ephemeral usage, files can be staged into a
-  NamedTemporaryFile and removed after use.
+  metadata (etag/size/mtime). For one-shot ephemeral usage, files can be staged
+  into a NamedTemporaryFile and removed after use.
 
 ⚠️ Cache persistence note:
   The cache under `/var/tmp/fsspec-cache` is never automatically cleaned up.
@@ -58,8 +58,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from typing import Iterator, Tuple
 from urllib.parse import urlparse
+from pathlib import Path
 
 import fsspec
+import botocore.exceptions
 
 from calibration.views.called_from import called_from
 
@@ -78,6 +80,15 @@ _REMOTE_SCHEMES = {"s3", "gs", "gcs", "az", "abfs", "abfss"}
 
 # You can pass auth via env (AWS_*, GOOGLE_APPLICATION_CREDENTIALS, AZURE_*),
 # or via storage_options in get_filesystem(). Keep it simple here.
+
+class S3CredentialsExpired(Exception):
+    """Raised when AWS S3 credentials are expired."""
+    pass
+
+
+# ----------------------------------------------------------------------
+# Filesystem utilities
+# ----------------------------------------------------------------------
 
 def get_filesystem(url: str) -> tuple[fsspec.AbstractFileSystem, str]:
     """
@@ -204,12 +215,18 @@ def _join_url(base: str, *parts: str) -> str:
     return url
 
 
+# ----------------------------------------------------------------------
+# File operations
+# ----------------------------------------------------------------------
+
 def copy_tree(src_url: str,
               dst_url: str,
               workers: int = 16,
               buffer_size: int = 8 * 1024 * 1024) -> int:
     """
     Recursively copy all files under src_url into dst_url.
+    Raises S3CredentialsExpired if AWS credentials are expired.
+
 
     - If source and destination are the same provider and support
       server-side copy, use that (fast, no local I/O).
@@ -239,7 +256,16 @@ def copy_tree(src_url: str,
     # fs.find may return scheme-less paths for some backends (e.g., s3fs returns "bucket/key").
     # Build src_root for listing.
     src_root = f"{src_base}/{src_prefix}".rstrip("/")
-    files = [p for p in fs_src.find(src_root) if not p.endswith("/")]
+    try:
+        files = [p for p in fs_src.find(src_root) if not p.endswith("/")]
+    except botocore.exceptions.ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except PermissionError as e:
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
 
     if not files:
         logger.warning(f"No files found at {src_url}")
@@ -350,6 +376,7 @@ def path_exists(path: str) -> bool:
     """
     Cloud/local agnostic exists() check.
     Works for file://, s3://, gcs://, az://, etc.
+    Raises S3CredentialsExpired if AWS credentials are expired.
 
     :param path: URL or local filesystem path.
     :return: True if path exists, False otherwise.
@@ -366,6 +393,14 @@ def path_exists(path: str) -> bool:
     try:
         fs = fsspec.filesystem(scheme)
         return fs.exists(path)
+    except botocore.exceptions.ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except PermissionError as e:
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
     except Exception:
         return False
 
@@ -374,6 +409,7 @@ def is_dir(path: str) -> bool:
     """
     Cloud/local agnostic directory check.
     Works for file://, s3://, gcs://, az://, etc.
+    Raises S3CredentialsExpired if AWS credentials are expired.
 
     :param path: URL or local filesystem path.
     :return: True if path exists and is a directory/prefix, False otherwise.
@@ -387,6 +423,14 @@ def is_dir(path: str) -> bool:
     try:
         fs = fsspec.filesystem(scheme)
         return fs.isdir(path)
+    except botocore.exceptions.ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except PermissionError as e:
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
     except Exception:
         return False
 
@@ -412,6 +456,9 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
     List files under a local or cloud directory and return normalized URLs.
 
     Works for file://, s3://, gs://, az://, etc.
+    Raises S3CredentialsExpired if AWS credentials are expired.
+    Raises FileNotFoundError if the given path is not a directory.
+
     Uses fsspec.glob, then normalizes outputs so all results are fully-qualified URLs.
 
     :param path: Directory path (local or cloud).
@@ -421,11 +468,29 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
     fs, norm_url = get_filesystem(path)
     # Ensure trailing slash on directory
     norm_url = norm_url.rstrip("/")
-    if not fs.isdir(norm_url):
-        raise FileNotFoundError(f"{norm_url} is not a directory")
+    try:
+        if not fs.isdir(norm_url):
+            raise FileNotFoundError(f"{norm_url} is not a directory")
+    except botocore.exceptions.ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except PermissionError as e:
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
 
-    # fsspec's glob may return bare keys (like "bucket/key.csv")
-    files = fs.glob(f"{norm_url}/{pattern}")
+    try:
+        # fsspec's glob may return bare keys (like "bucket/key.csv")
+        files = fs.glob(f"{norm_url}/{pattern}")
+    except botocore.exceptions.ClientError as e:
+        if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
+    except PermissionError as e:
+        if "expired" in str(e).lower():
+            raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+        raise
 
     out_files = []
     base, _ = _norm_prefix(norm_url)
@@ -450,9 +515,9 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
     return [normalize_url(f) for f in out_files]
 
 
-# ----------------------------
+# ----------------------------------------------------------------------
 # Caching + localization
-# ----------------------------
+# ----------------------------------------------------------------------
 
 def _is_remote(url_or_path: str) -> bool:
     """
@@ -531,6 +596,7 @@ def localize_to_path(
 ) -> Iterator[Tuple[str, str]]:
     """
     Yield (original_path, local_path) for local or remote resources.
+    Raises S3CredentialsExpired if AWS credentials are expired.
 
     Local paths:
       - Yields (p, p) without copying or caching.
@@ -538,10 +604,13 @@ def localize_to_path(
     Remote URLs (s3/gs/az/abfs):
       - If enable_cache=True (default): persist under CLOUD_CACHE_DIR (/var/tmp/fsspec-cache)
         and reuse across runs.
-        * Cache validation uses provider metadata: {etag, size}.
+        * Cache validation uses provider metadata: {etag, size, mtime}.
         * Cache hit when local file exists and metadata matches → reuse cached file.
-        * Cache miss → download to <file>.downloading, then atomically rename and update metadata.
+        * Cache miss → download to <basename>.downloading, then atomically rename to <basename>
+          and update metadata.
         * Metadata stored in JSON sidecar with {etag, size, mtime, url, t}.
+        * If two different remote files share the same basename, the newer download
+          will overwrite the older one.  We don't expect this to happen
 
       - If enable_cache=False: download into a NamedTemporaryFile and delete on exit.
         (Use this for one-shot reads that do not need persistence.)
@@ -571,6 +640,7 @@ def localize_to_path(
     meta_remote = _info_for(fs, orig)
     etag = str(meta_remote.get("ETag") or meta_remote.get("etag") or "")
     size = int(meta_remote.get("Size") or meta_remote.get("size") or -1)
+
     lm = meta_remote.get("LastModified") or meta_remote.get("last_modified")
     if isinstance(lm, datetime.datetime):
         mtime = int(lm.timestamp())
@@ -584,16 +654,18 @@ def localize_to_path(
     else:
         mtime = 0
 
-    if enable_cache:
-        key = _cache_key(orig)
-        data_path = _data_path(CLOUD_CACHE_DIR, key, suffix=suffix)
-        meta_path = _meta_path(CLOUD_CACHE_DIR, key)
+    # Always use original basename for local cache filename
+    basename = Path(p.path).name
+    data_path = os.path.join(CLOUD_CACHE_DIR, basename)
+    meta_path = data_path + ".meta.json"
 
+    if enable_cache:
         meta_local = _read_meta(meta_path)
         ok = (
                 os.path.exists(data_path)
                 and meta_local.get("etag") == etag
                 and meta_local.get("size") == size
+                and meta_local.get("mtime") == mtime
         )
 
         if ok:
@@ -603,30 +675,50 @@ def localize_to_path(
 
         # Cache miss → download then promote
         tmp_download = data_path + ".downloading"
-        logger.info(f"Downloading remote file to cache: original '{orig}' (local cache: {data_path})")
+        logger.info(f"Downloading remote file to cache: {orig} → {data_path}")
         try:
             # Use fs.get to persist efficiently; same-bucket copies may be server-side
             fs.get(orig, tmp_download)
+        except botocore.exceptions.ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+                raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+            raise
+        except PermissionError as e:
+            if "expired" in str(e).lower():
+                raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+            raise
+
+        try:
             os.replace(tmp_download, data_path)
-            _write_meta(meta_path, {"etag": etag, "size": size, "mtime": mtime, "url": orig, "t": time.time()})
+            _write_meta(meta_path, {
+                "etag": etag,
+                "size": size,
+                "mtime": mtime,
+                "url": orig,
+                "t": time.time()
+            })
             yield orig, data_path
             return
         finally:
-            try:
-                if os.path.exists(tmp_download):
-                    os.remove(tmp_download)
-            except Exception:
-                pass
+            if os.path.exists(tmp_download):
+                os.remove(tmp_download)
 
-    # No persistent cache requested → one-shot temp file
+    # Fallback: temp file if cache disabled
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmpf:
         tmp_path = tmpf.name
     try:
-        logger.info(f"Downloading remote file to temp: original '{orig}' (local copy: {tmp_path})")
-        fs.get(orig, tmp_path)
+        logger.info(f"Downloading remote file to temp: {orig} → {tmp_path}")
+        try:
+            fs.get(orig, tmp_path)
+        except botocore.exceptions.ClientError as e:
+            if e.response.get("Error", {}).get("Code") == "ExpiredToken":
+                raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+            raise
+        except PermissionError as e:
+            if "expired" in str(e).lower():
+                raise S3CredentialsExpired("Your AWS S3 credentials are expired") from e
+            raise
         yield orig, tmp_path
     finally:
-        try:
+        if os.path.exists(tmp_path):
             os.remove(tmp_path)
-        except Exception:
-            pass
