@@ -222,7 +222,7 @@ def get_parameters_for_export(modules: QuerySet[CalibrationFormulation]) -> list
     return parameter_list
 
 
-def compute_time_range(run: CalibrationRun) -> dict[str, datetime] | None:
+def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
     """
     Compute the intersection of observational and forcing data ranges for the given run,
     without persisting anything to the database.
@@ -259,7 +259,7 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime] | None:
     )
 
     if not observation_path or not forcing_path:
-        return None
+        return {}
 
     # If both paths are available, calculate intersection and update run
     daterange_intersection_start = time.time()
@@ -269,7 +269,7 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime] | None:
     if daterange:
         return {'start_time': daterange.start_datetime, 'end_time': daterange.end_datetime}
 
-    return None
+    return {}
 
 
 def persist_time_range(run: CalibrationRun, time_range: dict[str, datetime]) -> None:
