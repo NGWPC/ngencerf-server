@@ -27,7 +27,7 @@ from calibration.views.calibration_formulation_views import get_sloth_parameters
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
-from calibration.views.calibration_run_views import resolve_job_data_dir
+from calibration.views.calibration_run_views import resolve_job_data_dir, parse_failure_messages
 from calibration.views.calibration_tuning_views import get_times, get_parameters_for_export, validate_and_save_times, validate_parameters, \
     save_parameters, has_user_selected_tuning_parameters, compute_time_range, persist_time_range
 from calibration.views.called_from import get_caller_name
@@ -477,8 +477,11 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'job_data_dir': resolve_job_data_dir(run),
             'num_catchments': num_catchments,
             'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None
-
         }
+        fm = parse_failure_messages(run.failure_messages)
+        if fm is not None:
+            metadata['failure_messages'] = fm
+
         calibration_run_data['metadata'] = metadata
 
         calibration_run_data['run_after_import'] = False
@@ -532,6 +535,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         } if run.gage else None
         calibration_run_data['num_catchments'] = num_catchments
         calibration_run_data['status'] = run.status.name
+        fm = parse_failure_messages(run.failure_messages)
+        if fm is not None:
+            calibration_run_data['failure_messages'] = fm
 
         calibration_run_data['forcing_source_requested'] = run.forcing_source_requested.name if run.forcing_source_requested else None
         calibration_run_data['forcing_source_actual'] = run.forcing_source_actual.name if run.forcing_source_actual else None

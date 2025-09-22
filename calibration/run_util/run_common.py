@@ -62,23 +62,34 @@ def get_job_registry_key(run: BaseRun) -> tuple[int, int]:
     raise TypeError(f"Unsupported run type: {type(run).__name__}")
 
 
-def set_job_status(run: BaseRun, status: StatusEnum) -> None:
+def set_job_status(run: BaseRun, status: StatusEnum, failure_messages: dict = None) -> None:
     """
     Update the status of a CalibrationRun, ValidationRun, or ForecastRun and clear the job registry if applicable.
 
-    This function updates the `status` field of the job, clears the `slurm_job_id`,
-    and removes the job from the global job registry for LOCAL or DOCKER environments.
+    - Always updates the `status`.
+    - In LOCAL or DOCKER environments: clears the `slurm_job_id` and removes the job from the registry.
+    - In PW: preserves the real Slurm job ID that was set during submission.
+    - Adds failure messages if provided.
 
     :param run: The CalibrationRun, ValidationRun, or ForecastRun object.
     :param status: The new status to set.
+    :param failure_messages: Supplement failure information for a Failed job.
     """
     run.status = status.db_instance
-    # Doesn't hurt to always update slurm_job_id, even though we only care in PW environment
-    run.slurm_job_id = None
-    run.save(update_fields=['status', 'slurm_job_id'])
+    update_fields = ['status']
+
+    # Only clear slurm_job_id for LOCAL/DOCKER
     if settings.NGEN_ENVIRONMENT in [NgenEnvironmentEnum.LOCAL, NgenEnvironmentEnum.DOCKER]:
+        run.slurm_job_id = None
+        update_fields.append('slurm_job_id')
         key = get_job_registry_key(run)
         job_registry.pop(key, None)
+
+    if failure_messages:
+        run.failure_messages = json.dumps(failure_messages)
+        update_fields.append('failure_messages')
+
+    run.save(update_fields=update_fields)
 
 
 def get_run_owner(run: BaseRun):
@@ -362,15 +373,14 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
             fatal, response = prepare_calibration_job(run)
             if response:
                 if fatal:
-                    failure_error = {
-                        'failure_messages': {
-                            'validation_errors': response.data.get("validation_errors"),
-                            'errors': response.data.get("errors"),
-                        }
+                    failure_message = {
+                        'validation_errors': response.data.get("validation_errors"),
+                        'errors': response.data.get("errors"),
                     }
-                    print('failure status', failure_error)
+
                     run.status = StatusEnum.FAILED.db_instance
-                    run.save(update_fields=['status'])
+                    run.failure_messages = json.dumps(failure_message)
+                    run.save(update_fields=['status', 'failure_messages'])
                 return response
 
         # Determine the appropriate job execution function
@@ -397,12 +407,14 @@ def submit_job(run: BaseRun, logging_config=None) -> Response | None:
     except Exception as e:
         # Handle failures by marking the job as FAILED
         run.status = StatusEnum.FAILED.db_instance
-        run.save(update_fields=['status'])
 
         msg = f'Exception submitting {get_job_description(run)} - {str(e)}'
         logger.exception(msg)
-        failure_messages = {'failure_messages': {'message': msg}}
-        print('failure_message', failure_messages)
+        failure_messages = {'message': msg}
+        run.failure_messages = json.dumps(failure_messages)
+
+        run.save(update_fields=['status', 'failure_messages'])
+
         raise  # Re-raise the exception
 
     logger.info(f"{get_job_description(run)} successfully submitted.")
@@ -495,9 +507,8 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
         # Catch the exception and mark the job as FAILED
         msg = f"Error processing validation output for {job_description}: {str(e)}"
         logger.exception(msg)
-        failure_messages = {'failure_messages': {'message': msg}}
-        print('failure_message', failure_messages)
-        set_job_status(validation_run, StatusEnum.FAILED)
+        failure_messages = {'message': msg}
+        set_job_status(validation_run, StatusEnum.FAILED, failure_messages)
         return  # Stop further processing if the job failed
 
     if not failed_so_far:
@@ -546,10 +557,9 @@ def run_generic_job_end_callback(
     except Exception as e:
         msg = f"Exception occurred during job end callback for {job_description}: {str(e)}"
         logger.exception(msg)
-        failure_messages = {'failure_messages': {'message': msg}}
-        print('failure_message', failure_messages)
+        failure_messages = {'message': msg}
         try:
-            set_job_status(run, StatusEnum.FAILED)
+            set_job_status(run, StatusEnum.FAILED, failure_messages)
         except Exception:
             logger.exception(f"Failed to set FAILED status for {job_description}")
 
@@ -573,15 +583,15 @@ def finalize_calibration_after_callback(run: CalibrationRun, failed_so_far: bool
         read_calibration_output(run, failed_so_far)  # Process and store the output of the calibration job.
         if not failed_so_far:
             set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
-        failure_messages = {'failure_messages': {'message': "The ngen or cal-mgr job failed.  See logs for further details"}}
-        print('failure_message', failure_messages)
+
+        failure_messages = {'message': "The ngen or cal-mgr job failed.  See logs for further details"}
+        set_job_status(run, StatusEnum.FAILED, failure_messages)
     except Exception as e:
         # Catch the exception and mark the job as FAILED
         msg = f"Error processing calibration output for {job_description}: {str(e)}"
         logger.exception(msg)
-        failure_messages = {'failure_messages': {'message': msg}}
-        print('failure_message', failure_messages)
-        set_job_status(run, StatusEnum.FAILED)
+        failure_messages = {'message': msg}
+        set_job_status(run, StatusEnum.FAILED, failure_messages)
         return  # Stop further processing if the job failed
 
     if failed_so_far:
@@ -592,9 +602,8 @@ def finalize_calibration_after_callback(run: CalibrationRun, failed_so_far: bool
     except Exception as e:
         msg = f"Error creating and submitting validation control run for {job_description}: {str(e)}"
         logger.exception(msg)
-        failure_messages = {'failure_messages': {'message': msg}}
-        print('failure_message', failure_messages)
-        set_job_status(run, StatusEnum.FAILED)
+        failure_messages = {'message': msg}
+        set_job_status(run, StatusEnum.FAILED, failure_messages)
 
 
 def finalize_validation_after_callback(run: ValidationRun, failed_so_far: bool) -> None:
