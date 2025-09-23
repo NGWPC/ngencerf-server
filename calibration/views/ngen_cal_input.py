@@ -99,8 +99,12 @@ CONFIG_TEMPLATE = {
         "user_email": "",
     },
 
+    "Forcing": {
+        "forcing_provider": "csv",
+        "forcing_dir": ""
+    },
+
     "DataFile": {
-        "forcing_dir": "",
         "obs_dir": "",
         "nwmretro_file": "",
         "hydrofab_file": "",
@@ -246,7 +250,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
                         pass
 
-                datafile['forcing_dir'] = forcing_dir
+                forcing['forcing_dir'] = forcing_dir
 
             # Determine the source of observational data (user-uploaded or EDS)
             if not is_missing(run.observational_source, 'Observational source', error_object):
