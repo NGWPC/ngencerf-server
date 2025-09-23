@@ -6,6 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import MAXYEAR, MINYEAR, datetime, timezone
 from typing import Literal
+from urllib.parse import urlparse
 
 import pandas as pd
 from datetimerange import DateTimeRange
@@ -116,7 +117,7 @@ def load_tuning_tab(request: Request) -> Response:
     # Phase 3: Build response with updated run.status
     response = {
         'calibration_run_id': run.id,
-        'status': run.status.name,   # reflects updated status
+        'status': run.status.name,  # reflects updated status
         'modules': module_list,
         'time_range': time_range,
         'calibration_times': calibration_times,
@@ -993,6 +994,17 @@ def save_parameters(run: CalibrationRun, parameters: list[dict[str, str | float]
         CalibrationParameter.objects.bulk_update(parameters_to_unselect, ['user_selected_for_tuning'])
 
 
+def _as_local_path(path: str) -> str:
+    """
+    Convert a file:// URL into a local filesystem path.
+    For example: file:///ngencerf/data/file.csv -> /ngencerf/data/file.csv
+    Leaves non-file URLs unchanged.
+    """
+    if path.startswith("file://"):
+        return urlparse(path).path
+    return path
+
+
 def get_csv_daterange(path: str) -> DateTimeRange:
     """
     Reads a CSV file (local or cloud) that is assumed to be sorted by date/time and efficiently determines
@@ -1006,6 +1018,8 @@ def get_csv_daterange(path: str) -> DateTimeRange:
     try:
         # Always cache remote files, so subsequent uses don't re-download
         with cloud_util.localize_to_path(path, enable_cache=True, suffix=".csv") as (orig, local_path):
+            local_path = _as_local_path(local_path)  # ✅ ensure usable by os.path and open()
+
             if not os.path.exists(local_path):
                 raise CerfException(f"File {path} does not exist")
 
@@ -1056,6 +1070,7 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     :param forcing_dir_path: Directory path or cloud URL containing forcing data files.
     :return: DateTimeRange covering all CSV files, or None if no files found.
     """
+    print('forcing_dir_path', forcing_dir_path)
     csv_files = cloud_util.list_files(forcing_dir_path, pattern="*.csv")
     if not csv_files:
         return None

@@ -38,6 +38,21 @@ from calibration.views.end_of_job_processing import read_calibration_output
 logger = logging.getLogger(__name__)
 
 
+def parse_failure_messages(value):
+    """
+    Parse a failure_messages field:
+    - Return None if the value is None.
+    - If it's JSON, return the parsed object.
+    - Otherwise, return the raw string.
+    """
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return value
+
+
 @extend_schema(
     request=GetStatusRequestSerializer,
     responses={
@@ -76,7 +91,11 @@ def get_status(request: Request) -> Response:
 
     # All DB access below is read-only
     with readonly_transaction():
-        calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+        calibration_run, error_return = get_calibration_run(
+            calibration_run_id,
+            request.user,
+            run_status=list(StatusEnum)
+        )
         if error_return:
             return error_return
 
@@ -88,22 +107,21 @@ def get_status(request: Request) -> Response:
         )
 
         # Retrieve validation runs with related PerformanceMetrics data
-        validation_runs = ValidationRun.objects.filter(calibration_run=calibration_run).select_related(
-            "performance_metrics"
-        ).only(
-            "id", "status__name", "validation_type", "submit_date",
+        validation_runs = ValidationRun.objects.filter(
+            calibration_run=calibration_run
+        ).select_related("performance_metrics").only(
+            "id", "status__name", "failure_messages", "validation_type", "submit_date",
             "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
             "performance_metrics__cpu_time", "performance_metrics__max_rss",
             "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
             "performance_metrics__reserved_time"
-
         )
 
         # Retrieve forecast runs with related PerformanceMetrics data
-        forecast_runs = ForecastRun.objects.filter(calibration_run=calibration_run).select_related(
-            "performance_metrics", "forcing_download_run"
-        ).only(
-            "id", "status__name", "submit_date",
+        forecast_runs = ForecastRun.objects.filter(
+            calibration_run=calibration_run
+        ).select_related("performance_metrics", "forcing_download_run").only(
+            "id", "status__name", "failure_messages", "submit_date",
             "performance_metrics__elapsed_time", "performance_metrics__num_cpus",
             "performance_metrics__cpu_time", "performance_metrics__max_rss",
             "performance_metrics__max_disk_read", "performance_metrics__max_disk_write",
@@ -131,6 +149,10 @@ def get_status(request: Request) -> Response:
             'run_end': run.run_end
         }
 
+        fm = parse_failure_messages(run.failure_messages)
+        if fm is not None:
+            validation_data['failure_messages'] = fm
+
         if run.performance_metrics:
             validation_data['elapsed_time'] = run.performance_metrics.elapsed_time
         else:
@@ -144,7 +166,6 @@ def get_status(request: Request) -> Response:
     # Construct validation response with performance metrics as needed
     forecast_response = []
     for run in forecast_runs:
-        forcing_download = run.forcing_download_run
         forecast_data = {
             'forecast_run_id': run.id,
             'status': run.status.name,
@@ -154,6 +175,10 @@ def get_status(request: Request) -> Response:
             'run_end': run.run_end
         }
 
+        fm = parse_failure_messages(run.failure_messages)
+        if fm is not None:
+            forecast_data['failure_messages'] = fm
+
         if run.performance_metrics:
             forecast_data['elapsed_time'] = run.performance_metrics.elapsed_time
         else:
@@ -162,12 +187,18 @@ def get_status(request: Request) -> Response:
         if should_include_metrics(run.status, include_performance_metrics):
             forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
 
+        # Forcing download sub-run
+        forcing_download = run.forcing_download_run
         if forcing_download:
             forcing_download_data = {
                 'forcing_download_run_id': forcing_download.id,
                 'status': forcing_download.status.name,
                 'elapsed_time': forcing_download.performance_metrics.elapsed_time if forcing_download.performance_metrics else None
             }
+            fm_fd = parse_failure_messages(forcing_download.failure_messages)
+            if fm_fd is not None:
+                forcing_download_data['failure_messages'] = fm_fd
+
             if should_include_metrics(forcing_download.status, include_performance_metrics):
                 forcing_download_data['performance_metrics'] = get_performance_metrics(forcing_download.performance_metrics)
             forecast_data['forcing_download'] = forcing_download_data
@@ -186,18 +217,24 @@ def get_status(request: Request) -> Response:
         'forecasts': forecast_response
     }
 
+    fm_cal = parse_failure_messages(calibration_run.failure_messages)
+    if fm_cal is not None:
+        response['failure_messages'] = fm_cal
+
     # if performance metrics are unavailable, find the difference between start and end time as a fallback
     if calibration_run.performance_metrics:
         response['elapsed_time'] = calibration_run.performance_metrics.elapsed_time
     else:
-        response[
-            'elapsed_time'] = calibration_run.run_end - calibration_run.run_start if calibration_run.run_end and calibration_run.run_start else None
+        response['elapsed_time'] = (
+            calibration_run.run_end - calibration_run.run_start
+            if calibration_run.run_end and calibration_run.run_start else None
+        )
 
     # Conditionally add calibration run performance metrics to response if requested and status is DONE or FAIL
     if calibration_metrics:
         response['performance_metrics'] = calibration_metrics
 
-    # Add error messages if applicable
+    # Add error/warning messages if applicable
     if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
         error_object, _ = ngen_cal_input.ready_to_run(calibration_run)
         if error_object:
@@ -206,9 +243,12 @@ def get_status(request: Request) -> Response:
             if error_object.has_errors():
                 response['errors'] = error_object.errors
 
-    response_validator, error_response = validate_response(GetStatusResponseSerializer, response,
-                                                           fields_to_truncate=['validations', 'forecasts'],
-                                                           max_length=10)
+    response_validator, error_response = validate_response(
+        GetStatusResponseSerializer,
+        response,
+        fields_to_truncate=['validations', 'forecasts'],
+        max_length=10
+    )
     if error_response:
         return error_response
 
@@ -216,9 +256,6 @@ def get_status(request: Request) -> Response:
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["validations", "forecasts"], max_length=10))}'
     )
-    logger.debug(f"[DEBUG] view request type: {type(request)}")
-    logger.debug(f"[DEBUG] request._request type: {type(getattr(request, '_request', None))}")
-    logger.debug(f"[DEBUG] elapsed_time on _request: {getattr(getattr(request, '_request', None), 'elapsed_time', 'MISSING')}")
 
     return Response(response_validator.data)
 
