@@ -455,14 +455,20 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
     """
     List files under a local or cloud directory and return normalized URLs.
 
-    Works for file://, s3://, gs://, az://, etc.
+    Supports both local paths and cloud URLs (file://, s3://, gs://, az://, etc.).
     Raises S3CredentialsExpired if AWS credentials are expired.
     Raises FileNotFoundError if the given path is not a directory.
 
-    Uses fsspec.glob, then normalizes outputs so all results are fully-qualified URLs.
+    Behavior:
+      * Uses fsspec to glob all files under the given path that match the pattern.
+      * Filters out directories (entries ending with "/").
+      * Normalizes outputs so all results are fully-qualified URLs:
+          - Local files → file:///absolute/path/to/file
+          - Cloud keys  → scheme://bucket/key
+      * Returns only files; directories are skipped.
 
     :param path: Directory path (local or cloud).
-    :param pattern: Glob pattern (default "*.csv").
+    :param pattern: Glob pattern for files (default "*.csv").
     :return: List of normalized file URLs.
     """
     fs, norm_url = get_filesystem(path)
@@ -481,7 +487,7 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
         raise
 
     try:
-        # fsspec's glob may return bare keys (like "bucket/key.csv")
+        # fsspec.glob may return fully-qualified URLs or bare keys
         files = fs.glob(f"{norm_url}/{pattern}")
     except botocore.exceptions.ClientError as e:
         if e.response.get("Error", {}).get("Code") == "ExpiredToken":
@@ -494,6 +500,7 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
 
     out_files = []
     base, _ = _norm_prefix(norm_url)
+    scheme = urlparse(norm_url).scheme or "file"
 
     for f in files:
         if f.endswith("/"):  # skip dirs
@@ -501,18 +508,25 @@ def list_files(path: str, pattern: str = "*.csv") -> list[str]:
 
         # Case 1: already a fully-qualified URL
         if "://" in f:
-            out_files.append(f)
-            continue
+            # Already fully-qualified (e.g., s3://bucket/key or file:///...)
+            candidate = f
+        elif scheme == "file":
+            # Local filesystem: f is relative, join with real directory path
+            dir_path = urlparse(norm_url).path or norm_url
+            candidate = os.path.join(dir_path, f)
+        else:
+            # Cloud provider: f may be "bucket/key" or just "key"
+            if f.startswith(base.split("://", 1)[1] + "/"):
+                # Case: "bucket/key"
+                candidate = f"{base}/{f.split('/', 1)[1]}"
+            else:
+                # Case: plain "key"
+                candidate = f"{base}/{f}"
 
-        # Case 2: s3fs-style "bucket/key"
-        if f.startswith(base.split("://", 1)[1] + "/"):
-            out_files.append(f"{base}/{f.split('/', 1)[1]}")
-            continue
+        # Ensure consistent normalization (e.g., file:/// for local paths)
+        out_files.append(normalize_url(candidate))
 
-        # Case 3: plain key ("aorc_2.2/...") — prepend base
-        out_files.append(f"{base}/{f}")
-
-    return [normalize_url(f) for f in out_files]
+    return out_files
 
 
 # ----------------------------------------------------------------------
