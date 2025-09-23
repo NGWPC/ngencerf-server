@@ -192,6 +192,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         general = config['General']
         calibration = config['Calibration']
         datafile = config['DataFile']
+        forcing = config['Forcing']
 
         parallel = {
             "parallel_ngen_exe": PARALLEL_NGEN_EXE,
