@@ -579,13 +579,16 @@ def finalize_calibration_after_callback(run: CalibrationRun, failed_so_far: bool
     job_description = get_job_description(run)
 
     try:
+        if failed_so_far:
+            # Must have been a cal-mgr/ngen failure
+            failure_messages = {'message': "The ngen or cal-mgr job failed.  See logs for further details"}
+            set_job_status(run, StatusEnum.FAILED, failure_messages)
+
         # Process the calibration output
         read_calibration_output(run, failed_so_far)  # Process and store the output of the calibration job.
         if not failed_so_far:
             set_job_status(run, StatusEnum.DONE)  # Update the job's status to DONE in the database.
 
-        failure_messages = {'message': "The ngen or cal-mgr job failed.  See logs for further details"}
-        set_job_status(run, StatusEnum.FAILED, failure_messages)
     except Exception as e:
         # Catch the exception and mark the job as FAILED
         msg = f"Error processing calibration output for {job_description}: {str(e)}"
