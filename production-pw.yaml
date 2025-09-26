@@ -9,7 +9,7 @@ services:
         - MSWM_TAG=${MSWM_TAG}
         - NGEN_FORCING_TAG=${NGEN_FORCING_TAG}
         - CACHE_BUST=${CACHE_BUST}
-    image: ghcr.io/ngwpc/ngencerf-server:prod
+    image: ghcr.io/ngwpc/ngencerf-server:${NGENCERF_SERVER_TAG:-latest}
     pull_policy: always
     ports:
       - "8000:8000"
