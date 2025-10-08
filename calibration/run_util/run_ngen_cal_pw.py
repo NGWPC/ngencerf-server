@@ -13,8 +13,6 @@ from calibration.models.base_run import BaseRun
 from calibration.run_util.run_common import set_job_status, run_generic_job_end_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_cold_start_after_callback
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, SlurmSubmitResponseSerializer
-from calibration.util.file_util import get_single_file
-from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views.common import generate_custom_token, TOKEN_SLURM_SCOPE, get_job_description, validate_response_data
 
 logger = logging.getLogger(__name__)
@@ -76,7 +74,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
         url_endpoint = settings.SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT
         payload = {
             'verification_job_id': (None, run.id),
-            'input_file': (None, arguments['verification_yaml_file_path']),
+            'verification_config': (None, arguments['verification_config']),
             'stdout_file': (None, stdout_file),
         }
     else:

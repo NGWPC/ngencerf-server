@@ -26,11 +26,11 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_forecast_stdout_file, get_forecast_dir, get_validation_iteration_git_info_file, \
     get_validation_special_git_info_file, get_calibration_git_info_file, get_forecast_git_info_file, get_forcing_dir_for_job, \
     get_verification_git_info_file, get_verification_stdout_file, get_observational_file_for_job, get_forecast_realization_file, \
-	get_cold_start_realization_file, get_cold_start_stdout_file, get_cold_start_dir, get_cold_start_git_info_file
+    get_cold_start_realization_file, get_cold_start_stdout_file, get_cold_start_dir, get_cold_start_git_info_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output, \
-	read_cold_start_output, read_verification_output
+    read_cold_start_output, read_verification_output
 from calibration.views.forecast_input import create_forecast_input
 from calibration.views.ngen_cal_input import ready_to_run
 from cerfServer.settings import NgenEnvironmentEnum
@@ -349,14 +349,14 @@ def run_verification_job(verification_job: VerificationRun) -> None:
 
     :param verification_job: The VerificationRun object representing the job.
     """
-    verification_yaml_file_path = verification_job.verification_yaml_file_path
-    verification_dir = verification_job.job_data_dir
+    # TODO Change this in db
+    verification_config = verification_job.verification_yaml_file_path
     stdout_file = get_verification_stdout_file(verification_job)
 
     execute_job(
         verification_job,
         {
-            'verification_yaml_file_path': verification_yaml_file_path,
+            'verification_config': verification_config,
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.VERIFICATION, False)

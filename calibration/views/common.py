@@ -34,7 +34,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Bas
 from calibration.util.cloud_util import path_exists
 from calibration.util.ngen_locations import get_forecast_dir, get_output_calibration_run_dir, \
     get_output_validation_run_dir, get_cold_start_dir, get_verification_run_dir, get_ngen_logging_file, \
-	get_ngen_logging_basename
+    get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
 
@@ -359,11 +359,12 @@ def create_forecast_run_internal(
     return forecast_run
 
 
-def create_verification_job_internal(user: User, forecast_run_id: int | None = None, genesis: JobGenesis | None = None) -> VerificationRun:
+def create_verification_job_internal(user: User, forecast_run_id: int | None = None, genesis: JobGenesis | None = None) -> VerificationRun | Response:
     """
     Create a new VerificationRun for the given user.
 
     :param user: Owner of the verification job.
+    :param forecast_run_id: Forecast Job to associate with this verification run (optional)
     :param genesis: Origin of the job (optional).
     :return: New VerificationRun instance.
     """
@@ -387,13 +388,14 @@ def create_verification_job_internal(user: User, forecast_run_id: int | None = N
         # Append timestamp to existing directory name to avoid overwriting
         new_name = f"{run.job_data_dir}_{datetime.now().isoformat()}"
         os.rename(run.job_data_dir, new_name)
-    
+
     # Create the directory
     os.makedirs(run.job_data_dir, exist_ok=True)
 
     # This is always true
     run.save()
     return run
+
 
 TOKEN_SLURM_SCOPE = 'slurm_callback'
 TOKEN_NGEN_SCOPE = 'ngen'

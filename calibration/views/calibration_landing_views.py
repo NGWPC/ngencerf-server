@@ -78,7 +78,7 @@ def create_calibration_run(request: Request) -> Response:
     with transaction.atomic():
         run = create_calibration_run_internal(request.user)
 
-        response = {'message': f'Calibration Job {run.id} created', 'calibration_run_id': run.id, 'job_data_dir': resolve_job_data_dir(run)}
+        response = {'message': f'Calibration Job {run.id} created', 'calibration_run_id': run.id, 'job_data_dir': resolve_job_data_dir(run.job_data_dir)}
 
         response_validator, error_response = validate_response(CreateCalibrationRunResponseSerializer, response)
         if error_response:

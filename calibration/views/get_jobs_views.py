@@ -745,25 +745,27 @@ def get_verification_jobs(request: Request) -> Response:
     validator, error_return = validate_request(EmptySerializer, data)
     if error_return:
         return error_return
-    
+
     verification_objects = VerificationRun.objects.filter(owner=request.user)
-    
+
     # Filter based on settings
     if 'ngen' not in settings.VERF_MODES_SUPPORTED:
         verification_objects = verification_objects.filter(forecast_run_id=0)
     elif 'nwm' not in settings.VERF_MODES_SUPPORTED:
         verification_objects = verification_objects.filter(forecast_run_id__gt=0)
 
-    verification_jobs = list(verification_objects.values('id', 'created_at', 'submit_date', 'status__name', 'forecast_run_id', 'verification_yaml_file_path', 'job_data_dir'))
-    
+    verification_jobs = list(
+        verification_objects.values('id', 'created_at', 'submit_date', 'status__name', 'forecast_run_id', 'verification_yaml_file_path',
+                                    'job_data_dir'))
+
     for v in verification_jobs:
         v['verification_job_id'] = v.pop('id')
         v['status'] = v.pop('status__name')
 
     response = {'verification_jobs': verification_jobs}
-    response_validator, error_response = validate_response(GetVerificationJobsResponseSerializer, 
-        response, fields_to_truncate=['verification_jobs'], max_length=10)
-    
+    response_validator, error_response = validate_response(GetVerificationJobsResponseSerializer, response,
+                                                           fields_to_truncate=['verification_jobs'], max_length=10)
+
     if error_response:
         return error_response
 

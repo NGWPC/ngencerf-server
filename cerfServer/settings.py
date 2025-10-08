@@ -292,6 +292,7 @@ NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 # Use {name} placeholder for the container name, which will be substituted at runtime
 CAL_MGR_DOCKER_CMD = f'docker run --rm --network host --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
 NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
+NWM_VERF_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-verf'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
 CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
@@ -305,6 +306,7 @@ RUNTIME_INFO = {
     ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
     ScriptEnum.COLD_START: (NGEN_FORECAST_DOCKER_CMD, NGEN_COLD_START_SCRIPT),
     ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
+    ScriptEnum.VERIFICATION: (NWM_VERF_DOCKER_CMD, VERIFICATION_SCRIPT)
 }
 
 # -----------------------------

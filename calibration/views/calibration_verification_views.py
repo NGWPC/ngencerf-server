@@ -1,38 +1,35 @@
 import json
 import logging
 import os
-import pandas as pd
 import shutil
-import yaml
 
-from datetime import datetime
+import yaml
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction, router
 from django.db.models.deletion import Collector
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework import status
 
 from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
-from calibration.util.file_util import delete_all_files_in_directory
 from calibration.models import VerificationRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, \
     VerificationJobsResponseSerializer, VerificationJobSerializer, CreateVerificationJobRequestSerializer, \
-    CreateVerificationJobResponseSerializer, UploadVerificationYamlFileRequestSerializer, \
-    UploadVerificationYamlFileRequestSerializer, UploadVerificationYamlFileResponseSerializer, \
+    CreateVerificationJobResponseSerializer, UploadVerificationYamlFileRequestSerializer, UploadVerificationYamlFileResponseSerializer, \
     RunVerificationJob, SubmitVerificationJobResponseSerializer, \
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
     DeleteVerificationJobResponseSerializer
+from calibration.util.file_util import delete_all_files_in_directory
 from calibration.util.ngen_locations import get_forecast_output_file, VERF_CROSSWALK_NGEN_FILE, VERF_CROSSWALK_NWM_FILE, \
-  VERF_FORECAST_CONFIG_FILE, VERF_GAGE_HYDROFABRIC_FILE, VERF_LOCATION_LIST_FILE, VERF_NGENCERF_CONFIG_FILE
-from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages
+    VERF_FORECAST_CONFIG_FILE, VERF_GAGE_HYDROFABRIC_FILE, VERF_LOCATION_LIST_FILE, VERF_NGENCERF_CONFIG_FILE
+from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_forecast_run, get_verification_job, ResponseError, get_user_email, get_elapsed_str, \
@@ -74,13 +71,13 @@ def load_verification_job(request: Request) -> Response:
     validator, error_return = validate_request(VerificationJobSerializer, data)
     if error_return:
         return error_return
-    
+
     verification_job_id = validator.get('verification_job_id')
 
     verification_job, error_return = get_verification_job(verification_job_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
-    
+
     # Check settings to see if this run type is supported
     if verification_job.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
@@ -94,10 +91,10 @@ def load_verification_job(request: Request) -> Response:
 
     if verification_job.forecast_run:
         cycle_date = verification_job.forecast_run.cycle_date
-        
+
         if not verification_job.verification_yaml_file_path or not os.path.exists(verification_job.verification_yaml_file_path):
             # Auto-generate YAML file in out run-specific YAML directory
-            verif_output_dir = resolve_job_data_dir(verification_job)
+            verif_output_dir = resolve_job_data_dir(verification_job.job_data_dir)
             fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
             # Create the directory
@@ -124,7 +121,7 @@ def load_verification_job(request: Request) -> Response:
                         'gage_hydrofabric_file': VERF_GAGE_HYDROFABRIC_FILE,
                         'output_dir': verif_output_dir,
                     }
-                    
+
                     # Override values in YAML with info from our forecast/calibration runs
                     yaml_config_data['general']['location_set_name'] = 'usgs_' + verification_job.forecast_run.calibration_run.gage.gage_id
                     yaml_config_data['general']['location_list'] = [verification_job.forecast_run.calibration_run.gage.gage_id]
@@ -138,7 +135,8 @@ def load_verification_job(request: Request) -> Response:
                     yaml_config_data['nwm_forecast']['data_source'] = 'ngenCERF'
                     yaml_config_data['file_paths']['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
                     yaml_config_data['file_paths']['fcst_data_file'] = {}
-                    yaml_config_data['file_paths']['fcst_data_file'][verification_job.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(verification_job.forecast_run)
+                    yaml_config_data['file_paths']['fcst_data_file'][
+                        verification_job.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(verification_job.forecast_run)
 
                     from pprint import pprint
                     print('YAML CONFIG DATA:')
@@ -147,7 +145,7 @@ def load_verification_job(request: Request) -> Response:
                     with open(verification_yaml_file_path, 'w') as updated_file:
                         yaml.dump(yaml_config_data, updated_file, default_flow_style=False)
                         logger.info(f"Writing new YAML file to {verification_yaml_file_path}")
-                
+
                 if cycle_date:
                     # Set run status to Ready only if the file can be read (validation to be added later)
                     verification_job.status = StatusEnum.READY.db_instance
@@ -248,39 +246,16 @@ def create_verification_job(request: Request) -> Response:
     with transaction.atomic():
         run = create_verification_job_internal(request.user, forecast_run_id)
 
-        response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id, 'job_data_dir': resolve_job_data_dir(run)}
+        response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id,
+                    'job_data_dir': resolve_job_data_dir(run.job_data_dir)}
 
         response_validator, error_response = validate_response(CreateVerificationJobResponseSerializer, response)
         if error_response:
             return error_response
 
-        logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(json.dumps(response_validator.data))}')
+        logger.debug(
+            f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
-
-
-def resolve_job_data_dir(run: VerificationRun) -> str:
-    """
-    Resolves the job data directory for the given VerificationRun object, converting paths if necessary
-    based on the current settings.
-
-    :param run: The VerificationRun object.
-    :return: The resolved host path to the job data directory as a plain string.
-    :raises ValueError: If the path is not absolute or does not start with the expected root.
-    """
-    container_job_data_dir: str = run.job_data_dir
-
-    if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
-        # Ensure the absolute path starts with the old root
-        if not os.path.isabs(container_job_data_dir):
-            raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
-        if not container_job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
-            raise ValueError(f"The path '{container_job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
-
-        # Replace the old root with the new root
-        relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
-        return os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
-
-    return container_job_data_dir
 
 
 @extend_schema(
@@ -323,7 +298,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
         return error_return
 
     # Save to the run-specific YAML directory
-    verif_output_dir = resolve_job_data_dir(run)
+    verif_output_dir = resolve_job_data_dir(run.job_data_dir)
     fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
     # Create the directory
@@ -340,7 +315,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
     fs.save(verification_yaml_file.name, verification_yaml_file)
 
     run.verification_yaml_file_path = verification_yaml_file_path
-    
+
     message = f"YAML file '{verification_yaml_file.name}' saved for Verification Job {run.id}"
 
     try:
@@ -366,7 +341,8 @@ def upload_verification_yaml_file(request: Request) -> Response:
                 yaml_config_data['nwm_forecast']['data_source'] = 'ngenCERF'
                 yaml_config_data['file_paths']['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
                 yaml_config_data['file_paths']['fcst_data_file'] = {}
-                yaml_config_data['file_paths']['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(run.forecast_run)
+                yaml_config_data['file_paths']['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(
+                    run.forecast_run)
             elif 'nwm' in settings.VERF_MODES_SUPPORTED:
                 yaml_config_data['file_paths']['crosswalk_file'] = {'nwm30': VERF_CROSSWALK_NWM_FILE}
                 yaml_config_data['file_paths']['location_list_file'] = VERF_LOCATION_LIST_FILE
@@ -378,11 +354,11 @@ def upload_verification_yaml_file(request: Request) -> Response:
             old_verification_yaml_file_path = os.path.join(fs.location, old_verification_yaml_file_name)
             os.rename(verification_yaml_file_path, old_verification_yaml_file_path)
             logger.info(f"Renaming raw YAML file from {verification_yaml_file_path} to {old_verification_yaml_file_path}")
-            
+
             with open(verification_yaml_file_path, 'w') as updated_file:
-              yaml.dump(yaml_config_data, updated_file, default_flow_style=False)
-              logger.info(f"Writing new YAML file to {verification_yaml_file_path}")
-          
+                yaml.dump(yaml_config_data, updated_file, default_flow_style=False)
+                logger.info(f"Writing new YAML file to {verification_yaml_file_path}")
+
         # Set run status to Ready only if the file can be read (validation to be added later)
         run.status = StatusEnum.READY.db_instance
     # except FileNotFoundError:
@@ -399,19 +375,21 @@ def upload_verification_yaml_file(request: Request) -> Response:
         run.save()
 
     response = {
-        'message': message, 
+        'message': message,
         'verification_job_id': run.id,
         'verification_yaml_file': verification_yaml_file.name,
         'verification_yaml_file_path': verification_yaml_file_path,
         'yaml_config_data': yaml_config_data,
         'status': run.status.name
-      }
+    }
 
     response_validator, error_response = validate_response(UploadVerificationYamlFileResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data)
+
 
 # Commenting out this endpoint for now since the file upload handles the save already
 # @extend_schema(
@@ -454,7 +432,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
 #     run, error_return = get_verification_job(verification_job_id, request.user)
 #     if error_return:
 #         return error_return
-    
+
 #     # Update the YAML file path - this might not be needed if the upload endpoint takes care of it
 #     if run.verification_yaml_file_path != verification_yaml_file:
 #         run.verification_yaml_file_path = verification_yaml_file
@@ -516,7 +494,7 @@ def run_verification(request: Request) -> Response:
     run, error_return = get_verification_job(verification_job_id, request.user)
     if error_return:
         return error_return
-    
+
     # Check settings to see if this run type is supported
     if run.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
@@ -536,7 +514,8 @@ def run_verification(request: Request) -> Response:
     if error_return:
         return error_return
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -579,13 +558,13 @@ def get_verification_status(request: Request) -> Response:
     verification_job, error_return = get_verification_job(verification_job_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
-    
+
     # Check settings to see if this run type is supported
     if verification_job.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
     elif not verification_job.forecast_run and 'nwm' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
-    
+
     # Prepare the main response
     response = {
         'message': f'Verification Job {verification_job.id}, status is {verification_job.status.name}',
@@ -598,8 +577,9 @@ def get_verification_status(request: Request) -> Response:
     }
 
     # Conditionally retrieve verification performance metrics
-    verification_metrics = get_performance_metrics(verification_job.performance_metrics) if should_include_metrics(verification_job.status,include_performance_metrics) else None
-    
+    verification_metrics = get_performance_metrics(verification_job.performance_metrics) if should_include_metrics(verification_job.status,
+                                                                                                                   include_performance_metrics) else None
+
     # Conditionally add verification run performance metrics to response if requested and status is DONE or FAIL
     if verification_metrics:
         response['performance_metrics'] = verification_metrics
@@ -653,7 +633,7 @@ def get_verification_plot(request: Request) -> Response:
     validator, error_return = validate_request(GetVerificationPlotRequestSerializer, data)
     if error_return:
         return error_return
-    
+
     verification_job_id = validator.get('verification_job_id')
 
     plot_name = validator.get('plot_name')
@@ -671,7 +651,7 @@ def get_verification_plot(request: Request) -> Response:
     run, error_return = get_verification_job(verification_job_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
-    
+
     # Check settings to see if this run type is supported
     if run.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
@@ -688,7 +668,8 @@ def get_verification_plot(request: Request) -> Response:
         # Cache the plot_url
         cache.set(cache_key_plot_url, plot_url, timeout=3600)
     else:
-        return ResponseError(f"Error while checking existence of plot '{plot_name}' for {JobType.VERIFICATION.value.capitalize()} {run.id}: File Not Found")
+        return ResponseError(
+            f"Error while checking existence of plot '{plot_name}' for {JobType.VERIFICATION.value.capitalize()} {run.id}: File Not Found")
 
     response = {
         'plot_name': plot_name,
@@ -763,7 +744,8 @@ def delete_verification_job(request: Request) -> Response:
     response_validator, error_response = validate_response(DeleteVerificationJobResponseSerializer, response)
     if error_response:
         return error_response
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
