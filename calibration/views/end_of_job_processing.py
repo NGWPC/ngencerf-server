@@ -16,15 +16,17 @@ from django.utils.timezone import now
 from calibration.enums import OptimizationEnum, ValidationMetricPeriod, ValidationType, MetricEnum
 from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import Iteration, CalibrationRun, IterationMetric, IterationParameter, CalibrationParameter, ValidationRun, \
-    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ForecastRun, ColdStartRun
+    PerformanceMetrics, ValidationMetrics, NWMRetrospectiveMetrics, IterationResult, ColdStartRun, ForecastRun, \
+    VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.util.caching import have_LSTM
 from calibration.util.ngen_locations import get_realization_file_path, get_metrics_iteration_file, \
     get_objective_log_best_file, get_calibration_worker_path, get_global_best_params_file, get_validation_metrics_valid_control_file, \
     get_validation_metrics_valid_best_file, get_validation_metrics_valid_iteration_file, \
     get_validation_performance_file, get_calibration_performance_file, get_validation_metrics_nwm_retrospective_file, get_output_iteration_csv, \
-    get_validation_special_performance_file, get_forecast_performance_file, get_params_iteration_file, get_cold_start_performance_file
-from calibration.views.calibration_secondary_data_views import generate_secondary_ts_data
+    get_validation_special_performance_file, get_forecast_performance_file, get_verification_performance_file, \
+    get_params_iteration_file, get_cold_start_performance_file
+from calibration.views.calibration_swe_views import generate_swe_ts_data
 from calibration.views.common import CerfException, get_job_description, find_validation_worker_with_matching_id
 
 logger = logging.getLogger(__name__)
@@ -134,6 +136,29 @@ def read_forecast_output(run: ForecastRun, _failed_so_far: bool) -> None:
     logger.info(f"Processing output for {job_description}, status={run.status}")
     with transaction.atomic():
         create_performance_metrics(run, get_forecast_performance_file(run))
+
+    # No other processing needed
+
+    logger.info(f"End of processing output for {job_description}")
+
+
+def read_verification_output(run: VerificationRun, _failed_so_far: bool) -> None:
+    """
+    Processes the output of a verification run by parsing performance metrics.
+
+    :param run: The VerificationRun instance.
+    :param _failed_so_far: Indicates whether the job has failed up to this point.
+    """
+
+    job_description = get_job_description(run)
+
+    logger.info(f"Processing output for {job_description}, status={run.status}")
+    with transaction.atomic():
+        performance_metrics_file = (
+            get_verification_performance_file(run)
+        )
+
+        create_performance_metrics(run, performance_metrics_file)
 
     # No other processing needed
 

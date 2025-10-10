@@ -23,7 +23,8 @@ from calibration.util.calibration_validators import CalibrationRunSerializer, Ge
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
     CalibrationJobSlurmCallbackRequestSerializer, ValidationJobSlurmCallbackRequestSerializer, EmptySerializer, \
     GetStatusRequestSerializer, GetStatusResponseSerializer, GetStatusForComparisonRequestSerializer, GetStatusForComparisonResponseSerializer, \
-    CalibrationOrValidationOrForecastRunSerializer, ForecastJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, ValidationRunSerializer, \
+    CalibrationOrValidationOrForecastOrVerificationRunSerializer, ForecastJobSlurmCallbackRequestSerializer, CancelJobResponseSerializer, \
+    ValidationRunSerializer, \
     GenericResponseSerializerWithValidator, RunCalibrationJob, MPINodesRulesSerializer, MPINodesRulesResponseSerializer, \
     ColdStartJobSlurmCallbackRequestSerializer
 from calibration.views import ngen_cal_input
@@ -747,7 +748,7 @@ def get_iteration(request: Request) -> Response:
 
 
 @extend_schema(
-    request=CalibrationOrValidationOrForecastRunSerializer,
+    request=CalibrationOrValidationOrForecastOrVerificationRunSerializer,
     responses={
         200: GenericResponseSerializer,
         400: OpenApiResponse(
@@ -773,7 +774,7 @@ def cancel_job(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationOrForecastRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrForecastOrVerificationRunSerializer, data)
     if error_return:
         return error_return
 

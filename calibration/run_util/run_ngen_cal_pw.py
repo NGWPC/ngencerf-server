@@ -8,11 +8,13 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
-from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.run_util.run_common import set_job_status, run_generic_job_end_callback, finalize_calibration_after_callback, \
     finalize_validation_after_callback, finalize_forecast_after_callback, finalize_cold_start_after_callback
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, SlurmSubmitResponseSerializer
+from calibration.util.file_util import get_single_file
+from calibration.util.ngen_locations import get_geopackage_dir_for_job
 from calibration.views.common import generate_custom_token, TOKEN_SLURM_SCOPE, get_job_description, validate_response_data
 
 logger = logging.getLogger(__name__)
@@ -28,7 +30,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     constructs the payload with input arguments and authentication token,
     and submits the job using an HTTP POST request.
 
-    :param run: The CalibrationRun, ValidationRun, ColdStartRun or ForecastRun object.
+    :param run: The CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, or VerificationRun object.
     :param owner: The owner (user instance) of the job, used to generate the auth token.
     :param arguments: Dictionary containing command-line arguments for the job (e.g., 'input_file').
     :param stdout_file: The path to the file where job output will be written.
@@ -70,9 +72,16 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'realization_file': (None, arguments['realization_file']),
             'stdout_file': (None, stdout_file),
         }
+    elif isinstance(run, VerificationRun):
+        url_endpoint = settings.SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT
+        payload = {
+            'verification_job_id': (None, run.id),
+            'input_file': (None, arguments['verification_yaml_file_path']),
+            'stdout_file': (None, stdout_file),
+        }
     else:
         raise ValueError(
-            f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ColdStartRun, ForecastRun."
+            f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, VerificationRun."
         )
 
     url = urljoin(settings.SLURM_URL, url_endpoint)

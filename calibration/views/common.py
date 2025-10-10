@@ -33,8 +33,8 @@ from calibration.util.caching import get_cached_modules_by_id
 from calibration.util.calibration_validators import ErrorResponseSerializer, BaseSerializer
 from calibration.util.cloud_util import path_exists
 from calibration.util.ngen_locations import get_forecast_dir, get_output_calibration_run_dir, \
-    get_output_validation_run_dir, get_cold_start_dir, get_ngen_logging_file, \
-    get_ngen_logging_basename
+    get_output_validation_run_dir, get_cold_start_dir, get_verification_run_dir, get_ngen_logging_file, \
+	get_ngen_logging_basename
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,22 @@ def get_forecast_run(
     :return: Tuple of ForecastRun or None, and Response if error or None.
     """
     return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
+
+
+def get_verification_job(
+        verification_job_id: int,
+        user: User | None,
+        run_status: list[StatusEnum] | None = None
+) -> tuple[VerificationRun | None, Response | None]:
+    """
+    Retrieve a VerificationRun by ID, optionally filtering by owner and status.
+
+    :param verification_job_id: The ID of the VerificationRun.
+    :param user: User requesting the VerificationRun; if None, no owner filtering.
+    :param run_status: Allowed statuses for the VerificationRun.
+    :return: Tuple of VerificationRun or None, and Response if error or None.
+    """
+    return get_run_instance(VerificationRun, verification_job_id, user, run_status, 'owner', 'is_archived')
 
 
 def join_with_or(items: list[str]) -> str:
@@ -342,6 +358,42 @@ def create_forecast_run_internal(
 
     return forecast_run
 
+
+def create_verification_job_internal(user: User, forecast_run_id: int | None = None, genesis: JobGenesis | None = None) -> VerificationRun:
+    """
+    Create a new VerificationRun for the given user.
+
+    :param user: Owner of the verification job.
+    :param genesis: Origin of the job (optional).
+    :return: New VerificationRun instance.
+    """
+    run = VerificationRun.objects.create(owner=user, status=StatusEnum.SAVED.db_instance)
+
+    if forecast_run_id:
+        forecast_run, error_return = get_forecast_run(forecast_run_id, user, run_status=list(StatusEnum))
+        if error_return:
+            return error_return
+        run.forecast_run = forecast_run
+
+    # Just get the user part, before the @ sign
+    username = run.owner.username.split('@')[0]
+    if run.forecast_run:
+        run.job_data_dir = os.path.join(get_verification_run_dir(run.forecast_run), f"{run.id}_{username}")
+    else:
+        run.job_data_dir = os.path.join(settings.NWM_VERF_RUN_DIR, f"{run.id}_{username}")
+
+    # Clean up any existing directory if it already exists (should not happen in production)
+    if os.path.exists(run.job_data_dir):
+        # Append timestamp to existing directory name to avoid overwriting
+        new_name = f"{run.job_data_dir}_{datetime.now().isoformat()}"
+        os.rename(run.job_data_dir, new_name)
+    
+    # Create the directory
+    os.makedirs(run.job_data_dir, exist_ok=True)
+
+    # This is always true
+    run.save()
+    return run
 
 TOKEN_SLURM_SCOPE = 'slurm_callback'
 TOKEN_NGEN_SCOPE = 'ngen'
@@ -633,7 +685,7 @@ def get_job_description(run: BaseRun) -> str:
     """
     Get a descriptive string identifying the job type and owner.
 
-    :param run: Job instance (CalibrationRun, ValidationRun, ForecastRun).
+    :param run: Job instance (CalibrationRun, ValidationRun, ForecastRun, VerificationRun).
     :return: Description of the job.
     """
     if isinstance(run, CalibrationRun):
@@ -645,6 +697,8 @@ def get_job_description(run: BaseRun) -> str:
         return f"Forecast Job {run.id} for Calibration Job {run.calibration_run.id}{cold_start_data}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, ColdStartRun):
         return f"Cold Start Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
+    elif isinstance(run, VerificationRun):
+        return f"Verification Job {run.id}, user: {run.owner.username}"
 
     raise ValueError(f"Unknown job type: {type(run).__name__}")
 

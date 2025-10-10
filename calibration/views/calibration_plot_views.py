@@ -2,11 +2,13 @@ import json
 import logging
 import os
 import re
+import yaml
 from collections import defaultdict
 from functools import lru_cache
 from typing import Any, cast
 
 import pandas as pd
+from django.db.models import Q
 from django.core.cache import cache
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -69,8 +71,7 @@ def get_plot_names(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
-    #forecast_run_id = validator.get('forecast_run_id')
-
+   
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
         run_func = get_calibration_run
@@ -80,10 +81,14 @@ def get_plot_names(request: Request) -> Response:
         run_func = get_validation_run
         run_id = validation_run_id
         run_type = JobType.VALIDATION.value.capitalize()
-    # elif forecast_run_id:
-    #     run_func = get_forecast_run
-    #     run_id = forecast_run_id
-    #     run_type = JobType.FORECAST.value.capitalize()
+    elif forecast_run_id:
+        run_func = get_forecast_run
+        run_id = forecast_run_id
+        run_type = JobType.FORECAST.value.capitalize()
+    elif verification_job_id:
+        run_func = get_verification_job
+        run_id = verification_job_id
+        run_type = JobType.VERIFICATION.value.capitalize()
     else:
         message = f"Invalid job type sent to {get_caller_name()}"
         logger.exception(message)
@@ -96,19 +101,39 @@ def get_plot_names(request: Request) -> Response:
     fields = ['name', 'display_name', 'description', 'timeseries_available']
     plot_names = []
 
-    filtered_plot_definitions = get_filtered_plot_definitions(run)
-    for plot in filtered_plot_definitions:
+    if verification_job_id:
+        # For now, get verification plots directly from the file system
         try:
-            plot_file_path = plot_exists(run, plot)
-            if plot_file_path is not None:
-                plot_names.append({k: plot[k] for k in fields})
-            else:
-                logger.warning(f"Plot file does not exist for '{plot.get('name')}' for {get_job_description(run)}")
+            with open(run.verification_yaml_file_path, 'r') as file:
+                yaml_config_data = yaml.safe_load(file)
+                if 'general' in yaml_config_data and 'nwm_configuration' in yaml_config_data['general']:
+                    verification_plot_location = os.path.join(run.job_data_dir, 'plots', yaml_config_data['general']['nwm_configuration'])
+                    for root, dirs, files in os.walk(verification_plot_location):
+                        if files:
+                            for file_name in files:
+                                plot_names.append({
+                                    'name': os.path.relpath(os.path.join(root, file_name),run.job_data_dir),
+                                    'display_name': file_name,
+                                    'description': f'Placholder description of {file_name}',
+                                    'timeseries_available': False
+                                })
         except Exception as e:
-            logger.warning(f"Skipping plot '{plot.get('name')}' for {get_job_description(run)} due to error: {e}")
+            logger.warning(f"Unable to get plots for {get_job_description(run)} due to error: {e}")
+    else:
+        # Get filtered plot definitions for the run
+        filtered_plot_definitions = get_filtered_plot_definitions(run)
+        for plot in filtered_plot_definitions:
+            try:
+                plot_file_path = plot_exists(run, plot)
+                if plot_file_path is not None:
+                    plot_names.append({k: plot[k] for k in fields})
+                else:
+                    logger.warning(f"Plot file does not exist for '{plot.get('name')}' for {get_job_description(run)}")
+            except Exception as e:
+                logger.warning(f"Skipping plot '{plot.get('name')}' for {get_job_description(run)} due to error: {e}")
 
     response = {
-        f"{run_type.lower()}_run_id": run.id,
+        f"{run_type.lower()}_{'job' if verification_job_id else 'run'}_id": run.id,
         'plot_names': plot_names,
         'status': run.status.name
     }
@@ -251,10 +276,6 @@ def get_plot(request: Request) -> Response:
         run_func = get_validation_run
         run_id = validation_run_id
         run_type = JobType.VALIDATION.value.capitalize()
-    # elif forecast_run_id:
-    #     run_func = get_forecast_run
-    #     run_id = forecast_run_id
-    #     run_type = JobType.FORECAST.value.capitalize()
     else:
         message = f"Invalid job type sent to {get_caller_name()}"
         logger.exception(message)
@@ -314,9 +335,10 @@ def get_plot(request: Request) -> Response:
         }
 
     response = {
-        'calibration_run_id': calibration_run.id,
         'plot_name': plot_name,
     }
+    if calibration_run:
+        response['calibration_run_id'] = calibration_run.id
 
     # Include plot_url based on force_include_plot or whether it was just calculated
     if force_include_plot or plot_url_calculated:
