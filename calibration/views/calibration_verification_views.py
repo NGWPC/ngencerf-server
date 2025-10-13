@@ -2,8 +2,8 @@ import json
 import logging
 import os
 import shutil
-
 import yaml
+
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
@@ -27,13 +27,12 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
     GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
     DeleteVerificationJobResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory
-from calibration.util.ngen_locations import get_forecast_output_file, VERF_CROSSWALK_NGEN_FILE, VERF_CROSSWALK_NWM_FILE, \
-    VERF_FORECAST_CONFIG_FILE, VERF_GAGE_HYDROFABRIC_FILE, VERF_LOCATION_LIST_FILE, VERF_NGENCERF_CONFIG_FILE
 from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_forecast_run, get_verification_job, ResponseError, get_user_email, get_elapsed_str, \
     create_verification_job_internal, png_to_base64_url, truncate_large_fields
+from calibration.views.verification_input import create_verification_input
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +60,8 @@ logger = logging.getLogger(__name__)
 def load_verification_job(request: Request) -> Response:
     """
     Load data for a verification job.
+
+    - Calls create_verification_input(verification_job) to generate the config
 
     :param request: HTTP request containing verification_job_id
     :return: JSON response with forecast cycle values.
@@ -93,7 +94,7 @@ def load_verification_job(request: Request) -> Response:
         cycle_date = verification_job.forecast_run.cycle_date
 
         if not verification_job.verification_yaml_file_path or not os.path.exists(verification_job.verification_yaml_file_path):
-            # Auto-generate YAML file in out run-specific YAML directory
+            # Auto-generate YAML file in our run-specific YAML directory
             verif_output_dir = resolve_job_data_dir(verification_job.job_data_dir)
             fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
@@ -102,53 +103,13 @@ def load_verification_job(request: Request) -> Response:
 
             # Delete the file if it's already there
             delete_all_files_in_directory(fs.location)
-            verification_yaml_file_name = 'forecast_' + str(verification_job.forecast_run.id) + '_config.yaml'
-            verification_yaml_file_path = os.path.join(fs.location, verification_yaml_file_name)
-            logger.info(f"Auto-generating verification YAML file at {verification_yaml_file_path}")
-
-            verification_job.verification_yaml_file_path = verification_yaml_file_path
-
-            verification_job.status = StatusEnum.READY.db_instance
 
             try:
-                with open(VERF_NGENCERF_CONFIG_FILE, 'r') as file:
-                    yaml_config_data = yaml.safe_load(file)
-
-                    # Add hard-coded file paths to YAML
-                    yaml_config_data['file_paths'] = {
-                        'base_dir': verif_output_dir,
-                        'fcst_config_file': VERF_FORECAST_CONFIG_FILE,
-                        'gage_hydrofabric_file': VERF_GAGE_HYDROFABRIC_FILE,
-                        'output_dir': verif_output_dir,
-                    }
-
-                    # Override values in YAML with info from our forecast/calibration runs
-                    yaml_config_data['general']['location_set_name'] = 'usgs_' + verification_job.forecast_run.calibration_run.gage.gage_id
-                    yaml_config_data['general']['location_list'] = [verification_job.forecast_run.calibration_run.gage.gage_id]
-                    yaml_config_data['general']['location_type'] = 'usgs_gage'
-                    yaml_config_data['general']['nwm_configuration'] = verification_job.forecast_run.configuration.internal_name
-                    yaml_config_data['general']['dataset_name'] = [verification_job.forecast_run.calibration_run.user_formulation_name]
-                    yaml_config_data['general']['nwm_version'] = ['ngen']
-                    if cycle_date:
-                        yaml_config_data['general']['forecast_start_date'] = [cycle_date.strftime("%Y-%m-%d")]
-                        yaml_config_data['general']['forecast_end_date'] = [cycle_date.strftime("%Y-%m-%d")]
-                    yaml_config_data['nwm_forecast']['data_source'] = 'ngenCERF'
-                    yaml_config_data['file_paths']['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
-                    yaml_config_data['file_paths']['fcst_data_file'] = {}
-                    yaml_config_data['file_paths']['fcst_data_file'][
-                        verification_job.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(verification_job.forecast_run)
-
-                    from pprint import pprint
-                    print('YAML CONFIG DATA:')
-                    pprint(yaml_config_data)
-
-                    with open(verification_yaml_file_path, 'w') as updated_file:
-                        yaml.dump(yaml_config_data, updated_file, default_flow_style=False)
-                        logger.info(f"Writing new YAML file to {verification_yaml_file_path}")
-
-                if cycle_date:
-                    # Set run status to Ready only if the file can be read (validation to be added later)
-                    verification_job.status = StatusEnum.READY.db_instance
+                error, config_file = create_verification_input(verification_job, None)
+                if error.has_errors():
+                    return ResponseError(error)
+                verification_job.verification_yaml_file_path = config_file
+                verification_job.status = StatusEnum.READY.db_instance
             except Exception as e:
                 logger.info(f"Error: {e}")
 
@@ -314,59 +275,18 @@ def upload_verification_yaml_file(request: Request) -> Response:
     logger.info(f"Saving user-uploaded verification YAML file to {verification_yaml_file_path}")
     fs.save(verification_yaml_file.name, verification_yaml_file)
 
-    run.verification_yaml_file_path = verification_yaml_file_path
-
     message = f"YAML file '{verification_yaml_file.name}' saved for Verification Job {run.id}"
 
     try:
         with open(verification_yaml_file_path, 'r') as file:
             yaml_config_data = yaml.safe_load(file)
-
-            # Add hard-coded file paths to YAML
-            yaml_config_data['file_paths'] = {
-                'base_dir': verif_output_dir,
-                'fcst_config_file': VERF_FORECAST_CONFIG_FILE,
-                'gage_hydrofabric_file': VERF_GAGE_HYDROFABRIC_FILE,
-                'output_dir': verif_output_dir,
-            }
-
-            if 'ngen' in settings.VERF_MODES_SUPPORTED and run.forecast_run:
-                # Override values in YAML with info from our forecast/calibration runs
-                yaml_config_data['general']['location_set_name'] = 'usgs_' + run.forecast_run.calibration_run.gage.gage_id
-                yaml_config_data['general']['location_list'] = [run.forecast_run.calibration_run.gage.gage_id]
-                yaml_config_data['general']['location_type'] = 'usgs_gage'
-                yaml_config_data['general']['nwm_configuration'] = run.forecast_run.configuration.internal_name
-                yaml_config_data['general']['dataset_name'] = run.forecast_run.calibration_run.user_formulation_name
-                yaml_config_data['general']['nwm_version'] = 'ngen'
-                yaml_config_data['nwm_forecast']['data_source'] = 'ngenCERF'
-                yaml_config_data['file_paths']['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
-                yaml_config_data['file_paths']['fcst_data_file'] = {}
-                yaml_config_data['file_paths']['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(
-                    run.forecast_run)
-            elif 'nwm' in settings.VERF_MODES_SUPPORTED:
-                yaml_config_data['file_paths']['crosswalk_file'] = {'nwm30': VERF_CROSSWALK_NWM_FILE}
-                yaml_config_data['file_paths']['location_list_file'] = VERF_LOCATION_LIST_FILE
-
-            # Rename user-uploaded YAML file and then save the updated YAML in the original location
-            temp_list = (verification_yaml_file.name).split('.')
-            temp_list[-2] += '_raw'
-            old_verification_yaml_file_name = '.'.join(temp_list)
-            old_verification_yaml_file_path = os.path.join(fs.location, old_verification_yaml_file_name)
-            os.rename(verification_yaml_file_path, old_verification_yaml_file_path)
-            logger.info(f"Renaming raw YAML file from {verification_yaml_file_path} to {old_verification_yaml_file_path}")
-
-            with open(verification_yaml_file_path, 'w') as updated_file:
-                yaml.dump(yaml_config_data, updated_file, default_flow_style=False)
-                logger.info(f"Writing new YAML file to {verification_yaml_file_path}")
-
-        # Set run status to Ready only if the file can be read (validation to be added later)
-        run.status = StatusEnum.READY.db_instance
-    # except FileNotFoundError:
-    #     message = "Error: Uploaded YAML file not readable."
-    #     run.status = StatusEnum.SAVED.db_instance
-    # except yaml.YAMLError as exc:
-    #     message = f"Error parsing YAML file: {exc}"
-    #     run.status = StatusEnum.SAVED.db_instance
+            error, config_file = create_verification_input(run, yaml_config_data)
+            if error.has_errors():
+                return ResponseError(error)
+            run.verification_yaml_file_path = config_file
+            
+            # Set run status to Ready only if the file can be read (validation to be added later)
+            run.status = StatusEnum.READY.db_instance
     except Exception as exc:
         message = f"Error: {exc}"
         run.status = StatusEnum.SAVED.db_instance

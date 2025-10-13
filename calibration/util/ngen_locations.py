@@ -15,7 +15,7 @@ static_dirs = [
     PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet'),
     NGEN_MODULE_PARAMETERS := os.path.join(settings.NGEN_STATIC_DIR, 'module_parameter_files'),
     FORECAST_FORCING_TEMPLATES := os.path.join(settings.NGEN_STATIC_DIR, 'forecast_forcing_templates'),
-    VERF_CONFIG_FILES := os.path.join(settings.NGEN_STATIC_DIR, 'verification_config_files')
+    VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data')
 ]
 
 files = [
@@ -33,12 +33,9 @@ files = [
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
     SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so'),
     UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb-bmi', 'cmake_build', 'src', 'libbmiuebcxx.so'),
-    VERF_CROSSWALK_NGEN_FILE := os.path.join(VERF_CONFIG_FILES,'usgs_ngen_crosswalk_all_domains.parquet'),
-    VERF_CROSSWALK_NWM_FILE := os.path.join(VERF_CONFIG_FILES,'usgs_nwm30_crosswalk_all_domains.parquet'),
-    VERF_FORECAST_CONFIG_FILE := os.path.join(VERF_CONFIG_FILES,'nwm_forecast_configuration.yaml'),
-    VERF_GAGE_HYDROFABRIC_FILE := os.path.join(VERF_CONFIG_FILES,'gage_hydrofabric_all_domains.parquet'),
-    VERF_LOCATION_LIST_FILE := os.path.join(VERF_CONFIG_FILES,'usgs_gages_link_CONUS_calib100.csv'),
-    VERF_NGENCERF_CONFIG_FILE := os.path.join(VERF_CONFIG_FILES,'ngencerf_verification_config.yaml'),
+    VERF_CROSSWALK_NGEN_FILE := os.path.join(VERF_DATA,'usgs_ngen_crosswalk_all_domains.parquet'),
+    VERF_CROSSWALK_NWM_FILE := os.path.join(VERF_DATA,'usgs_nwm30_crosswalk_all_domains.parquet'),
+    VERF_GAGE_HYDROFABRIC_FILE := os.path.join(VERF_DATA,'gage_hydrofabric_all_domains.parquet'),
 ]
 
 
