@@ -846,27 +846,29 @@ def cancel_job(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def resolve_job_data_dir(job_data_dir: str) -> str:
+def resolve_job_data_dir(run: CalibrationRun) -> str:
     """
-    Resolves the job data directory path, converting paths if necessary
+    Resolves the job data directory for the given CalibrationRun object, converting paths if necessary
     based on the current settings.
 
-    :param job_data_dir: The container's job data directory path (absolute).
+    :param run: The CalibrationRun object.
     :return: The resolved host path to the job data directory as a plain string.
     :raises ValueError: If the path is not absolute or does not start with the expected root.
     """
+    container_job_data_dir: str = run.job_data_dir
+
     if settings.NGEN_CAL_DATA_PATH and settings.NGEN_CAL_DATA_PATH != settings.NGEN_CAL_MOUNT_POINT:
         # Ensure the absolute path starts with the old root
-        if not os.path.isabs(job_data_dir):
-            raise ValueError(f"The path '{job_data_dir}' is not absolute.")
-        if not job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
-            raise ValueError(f"The path '{job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
+        if not os.path.isabs(container_job_data_dir):
+            raise ValueError(f"The path '{container_job_data_dir}' is not absolute.")
+        if not container_job_data_dir.startswith(settings.NGEN_CAL_MOUNT_POINT):
+            raise ValueError(f"The path '{container_job_data_dir}' does not start with the old root '{settings.NGEN_CAL_MOUNT_POINT}'.")
 
         # Replace the old root with the new root
-        relative_path = os.path.relpath(job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
+        relative_path = os.path.relpath(container_job_data_dir, start=settings.NGEN_CAL_MOUNT_POINT)
         return os.path.join(settings.NGEN_CAL_DATA_PATH, relative_path)
 
-    return job_data_dir
+    return container_job_data_dir
 
 
 @extend_schema(

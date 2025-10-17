@@ -95,7 +95,7 @@ def load_verification_job(request: Request) -> Response:
 
         if not verification_job.verification_yaml_file_path or not os.path.exists(verification_job.verification_yaml_file_path):
             # Auto-generate YAML file in our run-specific YAML directory
-            verif_output_dir = resolve_job_data_dir(verification_job.job_data_dir)
+            verif_output_dir = resolve_job_data_dir(verification_job)
             fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
             # Create the directory
@@ -208,7 +208,7 @@ def create_verification_job(request: Request) -> Response:
         run = create_verification_job_internal(request.user, forecast_run_id)
 
         response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id,
-                    'job_data_dir': resolve_job_data_dir(run.job_data_dir)}
+                    'job_data_dir': resolve_job_data_dir(run)}
 
         response_validator, error_response = validate_response(CreateVerificationJobResponseSerializer, response)
         if error_response:
@@ -259,7 +259,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
         return error_return
 
     # Save to the run-specific YAML directory
-    verif_output_dir = resolve_job_data_dir(run.job_data_dir)
+    verif_output_dir = resolve_job_data_dir(run)
     fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
     # Create the directory

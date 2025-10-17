@@ -7,7 +7,6 @@ from functools import lru_cache
 from typing import Any, cast
 
 import pandas as pd
-import yaml
 from django.core.cache import cache
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -306,10 +305,9 @@ def get_plot(request: Request) -> Response:
         }
 
     response = {
+        'calibration_run_id': calibration_run.id,
         'plot_name': plot_name,
     }
-    if calibration_run:
-        response['calibration_run_id'] = calibration_run.id
 
     # Include plot_url based on force_include_plot or whether it was just calculated
     if force_include_plot or plot_url_calculated:

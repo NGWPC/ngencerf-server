@@ -20,8 +20,8 @@ from calibration.util.ngen_locations import get_forecast_dir, get_forecast_outpu
 from calibration.views.calibration_secondary_data_views import read_csv_as_json
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
-    ResponseError, get_user_email, get_elapsed_str, readonly_transaction, get_calibration_run, truncate_large_fields, \
-    CerfException
+    ResponseError, get_user_email, get_elapsed_str, readonly_transaction, get_calibration_run, truncate_large_fields
+from calibration.views.calibration_plot_views import count_and_read_file_in_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -321,39 +321,3 @@ def delete_forecast_job(request: Request) -> Response:
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
-
-
-def count_and_read_file_in_chunks(file_path: str) -> tuple[list[dict[str, Any]], int]:
-    """
-    Counts the total number of rows (excluding the header) in a file and retrieves all rows efficiently.
-
-    :param file_path: Path to the CSV file to be read.
-    :return: A tuple containing the paginated rows and total row count (excluding the header).
-    :raises CerfException: If the file cannot be read due to an error.
-    """
-    try:
-        # Read only the header to get column names
-        with open(file_path, 'r') as file:
-            header = next(file).strip().split(",")
-
-        # Count total rows efficiently (excluding header)
-        with open(file_path, 'r') as file:
-            total_count = sum(1 for _ in file) - 1  # Subtract 1 for the header row
-
-        # Read all rows using pandas
-        df = pd.read_csv(file_path, names=header, header=0)
-
-        # Convert the "time" column to datetime format, handling errors
-        if "time" in df.columns:
-            df["time"] = pd.to_datetime(df["time"], errors="coerce")
-            df = df.dropna(subset=["time"])  # Drop rows with invalid timestamps
-
-        # Convert DataFrame to a list of dictionaries
-        raw_data = df.to_dict(orient="records")
-        # Cast to avoid Pycharm warning
-        data = cast(list[dict[str, Any]], raw_data)
-        return data, total_count
-
-    except Exception as e:
-        logger.error(f"Error reading file: {e}")
-        raise CerfException(f"Failed to read file: {file_path}")
