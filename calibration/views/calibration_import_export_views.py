@@ -480,7 +480,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'last_updated_on': format_datetime(run.updated_at),
             'source_status': run.status.name,
             'time_range': serialized_time_range,
-            'job_data_dir': resolve_job_data_dir(run.job_data_dir),
+            'job_data_dir': resolve_job_data_dir(run),
             'num_catchments': num_catchments,
             'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None,
         }
@@ -521,7 +521,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     # UI Display Mode (Non-Export)
     #############################
     else:
-        calibration_run_data['job_data_dir'] = resolve_job_data_dir(run.job_data_dir)
+        calibration_run_data['job_data_dir'] = resolve_job_data_dir(run)
 
         calibration_run_data['last_updated_on'] = run.updated_at
 

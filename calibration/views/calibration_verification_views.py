@@ -24,14 +24,14 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
     CreateVerificationJobResponseSerializer, UploadVerificationYamlFileRequestSerializer, UploadVerificationYamlFileResponseSerializer, \
     RunVerificationJob, SubmitVerificationJobResponseSerializer, \
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
-    GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
+    GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
     DeleteVerificationJobResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory
 from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_forecast_run, get_verification_job, ResponseError, get_user_email, get_elapsed_str, \
-    create_verification_job_internal, png_to_base64_url, truncate_large_fields
+    create_verification_job_internal, png_to_base64_url, truncate_large_fields, get_job_description
 from calibration.views.verification_input import create_verification_input
 
 logger = logging.getLogger(__name__)
@@ -518,6 +518,87 @@ def get_verification_status(request: Request) -> Response:
     logger.debug(f"[DEBUG] view request type: {type(request)}")
     logger.debug(f"[DEBUG] request._request type: {type(getattr(request, '_request', None))}")
     logger.debug(f"[DEBUG] elapsed_time on _request: {getattr(getattr(request, '_request', None), 'elapsed_time', 'MISSING')}")
+
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=VerificationJobSerializer,
+    responses={
+        200: GetVerificationPlotNamesResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get a list of plot names"
+)
+@api_view(['GET', 'POST'])
+@handle_exceptions
+def get_verification_plot_names(request: Request) -> Response:
+    """
+    Retrieves the list of plot images for a verification job, filtered by applicable optimizations.
+
+    :param request: The request containing either POST data or query parameters.
+    :return: A JSON response with the run ID, list of plot images, and run status.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(VerificationJobSerializer, data)
+    if error_return:
+        return error_return
+
+    verification_job_id = validator.get('verification_job_id')
+
+    run, error_return = get_verification_job(verification_job_id, request.user,
+                                 run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.CANCELLED, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+    if error_return:
+        return error_return
+
+    plot_names = []
+
+    # For now, get verification plots directly from the file system
+    try:
+        with open(run.verification_yaml_file_path, 'r') as file:
+            yaml_config_data = yaml.safe_load(file)
+            if 'general' in yaml_config_data and 'nwm_configuration' in yaml_config_data['general']:
+                verification_plot_location = os.path.join(run.job_data_dir, 'plots', yaml_config_data['general']['nwm_configuration'])
+                for root, dirs, files in os.walk(verification_plot_location):
+                    if files:
+                        for file_name in files:
+                            plot_names.append({
+                                'name': os.path.relpath(os.path.join(root, file_name),run.job_data_dir),
+                                'display_name': file_name,
+                                'description': f'Placeholder description of {file_name}',
+                                'timeseries_available': False
+                            })
+    except Exception as e:
+        logger.warning(f"Unable to get plots for {get_job_description(run)} due to error: {e}")
+
+    response = {
+        "verification_job_id": run.id,
+        'plot_names': plot_names,
+        'status': run.status.name
+    }
+
+    response_validator, error_response = validate_response(
+        GetVerificationPlotNamesResponseSerializer,
+        response,
+        fields_to_truncate=['plot_names'], max_length=3
+
+    )
+    if error_response:
+        return error_response
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["plot_names"], max_length=3))}'
+    )
 
     return Response(response_validator.data)
 

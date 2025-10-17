@@ -1237,6 +1237,12 @@ class GetVerificationStatusResponseSerializer(GenericMessageAndStatusResponseSer
     failure_messages = serializers.DictField(required=False, allow_null=False)
 
 
+class GetVerificationPlotNamesResponseSerializer(BaseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    plot_names = PlotListStaticSerializer(many=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
+
 class GetVerificationPlotRequestSerializer(BaseSerializer):
     verification_job_id = serializers.IntegerField(required=True)
     plot_name = serializers.CharField(required=True, allow_null=False)

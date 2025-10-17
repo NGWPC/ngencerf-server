@@ -97,6 +97,7 @@ urlpatterns = [
     path('calibration/get_zip_status/<int:calibration_run_id>/', calibration_evaluation_views.get_zip_status, name="getZipStatus"),
     path('calibration/download_calibration_zip/', calibration_evaluation_views.download_calibration_zip, name="downloadCalibrationZip"),
 
+
     ##################################
     # Forecast
     ##################################
@@ -106,6 +107,7 @@ urlpatterns = [
     path('calibration/clone_and_run_forecast/', calibration_forecast_views.clone_and_run_forecast_job, name="cloneAndRunForecastJob"),
     path('calibration/get_forecast_timeseries_data/', calibration_forecast_views.get_forecast_timeseries_data, name="getForecastTimeseriesData"),
     path('calibration/delete_forecast_job/', calibration_forecast_views.delete_forecast_job, name="deleteForecastJob"),
+
 
     ##################################
     # Verification
@@ -117,6 +119,7 @@ urlpatterns = [
     # path('calibration/save_verification_setup/', calibration_verification_views.save_verification_setup, name="saveVerificationSetup"),
     path('calibration/get_verification_status/', calibration_verification_views.get_verification_status, name="getVerificationStatus"),
     path('calibration/run_verification/', calibration_verification_views.run_verification, name="runVerification"),
+    path('calibration/get_verification_plot_names/', calibration_verification_views.get_verification_plot_names, name="getVerificationPlotNames"),
     path('calibration/get_verification_plot/', calibration_verification_views.get_verification_plot, name="getVerificationPlot"),
     path('calibration/delete_verification_job/', calibration_verification_views.delete_verification_job, name="deleteVerificationJob"),
 
