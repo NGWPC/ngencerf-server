@@ -8,9 +8,9 @@ from django.conf import settings
 
 from calibration.enums import StatusEnum
 from calibration.models import VerificationRun
-from calibration.util.caching import generate_forecast_config_yaml
+from calibration.util.caching import generate_forecast_config_yaml, generate_gage_tsv
 from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, VERF_CROSSWALK_NGEN_FILE, \
-    VERF_CROSSWALK_NWM_FILE, VERF_GAGE_HYDROFABRIC_FILE, VERF_LOCATION_LIST_FILE
+    VERF_CROSSWALK_NWM_FILE, VERF_GAGE_HYDROFABRIC_FILE
 from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import called_from
 from calibration.views.common import join_with_or, ErrorReport, readonly_transaction

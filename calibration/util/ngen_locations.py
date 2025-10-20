@@ -5,6 +5,7 @@ from typing import Literal
 from django.conf import settings
 
 from calibration.enums import ValidationType
+from calibration.enums_vanilla import SecondaryDataEnum
 from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 

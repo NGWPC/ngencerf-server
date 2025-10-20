@@ -8,8 +8,6 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiRespon
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
-from typing import Any, cast
-import pandas as pd
 
 from calibration.enums import ForecastConfigEnum, StatusEnum
 from calibration.run_util.run_common import submit_job
@@ -21,7 +19,6 @@ from calibration.views.calibration_secondary_data_views import read_csv_as_json
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, get_forecast_run, create_forecast_run_internal, \
     ResponseError, get_user_email, get_elapsed_str, readonly_transaction, get_calibration_run, truncate_large_fields
-from calibration.views.calibration_plot_views import count_and_read_file_in_chunks
 
 logger = logging.getLogger(__name__)
 

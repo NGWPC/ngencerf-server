@@ -2,8 +2,8 @@ import json
 import logging
 import os
 import shutil
-import yaml
 
+import yaml
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
@@ -284,7 +284,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
             if error.has_errors():
                 return ResponseError(error)
             run.verification_yaml_file_path = config_file
-            
+
             # Set run status to Ready only if the file can be read (validation to be added later)
             run.status = StatusEnum.READY.db_instance
     except Exception as exc:
@@ -556,7 +556,8 @@ def get_verification_plot_names(request: Request) -> Response:
     verification_job_id = validator.get('verification_job_id')
 
     run, error_return = get_verification_job(verification_job_id, request.user,
-                                 run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.CANCELLED, StatusEnum.FAILED, StatusEnum.SERVER_ERROR])
+                                             run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.CANCELLED, StatusEnum.FAILED,
+                                                         StatusEnum.SERVER_ERROR])
     if error_return:
         return error_return
 
@@ -572,7 +573,7 @@ def get_verification_plot_names(request: Request) -> Response:
                     if files:
                         for file_name in files:
                             plot_names.append({
-                                'name': os.path.relpath(os.path.join(root, file_name),run.job_data_dir),
+                                'name': os.path.relpath(os.path.join(root, file_name), run.job_data_dir),
                                 'display_name': file_name,
                                 'description': f'Placeholder description of {file_name}',
                                 'timeseries_available': False
