@@ -26,7 +26,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, NgenLogging
 from calibration.models import CalibrationRun, ValidationRun, Status, ForecastConfiguration, ForecastRun, CustomUser, ColdStartRun, \
-    CalibrationFormulation
+    CalibrationFormulation, VerificationRun
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
 from calibration.util.caching import get_cached_modules_by_id
@@ -168,7 +168,7 @@ def get_forecast_run(
     return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
 
 
-def get_verification_job(
+def get_verification_run(
         verification_job_id: int,
         user: User | None,
         run_status: list[StatusEnum] | None = None

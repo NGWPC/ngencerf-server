@@ -6,7 +6,7 @@ import calibration.views.calibration_landing_views
 import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
-    calibration_evaluation_views, calibration_forecast_views, calibration_swe_views, calibration_regionalization_views, \
+    calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
     calibration_verification_views, calibration_secondary_data_views
 
 urlpatterns = [
@@ -82,6 +82,7 @@ urlpatterns = [
     path('calibration/validation_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
     path('calibration/cold_start_job_slurm_callback/', calibration_run_views.cold_start_job_slurm_callback, name="coldStartJobSlurmCallback"),
     path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
+    path('calibration/verification_job_slurm_callback/', calibration_run_views.verification_job_slurm_callback, name="verificationJobSlurmCallback"),
     path('calibration/update_mpi_rules/', calibration_run_views.update_mpi_rules, name="updateMPIRules"),
 
     ##################################

@@ -30,7 +30,7 @@ from calibration.util.file_util import delete_all_files_in_directory
 from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
-    get_forecast_run, get_verification_job, ResponseError, get_user_email, get_elapsed_str, \
+    get_forecast_run, get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
     create_verification_job_internal, png_to_base64_url, truncate_large_fields, get_job_description
 from calibration.views.verification_input import create_verification_input
 
@@ -75,7 +75,7 @@ def load_verification_job(request: Request) -> Response:
 
     verification_job_id = validator.get('verification_job_id')
 
-    verification_job, error_return = get_verification_job(verification_job_id, request.user, run_status=list(StatusEnum))
+    verification_job, error_return = get_verification_run(verification_job_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
@@ -93,7 +93,7 @@ def load_verification_job(request: Request) -> Response:
     if verification_job.forecast_run:
         cycle_date = verification_job.forecast_run.cycle_date
 
-        if not verification_job.verification_yaml_file_path or not os.path.exists(verification_job.verification_yaml_file_path):
+        if not verification_job.verification_config or not os.path.exists(verification_job.verification_config):
             # Auto-generate YAML file in our run-specific YAML directory
             verif_output_dir = resolve_job_data_dir(verification_job)
             fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
@@ -108,7 +108,7 @@ def load_verification_job(request: Request) -> Response:
                 error, config_file = create_verification_input(verification_job, None)
                 if error.has_errors():
                     return ResponseError(error)
-                verification_job.verification_yaml_file_path = config_file
+                verification_job.verification_config = config_file
                 verification_job.status = StatusEnum.READY.db_instance
             except Exception as e:
                 logger.info(f"Error: {e}")
@@ -116,9 +116,9 @@ def load_verification_job(request: Request) -> Response:
         with transaction.atomic():
             verification_job.save()
 
-    if verification_job.verification_yaml_file_path:
+    if verification_job.verification_config:
         try:
-            with open(verification_job.verification_yaml_file_path, 'r') as file:
+            with open(verification_job.verification_config, 'r') as file:
                 yaml_config_data = yaml.safe_load(file)
         except FileNotFoundError:
             yaml_config_error_message = "Error: Uploaded YAML file not readable."
@@ -132,7 +132,7 @@ def load_verification_job(request: Request) -> Response:
         'submit_date': verification_job.submit_date,
         'run_start': verification_job.run_start,
         'run_end': verification_job.run_end,
-        'verification_yaml_file_path': verification_job.verification_yaml_file_path,
+        'verification_yaml_file_path': verification_job.verification_config,
         'yaml_config_data': yaml_config_data,
         'yaml_config_error_message': yaml_config_error_message,
         'job_data_dir': verification_job.job_data_dir
@@ -254,7 +254,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
 
     verification_job_id = validator.get('verification_job_id')
 
-    run, error_return = get_verification_job(verification_job_id, request.user)
+    run, error_return = get_verification_run(verification_job_id, request.user)
     if error_return:
         return error_return
 
@@ -283,7 +283,7 @@ def upload_verification_yaml_file(request: Request) -> Response:
             error, config_file = create_verification_input(run, yaml_config_data)
             if error.has_errors():
                 return ResponseError(error)
-            run.verification_yaml_file_path = config_file
+            run.verification_config = config_file
 
             # Set run status to Ready only if the file can be read (validation to be added later)
             run.status = StatusEnum.READY.db_instance
@@ -411,7 +411,7 @@ def run_verification(request: Request) -> Response:
     verification_job_id = validator.get('verification_job_id')
     logging_config = validator.get('logging_config')
 
-    run, error_return = get_verification_job(verification_job_id, request.user)
+    run, error_return = get_verification_run(verification_job_id, request.user)
     if error_return:
         return error_return
 
@@ -475,7 +475,7 @@ def get_verification_status(request: Request) -> Response:
     verification_job_id = validator.get('verification_job_id')
     include_performance_metrics = validator.get('include_performance_metrics')
 
-    verification_job, error_return = get_verification_job(verification_job_id, request.user, run_status=list(StatusEnum))
+    verification_job, error_return = get_verification_run(verification_job_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 
@@ -555,7 +555,7 @@ def get_verification_plot_names(request: Request) -> Response:
 
     verification_job_id = validator.get('verification_job_id')
 
-    run, error_return = get_verification_job(verification_job_id, request.user,
+    run, error_return = get_verification_run(verification_job_id, request.user,
                                              run_status=[StatusEnum.RUNNING, StatusEnum.DONE, StatusEnum.CANCELLED, StatusEnum.FAILED,
                                                          StatusEnum.SERVER_ERROR])
     if error_return:
@@ -565,7 +565,7 @@ def get_verification_plot_names(request: Request) -> Response:
 
     # For now, get verification plots directly from the file system
     try:
-        with open(run.verification_yaml_file_path, 'r') as file:
+        with open(run.verification_config, 'r') as file:
             yaml_config_data = yaml.safe_load(file)
             if 'general' in yaml_config_data and 'nwm_configuration' in yaml_config_data['general']:
                 verification_plot_location = os.path.join(run.job_data_dir, 'plots', yaml_config_data['general']['nwm_configuration'])
@@ -650,7 +650,7 @@ def get_verification_plot(request: Request) -> Response:
     plot_file_path = None
     plot_url_calculated = False  # Tracks if plot_url was calculated in this request
 
-    run, error_return = get_verification_job(verification_job_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
+    run, error_return = get_verification_run(verification_job_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
 
@@ -729,7 +729,7 @@ def delete_verification_job(request: Request) -> Response:
 
     verification_job_id = validator.get('verification_job_id')
 
-    run, error_return = get_verification_job(verification_job_id, request.user, run_status=list(StatusEnum))
+    run, error_return = get_verification_run(verification_job_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
 

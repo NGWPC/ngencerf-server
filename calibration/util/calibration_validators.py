@@ -97,6 +97,10 @@ class ForecastRunSerializer(BaseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
 
+class VerificationRunSerializer(BaseSerializer):
+    verification_run_id = serializers.IntegerField(required=True)
+
+
 class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
@@ -1041,6 +1045,10 @@ class ColdStartJobSlurmCallbackRequestSerializer(ColdStartRunSerializer):
 
 
 class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
+    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
+class VerificationJobSlurmCallbackRequestSerializer(VerificationRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 

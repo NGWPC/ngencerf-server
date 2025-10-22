@@ -349,8 +349,7 @@ def run_verification_job(verification_job: VerificationRun) -> None:
 
     :param verification_job: The VerificationRun object representing the job.
     """
-    # TODO Change this in db
-    verification_config = verification_job.verification_yaml_file_path
+    verification_config = verification_job.verification_config
     stdout_file = get_verification_stdout_file(verification_job)
 
     execute_job(
