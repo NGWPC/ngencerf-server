@@ -25,7 +25,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
     RunVerificationJob, SubmitVerificationJobResponseSerializer, \
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
-    DeleteVerificationJobResponseSerializer
+    DeleteVerificationJobResponseSerializer, ForecastRunSerializer
 from calibration.util.file_util import delete_all_files_in_directory
 from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
@@ -199,16 +199,25 @@ def create_verification_job(request: Request) -> Response:
 
     forecast_run_id = validator.get('forecast_run_id')
 
+    # TODO Need to be cleaned up more so we validate the Forecast Run, but waiting for David to refactor to get rid of the 'ngen' case
+    forecast_run = None
+    if forecast_run_id:
+        forecast_run, error_return = get_forecast_run(forecast_run_id, request.user)
+        if error_return:
+            return error_return
+
     if forecast_run_id and 'ngen' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
     elif not forecast_run_id and 'nwm' not in settings.VERF_MODES_SUPPORTED:
         return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
 
     with transaction.atomic():
+        # TODO This should take a Forecast_run, not a Forecast_run_id
         run = create_verification_job_internal(request.user, forecast_run_id)
 
         response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id,
-                    'job_data_dir': resolve_job_data_dir(run)}
+                    # TODO This isn't right.  Do we need to return this?
+                    'job_data_dir': resolve_job_data_dir(forecast_run.calibration_run)}
 
         response_validator, error_response = validate_response(CreateVerificationJobResponseSerializer, response)
         if error_response:
