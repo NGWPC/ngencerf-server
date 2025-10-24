@@ -78,12 +78,6 @@ def load_verification_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    # Check settings to see if this run type is supported
-    if verification_job.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
-    elif not verification_job.forecast_run and 'nwm' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
-
     yaml_config_data = {}
     yaml_config_error_message = None
 
@@ -193,10 +187,7 @@ def create_verification_job(request: Request) -> Response:
         return error_return
 
     forecast_run_id = validator.get('forecast_run_id')
-	
-	forecast_run, error_return = get_forecast_run(forecast_run_id, request.user)
-	if error_return:
-		return error_return
+
     with transaction.atomic():
         run = create_verification_job_internal(request.user, forecast_run_id)
 

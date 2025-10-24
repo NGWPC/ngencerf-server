@@ -368,12 +368,10 @@ def create_verification_job_internal(user: User, forecast_run_id: int, genesis: 
     :param genesis: Origin of the job (optional).
     :return: New VerificationRun instance.
     """
-    run = VerificationRun.objects.create(owner=user, status=StatusEnum.SAVED.db_instance)
-
     forecast_run, error_return = get_forecast_run(forecast_run_id, user, run_status=list(StatusEnum))
     if error_return:
         return error_return
-    run.forecast_run = forecast_run
+    run = VerificationRun.objects.create(owner=user, forecast_run = forecast_run, status=StatusEnum.SAVED.db_instance)
 
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
