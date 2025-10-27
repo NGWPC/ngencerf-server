@@ -368,20 +368,16 @@ def create_verification_job_internal(user: User, forecast_run: ForecastRun) -> V
     :return: New VerificationRun instance.
     """
     run = VerificationRun.objects.create(owner=user, forecast_run=forecast_run, status=StatusEnum.SAVED.db_instance)
-
-    # TODO Verification Run doesn't need a job_data_dir
-    # Just get the user part, before the @ sign
-    username = run.owner.username.split('@')[0]
-    run.job_data_dir = os.path.join(get_verification_run_dir(run.forecast_run), f"{run.id}_{username}")
+    run_dir = get_verification_run_dir(run)
 
     # Clean up any existing directory if it already exists (should not happen in production)
-    if os.path.exists(run.job_data_dir):
+    if os.path.exists(run_dir):
         # Append timestamp to existing directory name to avoid overwriting
-        new_name = f"{run.job_data_dir}_{datetime.now().isoformat()}"
-        os.rename(run.job_data_dir, new_name)
+        new_name = f"{run_dir}_{datetime.now().isoformat()}"
+        os.rename(run_dir, new_name)
 
     # Create the directory
-    os.makedirs(run.job_data_dir, exist_ok=True)
+    os.makedirs(run_dir, exist_ok=True)
 
     # This is always true
     run.save()

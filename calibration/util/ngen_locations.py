@@ -319,16 +319,20 @@ def get_cold_start_realization_file(cold_start_run: ColdStartRun) -> str:
     return os.path.join(get_cold_start_dir(cold_start_run), f'{cold_start_run.calibration_run.gage.gage_id}_realization_config_bmi_cold_start.json')
 
 
-def get_verification_run_dir(run: ForecastRun) -> str:
-    return os.path.join(get_forecast_dir(run), 'Verification_Run')
+def get_verification_run_dir(run: VerificationRun) -> str:
+    return os.path.join(get_forecast_dir(run.forecast_run), 'Verification_Run', f'verification_{run.id}')
 
 
-def get_verification_stdout_file(verification_job: VerificationRun) -> str:
-    return os.path.join(verification_job.job_data_dir, 'verification_stdout.log')
+def get_verification_yaml_config_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_config.yaml')
 
 
-def get_verification_performance_file(verification_job: VerificationRun) -> str:
-    return os.path.join(verification_job.job_data_dir, 'verification_performance.log')
+def get_verification_stdout_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), 'verification_stdout.log')
+
+
+def get_verification_performance_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), 'verification_performance.log')
 
 
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
@@ -369,8 +373,8 @@ def get_cold_start_git_info_file(cold_start_run: ColdStartRun) -> str:
     return os.path.join(get_cold_start_dir(cold_start_run), "git_info_forecast.json")
 
 
-def get_verification_git_info_file(verification_job: VerificationRun) -> str:
-    return os.path.join(verification_job.job_data_dir, "git_info_verification.json")
+def get_verification_git_info_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), "git_info_verification.json")
 
 
 def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:

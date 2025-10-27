@@ -1156,7 +1156,6 @@ class VerificationJobSerializer(BaseSerializer):
 
 class VerificationJobsResponseSerializer(BaseSerializer):
     verification_job_id = serializers.IntegerField(required=True)
-    # TODO You got rid of the definition of ForecastJobsResponseOptionalColdStartSerializer.  Was that intentions?
     forecast_run = ForecastJobsResponseSerializer(required=False, allow_null=True)
     forecast_run_id = serializers.IntegerField(required=True, allow_null=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
@@ -1168,7 +1167,7 @@ class VerificationJobsResponseSerializer(BaseSerializer):
     verification_config = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     yaml_config_data = serializers.JSONField(required=False)
     yaml_config_error_message = serializers.CharField(required=False, allow_null=True)
-    job_data_dir = serializers.CharField(required=True)
+    job_data_dir = serializers.CharField(required=False)
 
 
 class GetVerificationJobsResponseSerializer(BaseSerializer):

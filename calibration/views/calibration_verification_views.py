@@ -25,6 +25,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
     DeleteVerificationJobResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory
+from calibration.util.ngen_locations import get_verification_run_dir, get_verification_yaml_config_file
 from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
@@ -81,34 +82,20 @@ def load_verification_job(request: Request) -> Response:
     yaml_config_error_message = None
 
     cycle_date = verification_job.forecast_run.cycle_date
-    if not verification_job.verification_config or not os.path.exists(verification_job.verification_config):
-        # Auto-generate YAML file in our run-specific YAML directory
-        # TODO Wrong syntax
-        verif_output_dir = resolve_job_data_dir(verification_job)
-        fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
-
-        # Create the directory
-        os.makedirs(fs.location, exist_ok=True)
-
-        # Delete the file if it's already there
-        delete_all_files_in_directory(fs.location)
-
+    if not os.path.exists(get_verification_yaml_config_file(verification_job)):
         try:
-            # TODO Bad syntax
-            error, config_file = create_verification_input(verification_job, None)
+            error = create_verification_input(verification_job)
             if error.has_errors():
                 return ResponseError(error)
-            verification_job.verification_config = config_file
+            # Set status to Ready if YAML file is created successfully
             verification_job.status = StatusEnum.READY.db_instance
+            verification_job.save()
         except Exception as e:
             logger.info(f"Error: {e}")
 
-    with transaction.atomic():
-        verification_job.save()
-
-    if verification_job.verification_config:
+    if os.path.exists(get_verification_yaml_config_file(verification_job)):
         try:
-            with open(verification_job.verification_config, 'r') as file:
+            with open(get_verification_yaml_config_file(verification_job), 'r') as file:
                 yaml_config_data = yaml.safe_load(file)
         except FileNotFoundError:
             yaml_config_error_message = "Error: YAML file not readable."
@@ -122,10 +109,10 @@ def load_verification_job(request: Request) -> Response:
         'submit_date': verification_job.submit_date,
         'run_start': verification_job.run_start,
         'run_end': verification_job.run_end,
-        'verification_config': verification_job.verification_config,
+        'verification_config': get_verification_yaml_config_file(verification_job),
         'yaml_config_data': yaml_config_data,
         'yaml_config_error_message': yaml_config_error_message,
-        'job_data_dir': verification_job.job_data_dir
+        'job_data_dir': get_verification_run_dir(verification_job)
     }
 
     forecast_run, error_return = get_forecast_run(verification_job.forecast_run.id, request.user, run_status=list(StatusEnum))
@@ -194,9 +181,8 @@ def create_verification_job(request: Request) -> Response:
     with transaction.atomic():
         run = create_verification_job_internal(request.user, forecast_run)
 
-        # TODO Wrong syntax for resolve_job_data_dir, but do we need this?
         response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id,
-                    'job_data_dir': resolve_job_data_dir(run)}
+                    'job_data_dir': get_verification_run_dir(run)}
 
         response_validator, error_response = validate_response(CreateVerificationJobResponseSerializer, response)
         if error_response:
@@ -383,15 +369,15 @@ def get_verification_plot_names(request: Request) -> Response:
 
     # For now, get verification plots directly from the file system
     try:
-        with open(run.verification_config, 'r') as file:
+        with open(get_verification_yaml_config_file(run), 'r') as file:
             yaml_config_data = yaml.safe_load(file)
             if 'general' in yaml_config_data and 'nwm_configuration' in yaml_config_data['general']:
-                verification_plot_location = os.path.join(run.job_data_dir, 'plots', yaml_config_data['general']['nwm_configuration'])
+                verification_plot_location = os.path.join(get_verification_run_dir(run), 'plots', yaml_config_data['general']['nwm_configuration'])
                 for root, dirs, files in os.walk(verification_plot_location):
                     if files:
                         for file_name in files:
                             plot_names.append({
-                                'name': os.path.relpath(os.path.join(root, file_name), run.job_data_dir),
+                                'name': os.path.relpath(os.path.join(root, file_name), get_verification_run_dir(run)),
                                 'display_name': file_name,
                                 'description': f'Placeholder description of {file_name}',
                                 'timeseries_available': False
@@ -469,7 +455,7 @@ def get_verification_plot(request: Request) -> Response:
         return error_return
 
     # Just retrieve the file for now
-    plot_file_path = os.path.join(run.job_data_dir, plot_name)
+    plot_file_path = os.path.join(get_verification_run_dir(run), plot_name)
     logger.info(f'Plot file path: {plot_file_path}')
     if os.path.exists(plot_file_path):
         plot_url = png_to_base64_url(plot_file_path)
@@ -582,7 +568,7 @@ def hard_delete(run: VerificationRun) -> None:
             for instance in instances:
                 logger.debug(f' - {instance}')
 
-        job_data_dir = run.job_data_dir
+        job_data_dir = get_verification_run_dir(run)
         run.delete()
         logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
         if os.path.exists(job_data_dir):

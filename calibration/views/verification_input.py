@@ -8,8 +8,8 @@ import yaml
 from calibration.enums import StatusEnum
 from calibration.models import VerificationRun
 from calibration.util.caching import generate_forecast_config_yaml
-from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, \
-    VERF_CROSSWALK_NGEN_FILE, VERF_GAGE_HYDROFABRIC_FILE
+from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, get_verification_run_dir, \
+    get_verification_yaml_config_file, VERF_CROSSWALK_NGEN_FILE, VERF_GAGE_HYDROFABRIC_FILE
 from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import called_from
 from calibration.views.common import join_with_or, ErrorReport, readonly_transaction
@@ -81,8 +81,7 @@ CONFIG_TEMPLATE = {
 }
 
 
-# TODO Does this still need the config to be passed?
-def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> tuple[ErrorReport | None, str | None]:
+def create_verification_input(run: VerificationRun) -> ErrorReport | None:
     """
     :param run: The VerificationRun instance to validate and prepare.
     :param config: The config data uploaded by the user, in JSON format. Defaults to CONFIG_TEMPLATE
@@ -94,8 +93,7 @@ def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> t
     logger.info(called_from())
 
     error_object = ErrorReport()
-    if not config:
-        config = copy.deepcopy(CONFIG_TEMPLATE)
+    config = copy.deepcopy(CONFIG_TEMPLATE)
 
     # -----------------------------
     # READ-ONLY PHASE
@@ -112,12 +110,11 @@ def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> t
             return error_object, None
 
     # Add hard-coded file paths to YAML
-    # TODO resolve_job_data_dir call is not correct
     config['file_paths'] = {
-        'base_dir': resolve_job_data_dir(run),
+        'base_dir': get_verification_run_dir(run),
         'fcst_config_file': generate_forecast_config_yaml(),
         'gage_hydrofabric_file': VERF_GAGE_HYDROFABRIC_FILE,
-        'output_dir': resolve_job_data_dir(run),
+        'output_dir': get_verification_run_dir(run),
     }
 
     general = config['general']
@@ -136,17 +133,14 @@ def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> t
     file_paths['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
     file_paths['fcst_data_file'] = {}
     file_paths['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(run.forecast_run)
-
+    
     # -----------------------------
     # FILE WRITE PHASE
     # -----------------------------
-    config_dir = os.path.join(get_forecast_dir(run.forecast_run) if run.forecast_run else run.job_data_dir, 'Verification_YAML')
-    config_name = f'verification_{run.id}_config.yaml'
-    config_location = os.path.join(config_dir, config_name)
+    config_location = get_verification_yaml_config_file(run)
     if not error_object.has_errors() and not error_object.has_warnings():
-        os.makedirs(config_dir, exist_ok=True)
         with open(config_location, 'w') as config_file:
             yaml.dump(config, config_file, default_flow_style=False)
             logger.info(f"Writing new YAML file to {config_location}")
 
-    return error_object, config_location
+    return error_object
