@@ -370,12 +370,6 @@ def create_verification_job_internal(user: User, forecast_run: ForecastRun) -> V
     run = VerificationRun.objects.create(owner=user, forecast_run=forecast_run, status=StatusEnum.SAVED.db_instance)
     run_dir = get_verification_run_dir(run)
 
-    # Clean up any existing directory if it already exists (should not happen in production)
-    if os.path.exists(run_dir):
-        # Append timestamp to existing directory name to avoid overwriting
-        new_name = f"{run_dir}_{datetime.now().isoformat()}"
-        os.rename(run_dir, new_name)
-
     # Create the directory
     os.makedirs(run_dir, exist_ok=True)
 

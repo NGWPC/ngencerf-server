@@ -349,13 +349,12 @@ def run_verification_job(verification_job: VerificationRun) -> None:
 
     :param verification_job: The VerificationRun object representing the job.
     """
-    verification_config = get_verification_yaml_config_file(verification_job)
     stdout_file = get_verification_stdout_file(verification_job)
 
     execute_job(
         verification_job,
         {
-            'verification_config': verification_config,
+            'verification_config': get_verification_yaml_config_file(verification_job),
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.VERIFICATION, False)
