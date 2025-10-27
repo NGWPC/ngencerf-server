@@ -359,20 +359,17 @@ def create_forecast_run_internal(
     return forecast_run
 
 
-def create_verification_job_internal(user: User, forecast_run_id: int, genesis: JobGenesis | None = None) -> VerificationRun | Response:
+def create_verification_job_internal(user: User, forecast_run: ForecastRun) -> VerificationRun | Response:
     """
     Create a new VerificationRun for the given user.
 
     :param user: Owner of the verification job.
-    :param forecast_run_id: Forecast Job to associate with this verification run (optional)
-    :param genesis: Origin of the job (optional).
+    :param forecast_run Forecast Job to associate with this verification run
     :return: New VerificationRun instance.
     """
-    forecast_run, error_return = get_forecast_run(forecast_run_id, user, run_status=list(StatusEnum))
-    if error_return:
-        return error_return
-    run = VerificationRun.objects.create(owner=user, forecast_run = forecast_run, status=StatusEnum.SAVED.db_instance)
+    run = VerificationRun.objects.create(owner=user, forecast_run=forecast_run, status=StatusEnum.SAVED.db_instance)
 
+    # TODO Verification Run doesn't need a job_data_dir
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
     run.job_data_dir = os.path.join(get_verification_run_dir(run.forecast_run), f"{run.id}_{username}")
@@ -694,7 +691,7 @@ def get_job_description(run: BaseRun) -> str:
     elif isinstance(run, ColdStartRun):
         return f"Cold Start Job {run.id} for Calibration Job {run.calibration_run.id}, user: {run.calibration_run.owner.username}"
     elif isinstance(run, VerificationRun):
-        return f"Verification Job {run.id}, user: {run.owner.username}"
+        return f"Verification Job {run.id} for Forecast Job {run.forecast_run.id} for Calibration Job {run.forecast_run.calibration_run.id}, user: {run.owner.username}"
 
     raise ValueError(f"Unknown job type: {type(run).__name__}")
 

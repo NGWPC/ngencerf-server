@@ -4,7 +4,6 @@ import os
 from typing import Any
 
 import yaml
-from django.conf import settings
 
 from calibration.enums import StatusEnum
 from calibration.models import VerificationRun
@@ -82,6 +81,7 @@ CONFIG_TEMPLATE = {
 }
 
 
+# TODO Does this still need the config to be passed?
 def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> tuple[ErrorReport | None, str | None]:
     """
     :param run: The VerificationRun instance to validate and prepare.
@@ -112,6 +112,7 @@ def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> t
             return error_object, None
 
     # Add hard-coded file paths to YAML
+    # TODO resolve_job_data_dir call is not correct
     config['file_paths'] = {
         'base_dir': resolve_job_data_dir(run),
         'fcst_config_file': generate_forecast_config_yaml(),

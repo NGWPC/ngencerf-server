@@ -4,7 +4,6 @@ import os
 import shutil
 
 import yaml
-from django.conf import settings
 from django.core.cache import cache
 from django.core.files.storage import FileSystemStorage
 from django.db import transaction, router
@@ -24,7 +23,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
     CreateVerificationJobResponseSerializer, RunVerificationJob, SubmitVerificationJobResponseSerializer, \
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
-    DeleteVerificationJobResponseSerializer, ForecastRunSerializer
+    DeleteVerificationJobResponseSerializer
 from calibration.util.file_util import delete_all_files_in_directory
 from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
@@ -81,11 +80,10 @@ def load_verification_job(request: Request) -> Response:
     yaml_config_data = {}
     yaml_config_error_message = None
 
-    cycle_date = None
-
     cycle_date = verification_job.forecast_run.cycle_date
     if not verification_job.verification_config or not os.path.exists(verification_job.verification_config):
         # Auto-generate YAML file in our run-specific YAML directory
+        # TODO Wrong syntax
         verif_output_dir = resolve_job_data_dir(verification_job)
         fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
@@ -96,6 +94,7 @@ def load_verification_job(request: Request) -> Response:
         delete_all_files_in_directory(fs.location)
 
         try:
+            # TODO Bad syntax
             error, config_file = create_verification_input(verification_job, None)
             if error.has_errors():
                 return ResponseError(error)
@@ -188,9 +187,14 @@ def create_verification_job(request: Request) -> Response:
 
     forecast_run_id = validator.get('forecast_run_id')
 
-    with transaction.atomic():
-        run = create_verification_job_internal(request.user, forecast_run_id)
+    forecast_run, error_return = get_forecast_run(forecast_run_id, request.user, run_status=[StatusEnum.DONE])
+    if error_return:
+        return error_return
 
+    with transaction.atomic():
+        run = create_verification_job_internal(request.user, forecast_run)
+
+        # TODO Wrong syntax for resolve_job_data_dir, but do we need this?
         response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id,
                     'job_data_dir': resolve_job_data_dir(run)}
 
@@ -459,10 +463,6 @@ def get_verification_plot(request: Request) -> Response:
     # Base cache key common part
     cache_key_base = f"{sanitized_plot_name}_{verification_job_id}"
     cache_key_plot_url = f"plot_url_{cache_key_base}"
-
-    plot_url = cache.get(cache_key_plot_url)
-    plot_file_path = None
-    plot_url_calculated = False  # Tracks if plot_url was calculated in this request
 
     run, error_return = get_verification_run(verification_job_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:

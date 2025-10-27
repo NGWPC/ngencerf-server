@@ -748,6 +748,7 @@ def get_verification_jobs(request: Request) -> Response:
 
     verification_objects = VerificationRun.objects.filter(owner=request.user)
 
+    # TODO Can we get rid of this?  No one should have verification jobs that aren't attached to forecasts
     # Filter out old verification jobs that aren't attached to forecasts
     # TO DO: Get rid of this filter after deleting old jobs from the DB
     verification_objects = verification_objects.filter(forecast_run_id__gt=0)
