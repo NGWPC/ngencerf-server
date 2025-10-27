@@ -15,7 +15,7 @@ from calibration.models import CalibrationFormulation, CalibrationRun, Calibrati
     ValidationRun, IterationParameter, ForecastRun, VerificationRun
 from calibration.util.calibration_validators import EmptySerializer, GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
-    GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer
+    GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, PaginationSerializer
 from calibration.views.calibration_evaluation_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
@@ -748,14 +748,12 @@ def get_verification_jobs(request: Request) -> Response:
 
     verification_objects = VerificationRun.objects.filter(owner=request.user)
 
-    # Filter based on settings
-    if 'ngen' not in settings.VERF_MODES_SUPPORTED:
-        verification_objects = verification_objects.filter(forecast_run_id=0)
-    elif 'nwm' not in settings.VERF_MODES_SUPPORTED:
-        verification_objects = verification_objects.filter(forecast_run_id__gt=0)
+    # Filter out old verification jobs that aren't attached to forecasts
+    # TO DO: Get rid of this filter after deleting old jobs from the DB
+    verification_objects = verification_objects.filter(forecast_run_id__gt=0)
 
     verification_jobs = list(
-        verification_objects.values('id', 'created_at', 'submit_date', 'status__name', 'forecast_run_id', 'verification_yaml_file_path',
+        verification_objects.values('id', 'created_at', 'submit_date', 'status__name', 'forecast_run_id', 'verification_config',
                                     'job_data_dir'))
 
     for v in verification_jobs:

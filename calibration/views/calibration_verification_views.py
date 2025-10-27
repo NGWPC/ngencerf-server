@@ -21,8 +21,7 @@ from calibration.models import VerificationRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, \
     VerificationJobsResponseSerializer, VerificationJobSerializer, CreateVerificationJobRequestSerializer, \
-    CreateVerificationJobResponseSerializer, UploadVerificationYamlFileRequestSerializer, UploadVerificationYamlFileResponseSerializer, \
-    RunVerificationJob, SubmitVerificationJobResponseSerializer, \
+    CreateVerificationJobResponseSerializer, RunVerificationJob, SubmitVerificationJobResponseSerializer, \
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
     DeleteVerificationJobResponseSerializer, ForecastRunSerializer
@@ -90,38 +89,36 @@ def load_verification_job(request: Request) -> Response:
 
     cycle_date = None
 
-    if verification_job.forecast_run:
-        cycle_date = verification_job.forecast_run.cycle_date
+    cycle_date = verification_job.forecast_run.cycle_date
+    if not verification_job.verification_config or not os.path.exists(verification_job.verification_config):
+        # Auto-generate YAML file in our run-specific YAML directory
+        verif_output_dir = resolve_job_data_dir(verification_job)
+        fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
 
-        if not verification_job.verification_config or not os.path.exists(verification_job.verification_config):
-            # Auto-generate YAML file in our run-specific YAML directory
-            verif_output_dir = resolve_job_data_dir(verification_job)
-            fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
+        # Create the directory
+        os.makedirs(fs.location, exist_ok=True)
 
-            # Create the directory
-            os.makedirs(fs.location, exist_ok=True)
+        # Delete the file if it's already there
+        delete_all_files_in_directory(fs.location)
 
-            # Delete the file if it's already there
-            delete_all_files_in_directory(fs.location)
+        try:
+            error, config_file = create_verification_input(verification_job, None)
+            if error.has_errors():
+                return ResponseError(error)
+            verification_job.verification_config = config_file
+            verification_job.status = StatusEnum.READY.db_instance
+        except Exception as e:
+            logger.info(f"Error: {e}")
 
-            try:
-                error, config_file = create_verification_input(verification_job, None)
-                if error.has_errors():
-                    return ResponseError(error)
-                verification_job.verification_config = config_file
-                verification_job.status = StatusEnum.READY.db_instance
-            except Exception as e:
-                logger.info(f"Error: {e}")
-
-        with transaction.atomic():
-            verification_job.save()
+    with transaction.atomic():
+        verification_job.save()
 
     if verification_job.verification_config:
         try:
             with open(verification_job.verification_config, 'r') as file:
                 yaml_config_data = yaml.safe_load(file)
         except FileNotFoundError:
-            yaml_config_error_message = "Error: Uploaded YAML file not readable."
+            yaml_config_error_message = "Error: YAML file not readable."
         except yaml.YAMLError as exc:
             yaml_config_error_message = f"Error parsing YAML file: {exc}"
 
@@ -132,28 +129,26 @@ def load_verification_job(request: Request) -> Response:
         'submit_date': verification_job.submit_date,
         'run_start': verification_job.run_start,
         'run_end': verification_job.run_end,
-        'verification_yaml_file_path': verification_job.verification_config,
+        'verification_config': verification_job.verification_config,
         'yaml_config_data': yaml_config_data,
         'yaml_config_error_message': yaml_config_error_message,
         'job_data_dir': verification_job.job_data_dir
     }
 
-    if verification_job.forecast_run:
-        forecast_run, error_return = get_forecast_run(verification_job.forecast_run.id, request.user, run_status=list(StatusEnum))
-        if error_return:
-            return error_return
-        response['forecast_run_id'] = forecast_run.id
-        response['forecast_run'] = {
-            'calibration_run_id': forecast_run.calibration_run.id,
-            'domain_name': forecast_run.calibration_run.gage.domain.name,
-            'forecast_run_id': forecast_run.id,
-            'configuration': forecast_run.configuration.name,
-            'cycle_date': cycle_date,
-            'cold_start_date': forecast_run.cold_start_run.cold_start_date if forecast_run.cold_start_run else None,
-            'gage_id': forecast_run.calibration_run.gage_id,
-            'forecast_status': forecast_run.status.name,
-            'submit_date': forecast_run.submit_date
-        }
+    forecast_run, error_return = get_forecast_run(verification_job.forecast_run.id, request.user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+    response['forecast_run_id'] = forecast_run.id
+    response['forecast_run'] = {
+        'calibration_run_id': forecast_run.calibration_run.id,
+        'domain_name': forecast_run.calibration_run.gage.domain.name,
+        'forecast_run_id': forecast_run.id,
+        'configuration': forecast_run.configuration.name,
+        'cycle_date': cycle_date,
+        'gage_id': forecast_run.calibration_run.gage_id,
+        'forecast_status': forecast_run.status.name,
+        'submit_date': forecast_run.submit_date
+    }
 
     response_validator, error_response = validate_response(VerificationJobsResponseSerializer, response)
     if error_response:
@@ -198,26 +193,15 @@ def create_verification_job(request: Request) -> Response:
         return error_return
 
     forecast_run_id = validator.get('forecast_run_id')
-
-    # TODO Need to be cleaned up more so we validate the Forecast Run, but waiting for David to refactor to get rid of the 'ngen' case
-    forecast_run = None
-    if forecast_run_id:
-        forecast_run, error_return = get_forecast_run(forecast_run_id, request.user)
-        if error_return:
-            return error_return
-
-    if forecast_run_id and 'ngen' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
-    elif not forecast_run_id and 'nwm' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
-
+	
+	forecast_run, error_return = get_forecast_run(forecast_run_id, request.user)
+	if error_return:
+		return error_return
     with transaction.atomic():
-        # TODO This should take a Forecast_run, not a Forecast_run_id
         run = create_verification_job_internal(request.user, forecast_run_id)
 
         response = {'message': f'Verification Job {run.id} created', 'verification_job_id': run.id,
-                    # TODO This isn't right.  Do we need to return this?
-                    'job_data_dir': resolve_job_data_dir(forecast_run.calibration_run)}
+                    'job_data_dir': resolve_job_data_dir(run)}
 
         response_validator, error_response = validate_response(CreateVerificationJobResponseSerializer, response)
         if error_response:
@@ -226,164 +210,6 @@ def create_verification_job(request: Request) -> Response:
         logger.debug(
             f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(json.dumps(response_validator.data))}')
         return Response(response_validator.data, status=status.HTTP_201_CREATED)
-
-
-@extend_schema(
-    request=UploadVerificationYamlFileRequestSerializer,
-    responses={
-        200: UploadVerificationYamlFileResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Allow user to upload verification YAML file"
-)
-@api_view(['POST'])
-@handle_exceptions
-def upload_verification_yaml_file(request: Request) -> Response:
-    """
-    Upload YAML file for a verification job.
-
-    This function handles the upload of a YAML file by saving it to the job-specific directory and updating the verification job.
-
-    :param request: The HTTP request containing the YAML file data.
-    :return: A JSON response confirming the upload or reporting errors.
-    """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(UploadVerificationYamlFileRequestSerializer, data, context={'request': request})
-    if error_return:
-        return error_return
-
-    verification_job_id = validator.get('verification_job_id')
-
-    run, error_return = get_verification_run(verification_job_id, request.user)
-    if error_return:
-        return error_return
-
-    # Save to the run-specific YAML directory
-    verif_output_dir = resolve_job_data_dir(run)
-    fs = FileSystemStorage(location=os.path.join(verif_output_dir, 'Verification_YAML'))
-
-    # Create the directory
-    os.makedirs(fs.location, exist_ok=True)
-
-    files = request.FILES.getlist('verification_yaml_file')
-
-    verification_yaml_file = files[0]
-
-    # Delete the file if it's already there
-    delete_all_files_in_directory(fs.location)
-    verification_yaml_file_path = os.path.join(fs.location, verification_yaml_file.name)
-    logger.info(f"Saving user-uploaded verification YAML file to {verification_yaml_file_path}")
-    fs.save(verification_yaml_file.name, verification_yaml_file)
-
-    message = f"YAML file '{verification_yaml_file.name}' saved for Verification Job {run.id}"
-
-    try:
-        with open(verification_yaml_file_path, 'r') as file:
-            yaml_config_data = yaml.safe_load(file)
-            error, config_file = create_verification_input(run, yaml_config_data)
-            if error.has_errors():
-                return ResponseError(error)
-            run.verification_config = config_file
-
-            # Set run status to Ready only if the file can be read (validation to be added later)
-            run.status = StatusEnum.READY.db_instance
-    except Exception as exc:
-        message = f"Error: {exc}"
-        run.status = StatusEnum.SAVED.db_instance
-
-    with transaction.atomic():
-        run.save()
-
-    response = {
-        'message': message,
-        'verification_job_id': run.id,
-        'verification_yaml_file': verification_yaml_file.name,
-        'verification_yaml_file_path': verification_yaml_file_path,
-        'yaml_config_data': yaml_config_data,
-        'status': run.status.name
-    }
-
-    response_validator, error_response = validate_response(UploadVerificationYamlFileResponseSerializer, response)
-    if error_response:
-        return error_response
-    logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
-    return Response(response_validator.data)
-
-
-# Commenting out this endpoint for now since the file upload handles the save already
-# @extend_schema(
-#     request=SaveVerificationSetupRequestSerializer,
-#     responses={
-#         200: SaveVerificationSetupResponseSerializer,
-#         400: OpenApiResponse(
-#             response=ErrorResponseSerializer,
-#             description="Validation error or parsing error"
-#         ),
-#         500: OpenApiResponse(
-#             response=ErrorResponseSerializer,
-#             description="Internal server error"
-#         )
-#     },
-#     description="Save gage tab data"
-# )
-# @api_view(['POST'])
-# @handle_exceptions
-# def save_verification_setup(request: Request) -> Response:
-#     """
-#     Save verification setup and update the verification job with new information.
-
-#     This function handles updating the YAML file, clearing previously ploaded files, and updating the 
-#     verification job status.
-
-#     :param request: The HTTP request containing POST data with verification setup details.
-#     :return: A JSON response confirming the update and including any errors.
-#     """
-#     data = request.data
-#     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-#     validator, error_return = validate_request(SaveVerificationSetupRequestSerializer, data)
-#     if error_return:
-#         return error_return
-
-#     verification_job_id = validator.get('verification_job_id')
-#     verification_yaml_file = validator.get('verification_yaml_file')
-
-#     run, error_return = get_verification_job(verification_job_id, request.user)
-#     if error_return:
-#         return error_return
-
-#     # Update the YAML file path - this might not be needed if the upload endpoint takes care of it
-#     if run.verification_yaml_file_path != verification_yaml_file:
-#         run.verification_yaml_file_path = verification_yaml_file
-
-#     #Set run status to Ready
-#     run.status = StatusEnum.READY
-
-#     with transaction.atomic():
-#         run.save()
-
-#     response = {'message': f'Verification Job {run.id} updated', 'verification_job_id': run.id, 'status': run.status.name,
-#                 'verification_yaml_file_path': verification_yaml_file}
-
-#     response_validator, error_response = validate_response(SaveVerificationSetupResponseSerializer, response)
-#     if error_response:
-#         return error_response
-#     logger.debug(
-#         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-#         f'{json.dumps(response_validator.data)}'
-#     )
-
-#     return Response(response_validator.data)
 
 
 @extend_schema(
@@ -423,12 +249,6 @@ def run_verification(request: Request) -> Response:
     run, error_return = get_verification_run(verification_job_id, request.user)
     if error_return:
         return error_return
-
-    # Check settings to see if this run type is supported
-    if run.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
-    elif not run.forecast_run and 'nwm' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
 
     error_response = submit_job(run, logging_config=logging_config)
     if error_response:
@@ -487,12 +307,6 @@ def get_verification_status(request: Request) -> Response:
     verification_job, error_return = get_verification_run(verification_job_id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
-
-    # Check settings to see if this run type is supported
-    if verification_job.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
-    elif not verification_job.forecast_run and 'nwm' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
 
     # Prepare the main response
     response = {
@@ -662,12 +476,6 @@ def get_verification_plot(request: Request) -> Response:
     run, error_return = get_verification_run(verification_job_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.DONE])
     if error_return:
         return error_return
-
-    # Check settings to see if this run type is supported
-    if run.forecast_run and 'ngen' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs from Ngen forecasts are not supported.')
-    elif not run.forecast_run and 'nwm' not in settings.VERF_MODES_SUPPORTED:
-        return ResponseError('Verification Jobs requiring NWM forecast data downloads are not supported.')
 
     # Just retrieve the file for now
     plot_file_path = os.path.join(run.job_data_dir, plot_name)

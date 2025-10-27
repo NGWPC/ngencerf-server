@@ -359,7 +359,7 @@ def create_forecast_run_internal(
     return forecast_run
 
 
-def create_verification_job_internal(user: User, forecast_run_id: int | None = None, genesis: JobGenesis | None = None) -> VerificationRun | Response:
+def create_verification_job_internal(user: User, forecast_run_id: int, genesis: JobGenesis | None = None) -> VerificationRun | Response:
     """
     Create a new VerificationRun for the given user.
 
@@ -370,18 +370,14 @@ def create_verification_job_internal(user: User, forecast_run_id: int | None = N
     """
     run = VerificationRun.objects.create(owner=user, status=StatusEnum.SAVED.db_instance)
 
-    if forecast_run_id:
-        forecast_run, error_return = get_forecast_run(forecast_run_id, user, run_status=list(StatusEnum))
-        if error_return:
-            return error_return
-        run.forecast_run = forecast_run
+    forecast_run, error_return = get_forecast_run(forecast_run_id, user, run_status=list(StatusEnum))
+    if error_return:
+        return error_return
+    run.forecast_run = forecast_run
 
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
-    if run.forecast_run:
-        run.job_data_dir = os.path.join(get_verification_run_dir(run.forecast_run), f"{run.id}_{username}")
-    else:
-        run.job_data_dir = os.path.join(settings.NWM_VERF_RUN_DIR, f"{run.id}_{username}")
+    run.job_data_dir = os.path.join(get_verification_run_dir(run.forecast_run), f"{run.id}_{username}")
 
     # Clean up any existing directory if it already exists (should not happen in production)
     if os.path.exists(run.job_data_dir):

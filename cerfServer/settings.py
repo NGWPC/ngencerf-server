@@ -266,11 +266,6 @@ os.makedirs(NGEN_FORECAST_WORK_DIR, exist_ok=True)
 # On PW, the server runs as root, but the Slurm jobs do not, so we need to adjust the permissions
 os.chmod(NGEN_FORECAST_WORK_DIR, 0o777)
 
-# Verification settings
-# 'nwm' is old method - not related to ngenCerf forecasts, downloads external forecast data
-# 'ngen' is new method - related to ngenCerf forecasts, dynamically uses data from forecast/calibration jobs
-VERF_MODES_SUPPORTED = ['nwm','ngen']
-
 # -----------------------------
 # Forcing environments
 # -----------------------------

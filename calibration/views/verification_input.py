@@ -8,9 +8,9 @@ from django.conf import settings
 
 from calibration.enums import StatusEnum
 from calibration.models import VerificationRun
-from calibration.util.caching import generate_forecast_config_yaml, generate_gage_tsv
-from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, VERF_CROSSWALK_NGEN_FILE, \
-    VERF_CROSSWALK_NWM_FILE, VERF_GAGE_HYDROFABRIC_FILE
+from calibration.util.caching import generate_forecast_config_yaml
+from calibration.util.ngen_locations import get_forecast_dir, get_forecast_output_file, \
+    VERF_CROSSWALK_NGEN_FILE, VERF_GAGE_HYDROFABRIC_FILE
 from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import called_from
 from calibration.views.common import join_with_or, ErrorReport, readonly_transaction
@@ -122,28 +122,19 @@ def create_verification_input(run: VerificationRun, config: dict[str, Any]) -> t
     general = config['general']
     file_paths: dict[str, Any] = config['file_paths']
 
-    if 'ngen' in settings.VERF_MODES_SUPPORTED and run.forecast_run:
-        # Override values in YAML with info from our forecast/calibration runs
-        general['location_set_name'] = 'usgs_' + run.forecast_run.calibration_run.gage.gage_id
-        general['location_list'] = [run.forecast_run.calibration_run.gage.gage_id]
-        general['location_type'] = 'usgs_gage'
-        general['nwm_configuration'] = run.forecast_run.configuration.internal_name
-        general['dataset_name'] = [run.forecast_run.calibration_run.user_formulation_name]
-        general['nwm_version'] = ['ngen']
-        if run.forecast_run.cycle_date:
-            general['forecast_start_date'] = [run.forecast_run.cycle_date.strftime("%Y-%m-%d")]
-            general['forecast_end_date'] = [run.forecast_run.cycle_date.strftime("%Y-%m-%d")]
-        config['nwm_forecast']['data_source'] = 'ngenCERF'
-        file_paths['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
-        file_paths['fcst_data_file'] = {}
-        file_paths['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(run.forecast_run)
-    elif 'nwm' in settings.VERF_MODES_SUPPORTED:
-        file_paths['crosswalk_file'] = {'nwm30': VERF_CROSSWALK_NWM_FILE}
-        file_paths['location_list_file'] = generate_gage_tsv()
-
-    print('VERF_CROSSWALK_NGEN_FILE:')
-    print(VERF_CROSSWALK_NGEN_FILE)
-    print(os.path.exists(VERF_CROSSWALK_NGEN_FILE))
+    # Override values in YAML with info from our forecast/calibration runs
+    general['location_set_name'] = 'usgs_' + run.forecast_run.calibration_run.gage.gage_id
+    general['location_list'] = [run.forecast_run.calibration_run.gage.gage_id]
+    general['location_type'] = 'usgs_gage'
+    general['nwm_configuration'] = run.forecast_run.configuration.internal_name
+    general['dataset_name'] = [run.forecast_run.calibration_run.user_formulation_name]
+    general['nwm_version'] = ['ngen']
+    general['forecast_start_date'] = [run.forecast_run.cycle_date.strftime("%Y-%m-%d")]
+    general['forecast_end_date'] = [run.forecast_run.cycle_date.strftime("%Y-%m-%d")]
+    config['nwm_forecast']['data_source'] = 'ngenCERF'
+    file_paths['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
+    file_paths['fcst_data_file'] = {}
+    file_paths['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(run.forecast_run)
 
     # -----------------------------
     # FILE WRITE PHASE

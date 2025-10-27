@@ -39,7 +39,6 @@ This pattern ensures:
 - In-memory speed after the first lookup
 - No external dependencies (no Redis or Memcached required)
 """
-import csv
 import json
 import os
 from functools import lru_cache
@@ -52,7 +51,7 @@ from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput
 
-CACHED_MODULES_KEY = "cached_modules_with_groups"
+_CACHED_MODULES_KEY = "cached_modules_with_groups"
 
 
 @lru_cache(maxsize=1)
@@ -67,7 +66,7 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
 
     :return Returns a dict keyed by module name.
     """
-    modules = cache.get(CACHED_MODULES_KEY)
+    modules = cache.get(_CACHED_MODULES_KEY)
     if modules is None:
         # Eagerly load everything needed (no lazy lookups later)
         qs = (
@@ -80,11 +79,11 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
         for m in modules.values():
             list(m.groups.all())
             list(m.output_variables.all())
-        cache.set(CACHED_MODULES_KEY, modules, timeout=None)
+        cache.set(_CACHED_MODULES_KEY, modules, timeout=None)
     return modules
 
 
-MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
+_MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 
 
 def get_cached_module_groups() -> list[str]:
@@ -97,12 +96,12 @@ def get_cached_module_groups() -> list[str]:
 
     :return: List of module group names (strings).
     """
-    module_groups = cache.get(MODULE_GROUPS_CACHE_KEY)
+    module_groups = cache.get(_MODULE_GROUPS_CACHE_KEY)
     if module_groups is None:
         qs = ModuleGroup.objects.filter(is_active=True).order_by("order").only("id", "name", "order")
         # Force eval to freeze them in cache
         module_groups = [mg.name for mg in qs]
-        cache.set(MODULE_GROUPS_CACHE_KEY, module_groups, None)
+        cache.set(_MODULE_GROUPS_CACHE_KEY, module_groups, None)
     return module_groups
 
 
@@ -330,41 +329,6 @@ def have_LSTM(run: CalibrationRun) -> bool:
 
     modules_by_id = get_cached_modules_by_id()
     return any(modules_by_id[f.module_id].name == "LSTM" for f in formulations if f.module_id in modules_by_id)
-
-
-_GAGE_TSV_CACHE_KEY = "gage_data_csv_created"
-
-
-def generate_gage_tsv() -> str:
-    """
-    Generate (once per server run) a TSV containing gage_id and station_name.
-
-    - Uses get_cached_gages() to avoid database queries.
-    - Recreates file only once per server startup (per runtime).
-
-    :return: Full file path of the generated forecast configuration file.
-    """
-    output_file = os.path.join(settings.NGEN_VERIFICATION_WORK_DIR, "gage_data.tsv")
-
-    if cache.get(_GAGE_TSV_CACHE_KEY):
-        # Already created during this runtime
-        return output_file
-
-    os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-    # Use the cached gage map (no database hit)
-    gages = get_cached_gages()
-
-    with open(output_file, mode="w", newline="", encoding="utf-8") as tsvfile:
-        writer = csv.writer(tsvfile, delimiter="\t")
-        writer.writerow(["gage_id", "station_name"])
-        for gage_id, gage_data in gages.items():
-            writer.writerow([gage_id, gage_data.get("station_name", "")])
-
-    # Mark as created for this process
-    cache.set(_GAGE_TSV_CACHE_KEY, True, timeout=None)
-
-    return output_file
 
 
 _FORECAST_CFG_FILE_CACHE_KEY = "forecast_config_file_created"

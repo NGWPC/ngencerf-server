@@ -1142,13 +1142,6 @@ class ForecastJobsResponseSerializer(BaseSerializer):
     cold_start = ColdStartJobsResponseSerializer(required=False, allow_null=False)
 
 
-# Variant with cold_start_date not required
-class ForecastJobsResponseOptionalColdStartSerializer(ForecastJobsResponseSerializer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["cold_start_date"].required = False
-
-
 class GetForecastJobsResponseSerializer(BaseSerializer):
     forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
@@ -1163,15 +1156,15 @@ class VerificationJobSerializer(BaseSerializer):
 
 class VerificationJobsResponseSerializer(BaseSerializer):
     verification_job_id = serializers.IntegerField(required=True)
-    forecast_run = ForecastJobsResponseOptionalColdStartSerializer(required=False, allow_null=True)
-    forecast_run_id = serializers.IntegerField(required=False, allow_null=True)
+    forecast_run = ForecastJobsResponseSerializer(required=False, allow_null=True)
+    forecast_run_id = serializers.IntegerField(required=True, allow_null=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     created_at = serializers.DateTimeField(required=True, allow_null=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     run_start = serializers.DateTimeField(required=False, allow_null=True)
     run_end = serializers.DateTimeField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
-    verification_yaml_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    verification_config = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     yaml_config_data = serializers.JSONField(required=False)
     yaml_config_error_message = serializers.CharField(required=False, allow_null=True)
     job_data_dir = serializers.CharField(required=True)
@@ -1188,35 +1181,6 @@ class CreateVerificationJobRequestSerializer(BaseSerializer):
 class CreateVerificationJobResponseSerializer(GenericMessageResponseSerializer):
     verification_job_id = serializers.IntegerField(required=True)
     job_data_dir = serializers.CharField(required=True)
-
-
-class UploadVerificationYamlFileRequestSerializer(BaseSerializer):
-    verification_job_id = serializers.IntegerField(required=True)
-    verification_yaml_file = serializers.FileField(required=True)
-
-    def validate_verification_yaml_file(self, value):
-        request = self.context.get('request')
-        files = request.FILES.getlist('verification_yaml_file')
-        if len(files) != 1:
-            raise serializers.ValidationError("Only one Verification YAML file should be uploaded.")
-        return value
-
-
-class UploadVerificationYamlFileResponseSerializer(GenericMessageAndStatusResponseSerializer):
-    verification_job_id = serializers.IntegerField(required=True)
-    verification_yaml_file = serializers.CharField(required=True)
-    verification_yaml_file_path = serializers.CharField(required=True)
-    yaml_config_data = serializers.JSONField(required=False)
-
-
-class SaveVerificationSetupRequestSerializer(BaseSerializer):
-    verification_job_id = serializers.IntegerField(required=True)
-    verification_yaml_file = serializers.CharField(required=True)
-
-
-class SaveVerificationSetupResponseSerializer(GenericMessageAndStatusResponseSerializer):
-    verification_job_id = serializers.IntegerField(required=True)
-    verification_yaml_file = serializers.CharField(required=True)
 
 
 class GetVerificationStatusRequestSerializer(VerificationJobSerializer):
