@@ -364,18 +364,18 @@ def create_verification_job_internal(user: User, forecast_run: ForecastRun) -> V
     Create a new VerificationRun for the given user.
 
     :param user: Owner of the verification job.
-    :param forecast_run Forecast Job to associate with this verification run
+    :param forecast_run Forecast Job to associate with this verification_run
     :return: New VerificationRun instance.
     """
-    run = VerificationRun.objects.create(owner=user, forecast_run=forecast_run, status=StatusEnum.SAVED.db_instance)
-    run_dir = get_verification_run_dir(run)
+    verification_run = VerificationRun.objects.create(
+        owner=user,
+        forecast_run=forecast_run,
+        status=StatusEnum.SAVED.db_instance)
 
-    # Create the directory
-    os.makedirs(run_dir, exist_ok=True)
+    os.makedirs(get_verification_run_dir(verification_run))
+    logger.info(f"Creating {get_job_description(verification_run)}")
 
-    # This is always true
-    run.save()
-    return run
+    return verification_run
 
 
 TOKEN_SLURM_SCOPE = 'slurm_callback'
