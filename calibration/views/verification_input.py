@@ -84,8 +84,6 @@ CONFIG_TEMPLATE = {
 def create_verification_input(run: VerificationRun) -> ErrorReport | None:
     """
     :param run: The VerificationRun instance to validate and prepare.
-    :param config: The config data uploaded by the user, in JSON format. Defaults to CONFIG_TEMPLATE
-        if none is provided.
     :return: A tuple (ErrorReport, config_file_path):
              - error_object: ErrorReport object with errors and warnings.
              - config_file_path: Path to the generated config file if build is successful, else None.
@@ -107,6 +105,7 @@ def create_verification_input(run: VerificationRun) -> ErrorReport | None:
                 f'{join_with_or(allowed_status_names)}. '
                 f'Current status: {run.status.name}'
             )
+            # TODO I think you just mean to return the error_object here, not a tuple
             return error_object, None
 
     # Add hard-coded file paths to YAML

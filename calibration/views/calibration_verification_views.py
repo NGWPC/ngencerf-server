@@ -5,7 +5,6 @@ import shutil
 
 import yaml
 from django.core.cache import cache
-from django.core.files.storage import FileSystemStorage
 from django.db import transaction, router
 from django.db.models.deletion import Collector
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
@@ -24,9 +23,8 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, Emp
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
     DeleteVerificationJobResponseSerializer
-from calibration.util.file_util import delete_all_files_in_directory
 from calibration.util.ngen_locations import get_verification_run_dir, get_verification_yaml_config_file
-from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages, resolve_job_data_dir
+from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_forecast_run, get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
@@ -91,13 +89,16 @@ def load_verification_job(request: Request) -> Response:
             verification_job.status = StatusEnum.READY.db_instance
             verification_job.save()
         except Exception as e:
+            # TODO Should this be a fatal error and throw an exception?
             logger.info(f"Error: {e}")
 
+    # TODO If fatal error above, we don't need this if
     if os.path.exists(get_verification_yaml_config_file(verification_job)):
         try:
             with open(get_verification_yaml_config_file(verification_job), 'r') as file:
                 yaml_config_data = yaml.safe_load(file)
         except FileNotFoundError:
+            # TODO Throw a CerfException with these errors, or return ErrorResponse.  Several ways to do this.  But we dno't need to return the error
             yaml_config_error_message = "Error: YAML file not readable."
         except yaml.YAMLError as exc:
             yaml_config_error_message = f"Error parsing YAML file: {exc}"
@@ -109,9 +110,13 @@ def load_verification_job(request: Request) -> Response:
         'submit_date': verification_job.submit_date,
         'run_start': verification_job.run_start,
         'run_end': verification_job.run_end,
+        # TODO NOt sure that the user really needs this either
         'verification_config': get_verification_yaml_config_file(verification_job),
+        # TODO or this
         'yaml_config_data': yaml_config_data,
+        # We don't need this.  The way this normall works is we throw an exception
         'yaml_config_error_message': yaml_config_error_message,
+        # TODO We don't need this
         'job_data_dir': get_verification_run_dir(verification_job)
     }
 
