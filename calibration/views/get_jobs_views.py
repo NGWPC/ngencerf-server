@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Q, Exists, OuterRef
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -123,7 +123,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     jobs, total_count = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE],
-        include_validation_data=GetValidationJobsScope.STATUS,
+        include_validation_data=GetValidationJobsScope.DONE,
         include_archived=include_archived,
         include_stop_criteria=True,
         limit=limit,
@@ -223,6 +223,7 @@ def get_jobs(
     :param include_validation_data: Determines the level of validation data to include:
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
+        - 'done': Filters to only include jobs where both valid_control and valid_best are DONE.
     :param include_archived: Whether to include archived jobs in the queryset.
     :param include_stop_criteria: Whether to include stop_criteria in the queryset.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
@@ -241,11 +242,35 @@ def get_jobs(
         if run_status:
             query &= Q(status__in=[s.db_instance for s in run_status])
 
+        base_qs = CalibrationRun.objects.filter(query)
+
+        # Only include jobs where both Valid_control and Valid_best jobs are DONE
+        if include_validation_data == GetValidationJobsScope.DONE:
+            base_qs = base_qs.annotate(
+                has_valid_control_done=Exists(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef('pk'),
+                        validation_type=ValidationType.VALID_CONTROL.value,
+                        status=StatusEnum.DONE.db_instance
+                    )
+                ),
+                has_valid_best_done=Exists(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef('pk'),
+                        validation_type=ValidationType.VALID_BEST.value,
+                        status=StatusEnum.DONE.db_instance
+                    )
+                )
+            ).filter(
+                has_valid_control_done=True,
+                has_valid_best_done=True
+            )
+
+        total_count = base_qs.count()
+
         # Base query for CalibrationRun (dict results, lighter than ORM instances)
         calibration_runs_qs = (
-            CalibrationRun.objects
-            .filter(query)
-            .select_related("gage", "status", "objective_function", "optimization")
+            base_qs
             .order_by('-id')
             .values(
                 "id", "gage__gage_id", "gage__domain__name", "submit_date", "user_formulation_name",
@@ -256,7 +281,6 @@ def get_jobs(
             )
         )
 
-        total_count = CalibrationRun.objects.filter(query).count()
         # ───────────────────────────────────────
         # Apply pagination ONLY if limit provided
         # ───────────────────────────────────────
