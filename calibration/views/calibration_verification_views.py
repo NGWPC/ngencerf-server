@@ -76,9 +76,6 @@ def load_verification_job(request: Request) -> Response:
     if error_return:
         return error_return
 
-    yaml_config_data = {}
-
-    cycle_date = verification_job.forecast_run.cycle_date
     if not os.path.exists(get_verification_yaml_config_file(verification_job)):
         try:
             error = create_verification_input(verification_job)
@@ -90,35 +87,24 @@ def load_verification_job(request: Request) -> Response:
         except Exception as e:
             return ResponseError(f"Error: {e}")
 
-    if os.path.exists(get_verification_yaml_config_file(verification_job)):
-        try:
-            with open(get_verification_yaml_config_file(verification_job), 'r') as file:
-                yaml_config_data = yaml.safe_load(file)
-        except FileNotFoundError:
-            return ResponseError(f"Error: YAML file not readable for Calibration Job {verification_job_id}.")
-        except yaml.YAMLError as exc:
-            return ResponseError(f"Error parsing YAML file for Calibration Job {verification_job_id}: {exc}")
-
     response = {
         'verification_job_id': verification_job.id,
         'status': verification_job.status.name,
         'created_at': verification_job.created_at,
         'submit_date': verification_job.submit_date,
         'run_start': verification_job.run_start,
-        'run_end': verification_job.run_end,
-        'yaml_config_data': yaml_config_data
+        'run_end': verification_job.run_end
     }
 
     forecast_run, error_return = get_forecast_run(verification_job.forecast_run.id, request.user, run_status=list(StatusEnum))
     if error_return:
         return error_return
-    response['forecast_run_id'] = forecast_run.id
     response['forecast_run'] = {
         'calibration_run_id': forecast_run.calibration_run.id,
         'domain_name': forecast_run.calibration_run.gage.domain.name,
         'forecast_run_id': forecast_run.id,
         'configuration': forecast_run.configuration.name,
-        'cycle_date': cycle_date,
+        'cycle_date': verification_job.forecast_run.cycle_date,
         'gage_id': forecast_run.calibration_run.gage_id,
         'forecast_status': forecast_run.status.name,
         'submit_date': forecast_run.submit_date

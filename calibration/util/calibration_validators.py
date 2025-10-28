@@ -1164,9 +1164,9 @@ class VerificationJobsResponseSerializer(BaseSerializer):
 
 
 class VerificationJobDetailsResponseSerializer(VerificationJobsResponseSerializer):
+    forecast_run_id = serializers.IntegerField(required=False, allow_null=False)
     run_start = serializers.DateTimeField(required=True, allow_null=True)
     run_end = serializers.DateTimeField(required=True, allow_null=True)
-    yaml_config_data = serializers.JSONField(required=False)
 
 
 class GetVerificationJobsResponseSerializer(BaseSerializer):
