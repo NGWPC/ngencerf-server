@@ -258,6 +258,7 @@ class GetValidationJobsScope(AbstractEnum):
     IDS = 'ids'
     STATUS = 'status'
     DETAILS = 'details'
+    DONE = 'done'
 
 
 class NgenLogging(AbstractEnum):

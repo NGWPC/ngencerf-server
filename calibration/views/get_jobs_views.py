@@ -2,18 +2,20 @@ import json
 import logging
 from typing import Any
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Q, Exists, OuterRef
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
-from calibration.models import CalibrationFormulation, CalibrationRun, CalibrationStopCriteria, ValidationRun, IterationParameter, ForecastRun
-from calibration.util.calibration_validators import GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
+from calibration.models import CalibrationFormulation, CalibrationRun, CalibrationStopCriteria, \
+    ValidationRun, IterationParameter, ForecastRun, VerificationRun
+from calibration.util.calibration_validators import EmptySerializer, GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, GetCalibrationJobsRequestSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
-    GetForecastJobsResponseSerializer, PaginationSerializer
+    GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, PaginationSerializer
 from calibration.views.calibration_evaluation_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
@@ -123,7 +125,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     jobs, total_count = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE],
-        include_validation_data=GetValidationJobsScope.STATUS,
+        include_validation_data=GetValidationJobsScope.DONE,
         include_archived=include_archived,
         include_stop_criteria=True,
         limit=limit,
@@ -223,6 +225,7 @@ def get_jobs(
     :param include_validation_data: Determines the level of validation data to include:
         - 'ids': Includes validation_run_ids and their count in validation_runs.
         - 'status': Includes validation status details.
+        - 'done': Filters to only include jobs where both valid_control and valid_best are DONE.
     :param include_archived: Whether to include archived jobs in the queryset.
     :param include_stop_criteria: Whether to include stop_criteria in the queryset.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
@@ -241,11 +244,35 @@ def get_jobs(
         if run_status:
             query &= Q(status__in=[s.db_instance for s in run_status])
 
+        base_qs = CalibrationRun.objects.filter(query)
+
+        # Only include jobs where both Valid_control and Valid_best jobs are DONE
+        if include_validation_data == GetValidationJobsScope.DONE:
+            base_qs = base_qs.annotate(
+                has_valid_control_done=Exists(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef('pk'),
+                        validation_type=ValidationType.VALID_CONTROL.value,
+                        status=StatusEnum.DONE.db_instance
+                    )
+                ),
+                has_valid_best_done=Exists(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef('pk'),
+                        validation_type=ValidationType.VALID_BEST.value,
+                        status=StatusEnum.DONE.db_instance
+                    )
+                )
+            ).filter(
+                has_valid_control_done=True,
+                has_valid_best_done=True
+            )
+
+        total_count = base_qs.count()
+
         # Base query for CalibrationRun (dict results, lighter than ORM instances)
         calibration_runs_qs = (
-            CalibrationRun.objects
-            .filter(query)
-            .select_related("gage", "status", "objective_function", "optimization")
+            base_qs
             .order_by('-id')
             .values(
                 "id", "gage__gage_id", "gage__domain__name", "submit_date", "user_formulation_name",
@@ -256,7 +283,6 @@ def get_jobs(
             )
         )
 
-        total_count = CalibrationRun.objects.filter(query).count()
         # ───────────────────────────────────────
         # Apply pagination ONLY if limit provided
         # ───────────────────────────────────────
@@ -685,5 +711,59 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["forecast_jobs"], max_length=10))}'
+    )
+    return Response(response_validator.data)
+
+
+@extend_schema(
+    request=EmptySerializer,
+    responses={
+        200: GetVerificationJobsResponseSerializer,
+        400: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Validation error or parsing error"
+        ),
+        500: OpenApiResponse(
+            response=ErrorResponseSerializer,
+            description="Internal server error"
+        )
+    },
+    description="Get verification jobs"
+)
+@api_view(['POST', 'GET'])
+@handle_exceptions
+def get_verification_jobs(request: Request) -> Response:
+    """
+    Retrieves all verification jobs for a user
+
+    :param request: The HTTP request object containing calibration run data.
+    :return: JSON response with validation jobs or error information.
+    """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_return = validate_request(EmptySerializer, data)
+    if error_return:
+        return error_return
+
+    verification_objects = VerificationRun.objects.filter(owner=request.user)
+
+    verification_jobs = list(
+        verification_objects.values('id', 'created_at', 'submit_date', 'status__name', 'forecast_run_id'))
+
+    for v in verification_jobs:
+        v['verification_job_id'] = v.pop('id')
+        v['status'] = v.pop('status__name')
+
+    response = {'verification_jobs': verification_jobs}
+    response_validator, error_response = validate_response(GetVerificationJobsResponseSerializer, response,
+                                                           fields_to_truncate=['verification_jobs'], max_length=10)
+
+    if error_response:
+        return error_response
+
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["verification_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)

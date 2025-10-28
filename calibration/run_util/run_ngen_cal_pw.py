@@ -8,10 +8,10 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 
 from calibration.enums import StatusEnum, SlurmStatusEnum
-from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
 from calibration.run_util.run_common import set_job_status, run_generic_job_end_callback, finalize_calibration_after_callback, \
-    finalize_validation_after_callback, finalize_forecast_after_callback, finalize_cold_start_after_callback
+    finalize_validation_after_callback, finalize_forecast_after_callback, finalize_cold_start_after_callback, finalize_verification_after_callback
 from calibration.util.calibration_validators import GenericMessageResponseSerializer, SlurmSubmitResponseSerializer
 from calibration.views.common import generate_custom_token, TOKEN_SLURM_SCOPE, get_job_description, validate_response_data
 
@@ -28,7 +28,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
     constructs the payload with input arguments and authentication token,
     and submits the job using an HTTP POST request.
 
-    :param run: The CalibrationRun, ValidationRun, ColdStartRun or ForecastRun object.
+    :param run: The CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, or VerificationRun object.
     :param owner: The owner (user instance) of the job, used to generate the auth token.
     :param arguments: Dictionary containing command-line arguments for the job (e.g., 'input_file').
     :param stdout_file: The path to the file where job output will be written.
@@ -70,9 +70,16 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'realization_file': (None, arguments['realization_file']),
             'stdout_file': (None, stdout_file),
         }
+    elif isinstance(run, VerificationRun):
+        url_endpoint = settings.SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT
+        payload = {
+            'verification_job_id': (None, run.id),
+            'verification_config': (None, arguments['verification_config']),
+            'stdout_file': (None, stdout_file),
+        }
     else:
         raise ValueError(
-            f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ColdStartRun, ForecastRun."
+            f"Unsupported run type: {type(run).__name__}. Expected one of CalibrationRun, ValidationRun, ColdStartRun, ForecastRun, VerificationRun."
         )
 
     url = urljoin(settings.SLURM_URL, url_endpoint)
@@ -152,6 +159,13 @@ run_cold_start_job_callback_pw = functools.partial(
 # - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
 run_forecast_job_callback_pw = functools.partial(
     run_generic_job_end_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_forecast_after_callback
+)
+
+# Handles the completion of a verification job in the PW environment.
+# - Uses `check_pw_status` to validate the job's status.
+# - Executes `finalize_forecast` to finalize the forecast job and mark it as DONE.
+run_verification_job_callback_pw = functools.partial(
+    run_generic_job_end_callback, check_if_failed=check_pw_for_failure, finalize_func=finalize_verification_after_callback
 )
 
 

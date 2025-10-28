@@ -39,17 +39,19 @@ This pattern ensures:
 - In-memory speed after the first lookup
 - No external dependencies (no Redis or Memcached required)
 """
-
 import json
+import os
 from functools import lru_cache
 
+import yaml
+from django.conf import settings
 from django.core.cache import cache
 
-from calibration.enums import PlotDefinitionsEnum
+from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput
 
-CACHED_MODULES_KEY = "cached_modules_with_groups"
+_CACHED_MODULES_KEY = "cached_modules_with_groups"
 
 
 @lru_cache(maxsize=1)
@@ -64,7 +66,7 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
 
     :return Returns a dict keyed by module name.
     """
-    modules = cache.get(CACHED_MODULES_KEY)
+    modules = cache.get(_CACHED_MODULES_KEY)
     if modules is None:
         # Eagerly load everything needed (no lazy lookups later)
         qs = (
@@ -77,11 +79,11 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
         for m in modules.values():
             list(m.groups.all())
             list(m.output_variables.all())
-        cache.set(CACHED_MODULES_KEY, modules, timeout=None)
+        cache.set(_CACHED_MODULES_KEY, modules, timeout=None)
     return modules
 
 
-MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
+_MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
 
 
 def get_cached_module_groups() -> list[str]:
@@ -94,12 +96,12 @@ def get_cached_module_groups() -> list[str]:
 
     :return: List of module group names (strings).
     """
-    module_groups = cache.get(MODULE_GROUPS_CACHE_KEY)
+    module_groups = cache.get(_MODULE_GROUPS_CACHE_KEY)
     if module_groups is None:
         qs = ModuleGroup.objects.filter(is_active=True).order_by("order").only("id", "name", "order")
         # Force eval to freeze them in cache
         module_groups = [mg.name for mg in qs]
-        cache.set(MODULE_GROUPS_CACHE_KEY, module_groups, None)
+        cache.set(_MODULE_GROUPS_CACHE_KEY, module_groups, None)
     return module_groups
 
 
@@ -135,7 +137,7 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
     return modules_by_name.get(module_name)
 
 
-CACHED_GAGES_KEY = 'cached_gages'
+_CACHED_GAGES_KEY = 'cached_gages'
 
 
 def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
@@ -151,7 +153,7 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     """
     # Check if the gages are already cached
 
-    gages_lookup = cache.get(CACHED_GAGES_KEY)
+    gages_lookup = cache.get(_CACHED_GAGES_KEY)
     if not gages_lookup:
         # Fetch from DB and cache results as a dictionary
         gages = Gage.objects.all().values(
@@ -163,7 +165,7 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
         for gage in gages_lookup.values():
             gage['domain'] = gage.pop('domain__name')
 
-        cache.set(CACHED_GAGES_KEY, gages_lookup, timeout=None)
+        cache.set(_CACHED_GAGES_KEY, gages_lookup, timeout=None)
     return gages_lookup
 
 
@@ -190,7 +192,7 @@ def update_and_get_cached_gage_status(gage_id: str, is_active: bool | None = Non
     # If state differs, update and write back
     if is_active is not None and current_status != is_active:
         gages[gage_id] = {**gage, 'is_active': is_active}
-        cache.set(CACHED_GAGES_KEY, gages, timeout=None)
+        cache.set(_CACHED_GAGES_KEY, gages, timeout=None)
         current_status = is_active
 
     # Always return (gage_id, current_status)
@@ -327,3 +329,105 @@ def have_LSTM(run: CalibrationRun) -> bool:
 
     modules_by_id = get_cached_modules_by_id()
     return any(modules_by_id[f.module_id].name == "LSTM" for f in formulations if f.module_id in modules_by_id)
+
+
+_FORECAST_CFG_FILE_CACHE_KEY = "forecast_config_file_created"
+
+
+class _FlowSeqDumper(yaml.SafeDumper):
+    """
+    Custom YAML dumper that keeps mappings in normal block style
+    but forces all Python lists to render as inline flow style: [a, b, c].
+
+    This makes the YAML output compact and consistent with formats such as:
+        short_range: [0, 23, 1, 18, 1]
+        medium_range_mem1: [0, 18, 6, 240, 1]
+    """
+    pass
+
+
+def _represent_sequence_flow(dumper, data):
+    """
+    Override PyYAML's default sequence representation to always use flow style.
+
+    Produces:
+        [a, b, c]
+    instead of:
+        - a
+        - b
+        - c
+    """
+    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True)
+
+
+# Register the custom representer for all Python lists
+_FlowSeqDumper.add_representer(list, _represent_sequence_flow)
+
+
+def generate_forecast_config_yaml() -> str:
+    """
+    Generate (once per server run) a YAML mapping of forecast configurations.
+
+    Example output:
+        short_range: [0, 23, 1, 18, 1]
+        short_range_hawaii: [0, 12, 12, 48, 0.25]
+
+    Uses cached ForecastConfiguration data from ForecastConfigEnum (no DB hit).
+
+    :return: Full path of the generated forecast configuration YAML file.
+    """
+    output_file = os.path.join(settings.NGEN_VERIFICATION_WORK_DIR, "forecast_configurations.yaml")
+
+    # Only generate once per server process
+    if cache.get(_FORECAST_CFG_FILE_CACHE_KEY):
+        return output_file
+
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    configs = ForecastConfigEnum.get_choices_with_fields(
+        fields=[
+            "internal_name",
+            "is_active",
+            "cycle_start",
+            "cycle_end",
+            "cycle_freq",
+            "fcst_win",
+            "fcst_timestep",
+        ]
+    )
+
+    yaml_map = {
+        cfg["internal_name"]: [
+            cfg["cycle_start"],
+            cfg["cycle_end"],
+            cfg["cycle_freq"],
+            cfg["fcst_win"],
+            cfg["fcst_timestep"],
+        ]
+        for cfg in sorted(configs, key=lambda x: x["internal_name"])
+        if cfg.get("is_active")
+    }
+
+    header_comment = (
+        "# For each forecast configuration, provide the following information (in order):\n"
+        "# - cycle_start: start time of forecast cycles in Zulu time or UTC (e.g., 0Z)\n"
+        "# - cycle_end: end time of forecast cycles in Zulu time or UTC (e.g., 23Z)\n"
+        "# - cycle_freq: frequency of forecast cycles in hours (e.g., 1)\n"
+        "# - fcst_win: forecast window in hours (e.g., 18)\n"
+        "# - fcst_timestep: forecast timestep in hours (e.g., 1)\n"
+    )
+
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(header_comment)
+        yaml.dump(
+            yaml_map,
+            f,
+            Dumper=_FlowSeqDumper,
+            sort_keys=True,
+            default_flow_style=False,  # mappings remain in normal block style
+            allow_unicode=True,
+            width=2048,  # prevent line wrapping inside lists
+        )
+
+    cache.set(_FORECAST_CFG_FILE_CACHE_KEY, True, timeout=None)
+    return output_file

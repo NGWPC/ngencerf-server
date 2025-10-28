@@ -6,7 +6,7 @@ from django.conf import settings
 
 from calibration.enums import ValidationType
 from calibration.enums_vanilla import SecondaryDataEnum
-from calibration.models import CalibrationRun, ForecastRun, ValidationRun, ColdStartRun
+from calibration.models import CalibrationRun, ValidationRun, ForecastRun, ColdStartRun, VerificationRun
 from cerfServer.settings import NGEN_ENVIRONMENT
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,8 @@ static_dirs = [
     NWM_RETROSPECTIVE_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'nwm_retrospective'),
     PARQUET_DIR := os.path.join(settings.NGEN_STATIC_DIR, 'parquet'),
     NGEN_MODULE_PARAMETERS := os.path.join(settings.NGEN_STATIC_DIR, 'module_parameter_files'),
-    FORECAST_FORCING_TEMPLATES := os.path.join(settings.NGEN_STATIC_DIR, 'forecast_forcing_templates')
+    FORECAST_FORCING_TEMPLATES := os.path.join(settings.NGEN_STATIC_DIR, 'forecast_forcing_templates'),
+    VERF_DATA := os.path.join(settings.NGEN_STATIC_DIR, 'verification_data')
 ]
 
 files = [
@@ -32,7 +33,9 @@ files = [
     PET_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'evapotranspiration', 'evapotranspiration', 'cmake_build', 'libpetbmi.so'),
     SNOW17_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'snow17', 'cmake_build', 'libsnow17bmi.so'),
     SAC_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'sac-sma', 'cmake_build', 'libsacbmi.so'),
-    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb-bmi', 'cmake_build', 'src', 'libbmiuebcxx.so')
+    UEB_LIB := os.path.join(settings.NGEN_REPO_ROOT, 'extern', 'ueb-bmi', 'cmake_build', 'src', 'libbmiuebcxx.so'),
+    VERF_CROSSWALK_NGEN_FILE := os.path.join(VERF_DATA, 'usgs_ngen_crosswalk_all_domains.parquet'),
+    VERF_GAGE_HYDROFABRIC_FILE := os.path.join(VERF_DATA, 'gage_hydrofabric_all_domains.parquet'),
 ]
 
 
@@ -316,6 +319,22 @@ def get_cold_start_realization_file(cold_start_run: ColdStartRun) -> str:
     return os.path.join(get_cold_start_dir(cold_start_run), f'{cold_start_run.calibration_run.gage.gage_id}_realization_config_bmi_cold_start.json')
 
 
+def get_verification_run_dir(run: VerificationRun) -> str:
+    return os.path.join(get_forecast_dir(run.forecast_run), 'Verification_Run', f'verification_{run.id}')
+
+
+def get_verification_yaml_config_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), f'verification_{run.id}_config.yaml')
+
+
+def get_verification_stdout_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), 'verification_stdout.log')
+
+
+def get_verification_performance_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), 'verification_performance.log')
+
+
 def get_validation_performance_file(run: CalibrationRun, worker_name: str, iteration_num: int) -> str:
     return os.path.join(get_output_validation_run_dir(run), f"ngen-cal_validation_{worker_name}_iter{iteration_num}_performance.log")
 
@@ -352,6 +371,10 @@ def get_forecast_git_info_file(forecast_run: ForecastRun) -> str:
 
 def get_cold_start_git_info_file(cold_start_run: ColdStartRun) -> str:
     return os.path.join(get_cold_start_dir(cold_start_run), "git_info_forecast.json")
+
+
+def get_verification_git_info_file(run: VerificationRun) -> str:
+    return os.path.join(get_verification_run_dir(run), "git_info_verification.json")
 
 
 def get_validation_metrics_valid_best_file(run: CalibrationRun) -> str:

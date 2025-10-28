@@ -6,7 +6,8 @@ import calibration.views.calibration_landing_views
 import calibration.views.get_jobs_views
 from calibration.views import calibration_formulation_views, calibration_tuning_views, calibration_gage_views, \
     calibration_optimization_views, calibration_run_views, calibration_plot_views, calibration_import_export_views, calibration_landing_views, \
-    calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, calibration_secondary_data_views
+    calibration_evaluation_views, calibration_forecast_views, calibration_regionalization_views, \
+    calibration_verification_views, calibration_secondary_data_views
 
 urlpatterns = [
     ##################################
@@ -81,6 +82,7 @@ urlpatterns = [
     path('calibration/validation_job_slurm_callback/', calibration_run_views.validation_job_slurm_callback, name="validationJobSlurmCallback"),
     path('calibration/cold_start_job_slurm_callback/', calibration_run_views.cold_start_job_slurm_callback, name="coldStartJobSlurmCallback"),
     path('calibration/forecast_job_slurm_callback/', calibration_run_views.forecast_job_slurm_callback, name="forecastJobSlurmCallback"),
+    path('calibration/verification_job_slurm_callback/', calibration_run_views.verification_job_slurm_callback, name="verificationJobSlurmCallback"),
     path('calibration/update_mpi_rules/', calibration_run_views.update_mpi_rules, name="updateMPIRules"),
 
     ##################################
@@ -106,6 +108,19 @@ urlpatterns = [
     path('calibration/clone_and_run_forecast/', calibration_forecast_views.clone_and_run_forecast_job, name="cloneAndRunForecastJob"),
     path('calibration/get_forecast_timeseries_data/', calibration_forecast_views.get_forecast_timeseries_data, name="getForecastTimeseriesData"),
     path('calibration/delete_forecast_job/', calibration_forecast_views.delete_forecast_job, name="deleteForecastJob"),
+
+
+    ##################################
+    # Verification
+    ##################################
+    path('calibration/load_verification_job/', calibration_verification_views.load_verification_job, name="loadVerificationJob"),
+    path('calibration/get_verification_jobs/', calibration.views.get_jobs_views.get_verification_jobs, name="getVerificationJobs"),
+    path('calibration/create_verification_job/', calibration_verification_views.create_verification_job, name="createVerificationJob"),
+    path('calibration/get_verification_status/', calibration_verification_views.get_verification_status, name="getVerificationStatus"),
+    path('calibration/run_verification/', calibration_verification_views.run_verification, name="runVerification"),
+    path('calibration/get_verification_plot_names/', calibration_verification_views.get_verification_plot_names, name="getVerificationPlotNames"),
+    path('calibration/get_verification_plot/', calibration_verification_views.get_verification_plot, name="getVerificationPlot"),
+    path('calibration/delete_verification_job/', calibration_verification_views.delete_verification_job, name="deleteVerificationJob"),
 
     ##################################
     # SWE
@@ -141,4 +156,3 @@ urlpatterns = [
     path('calibration/process_swe_timeseries/', calibration_run_views.process_swe_timeseries, name="processSweTimeseries"),
 
 ]
-

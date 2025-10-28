@@ -242,6 +242,7 @@ NGEN_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen')
 CAL_MGR_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-cal-mgr')
 NGEN_FORECAST_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-fcst-mgr')
 NGEN_FORCING_REPO_ROOT = os.path.join(REPO_ROOT, 'ngen-forcing')
+NWM_VERF_REPO_ROOT = os.path.join(REPO_ROOT, 'nwm-verf')
 
 # This must match the data location in the ngen/nwm-cal-mgr docker
 # Do not change this location.  You can put your data wherever you want, but you should then create a symbolic link to /ngencerf/data
@@ -259,6 +260,7 @@ os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 
 NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
 NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
+NGEN_VERIFICATION_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'verification_work')
 NGEN_FORECAST_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'forecast_work')
 os.makedirs(NGEN_FORECAST_WORK_DIR, exist_ok=True)
 # On PW, the server runs as root, but the Slurm jobs do not, so we need to adjust the permissions
@@ -274,6 +276,9 @@ FORCING_ENGINE_ENV = 'ngen_forcings_engine_bmi'
 # Directory where all the output runs are stored
 NGEN_CAL_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_calib')
 
+# Directory where verification runs are stored
+NWM_VERF_RUN_DIR = os.path.join(NGEN_CAL_WORK_DIR, 'run_verif')
+
 # Directory containing the nwm-cal-mgr virtual environment
 # This is used only if we are running with NGEN_ENVIRONMENT=LOCAL and not in a separate container
 NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
@@ -283,11 +288,13 @@ NGEN_CAL_VENV = os.path.join(NGEN_CAL_WORK_DIR, 'venv.cal')
 # Use {name} placeholder for the container name, which will be substituted at runtime
 CAL_MGR_DOCKER_CMD = f'docker run --rm --network host --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-cal-mgr'
 NGEN_FORECAST_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-fcst-mgr'
+NWM_VERF_DOCKER_CMD = f'docker run --rm --name {{name}} -v {NGEN_CAL_MOUNT_POINT}:{NGEN_CAL_MOUNT_POINT} nwm-verf'
 
 # Used when running in NGEN_ENVIRONMENT=LOCAL
 CAL_MGR_SCRIPT = os.path.join(CAL_MGR_REPO_ROOT, 'docker', 'run-ngen-cal.sh')
 NGEN_FORECAST_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
 NGEN_COLD_START_SCRIPT = os.path.join(NGEN_FORECAST_REPO_ROOT, 'docker', 'run-ngen-fcst.sh')
+VERIFICATION_SCRIPT = os.path.join(NWM_VERF_REPO_ROOT, 'docker', 'run-ngen-verf.sh')
 
 RUNTIME_INFO = {
     ScriptEnum.CALIBRATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
@@ -295,6 +302,7 @@ RUNTIME_INFO = {
     ScriptEnum.VALIDATION_ITERATION: (CAL_MGR_DOCKER_CMD, CAL_MGR_SCRIPT),
     ScriptEnum.COLD_START: (NGEN_FORECAST_DOCKER_CMD, NGEN_COLD_START_SCRIPT),
     ScriptEnum.FORECAST: (NGEN_FORECAST_DOCKER_CMD, NGEN_FORECAST_SCRIPT),
+    ScriptEnum.VERIFICATION: (NWM_VERF_DOCKER_CMD, VERIFICATION_SCRIPT)
 }
 
 # -----------------------------
@@ -303,7 +311,8 @@ RUNTIME_INFO = {
 SIMULATE_FLAGS = {
     JobType.CALIBRATION: False,
     JobType.VALIDATION: False,
-    JobType.FORECAST: False
+    JobType.FORECAST: False,
+    JobType.VERIFICATION: False,
 }
 
 NGEN_ENVIRONMENT_STR = os.getenv('NGEN_ENVIRONMENT', NgenEnvironmentEnum.LOCAL.name)
@@ -324,6 +333,7 @@ SLURM_SUBMIT_CALIBRATION_JOB_ENDPOINT = 'submit-calibration-job'
 SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT = 'submit-validation-job'
 SLURM_SUBMIT_COLD_START_JOB_ENDPOINT = 'submit-cold-start-job'
 SLURM_SUBMIT_FORECAST_JOB_ENDPOINT = 'submit-forecast-job'
+SLURM_SUBMIT_VERIFICATION_JOB_ENDPOINT = 'submit-verification-job'
 SLURM_JOB_STATUS_ENDPOINT = 'job-status'
 SLURM_CANCEL_JOB_ENDPOINT = 'cancel-job'
 SLURM_STATUS_ENDPOINT = 'job_status'

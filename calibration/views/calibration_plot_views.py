@@ -69,8 +69,7 @@ def get_plot_names(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
-    #forecast_run_id = validator.get('forecast_run_id')
-
+   
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
         run_func = get_calibration_run
@@ -80,10 +79,6 @@ def get_plot_names(request: Request) -> Response:
         run_func = get_validation_run
         run_id = validation_run_id
         run_type = JobType.VALIDATION.value.capitalize()
-    # elif forecast_run_id:
-    #     run_func = get_forecast_run
-    #     run_id = forecast_run_id
-    #     run_type = JobType.FORECAST.value.capitalize()
     else:
         message = f"Invalid job type sent to {get_caller_name()}"
         logger.exception(message)
@@ -251,10 +246,6 @@ def get_plot(request: Request) -> Response:
         run_func = get_validation_run
         run_id = validation_run_id
         run_type = JobType.VALIDATION.value.capitalize()
-    # elif forecast_run_id:
-    #     run_func = get_forecast_run
-    #     run_id = forecast_run_id
-    #     run_type = JobType.FORECAST.value.capitalize()
     else:
         message = f"Invalid job type sent to {get_caller_name()}"
         logger.exception(message)

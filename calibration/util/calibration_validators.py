@@ -97,6 +97,10 @@ class ForecastRunSerializer(BaseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
 
+class VerificationRunSerializer(BaseSerializer):
+    verification_run_id = serializers.IntegerField(required=True)
+
+
 class DeleteForecastRunResponseSerializer(GenericMessageResponseSerializer):
     forecast_run_id = serializers.IntegerField(required=True)
 
@@ -135,36 +139,38 @@ class CalibrationOrValidationRunSerializer(BaseSerializer):
         return data
 
 
-class CalibrationOrValidationOrForecastRunSerializer(BaseSerializer):
+class CalibrationOrValidationOrForecastOrVerificationRunSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=False, allow_null=False)
     validation_run_id = serializers.IntegerField(required=False, allow_null=False)
     forecast_run_id = serializers.IntegerField(required=False, allow_null=False)
+    verification_job_id = serializers.IntegerField(required=False, allow_null=False)
 
     def validate(self, data):
         """
-        Ensure that only one of calibration_run_id, validation_run_id or forecast_run_id is specified.
+        Ensure that only one of calibration_run_id, validation_run_id, forecast_run_id, or verification_job_id is specified.
         """
         calibration_run_id = data.get('calibration_run_id')
         validation_run_id = data.get('validation_run_id')
         forecast_run_id = data.get('forecast_run_id')
+        verification_job_id = data.get('verification_job_id')
 
         # Collect the IDs that are specified (non-null and non-zero values)
         specified_ids = [
             id_value
-            for id_value in [calibration_run_id, validation_run_id, forecast_run_id]
+            for id_value in [calibration_run_id, validation_run_id, forecast_run_id, verification_job_id]
             if id_value is not None
         ]
 
         # Check that exactly one ID is specified
         if len(specified_ids) != 1:
             raise serializers.ValidationError(
-                "You must specify exactly one of 'calibration_run_id', 'validation_run_id', or 'forecast_run_id'."
+                "You must specify exactly one of 'calibration_run_id', 'validation_run_id', 'forecast_run_id' or 'verification_job_id'."
             )
 
         return data
 
 
-class CancelJobResponseSerializer(GenericMessageAndStatusResponseSerializer, CalibrationOrValidationOrForecastRunSerializer):
+class CancelJobResponseSerializer(GenericMessageAndStatusResponseSerializer, CalibrationOrValidationOrForecastOrVerificationRunSerializer):
     def validate(self, data):
         # Call the parent validate method to include its logic
         return super().validate(data)
@@ -1042,6 +1048,10 @@ class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
     job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
 
 
+class VerificationJobSlurmCallbackRequestSerializer(VerificationRunSerializer):
+    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+
+
 class RunCalibrationJob(CalibrationRunSerializer):
     logging_config = LoggingConfigSerializer(required=False)
 
@@ -1135,6 +1145,89 @@ class ForecastJobsResponseSerializer(BaseSerializer):
 class GetForecastJobsResponseSerializer(BaseSerializer):
     forecast_jobs = serializers.ListSerializer(child=ForecastJobsResponseSerializer(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
+
+
+##################################
+# Verification Tab
+##################################
+class VerificationJobSerializer(BaseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+
+
+class VerificationJobsResponseSerializer(BaseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    forecast_run = ForecastJobsResponseSerializer(required=False, allow_null=True)
+    forecast_run_id = serializers.IntegerField(required=True, allow_null=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+    submit_date = serializers.DateTimeField(required=True, allow_null=True)
+    created_at = serializers.DateTimeField(required=True, allow_null=True)
+
+
+class VerificationJobDetailsResponseSerializer(VerificationJobsResponseSerializer):
+    forecast_run_id = serializers.IntegerField(required=False, allow_null=False)
+    run_start = serializers.DateTimeField(required=True, allow_null=True)
+    run_end = serializers.DateTimeField(required=True, allow_null=True)
+
+
+class GetVerificationJobsResponseSerializer(BaseSerializer):
+    verification_jobs = serializers.ListSerializer(child=VerificationJobsResponseSerializer(), required=True, allow_empty=True)
+
+
+class CreateVerificationJobRequestSerializer(BaseSerializer):
+    forecast_run_id = serializers.IntegerField(required=False)
+
+
+class CreateVerificationJobResponseSerializer(GenericMessageResponseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    job_data_dir = serializers.CharField(required=True)
+
+
+class GetVerificationStatusRequestSerializer(VerificationJobSerializer):
+    include_performance_metrics = serializers.BooleanField(required=False, default=False)
+
+
+class RunVerificationJob(VerificationJobSerializer):
+    logging_config = LoggingConfigSerializer(required=False)
+
+
+class SubmitVerificationJobResponseSerializer(GenericMessageAndStatusResponseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    submit_date = serializers.DateTimeField(required=True, allow_null=False)
+
+
+class GetVerificationStatusResponseSerializer(GenericMessageAndStatusResponseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    submit_date = serializers.DateTimeField(required=False, allow_null=True)
+    run_start = serializers.DateTimeField(required=False, allow_null=True)
+    run_end = serializers.DateTimeField(required=False, allow_null=True)
+    elapsed_time = serializers.DurationField(required=False, allow_null=True)
+    performance_metrics = PerformanceMetricsSerializer(required=False)
+    failure_messages = serializers.DictField(required=False, allow_null=False)
+
+
+class GetVerificationPlotNamesResponseSerializer(BaseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    plot_names = PlotListStaticSerializer(many=True)
+    status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
+
+
+class GetVerificationPlotRequestSerializer(BaseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    plot_name = serializers.CharField(required=True, allow_null=False)
+
+
+class GetVerificationPlotResponseSerializer(BaseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
+    plot_name = serializers.CharField(required=True, allow_null=False)
+    plot_file_path = serializers.CharField(required=False, allow_null=False)
+    plot_url = serializers.CharField(required=False, allow_null=False)
+
+
+class DeleteVerificationJobResponseSerializer(GenericMessageResponseSerializer):
+    verification_job_id = serializers.IntegerField(required=True)
 
 
 ##################################
