@@ -18,7 +18,7 @@ from calibration.enums_vanilla import JobType
 from calibration.models import VerificationRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, EmptySerializer, \
-    VerificationJobsResponseSerializer, VerificationJobSerializer, CreateVerificationJobRequestSerializer, \
+    VerificationJobDetailsResponseSerializer, VerificationJobSerializer, CreateVerificationJobRequestSerializer, \
     CreateVerificationJobResponseSerializer, RunVerificationJob, SubmitVerificationJobResponseSerializer, \
     GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, GetVerificationPlotResponseSerializer, \
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 @extend_schema(
     request=EmptySerializer,
     responses={
-        200: VerificationJobsResponseSerializer,
+        200: VerificationJobDetailsResponseSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -77,7 +77,6 @@ def load_verification_job(request: Request) -> Response:
         return error_return
 
     yaml_config_data = {}
-    yaml_config_error_message = None
 
     cycle_date = verification_job.forecast_run.cycle_date
     if not os.path.exists(get_verification_yaml_config_file(verification_job)):
@@ -89,19 +88,16 @@ def load_verification_job(request: Request) -> Response:
             verification_job.status = StatusEnum.READY.db_instance
             verification_job.save()
         except Exception as e:
-            # TODO Should this be a fatal error and throw an exception?
-            logger.info(f"Error: {e}")
+            return ResponseError(f"Error: {e}")
 
-    # TODO If fatal error above, we don't need this if
     if os.path.exists(get_verification_yaml_config_file(verification_job)):
         try:
             with open(get_verification_yaml_config_file(verification_job), 'r') as file:
                 yaml_config_data = yaml.safe_load(file)
         except FileNotFoundError:
-            # TODO Throw a CerfException with these errors, or return ErrorResponse.  Several ways to do this.  But we dno't need to return the error
-            yaml_config_error_message = "Error: YAML file not readable."
+            return ResponseError(f"Error: YAML file not readable for Calibration Job {verification_job_id}.")
         except yaml.YAMLError as exc:
-            yaml_config_error_message = f"Error parsing YAML file: {exc}"
+            return ResponseError(f"Error parsing YAML file for Calibration Job {verification_job_id}: {exc}")
 
     response = {
         'verification_job_id': verification_job.id,
@@ -110,14 +106,7 @@ def load_verification_job(request: Request) -> Response:
         'submit_date': verification_job.submit_date,
         'run_start': verification_job.run_start,
         'run_end': verification_job.run_end,
-        # TODO NOt sure that the user really needs this either
-        'verification_config': get_verification_yaml_config_file(verification_job),
-        # TODO or this
-        'yaml_config_data': yaml_config_data,
-        # We don't need this.  The way this normall works is we throw an exception
-        'yaml_config_error_message': yaml_config_error_message,
-        # TODO We don't need this
-        'job_data_dir': get_verification_run_dir(verification_job)
+        'yaml_config_data': yaml_config_data
     }
 
     forecast_run, error_return = get_forecast_run(verification_job.forecast_run.id, request.user, run_status=list(StatusEnum))
@@ -135,7 +124,7 @@ def load_verification_job(request: Request) -> Response:
         'submit_date': forecast_run.submit_date
     }
 
-    response_validator, error_response = validate_response(VerificationJobsResponseSerializer, response)
+    response_validator, error_response = validate_response(VerificationJobDetailsResponseSerializer, response)
     if error_response:
         return error_response
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {json.dumps(response_validator.data)}')

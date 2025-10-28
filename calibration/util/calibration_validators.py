@@ -1159,17 +1159,14 @@ class VerificationJobsResponseSerializer(BaseSerializer):
     forecast_run = ForecastJobsResponseSerializer(required=False, allow_null=True)
     forecast_run_id = serializers.IntegerField(required=True, allow_null=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
-    created_at = serializers.DateTimeField(required=True, allow_null=True)
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
-    # TODO The fact that some of these are not required is a code smell.  Some of them are *never* returned.   You're using this in contexts where those fields aren't even used
-    run_start = serializers.DateTimeField(required=False, allow_null=True)
-    run_end = serializers.DateTimeField(required=False, allow_null=True)
-    performance_metrics = PerformanceMetricsSerializer(required=False)
-    verification_config = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    created_at = serializers.DateTimeField(required=True, allow_null=True)
+
+
+class VerificationJobDetailsResponseSerializer(VerificationJobsResponseSerializer):
+    run_start = serializers.DateTimeField(required=True, allow_null=True)
+    run_end = serializers.DateTimeField(required=True, allow_null=True)
     yaml_config_data = serializers.JSONField(required=False)
-    yaml_config_error_message = serializers.CharField(required=False, allow_null=True)
-    # TODO Why do we need this?
-    job_data_dir = serializers.CharField(required=False)
 
 
 class GetVerificationJobsResponseSerializer(BaseSerializer):

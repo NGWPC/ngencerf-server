@@ -105,8 +105,7 @@ def create_verification_input(run: VerificationRun) -> ErrorReport | None:
                 f'{join_with_or(allowed_status_names)}. '
                 f'Current status: {run.status.name}'
             )
-            # TODO I think you just mean to return the error_object here, not a tuple
-            return error_object, None
+            return error_object
 
     # Add hard-coded file paths to YAML
     config['file_paths'] = {

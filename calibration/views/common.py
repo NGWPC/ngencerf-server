@@ -364,7 +364,7 @@ def create_verification_job_internal(user: User, forecast_run: ForecastRun) -> V
     Create a new VerificationRun for the given user.
 
     :param user: Owner of the verification job.
-    :param forecast_run Forecast Job to associate with this verification_run
+    :param forecast_run Forecast Job to associate with this verification run
     :return: New VerificationRun instance.
     """
     verification_run = VerificationRun.objects.create(
