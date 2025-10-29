@@ -3,10 +3,13 @@ Module providing CLI functionality for interacting with ngen calibration job end
 Supports operations like uploading data, submitting/deleting/cancelling jobs, and
 importing/exporting configurations.
 """
+import itertools
 import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import zipfile
 from contextlib import ExitStack
 from datetime import datetime
@@ -14,7 +17,7 @@ from datetime import datetime
 import requests
 import tabulate
 
-from ngencerf.cli_util import check_http_error, Spinner
+from ngencerf.cli_util import check_http_error
 
 API_BASE = "http://localhost:8000"
 
@@ -36,10 +39,12 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
     Ensures each attempt uses the freshest ACCESS_TOKEN and rewinds file streams if present.
     Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
 
-    **Behavior:**
-    - If `stream=True`: returns `(requests.Response, True)` WITHOUT consuming or parsing the body.
-    - Otherwise: returns `(parsed_json_dict, True)` or `(None, False)` if unsuccessful.
-
+    Behavior:
+    - If stream=True and first attempt is 200: returns (requests.Response, True) for caller to iter_content().
+    - If retry is needed and succeeds:
+        - non-stream: returns parsed JSON (dict), True (let check_http_error print any server messages)
+        - stream: issues one more request (with spinner) and returns that new Response, True
+    - On error: prints structured messages via check_http_error and returns (None, False).
     :param message: Message to display while waiting.
     :param endpoint: API endpoint (path relative to API_BASE).
     :param kwargs: Forwarded to `requests.post` (headers, json, files, stream, etc.)
@@ -72,7 +77,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
                 except Exception:
                     pass
 
-    def do_post():
+    def _make_post():
         # Make a fresh copy of kwargs for each attempt
         req_kwargs = dict(kwargs)
 
@@ -87,45 +92,59 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
 
         return requests.post(f"{API_BASE}{endpoint}", **req_kwargs)
 
-    def _attempt_with_spinner(msg: str):
-        spinner = Spinner(msg)
-        spinner.start()
+    def _with_spinner(msg: str, fn):
+        sp = Spinner(msg)
+        sp.start()
         try:
-            return do_post()
+            return fn()
         except KeyboardInterrupt:
             print("\nOperation cancelled by user.")
             return None
         finally:
-            spinner.stop()
+            sp.stop()
 
     is_stream = bool(kwargs.get("stream"))
 
-    # First attempt
-    response = _attempt_with_spinner(message)
-    if response is None:
+    # 1) First attempt (with spinner)
+    first_resp = _with_spinner(message, _make_post)
+    if first_resp is None:
         return None, False
 
-    if is_stream:
-        # Success path: return raw Response so caller can .iter_content()
-        if response.ok:
-            return response, True
-        # Error path: delegate to existing error+retry logic (which may relogin/refresh and retry)
-        return check_http_error(
-            response.status_code,
-            response.text,  # safe to read on error
-            response.headers.get("Content-Type"),
-            retry_func=do_post,
-            retry_message=message
+    if is_stream and first_resp.ok:
+        # Success on first try → return raw Response for streaming
+        return first_resp, True
+
+    # 2) Delegate error handling + auth refresh/login to check_http_error.
+    parsed_or_none, ok = check_http_error(
+        first_resp.status_code,
+        first_resp.text,
+        first_resp.headers.get("Content-Type")
+    )
+
+    if not ok:
+        return None, False
+
+    # 3) On success-after-retry:
+    #    - non-stream: we already have parsed JSON (dict) from check_http_error → return it.
+    #    - stream: we must obtain a fresh streaming Response for the caller to iter_content().
+    if not is_stream:
+        return parsed_or_none, True
+
+    # stream=True and retry succeeded → open a fresh streaming connection (with spinner) and return it
+    final_stream_resp = _with_spinner(f"Retrying: {message}...", _make_post)
+    if final_stream_resp is None:
+        return None, False
+    if not final_stream_resp.ok:
+        # If server still responds with an error here, print via check_http_error once more (no further retries).
+        _ = check_http_error(
+            final_stream_resp.status_code,
+            final_stream_resp.text,
+            final_stream_resp.headers.get("Content-Type"),
+            retry_func=None
         )
-    else:
-        # Non-stream JSON path
-        return check_http_error(
-            response.status_code,
-            response.text,
-            response.headers.get("Content-Type"),
-            retry_func=do_post,
-            retry_message=message  # so check_http_error can show "Retrying: {message}..."
-        )
+        return None, False
+
+    return final_stream_resp, True
 
 
 def about(output_path: str | None = None) -> int:
@@ -854,7 +873,6 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
                 # Ensure the directory exists for the specified file path
                 os.makedirs(dir_name, exist_ok=True)
 
-    # --- NEW: Check writability ---
     if os.path.exists(output_path):
         # File exists → check if user can write to it
         if not os.access(output_path, os.W_OK):
@@ -868,3 +886,31 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
             sys.exit(1)
 
     return output_path
+
+
+class Spinner:
+    def __init__(self, message="Processing..."):
+        self.spinner = itertools.cycle(["|", "/", "-", "\\"])
+        self.running = False
+        self.thread = None
+        self.message = message
+
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self._spin)
+        self.thread.start()
+
+    def _spin(self):
+        print(self.message, end=" ", flush=True)
+        while self.running:
+            sys.stdout.write(next(self.spinner))
+            sys.stdout.flush()
+            time.sleep(0.1)
+            sys.stdout.write("\b")
+
+    def stop(self):
+        self.running = False
+        if self.thread:
+            self.thread.join()
+        sys.stdout.write(" \n")
+        sys.stdout.flush()
