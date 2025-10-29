@@ -30,16 +30,22 @@ def get_auth_headers() -> dict[str, str]:
     }
 
 
-def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[dict | None, bool]:
+def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[requests.Response | dict | None, bool]:
     """
     POST to an API endpoint with spinner, automatic token refresh/relogin, and retry support.
     Ensures each attempt uses the freshest ACCESS_TOKEN and rewinds file streams if present.
     Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
 
+    **Behavior:**
+    - If `stream=True`: returns `(requests.Response, True)` WITHOUT consuming or parsing the body.
+    - Otherwise: returns `(parsed_json_dict, True)` or `(None, False)` if unsuccessful.
+
     :param message: Message to display while waiting.
     :param endpoint: API endpoint (path relative to API_BASE).
-    :param kwargs: Passed to requests.post (headers, json, files, etc.)
-    :return: (response_json, success)
+    :param kwargs: Forwarded to `requests.post` (headers, json, files, stream, etc.)
+    :return: A tuple of:
+             - `requests.Response` if streaming, or `dict` if JSON, or `None` if failure.
+             - `bool` indicating overall success.
     """
 
     def _rewind_files(files_obj):
@@ -92,18 +98,34 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         finally:
             spinner.stop()
 
+    is_stream = bool(kwargs.get("stream"))
+
     # First attempt
     response = _attempt_with_spinner(message)
     if response is None:
         return None, False
 
-    return check_http_error(
-        response.status_code,
-        response.text,
-        response.headers.get("Content-Type"),
-        retry_func=do_post,
-        retry_message=message  # so check_http_error can show "Retrying: {message}..."
-    )
+    if is_stream:
+        # Success path: return raw Response so caller can .iter_content()
+        if response.ok:
+            return response, True
+        # Error path: delegate to existing error+retry logic (which may relogin/refresh and retry)
+        return check_http_error(
+            response.status_code,
+            response.text,  # safe to read on error
+            response.headers.get("Content-Type"),
+            retry_func=do_post,
+            retry_message=message
+        )
+    else:
+        # Non-stream JSON path
+        return check_http_error(
+            response.status_code,
+            response.text,
+            response.headers.get("Content-Type"),
+            retry_func=do_post,
+            retry_message=message  # so check_http_error can show "Retrying: {message}..."
+        )
 
 
 def about(output_path: str | None = None) -> int:
@@ -240,10 +262,11 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     print(f"Downloading ZIP for calibration run: {calibration_run_id}")
 
     # Resolve and validate path early
-    final_path = resolve_output_path(output_path, f"calibration_job_{calibration_run_id}.zip")
+    default_name = f"calibration_job_{calibration_run_id}.zip"
+    final_path = resolve_output_path(output_path, default_name)
 
     payload = {"calibration_run_id": calibration_run_id}
-    response_json, success = post_with_spinner_and_retry(
+    resp, success = post_with_spinner_and_retry(
         "Downloading zip...",
         "/calibration/get_calibration_job_zip/",
         headers=get_auth_headers(),
@@ -253,22 +276,20 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     if not success:
         return 1
 
-    # Save actual content in a second call (streaming)
-    resp = requests.post(
-        f"{API_BASE}/calibration/get_calibration_job_zip/",
-        headers=get_auth_headers(),
-        json=payload,
-        stream=True,
-    )
-    if not resp.ok:
-        print(f"Download failed with status code {resp.status_code}")
-        check_http_error(resp.status_code, resp.text)
-        return 1
+    # If server sends Content-Disposition, honor the filename
+    cd = resp.headers.get("Content-Disposition", "")
+    if "filename=" in cd:
+        name = cd.split("filename=", 1)[1].strip().strip('"')
+        final_path = resolve_output_path(output_path, name or default_name)
 
-    with open(final_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+    try:
+        with open(final_path, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+    except Exception as e:
+        print(f"Failed to write ZIP to {final_path}: {e}")
+        return 1
 
     print(f"Downloaded ZIP to: {final_path}")
     return 0
