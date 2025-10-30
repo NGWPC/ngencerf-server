@@ -39,7 +39,7 @@ def check_http_error(http_status: int, response: str, content_type: str | None =
                 print("Warning: Response is not valid JSON.")
                 return None, False
 
-        # 401 Unauthorized → refresh, then full login, then single retry
+        # 401 Unauthorized → attempt refresh or full login, then retry once
         if http_status == 401:
             print("Unauthorized (401): Access token may have expired. Attempting refresh...")
 
@@ -51,12 +51,12 @@ def check_http_error(http_status: int, response: str, content_type: str | None =
             else:
                 # Access token expired and refresh failed (or not present).
                 # Prompt user for credentials (shows default email; allows enter-to-accept).
-                print("[DEBUG] Refresh failed. Prompting for full login...")
+                print("Refresh failed. Prompting for full login...")
                 if perform_full_login():
                     token_fixed = True
 
             if token_fixed and retry_func:
-                print("[DEBUG] Retrying request with new token...")
+                print("Retrying request with new token...")
                 return retry_func()
 
             return {"detail": "Token fixed, but no retry performed."}, token_fixed

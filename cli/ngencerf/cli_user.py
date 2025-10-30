@@ -78,26 +78,26 @@ def ngen_login() -> bool:
 
     # Case 1: Both tokens exist → trust access token, let 401 trigger refresh
     if access_token and refresh_token:
-        print("[DEBUG] Using existing ACCESS_TOKEN (with REFRESH_TOKEN available).")
+        print("Using existing access token (refresh token available).")
         return True
 
     # Case 2: Access token exists but no refresh token → treat as expired
     if access_token and not refresh_token:
-        print("[DEBUG] ACCESS_TOKEN found but no REFRESH_TOKEN. Treating as expired → full login required.")
+        print("Access token found but no refresh token. Performing full login.")
         return perform_full_login()
 
     # Case 3: No access token, but refresh token exists → try refresh
     if refresh_token:
-        print("[DEBUG] No ACCESS_TOKEN found. Attempting refresh...")
+        print("No access token found. Attempting refresh...")
         if refresh_access_token():
-            print("[DEBUG] Refresh succeeded. Using new ACCESS_TOKEN.")
+            print("Refresh succeeded. Using new access token.")
             return True
         else:
-            print("[DEBUG] Refresh failed. Falling back to full login...")
+            print("Refresh failed. Performing full login...")
             return perform_full_login()
 
     # Case 4: Neither token exists → full login
-    print("[DEBUG] No tokens found. Performing full login.")
+    print("No tokens found. Performing full login.")
     return perform_full_login()
 
 
@@ -106,7 +106,7 @@ def perform_full_login(_retry=False) -> bool:
     Perform a full login using stored or prompted credentials.
     Will re-prompt once on failure (but never loops indefinitely).
     """
-    print("[DEBUG] Performing full login with email/password.")
+    print("Performing full login with email/password.")
 
     # Always load the latest email from env if available
     email = os.environ.get("NGEN_EMAIL") or os.environ.get("NGEN_USERNAME")
@@ -154,15 +154,15 @@ def perform_full_login(_retry=False) -> bool:
             print(f"Login failed with HTTP {response.status_code}. Please try again.")
 
         # Clear stored password for retry
-        print("[DEBUG] Saved password failed. Prompting for new credentials...")
+        print("Saved password failed. Prompting for new credentials...")
         _clear_saved_password()
         os.environ.pop("NGEN_PASSWORD", None)
 
         if not _retry:
-            print("[DEBUG] Saved password failed — retrying full login.")
+            print("Saved password failed — retrying full login...")
             return perform_full_login(_retry=True)
         else:
-            print("[DEBUG] Second login attempt failed. Aborting.")
+            print("Second login attempt failed. Aborting.")
             return False
 
     # Success case
@@ -188,7 +188,7 @@ def perform_full_login(_retry=False) -> bool:
 
 def _clear_saved_password():
     """Remove only the saved password so user is reprompted."""
-    print("[DEBUG] Clearing invalid saved password from .ngencerf_env...")
+    print("Clearing invalid saved password from ~/.ngencerf_env...")
     os.environ.pop("NGEN_PASSWORD", None)
 
     if not os.path.exists(ENV_FILE):
@@ -202,7 +202,7 @@ def _clear_saved_password():
                 if not line.startswith("NGEN_PASSWORD="):
                     f.write(line)
     except Exception as e:
-        print(f"[DEBUG] Failed to clear password: {e}")
+        print(f"Failed to clear password: {e}")
 
 
 def _clear_auth_state():
@@ -218,14 +218,14 @@ def _clear_auth_state():
             for line in lines:
                 if not line.startswith(("ACCESS_TOKEN=", "REFRESH_TOKEN=", "NGEN_PASSWORD=")):
                     f.write(line)
-        print("[DEBUG] Cleared invalid tokens and password from .ngencerf_env.")
+        print("Cleared invalid tokens and password from ~/.ngencerf_env.")
     except Exception as e:
-        print(f"[DEBUG] Failed to clean invalid credentials: {e}")
+        print(f"Failed to clean invalid credentials: {e}")
 
 
 def refresh_access_token() -> bool:
     """
-    Attempts to refresh the access token using REFRESH_TOKEN.
+    Attempts to refresh the access token using REFRESH_TOKEN in environment variables.
     Updates ~/.ngencerf_env if successful.
 
     Returns:
@@ -234,20 +234,19 @@ def refresh_access_token() -> bool:
     load_ngencerf_env()
     refresh_token = os.environ.get("REFRESH_TOKEN")
     if not refresh_token:
-        print("[DEBUG] No refresh token available.")
         return False
 
     payload = {"refresh": refresh_token}
     response = requests.post(REFRESH_ENDPOINT, json=payload)
 
     if response.status_code != 200:
-        print(f"[DEBUG] Refresh failed with status {response.status_code}: {response.text}")
+        print(f"Refresh failed with status {response.status_code}: {response.text}")
         return False
 
     response_json = response.json()
     access_token = response_json.get("access")
     if not access_token:
-        print("[DEBUG] Refresh response missing access token.")
+        print("Refresh response missing access token.")
         return False
 
     os.environ["ACCESS_TOKEN"] = access_token
