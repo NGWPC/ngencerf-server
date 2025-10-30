@@ -90,7 +90,12 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         if "files" in req_kwargs and req_kwargs["files"] is not None:
             _rewind_files(req_kwargs["files"])
 
-        return requests.post(f"{API_BASE}{endpoint}", **req_kwargs)
+        try:
+            return requests.post(f"{API_BASE}{endpoint}", **req_kwargs)
+        except requests.exceptions.RequestException as e:
+            print(f"\nError: Could not connect to server at {API_BASE}.")
+            print(f"Details: {e}")
+            return None
 
     def _with_spinner(msg: str, fn):
         sp = Spinner(msg)
