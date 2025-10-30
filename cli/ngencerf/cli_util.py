@@ -1,12 +1,8 @@
 import ast
-import itertools
 import json
-import sys
-import threading
-import time
 
 
-def check_http_error(http_status: int, response: str, content_type: str | None = None, retry_func=None, retry_message: str | None = None) -> tuple[dict | None, bool]:
+def check_http_error(http_status: int, response: str, content_type: str | None = None, retry_func=None) -> tuple[dict | None, bool]:
     """
     Handles HTTP errors, returning the parsed response for 200 status codes,
     and printing appropriate error messages for other status codes.
@@ -25,8 +21,6 @@ def check_http_error(http_status: int, response: str, content_type: str | None =
             - `status_code` (int)
             - `text` (str)
             - `json()` (callable returning parsed JSON)
-    :param retry_message: Optional message to display with the spinner when retrying
-        (e.g., "Importing job...").
     :return: A tuple of (parsed_response, success_flag)
              - parsed_response: dict or None
              - success_flag: True if request succeeded or was retried successfully; False otherwise.
@@ -45,7 +39,7 @@ def check_http_error(http_status: int, response: str, content_type: str | None =
                 print("Warning: Response is not valid JSON.")
                 return None, False
 
-        # 401 Unauthorized → refresh, then full login, then single retry (with spinner) if possible
+        # 401 Unauthorized → attempt refresh or full login, then retry once
         if http_status == 401:
             print("Unauthorized (401): Access token may have expired. Attempting refresh...")
 
@@ -57,33 +51,13 @@ def check_http_error(http_status: int, response: str, content_type: str | None =
             else:
                 # Access token expired and refresh failed (or not present).
                 # Prompt user for credentials (shows default email; allows enter-to-accept).
-                print("[DEBUG] Refresh failed. Prompting for full login...")
+                print("Refresh failed. Prompting for full login...")
                 if perform_full_login():
                     token_fixed = True
 
             if token_fixed and retry_func:
-                print("[DEBUG] Retrying request with new token...")
-                # Show spinner on the retry using the same message, prefixed
-                spinner_label = f"Retrying: {retry_message}..." if retry_message else "Retrying request..."
-
-                # Give user a spinner while retry request is in progress ===
-                retry_spinner = Spinner(spinner_label)
-                retry_spinner.start()
-                try:
-                    new_response = retry_func()
-                finally:
-                    retry_spinner.stop()
-                # === END NEW ===
-
-                # If retry succeeded
-                if new_response.status_code == 200:
-                    try:
-                        return new_response.json(), True
-                    except Exception:
-                        return None, True
-                else:
-                    # On failed retry after token fix → treat like normal failure
-                    return new_response.text, False
+                print("Retrying request with new token...")
+                return retry_func()
 
             return {"detail": "Token fixed, but no retry performed."}, token_fixed
 
@@ -206,31 +180,3 @@ def _pretty_print_json(response: str, suppress_html: bool = False):
         # print only the first 10 lines of non-JSON response
         lines = response.strip().splitlines()
         print("\n".join(lines[:10]) + ("\n..." if len(lines) > 10 else ""))
-
-
-class Spinner:
-    def __init__(self, message="Processing..."):
-        self.spinner = itertools.cycle(["|", "/", "-", "\\"])
-        self.running = False
-        self.thread = None
-        self.message = message
-
-    def start(self):
-        self.running = True
-        self.thread = threading.Thread(target=self._spin)
-        self.thread.start()
-
-    def _spin(self):
-        print(self.message, end=" ", flush=True)
-        while self.running:
-            sys.stdout.write(next(self.spinner))
-            sys.stdout.flush()
-            time.sleep(0.1)
-            sys.stdout.write("\b")
-
-    def stop(self):
-        self.running = False
-        if self.thread:
-            self.thread.join()
-        sys.stdout.write(" \n")
-        sys.stdout.flush()
