@@ -167,6 +167,17 @@ def main():
     # Attach the subparsers to the main parser
     parser.set_subparsers(subparsers)
 
+    def _normalize_cli_arg(arg):
+        """
+        Normalize CLI positional args so a single file or ID isn't wrapped in a list.
+        Example:
+          ['calibration_jobs_2025-11-04_1455.md'] → 'calibration_jobs_2025-11-04_1455.md'
+          ['10', '11'] → ['10', '11']
+        """
+        if isinstance(arg, list) and len(arg) == 1:
+            return arg[0]
+        return arg
+
     def add_parser(name, help_text, *, hidden: bool = False):
         """
         Create a subparser for a specific command.
@@ -215,11 +226,10 @@ def main():
     archive_parser = add_parser("archive", "Archive one or more jobs")
     archive_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    archive_parser.set_defaults(func=lambda cmd_args: archive_job(cmd_args.run_ids))
+    archive_parser.set_defaults(func=lambda cmd_args: archive_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     cancel_parser = add_parser("cancel", "Cancel job")
     cancel_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -228,11 +238,10 @@ def main():
     delete_parser = add_parser("delete", "Delete job")
     delete_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibraiton job IDs or a Markdown list file"
     )
-    delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_ids))
+    delete_parser.set_defaults(func=lambda cmd_args: delete_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     download_parser = add_parser("download", "Download ZIP file for a calibration job")
     download_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -380,11 +389,10 @@ def main():
     lock_parser = add_parser("lock", "lock one or more jobs")
     lock_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    lock_parser.set_defaults(func=lambda cmd_args: lock_job(cmd_args.run_ids))
+    lock_parser.set_defaults(func=lambda cmd_args: lock_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration job")
     observation_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -423,7 +431,7 @@ def main():
         if cmd_args.id_file:
             run_ids_input = cmd_args.id_file
         elif cmd_args.run_ids:
-            run_ids_input = cmd_args.run_ids
+            run_ids_input = _normalize_cli_arg(cmd_args.run_ids)
         else:
             print("Error: You must provide either run IDs as arguments or via --id-file.")
             return 1
@@ -458,20 +466,18 @@ def main():
     unarchive_parser = add_parser("unarchive", "Unarchive one or more jobs")
     unarchive_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(cmd_args.run_ids))
+    unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     unlock_parser = add_parser("unlock", "Unlock one or more jobs")
     unlock_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    unlock_parser.set_defaults(func=lambda cmd_args: unlock_job(cmd_args.run_ids))
+    unlock_parser.set_defaults(func=lambda cmd_args: unlock_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     update_parser = add_parser("update", "Update job from a JSON file")
     update_parser.add_argument("run_id", type=int, help="Calibration job ID")
