@@ -562,7 +562,7 @@ class ModuleFilterSerializer(serializers.Serializer):
 class DateFilterSerializer(serializers.Serializer):
     """Filter by CalibrationRun.run_start using 'before' or 'after' logic."""
     operator = serializers.ChoiceField(choices=['before', 'after'], required=False, allow_blank=True)
-    date = serializers.DateField(required=False, allow_null=True)
+    create_date = serializers.DateField(required=False, allow_null=True)
 
 
 class FilterSerializer(BaseSerializer):

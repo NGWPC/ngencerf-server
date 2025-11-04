@@ -93,7 +93,7 @@ Example request (as plain text):
           },
           "date_filter": {
               "operator": "after",
-              "date": "2025-01-01"
+              "create_date": "2025-01-01"
           },
           "include_archived": false
       },
@@ -373,7 +373,7 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
                 filters.pop("module_filter")
         if "date_filter" in filters and filters["date_filter"]:
             df = filters["date_filter"]
-            if not df.get("operator") or not df.get("date"):
+            if not df.get("operator") or not df.get("create_date"):
                 filters.pop("date_filter")
 
     if sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
@@ -387,7 +387,7 @@ def _apply_shared_filters(
         gage_prefix: str,
         module_prefix: str,
         status_field: str,
-        run_start_field: str,
+        created_field: str,
         archived_field: str = "is_archived"
 ) -> Q:
     """
@@ -441,14 +441,14 @@ def _apply_shared_filters(
     if "date_filter" in filters:
         date_info = filters["date_filter"]
         operator = (date_info.get("operator") or "").lower()
-        date_value = date_info.get("date")
+        date_value = date_info.get("create_date")
 
         # Only apply if both operator and date are present and valid
         if operator in ("before", "after") and date_value:
             if operator == "before":
-                query &= Q(**{f"{run_start_field}__lt": date_value})
+                query &= Q(**{f"{created_field}__lt": date_value})
             elif operator == "after":
-                query &= Q(**{f"{run_start_field}__gt": date_value})
+                query &= Q(**{f"{created_field}__gt": date_value})
 
     # ───── Archived toggle ─────
     if "include_archived" in filters and not filters["include_archived"]:
@@ -470,7 +470,7 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
         gage_prefix="gage__",
         module_prefix="calibrationformulation__",
         status_field="status__in",
-        run_start_field="run_start",
+        created_field="created_at",
         archived_field="is_archived"
     )
 
@@ -487,8 +487,8 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
         query, filters,
         gage_prefix="calibration_run__gage__",
         module_prefix="calibration_run__calibrationformulation__",
-        status_field="status__in",  # ForecastRun's own status
-        run_start_field="calibration_run__run_start",
+        status_field="status__in",
+        created_field="created_at",
         archived_field="calibration_run__is_archived"
     )
 
@@ -505,8 +505,8 @@ def apply_verification_filters(query: Q, filters: dict) -> Q:
         query, filters,
         gage_prefix="forecast_run__calibration_run__gage__",
         module_prefix="forecast_run__calibration_run__calibrationformulation__",
-        status_field="status__in",  # VerificationRun's own status
-        run_start_field="forecast_run__calibration_run__run_start",
+        status_field="status__in",
+        created_field="created_at",
         archived_field="forecast_run__calibration_run__is_archived"
     )
 
