@@ -191,6 +191,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     jobs, total_count = get_jobs(
         request.user,
@@ -254,6 +255,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     jobs, total_count = get_jobs(
         request.user,
@@ -315,6 +317,7 @@ def get_calibration_jobs(request):
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     jobs, total_count = get_jobs(
         request.user,
@@ -341,6 +344,42 @@ def get_calibration_jobs(request):
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
+
+
+def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tuple[dict | None, dict | None]:
+    """
+    Normalize and sanitize incoming filter and sort payloads.
+
+    This function removes blank, empty, or null fields from the validated request data
+    to ensure consistent query behavior. It also strips out nested filter objects
+    (e.g., module_filter, date_filter) if they contain no usable values, and disables
+    sorting if the sort field is missing or blank.
+
+    :param filters: Optional dictionary of filter parameters (may include nested objects).
+    :param sort: Optional dictionary specifying sorting field and direction.
+    :return: Tuple of (normalized_filters, normalized_sort) with blanks stripped out.
+             Returns ({}, None) when inputs are invalid or contain only empty values.
+    """
+    if filters:
+        filters = {
+            k: v for k, v in filters.items()
+            if v not in ("", [], {}, None)
+        }
+
+        # handle nested filters
+        if "module_filter" in filters and filters["module_filter"]:
+            mf = filters["module_filter"]
+            if not mf.get("modules"):
+                filters.pop("module_filter")
+        if "date_filter" in filters and filters["date_filter"]:
+            df = filters["date_filter"]
+            if not df.get("operator") or not df.get("date"):
+                filters.pop("date_filter")
+
+    if sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
+        sort = None
+
+    return filters, sort
 
 
 def _apply_shared_filters(
@@ -401,13 +440,15 @@ def _apply_shared_filters(
     # ───── Date filter ─────
     if "date_filter" in filters:
         date_info = filters["date_filter"]
-        operator = date_info.get("operator")
+        operator = (date_info.get("operator") or "").lower()
         date_value = date_info.get("date")
 
-        if operator == "before":
-            query &= Q(**{f"{run_start_field}__lt": date_value})
-        elif operator == "after":
-            query &= Q(**{f"{run_start_field}__gt": date_value})
+        # Only apply if both operator and date are present and valid
+        if operator in ("before", "after") and date_value:
+            if operator == "before":
+                query &= Q(**{f"{run_start_field}__lt": date_value})
+            elif operator == "after":
+                query &= Q(**{f"{run_start_field}__gt": date_value})
 
     # ───── Archived toggle ─────
     if "include_archived" in filters and not filters["include_archived"]:
@@ -536,6 +577,19 @@ def get_jobs(
     :return: Tuple (results, total_count). total_count reflects total rows BEFORE pagination.
     """
     filters = filters or {}
+
+    # ───── Validate module names (if provided) ─────
+    if "module_filter" in filters:
+        mf = filters["module_filter"] or {}
+        modules = mf.get("modules") or []
+        if modules:
+            valid_modules = {m.name for m in get_cached_modules_by_id().values()}
+            invalid = [m for m in modules if m not in valid_modules]
+            if invalid:
+                raise ValueError(
+                    f"Invalid module names: {invalid}. "
+                    f"Valid options are: {sorted(valid_modules)}"
+                )
 
     order_by = resolve_sort(sort, CalibrationSortField)
 
@@ -946,6 +1000,7 @@ def get_forecast_jobs(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     forecast_jobs, total_count = get_forecast_jobs_internal(
         request.user,
@@ -1010,6 +1065,7 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     forecast_jobs, total_count = get_forecast_jobs_internal(
         request.user, run_status=[StatusEnum.DONE],
@@ -1133,6 +1189,7 @@ def get_verification_jobs(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     verification_jobs, total_count = get_verification_jobs_internal(
         request.user,

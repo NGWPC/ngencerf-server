@@ -1,0 +1,34 @@
+# ─────────────────────────────
+# Calibration Job Filters
+# ─────────────────────────────
+# Leave fields blank or empty for no filtering.
+# All fields are optional.
+
+gage_id: ""  # Example: "01544887"
+
+status: []   # Valid values (case-insensitive):
+             #   - Done
+             #   - Failed
+             #   - Cancelled
+             #   - Server_Error
+             #   - Running
+             #   - Queued
+             #   - Submitted
+             #   - Pending
+             #   - Created
+             #   - Validating
+             #   - Initializing
+             #   - Calibration
+             #   - Completed
+             #   - Uploaded
+             #   - Archived
+
+module_filter:
+  operator: "or"     # "or" (default) or "and"
+  modules: []      # Example: ["CFE-X", "Noah-OWP-Modular"]
+
+date_filter:
+  operator: "before"     # "before" or "after"
+  date: null             # Format: "YYYY-MM-DD"
+
+include_archived: false  # true = include archived jobs; false = exclude

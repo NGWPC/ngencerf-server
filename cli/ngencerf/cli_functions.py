@@ -561,12 +561,32 @@ def cancel_job(calibration_run_id: int) -> int:
     return 0
 
 
-def list_jobs(output_path: str | None = None) -> int:
+def list_jobs(output_path: str | None = None, filters: dict | None = None, sort: dict | None = None) -> int:
     """
-    Lists all calibration jobs and saves them to a markdown file.
+    Lists calibration jobs from the server with optional filtering and sorting,
+    and saves the results to a Markdown file.
 
-    :param output_path: Path to save the job list (optional)
-    :return: 0 on success, 1 on failure
+    The function sends a POST request to `/calibration/get_calibration_jobs/`
+    using the same request schema supported by the backend API.
+
+    Example payload:
+        {
+            "filters": {
+                "gage_id": "01544887",
+                "status": ["Done", "Failed"],
+                "module_filter": {
+                    "operator": "and",
+                    "modules": ["CFE-X", "Noah-OWP-Modular"]
+                },
+                "include_archived": false
+            },
+            "sort": { "field": "submit_date", "direction": "desc" }
+        }
+
+    :param output_path: Path to save the job list in Markdown format (optional).
+    :param filters: Dictionary or parsed JSON defining filters to apply (optional).
+    :param sort: Dictionary or parsed JSON defining sort field and direction (optional).
+    :return: 0 on success, 1 on failure.
     """
     # Resolve and validate path early
     final_path = resolve_output_path(
@@ -574,10 +594,17 @@ def list_jobs(output_path: str | None = None) -> int:
         f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md"
     )
 
+    payload = {}
+    if filters:
+        payload["filters"] = filters
+    if sort:
+        payload["sort"] = sort
+
     response_json, success = post_with_spinner_and_retry(
         "Fetching job list...",
         "/calibration/get_calibration_jobs/",
         headers={**get_auth_headers(), "Content-Type": "application/json"},
+        json=payload
     )
     if not success:
         return 1

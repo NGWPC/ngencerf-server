@@ -7,7 +7,11 @@ for managing calibration jobs via a REST API.
 """
 
 import argparse
+import json
+import os
 import sys
+
+import yaml
 
 from ngencerf.cli_functions import (
     import_job,
@@ -313,8 +317,66 @@ def main():
         default="__DEFAULT__",
         help="Path to save the job list (optional output path)"
     )
-    jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(output_path=cmd_args.output_path))
-    
+    jobs_parser.add_argument(
+        "--filters",
+        help=(
+            "JSON string or path to JSON file containing filters, e.g. "
+            "'{\"gage_id\": \"01544887\", \"status\": [\"Done\", \"Failed\"]}' "
+            "or filters.json"
+        ),
+    )
+    jobs_parser.add_argument(
+        "--sort",
+        help=(
+            "JSON string or path to JSON file containing sort, e.g. "
+            "'{\"field\": \"submit_date\", \"direction\": \"desc\"}' "
+            "or sort.json"
+        ),
+    )
+
+    def _parse_json_arg(arg):
+        """
+        Parse input as JSON or YAML (supports comments if YAML).
+        Accepts either inline JSON/YAML string or path to a file.
+
+        Examples:
+            # Inline JSON
+            --filters '{"gage_id": "01544887"}'
+
+            # YAML file with comments
+            --filters filters.yaml
+
+            # JSON file
+            --filters filters.json
+
+        :param arg: A string containing either inline JSON/YAML or a path to a file.
+        :return: Parsed dictionary or None if no argument provided.
+        """
+        if not arg:
+            return None
+
+        if os.path.isfile(arg):
+            with open(arg, "r", encoding="utf-8") as f:
+                content = f.read()
+            try:
+                # Try YAML first (safe and allows comments)
+                return yaml.safe_load(content)
+            except yaml.YAMLError:
+                # Fallback to JSON if YAML fails
+                return json.loads(content)
+        else:
+            # Inline content; try JSON first
+            try:
+                return json.loads(arg)
+            except json.JSONDecodeError:
+                return yaml.safe_load(arg)
+
+    jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(
+        output_path=cmd_args.output_path,
+        filters=_parse_json_arg(cmd_args.filters),
+        sort=_parse_json_arg(cmd_args.sort)
+    ))
+
     lock_parser = add_parser("lock", "lock one or more jobs")
     lock_parser.add_argument(
         "run_ids",
