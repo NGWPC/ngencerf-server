@@ -65,11 +65,13 @@ Use this shape for every request (omit keys you’re not using):
         gage_id: string
         status: array of validated status names (e.g. ["Done", "Failed"])
         module_filter: object with:
-            operator: "and" | "or"       (default = "or")
+            operator: "and" | "or"       (default = "and")
             modules: array of module names
         date_filter: object with:
-            operator: "before" | "after"
-            date: "YYYY-MM-DD"
+            operator: "before" | "after" | "between"
+            create_date: "YYYY-MM-DD"          # used for 'before' or 'after'
+            start_date: "YYYY-MM-DD"           # used for 'between'
+            end_date: "YYYY-MM-DD"             # used for 'between'
         include_archived: boolean (false by default on backend)
     sort: object with:
         field: one of the server-allowed fields
@@ -100,17 +102,30 @@ Example request (as plain text):
       "sort": { "field": "submit_date", "direction": "asc" }
     }
 
+Example with date range filter:
+
+    {
+      "limit": 25,
+      "offset": 0,
+      "filters": {
+          "date_filter": {
+              "operator": "between",
+              "start_date": "2025-01-01",
+              "end_date": "2025-02-01"
+          }
+      }
+    }
+
 Minimal example:
 
     { "limit": 25, "offset": 0 }
 
 Allowed sort fields (must match what backend supports):
 
-- Calibration: gage_id, user_formulation_name, submit_date, created_at,
+- Calibration: gage_id, user_formulation_name, submit_date, create_date,
   job_genesis, status, calibration_start_period, calibration_end_period, stop_criteria
-- Forecast: gage_id, submit_date, cycle_date, configuration, domain_name,
-  created_at, status
-- Verification: forecast_run_id, submit_date, created_at, status
+- Forecast: gage_id, submit_date, create_date, cycle_date, configuration, domain_name, status
+- Verification: forecast_run_id, submit_date, create_date, status
 
 Default sort (when not provided): by -id on the server.
 
@@ -371,9 +386,14 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
             mf = filters["module_filter"]
             if not mf.get("modules"):
                 filters.pop("module_filter")
+
         if "date_filter" in filters and filters["date_filter"]:
             df = filters["date_filter"]
-            if not df.get("operator") or not df.get("create_date"):
+            op = (df.get("operator") or "").lower()
+            if op == "between":
+                if not df.get("start_date") or not df.get("end_date"):
+                    filters.pop("date_filter")
+            elif not df.get("operator") or not df.get("create_date"):
                 filters.pop("date_filter")
 
     if sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
@@ -417,7 +437,7 @@ def _apply_shared_filters(
     if "module_filter" in filters:
         mf = filters["module_filter"]
         modules = mf.get("modules") or []
-        operator = (mf.get("operator") or "or").lower()
+        operator = (mf.get("operator") or "and").lower()
 
         if modules:
             modules_by_name = {m.name: m.id for m in get_cached_modules_by_id().values()}
@@ -441,14 +461,22 @@ def _apply_shared_filters(
     if "date_filter" in filters:
         date_info = filters["date_filter"]
         operator = (date_info.get("operator") or "").lower()
-        date_value = date_info.get("create_date")
 
-        # Only apply if both operator and date are present and valid
-        if operator in ("before", "after") and date_value:
-            if operator == "before":
+        if operator == "before":
+            date_value = date_info.get("create_date")
+            if date_value:
                 query &= Q(**{f"{created_field}__lt": date_value})
-            elif operator == "after":
+
+        elif operator == "after":
+            date_value = date_info.get("create_date")
+            if date_value:
                 query &= Q(**{f"{created_field}__gt": date_value})
+
+        elif operator == "between":
+            start = date_info.get("start_date")
+            end = date_info.get("end_date")
+            if start and end:
+                query &= Q(**{f"{created_field}__gte": start, f"{created_field}__lte": end})
 
     # ───── Archived toggle ─────
     if "include_archived" in filters and not filters["include_archived"]:

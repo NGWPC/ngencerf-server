@@ -555,14 +555,16 @@ class LockJobRequestSerializer(CalibrationRunIdList):
 
 class ModuleFilterSerializer(serializers.Serializer):
     """Filter by one or more module names with logical operator ('and' | 'or')."""
-    operator = serializers.ChoiceField(choices=['or', 'and'], required=False, default='or')
+    operator = serializers.ChoiceField(choices=['or', 'and'], required=False, default='and')
     modules = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class DateFilterSerializer(serializers.Serializer):
-    """Filter by CalibrationRun.run_start using 'before' or 'after' logic."""
-    operator = serializers.ChoiceField(choices=['before', 'after'], required=False, allow_blank=True)
+    """Filter by created_at using 'before', 'after' or 'between' logic."""
+    operator = serializers.ChoiceField(choices=['before', 'after', 'between'], required=False, allow_blank=True)
     create_date = serializers.DateField(required=False, allow_null=True)
+    start_date = serializers.DateField(required=False, allow_null=True)
+    end_date = serializers.DateField(required=False, allow_null=True)
 
 
 class FilterSerializer(BaseSerializer):
