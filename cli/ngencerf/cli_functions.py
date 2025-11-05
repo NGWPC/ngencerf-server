@@ -6,6 +6,7 @@ importing/exporting configurations.
 import itertools
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -13,6 +14,7 @@ import time
 import zipfile
 from contextlib import ExitStack
 from datetime import datetime
+from typing import Callable
 
 import requests
 import tabulate
@@ -22,39 +24,40 @@ from ngencerf.cli_util import check_http_error
 API_BASE = "http://localhost:8000"
 
 
-def get_auth_headers() -> dict[str, str]:
-    """
-    Returns authentication headers using the ACCESS_TOKEN environment variable.
-
-    :returns: Dictionary containing the Authorization header.
-    """
-    return {
-        "Authorization": f"Bearer {os.environ.get('ACCESS_TOKEN', '')}",
-    }
-
-
 def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[requests.Response | dict | None, bool]:
     """
     POST to an API endpoint with spinner, automatic token refresh/relogin, and retry support.
-    Ensures each attempt uses the freshest ACCESS_TOKEN and rewinds file streams if present.
-    Gracefully handles KeyboardInterrupt (Ctrl-C) to avoid ugly tracebacks.
 
-    Behavior:
-    - If stream=True and first attempt is 200: returns (requests.Response, True) for caller to iter_content().
-    - If retry is needed and succeeds:
-        - non-stream: returns parsed JSON (dict), True
-        - stream: issues one more request (with spinner) and returns that new Response, True
-    - On error: prints structured messages via check_http_error and returns (None, False).
+    Key Features:
+    - Always injects a *fresh* Authorization header (ACCESS_TOKEN from environment) on each attempt.
+    - Automatically retries once if a 401 Unauthorized occurs and token refresh/login succeeds.
+    - Rewinds any file handles before retrying to allow clean re-upload.
+    - Gracefully handles KeyboardInterrupt (Ctrl-C) to stop spinner without tracebacks.
+    - Supports both standard JSON responses and streamed binary downloads.
+
+    Behavior Summary:
+    - On first attempt:
+        - Shows spinner while waiting.
+        - If success:
+            - Returns (Response, True) for `stream=True`, or (parsed_json, True) for normal requests.
+        - If 401: triggers token refresh or login, then retries once.
+    - On retry:
+        - Rebuilds headers and file handles.
+        - If retry succeeds → returns the same as above.
+        - If still fails → prints error via check_http_error() and returns (None, False).
+
     :param message: Message to display while waiting.
     :param endpoint: API endpoint (path relative to API_BASE).
     :param kwargs: Forwarded to `requests.post` (headers, json, files, stream, etc.)
-    :return: A tuple of:
-             - `requests.Response` if streaming, or `dict` if JSON, or `None` if failure.
-             - `bool` indicating overall success.
+    :return: (Response|dict|None, bool)
+             - Response (if streaming), dict (if JSON), or None (if failed).
+             - Success flag True if request ultimately succeeded.
     """
 
     def _rewind_files(files_obj):
-        # Rewind any file-like objects so retries resend from the start
+        # Ensures any open file objects are rewound to the start before retrying,
+        # so file uploads (e.g., .gpkg, .csv) can be resent cleanly.
+        # Handles both dict and list formats produced by `requests`.
         if isinstance(files_obj, dict):
             for v in files_obj.values():
                 try:
@@ -77,16 +80,17 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
                     pass
 
     def _make_post():
-        # Make a fresh copy of kwargs for each attempt
+        # Prepare kwargs for each attempt — never reuse mutated objects.
         req_kwargs = dict(kwargs)
 
-        # Refresh headers on every attempt; preserve other headers
+        # Inject a new Authorization header for each retry attempt.
         hdrs = dict(req_kwargs.get("headers") or {})
+        # Always overwrite Authorization header with current token
         hdrs["Authorization"] = f"Bearer {os.environ.get('ACCESS_TOKEN', '')}"
         req_kwargs["headers"] = hdrs
 
-        # Rewind file handles if present (so retries resend from the start)
-        if "files" in req_kwargs and req_kwargs["files"] is not None:
+        # Rewind files to start (important for retries with uploads)
+        if "files" in req_kwargs and req_kwargs["files"]:
             _rewind_files(req_kwargs["files"])
 
         try:
@@ -97,6 +101,8 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
             return None
 
     def _with_spinner(msg: str, fn):
+        # Wrapper that runs a function while showing an animated spinner.
+        # Always stops spinner, even on Ctrl-C or exception.
         sp = Spinner(msg)
         sp.start()
         try:
@@ -117,6 +123,7 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
     if first_resp is None:
         return None, False
 
+    # If the first attempt succeeded and it’s a stream (ZIP download, etc.), return raw response.
     if is_stream and first_resp.ok:
         # Success on first try → return raw Response for streaming
         return first_resp, True
@@ -137,24 +144,41 @@ def post_with_spinner_and_retry(message: str, endpoint: str, **kwargs) -> tuple[
         if retry_resp is None:
             return None, False
 
+        # ───────────────────────────────────────────
+        # Handle retry result (whether success or error)
+        # ───────────────────────────────────────────
         if retry_resp.ok:
             if is_stream:
                 return retry_resp, True
             try:
                 return retry_resp.json(), True
             except Exception:
+                # Handle rare case: 200 OK but empty body (no JSON)
                 return None, True
 
+        else:
+            # If retry still fails, handle error exactly like the first attempt.
+            # This ensures 400/500 responses after token refresh are visible to the user.
+            _ = check_http_error(
+                retry_resp.status_code,
+                retry_resp.text,
+                retry_resp.headers.get("Content-Type")
+            )
+            return None, False
+
+    # If still failed, abort cleanly
     if not ok:
         return None, False
 
-    # 3) On success-after-retry:
-    #    - non-stream: we already have parsed JSON (dict) from check_http_error → return it.
-    #    - stream: we must obtain a fresh streaming Response for the caller to iter_content().
+    # ───────────────────────────────
+    # 3. Success-after-retry (non-stream)
+    # ───────────────────────────────
     if not is_stream:
         return parsed_or_none, True
 
-    # stream=True and retry succeeded → open a fresh streaming connection (with spinner) and return it
+    # ───────────────────────────────
+    # 4. Success-after-retry (stream)
+    # ───────────────────────────────
     final_stream_resp = _with_spinner(f"Retrying: {message}...", _make_post)
     if final_stream_resp is None:
         return None, False
@@ -184,7 +208,7 @@ def about(output_path: str | None = None) -> int:
     response_json, success = post_with_spinner_and_retry(
         "Sending request to server...",
         "/calibration/get_git_info/",
-        headers=get_auth_headers()
+        headers={"Content-Type": "application/json"}
     )
     if not success:
         return 1
@@ -210,7 +234,7 @@ def upload_geopackage_data(geopackage_file: str, calibration_run_id: int) -> int
         response_json, success = post_with_spinner_and_retry(
             "Uploading geopackage...",
             "/calibration/upload_geopackage_data/",
-            headers=get_auth_headers(),
+            headers={},  # ← no static Authorization header
             files={"geopackage_file": f},
             data={"calibration_run_id": calibration_run_id, "return_geopackage_url": "false"},
         )
@@ -238,7 +262,7 @@ def upload_observational_data(observational_file: str, calibration_run_id: int) 
         response_json, success = post_with_spinner_and_retry(
             "Uploading observational data...",
             "/calibration/upload_observational_data/",
-            headers=get_auth_headers(),
+            headers={},  # ← no static Authorization header
             files={"observational_file": f},
             data={"calibration_run_id": calibration_run_id},
         )
@@ -279,7 +303,7 @@ def upload_forcing_data(forcing_dir: str, calibration_run_id: int) -> int:
         response_json, success = post_with_spinner_and_retry(
             "Uploading forcing data...",
             "/calibration/upload_forcing_data/",
-            headers=get_auth_headers(),
+            headers={},  # ← no static Authorization header
             files=files,
             data={"calibration_run_id": calibration_run_id},
         )
@@ -312,11 +336,11 @@ def download_zip(calibration_run_id: int, output_path: str | None = None) -> int
     resp, success = post_with_spinner_and_retry(
         "Downloading zip...",
         "/calibration/get_calibration_job_zip/",
-        headers=get_auth_headers(),
+        headers={},  # must remain blank to allow auto-injection
         json=payload,
         stream=True,
     )
-    if not success:
+    if not success or resp is None:
         return 1
 
     # If server sends Content-Disposition, honor the filename
@@ -350,7 +374,7 @@ def run_job(calibration_run_id: int) -> int:
     response_json, success = post_with_spinner_and_retry(
         "Submitting job...",
         "/calibration/run_calibration/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
         json=payload,
     )
     if not success:
@@ -375,7 +399,7 @@ def job_status(calibration_run_id: int) -> int:
     response_json, success = post_with_spinner_and_retry(
         "Getting job status...",
         "/calibration/get_status/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
         json=payload,
     )
     if not success:
@@ -404,135 +428,96 @@ def job_status(calibration_run_id: int) -> int:
     return 0
 
 
-def delete_job(calibration_run_ids: list[int]) -> int:
+def delete_job(calibration_run_ids: list[int] | str) -> int:
     """
-    Deletes one or more calibration runs, with confirmation.
+    Deletes one or more calibration runs, with confirmation and
+    automatic pre-display for single-job deletions.
+    Accepts either:
+      - A list of job IDs
+      - A Markdown file generated by list_jobs() (extracts Run IDs automatically)
 
-    :param calibration_run_ids: A list of one or more calibration run IDs.
+    :param calibration_run_ids: A list of one or more calibration run IDs or path to a Markdown file.
     :returns: 0 on success, 1 on failure.
     """
-    if len(calibration_run_ids) == 1:
-        # Display job details before deletion
-        print("\nFetching job details for confirmation...\n")
-
-        # Display the job details
-        handle_export_display(calibration_run_ids[0], display=True)
-
-    try:
-        # Confirm deletion
-        confirmation = input(f"\nType 'delete' to confirm the permanent deletion of calibration jobs {calibration_run_ids}: ").strip()
-        if confirmation.lower() != "delete":
-            print("\nDeletion aborted. The calibration jobs were not deleted.")
-            return 1
-    except KeyboardInterrupt:
-        print("\n\nDeletion aborted. The calibration jobs were not deleted.")
-        return 1
-
-    # Proceed with deletion
-    print(f"\nDeleting calibration run jobs {calibration_run_ids}")
-    payload = {"calibration_run_ids": calibration_run_ids}
-    response_json, success = post_with_spinner_and_retry(
-        "Deleting jobs...",
+    return _process_job_action(
+        "Deleting",
         "/calibration/delete_jobs/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
-        json=payload,
+        calibration_run_ids,
+        require_confirmation=True,
+        confirm_keyword="delete",
+        pre_display_func=handle_export_display,  # show job before deletion
     )
-    if not success:
-        return 1
-
-    for job in response_json.get("jobs", []):
-        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
-    return 0
 
 
-def archive_job(calibration_run_ids: list[int]) -> int:
+def archive_job(calibration_run_ids: list[int] | str) -> int:
     """
     Archives one or more calibration runs.
+    Accepts either:
+      - A list of job IDs
+      - A Markdown file generated by list_jobs() (extracts Run IDs automatically)
 
-    :param calibration_run_ids: A list of one or more calibration run IDs.
-    :returns: 0 on success, 1 on failure.
+    :param calibration_run_ids: A list of one or more calibration run IDs or path to a Markdown file.
+    :return: 0 on success, 1 on failure.
     """
-    print(f"Archiving calibration run jobs {calibration_run_ids}")
-    payload = {"calibration_run_ids": calibration_run_ids, "archive": True}
-    response_json, success = post_with_spinner_and_retry(
-        "Archiving jobs...",
+    return _process_job_action(
+        "Archiving",
         "/calibration/archive_jobs/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
-        json=payload,
+        calibration_run_ids,
+        payload_extras={"archive": True},
     )
-    if not success:
-        return 1
-
-    for job in response_json.get("jobs", []):
-        print(job.get("message", f"Job {job['calibration_run_id']} archived."))
-    return 0
 
 
-def unarchive_job(calibration_run_ids: list[int]) -> int:
+def unarchive_job(calibration_run_ids: list[int] | str) -> int:
     """
     Unarchives one or more calibration runs.
+    Accepts either:
+      - A list of job IDs
+      - A Markdown file generated by list_jobs() (extracts Run IDs automatically)
 
     :param calibration_run_ids: A list of one or more calibration run IDs.
     :returns: 0 on success, 1 on failure.
     """
-    print(f"Unarchiving calibration run jobs {calibration_run_ids}")
-    payload = {"calibration_run_ids": calibration_run_ids, "archive": False}
-    response_json, success = post_with_spinner_and_retry(
-        "Unarchiving jobs...",
+    return _process_job_action(
+        "Unarchiving",
         "/calibration/archive_jobs/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
-        json=payload,
+        calibration_run_ids,
+        payload_extras={"archive": False},
     )
-    if not success:
-        return 1
-    for job in response_json.get("jobs", []):
-        print(job.get("message", f"Job {job['calibration_run_id']} unarchived."))
-    return 0
 
 
-def lock_job(calibration_run_ids: list[int]) -> int:
+def lock_job(calibration_run_ids: list[int] | str) -> int:
     """
     Locks one or more calibration runs.
+        Accepts either:
+      - A list of job IDs
+      - A Markdown file generated by list_jobs() (extracts Run IDs automatically)
 
     :param calibration_run_ids: A list of one or more calibration run IDs.
     :returns: 0 on success, 1 on failure.
     """
-    print(f"Archiving calibration run jobs {calibration_run_ids}")
-    payload = {"calibration_run_ids": calibration_run_ids, "lock": True}
-    response_json, success = post_with_spinner_and_retry(
-        "Locking jobs...",
+    return _process_job_action(
+        "Locking",
         "/calibration/lock_jobs/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
-        json=payload,
+        calibration_run_ids,
+        payload_extras={"lock": True},
     )
-    if not success:
-        return 1
-
-    for job in response_json.get("jobs", []):
-        print(job.get("message", f"Job {job['calibration_run_id']} locked."))
-    return 0
 
 
-def unlock_job(calibration_run_ids: list[int]) -> int:
+def unlock_job(calibration_run_ids: list[int] | str) -> int:
     """
     Unlocks one or more calibration runs.
+      - A list of job IDs
+      - A Markdown file generated by list_jobs() (extracts Run IDs automatically)
 
     :param calibration_run_ids: A list of one or more calibration run IDs.
     :returns: 0 on success, 1 on failure.
     """
-    print(f"Unarchiving calibration run jobs {calibration_run_ids}")
-    payload = {"calibration_run_ids": calibration_run_ids, "lock": False}
-    response_json, success = post_with_spinner_and_retry(
-        "Unlocking jobs...",
+    return _process_job_action(
+        "Unlocking",
         "/calibration/lock_jobs/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
-        json=payload,
+        calibration_run_ids,
+        payload_extras={"lock": False},
     )
-    if not success:
-        return 1
-    for job in response_json.get("jobs", []):
-        print(job.get("message", f"Job {job['calibration_run_id']} unlocked."))
-    return 0
 
 
 def cancel_job(calibration_run_id: int) -> int:
@@ -547,7 +532,7 @@ def cancel_job(calibration_run_id: int) -> int:
     response_json, success = post_with_spinner_and_retry(
         "Cancelling job...",
         "/calibration/cancel_job/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
         json=payload,
     )
     if not success:
@@ -561,12 +546,32 @@ def cancel_job(calibration_run_id: int) -> int:
     return 0
 
 
-def list_jobs(output_path: str | None = None) -> int:
+def list_jobs(output_path: str | None = None, filters: dict | None = None, sort: dict | None = None) -> int:
     """
-    Lists all calibration jobs and saves them to a markdown file.
+    Lists calibration jobs from the server with optional filtering and sorting,
+    and saves the results to a Markdown file.
 
-    :param output_path: Path to save the job list (optional)
-    :return: 0 on success, 1 on failure
+    The function sends a POST request to `/calibration/get_calibration_jobs/`
+    using the same request schema supported by the backend API.
+
+    Example payload:
+        {
+            "filters": {
+                "gage_id": "01544887",
+                "status": ["Done", "Failed"],
+                "module_filter": {
+                    "operator": "and",
+                    "modules": ["CFE-X", "Noah-OWP-Modular"]
+                },
+                "include_archived": false
+            },
+            "sort": { "field": "submit_date", "direction": "desc" }
+        }
+
+    :param output_path: Path to save the job list in Markdown format (optional).
+    :param filters: Dictionary or parsed JSON defining filters to apply (optional).
+    :param sort: Dictionary or parsed JSON defining sort field and direction (optional).
+    :return: 0 on success, 1 on failure.
     """
     # Resolve and validate path early
     final_path = resolve_output_path(
@@ -574,12 +579,19 @@ def list_jobs(output_path: str | None = None) -> int:
         f"calibration_jobs_{datetime.now().strftime('%Y-%m-%d_%H%M')}.md"
     )
 
+    payload = {}
+    if filters:
+        payload["filters"] = filters
+    if sort:
+        payload["sort"] = sort
+
     response_json, success = post_with_spinner_and_retry(
         "Fetching job list...",
         "/calibration/get_calibration_jobs/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
+        json=payload
     )
-    if not success:
+    if not success or not response_json:
         return 1
     if not response_json:
         return 0
@@ -633,7 +645,7 @@ def update_and_get_gage_status(gage_id: str, is_active: bool | None = None) -> i
     response_json, success = post_with_spinner_and_retry(
         "Updating gage status...",
         "/calibration/update_and_get_gage_status/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
         json=payload,
     )
     if not success:
@@ -680,7 +692,7 @@ def _submit_job_data(job_file: str, action: str, calibration_run_id: int | None 
     response_json, success = post_with_spinner_and_retry(
         f"{action} job...",
         "/calibration/import/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
         json=payload,
     )
     if not success:
@@ -761,7 +773,7 @@ def handle_export_display(calibration_run_id: int, output_path: str | None = Non
     response_json, success = post_with_spinner_and_retry(
         "Fetching job...",
         "/calibration/export/",
-        headers={**get_auth_headers(), "Content-Type": "application/json"},
+        headers={"Content-Type": "application/json"},
         json=payload,
     )
     if not success or not response_json:
@@ -806,37 +818,26 @@ def generate_regionalization_files(calibration_run_ids: list[int] | str, output_
     with tempfile.TemporaryDirectory() as tmpdir:
         zip_path = os.path.join(tmpdir, "regionalization_files.zip")
 
-        def make_request():
-            return requests.post(
-                f"{API_BASE}/calibration/get_regionalization_files_zip/",
-                headers=get_auth_headers(),
-                json=payload,
-                stream=True,
-            )
-
-        # Run initial request with spinner + retry
-        response_json, success = post_with_spinner_and_retry(
+        # Perform request (with automatic refresh/retry)
+        resp, success = post_with_spinner_and_retry(
             "Downloading regionalization ZIP...",
             "/calibration/get_regionalization_files_zip/",
-            headers=get_auth_headers(),
+            headers={},  # No static Authorization header
             json=payload,
             stream=True,
         )
-        if not success:
-            return 1
-
-        # Actually stream the file (second request, like your original)
-        resp = make_request()
-        if not resp.ok:
-            print(f"Download failed with status code {resp.status_code}")
-            check_http_error(resp.status_code, resp.text)
+        if not success or resp is None:
             return 1
 
         # Save ZIP to temp path
-        with open(zip_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
+        try:
+            with open(zip_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        except Exception as e:
+            print(f"Failed to write ZIP file: {e}")
+            return 1
 
         # Extract ZIP contents to output directory
         try:
@@ -955,6 +956,139 @@ def resolve_output_path(output_path: str | None, default_filename: str) -> str:
             sys.exit(1)
 
     return output_path
+
+
+def _normalize_job_ids(input_value: list[int] | str) -> list[int] | None:
+    """
+    Normalizes input into a list of job IDs.
+    Accepts either:
+      - a list of integers
+      - a numeric string (e.g. "123")
+      - a Markdown file path (.md) created by list_jobs()
+
+    :param input_value: List of IDs, a single numeric string, or path to a Markdown file (.md)
+    :return: List of integer job IDs, or None if invalid/empty
+    """
+    # Single numeric string → treat as single job ID
+    if isinstance(input_value, str):
+        if input_value.isdigit():
+            return [int(input_value)]
+
+        if not os.path.isfile(input_value):
+            print(f"File not found: {input_value}")
+            return None
+
+        if input_value.endswith(".md"):
+            ids = extract_job_ids_from_markdown(input_value)
+            if ids:
+                print(f"Loaded {len(ids)} job IDs from {input_value}")
+                return ids
+            print(f"No job IDs found in {input_value}")
+            return None
+
+        # Handle file types other than markdown as error
+        print(f"Unsupported file type: {input_value} (expected .md from list_jobs)")
+        return None
+
+    # List of ints or numeric strings
+    return [int(i) for i in input_value]
+
+
+def _process_job_action(
+        action_name: str,
+        endpoint: str,
+        calibration_run_ids: list[int] | str,
+        payload_extras: dict | None = None,
+        *,
+        require_confirmation: bool = False,
+        confirm_keyword: str = "delete",
+        pre_display_func: Callable[[int], int] | None = None,
+) -> int:
+    """
+    Common handler for job actions (delete, archive, lock, unlock).
+
+    :param action_name: Verb describing the action (e.g., "Deleting", "Archiving").
+    :param endpoint: API endpoint path (e.g., "/calibration/delete_jobs/").
+    :param calibration_run_ids: List of job IDs or path to Markdown file.
+    :param payload_extras: Optional additional payload keys (e.g., {"lock": True}).
+    :param require_confirmation: If True, prompt user before proceeding.
+    :param confirm_keyword: Keyword the user must type to confirm.
+    :param pre_display_func: Optional callable to display job details before action (for single jobs).
+    :return: 0 on success, 1 on failure.
+    """
+    calibration_run_ids = _normalize_job_ids(calibration_run_ids)
+    if not calibration_run_ids:
+        print("No job IDs provided.")
+        return 1
+
+    # ───── Optional pre-display for single-job operations ─────
+    print('pre_display_func', pre_display_func)
+    print('calibration_run_ids', calibration_run_ids)
+    if pre_display_func and len(calibration_run_ids) == 1:
+        print("\nFetching job details for confirmation...\n")
+        pre_display_func(calibration_run_ids[0], display=True)
+
+    # ───── Optional confirmation ─────
+    if require_confirmation:
+        try:
+            confirmation = input(
+                f"\nType '{confirm_keyword}' to confirm the permanent {action_name.lower()} of "
+                f"{len(calibration_run_ids)} job(s): {', '.join(map(str, calibration_run_ids))}\n> "
+            ).strip()
+            if confirmation.lower() != confirm_keyword.lower():
+                print(f"\n{action_name} aborted. No jobs were modified.")
+                return 1
+        except KeyboardInterrupt:
+            print(f"\n\n{action_name} aborted. No jobs were modified.")
+            return 1
+
+    print(f"\n{action_name} calibration run jobs {calibration_run_ids}")
+
+    # ───── Build payload ─────
+    payload = {"calibration_run_ids": calibration_run_ids}
+    if payload_extras:
+        payload.update(payload_extras)
+
+    # ───── Execute API call ─────
+    response_json, success = post_with_spinner_and_retry(
+        f"{action_name} jobs...",
+        endpoint,
+        headers={"Content-Type": "application/json"},
+        json=payload,
+    )
+    if not success:
+        return 1
+
+    # ───── Print results ─────
+    for job in response_json.get("jobs", []):
+        print(job.get("message", f"Job {job['calibration_run_id']} processed."))
+    return 0
+
+
+def extract_job_ids_from_markdown(file_path: str) -> list[int]:
+    """
+    Extracts calibration_run_ids from a Markdown table produced by list_jobs().
+    The first column is assumed to contain the Run ID, but parsing is flexible:
+    - Ignores header and divider lines
+    - Accepts varying spacing or indentation
+    - Stops at any non-table content
+
+    :param file_path: Path to the Markdown file created by list_jobs()
+    :return: List of integer job IDs
+    """
+    job_ids = []
+    with open(file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("|-") or stripped.startswith("| Run ID"):
+                continue
+
+            # Extract fields between pipes
+            parts = [p.strip() for p in stripped.split("|") if p.strip()]
+            if parts and parts[0].isdigit():
+                job_ids.append(int(parts[0]))
+
+    return job_ids
 
 
 class Spinner:

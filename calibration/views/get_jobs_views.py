@@ -65,11 +65,18 @@ Use this shape for every request (omit keys you’re not using):
         gage_id: string
         status: array of validated status names (e.g. ["Done", "Failed"])
         module_filter: object with:
-            operator: "and" | "or"       (default = "or")
+            operator: "and" | "or"       (default = "and")
             modules: array of module names
         date_filter: object with:
-            operator: "before" | "after"
-            date: "YYYY-MM-DD"
+            operator: "before" | "after" | "between"
+            create_date: "YYYY-MM-DD"    # used for 'before' or 'after'
+            start_date: "YYYY-MM-DD"     # used for 'between'
+            end_date: "YYYY-MM-DD"       # used for 'between'
+        id_filter: object with:
+            operator: "before" | "after" | "between"
+            id: integer                  # used for 'before' or 'after'
+            start_id: integer            # used for 'between'
+            end_id: integer              # used for 'between'
         include_archived: boolean (false by default on backend)
     sort: object with:
         field: one of the server-allowed fields
@@ -93,11 +100,25 @@ Example request (as plain text):
           },
           "date_filter": {
               "operator": "after",
-              "date": "2025-01-01"
+              "create_date": "2025-01-01"
           },
           "include_archived": false
       },
       "sort": { "field": "submit_date", "direction": "asc" }
+    }
+
+Example with date range filter:
+
+    {
+      "limit": 25,
+      "offset": 0,
+      "filters": {
+          "date_filter": {
+              "operator": "between",
+              "start_date": "2025-01-01",
+              "end_date": "2025-02-01"
+          }
+      }
     }
 
 Minimal example:
@@ -106,11 +127,10 @@ Minimal example:
 
 Allowed sort fields (must match what backend supports):
 
-- Calibration: gage_id, user_formulation_name, submit_date, created_at,
+- Calibration: gage_id, user_formulation_name, submit_date, create_date,
   job_genesis, status, calibration_start_period, calibration_end_period, stop_criteria
-- Forecast: gage_id, submit_date, cycle_date, configuration, domain_name,
-  created_at, status
-- Verification: forecast_run_id, submit_date, created_at, status
+- Forecast: gage_id, submit_date, create_date, cycle_date, configuration, domain_name, status
+- Verification: forecast_run_id, submit_date, create_date, status
 
 Default sort (when not provided): by -id on the server.
 
@@ -191,6 +211,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     jobs, total_count = get_jobs(
         request.user,
@@ -254,6 +275,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     jobs, total_count = get_jobs(
         request.user,
@@ -315,6 +337,7 @@ def get_calibration_jobs(request):
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     jobs, total_count = get_jobs(
         request.user,
@@ -343,12 +366,68 @@ def get_calibration_jobs(request):
     return Response(response_validator.data)
 
 
+def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tuple[dict | None, dict | None]:
+    """
+    Normalize and sanitize incoming filter and sort payloads.
+
+    This function removes blank, empty, or null fields from the validated request data
+    to ensure consistent query behavior. It also strips out nested filter objects
+    (e.g., module_filter, date_filter) if they contain no usable values, and disables
+    sorting if the sort field is missing or blank.
+
+    :param filters: Optional dictionary of filter parameters (may include nested objects).
+    :param sort: Optional dictionary specifying sorting field and direction.
+    :return: Tuple of (normalized_filters, normalized_sort) with blanks stripped out.
+             Returns ({}, None) when inputs are invalid or contain only empty values.
+    """
+    if filters:
+        filters = {
+            k: v for k, v in filters.items()
+            if v not in ("", [], {}, None)
+        }
+
+        # handle nested filters
+        if "module_filter" in filters and filters["module_filter"]:
+            mf = filters["module_filter"]
+            if not mf.get("modules"):
+                filters.pop("module_filter")
+
+        if "date_filter" in filters and filters["date_filter"]:
+            date_filter = filters["date_filter"]
+            op = (date_filter.get("operator") or "").lower()
+
+            if op == "between":
+                # Require both start and end
+                if not date_filter.get("start_date") or not date_filter.get("end_date"):
+                    filters.pop("date_filter")
+            elif not date_filter.get("operator") or not date_filter.get("create_date"):
+                # for 'before' / 'after', require a single value
+                filters.pop("date_filter")
+
+        if "id_filter" in filters and filters["id_filter"]:
+            id_filter = filters["id_filter"]
+            op = (id_filter.get("operator") or "").lower()
+
+            if op == "between":
+                # Require both start and end
+                if not id_filter.get("start_id") or not id_filter.get("end_id"):
+                    filters.pop("id_filter")
+            elif not id_filter.get("operator") or id_filter.get("id") is None:
+                # for 'before' / 'after', require a single id value
+                filters.pop("id_filter")
+
+    if sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
+        sort = None
+
+    return filters, sort
+
+
 def _apply_shared_filters(
         query: Q, filters: dict, *,
         gage_prefix: str,
         module_prefix: str,
         status_field: str,
-        run_start_field: str,
+        created_field: str,
         archived_field: str = "is_archived"
 ) -> Q:
     """
@@ -359,7 +438,7 @@ def _apply_shared_filters(
     :param gage_prefix: ORM prefix path to gage_id (e.g., 'gage__' or 'calibration_run__gage__').
     :param module_prefix: ORM prefix path to module relationship (e.g., 'calibrationformulation__').
     :param status_field: ORM field path for status filtering (e.g., 'status__in').
-    :param run_start_field: ORM field path to the run_start date field.
+    :param created_field: ORM field path to the created_at date field.
     :param archived_field: ORM field path to the archive flag field (default 'is_archived').
     :return: Updated Q object with all applicable filters applied.
     """
@@ -378,7 +457,7 @@ def _apply_shared_filters(
     if "module_filter" in filters:
         mf = filters["module_filter"]
         modules = mf.get("modules") or []
-        operator = (mf.get("operator") or "or").lower()
+        operator = (mf.get("operator") or "and").lower()
 
         if modules:
             modules_by_name = {m.name: m.id for m in get_cached_modules_by_id().values()}
@@ -401,13 +480,44 @@ def _apply_shared_filters(
     # ───── Date filter ─────
     if "date_filter" in filters:
         date_info = filters["date_filter"]
-        operator = date_info.get("operator")
-        date_value = date_info.get("date")
+        operator = (date_info.get("operator") or "").lower()
 
         if operator == "before":
-            query &= Q(**{f"{run_start_field}__lt": date_value})
+            date_value = date_info.get("create_date")
+            if date_value:
+                query &= Q(**{f"{created_field}__lt": date_value})
+
         elif operator == "after":
-            query &= Q(**{f"{run_start_field}__gt": date_value})
+            date_value = date_info.get("create_date")
+            if date_value:
+                query &= Q(**{f"{created_field}__gt": date_value})
+
+        elif operator == "between":
+            start_date = date_info.get("start_date")
+            end_date = date_info.get("end_date")
+            if start_date and end_date:
+                query &= Q(**{f"{created_field}__gte": start_date, f"{created_field}__lte": end_date})
+
+    # ───── ID filter ─────
+    if "id_filter" in filters:
+        id_info = filters["id_filter"]
+        operator = (id_info.get("operator") or "").lower()
+
+        if operator == "before":
+            id_value = id_info.get("id")
+            if id_value is not None:
+                query &= Q(id__lt=id_value)
+
+        elif operator == "after":
+            id_value = id_info.get("id")
+            if id_value is not None:
+                query &= Q(id__gt=id_value)
+
+        elif operator == "between":
+            start_id = id_info.get("start_id")
+            end_id = id_info.get("end_id")
+            if start_id is not None and end_id is not None:
+                query &= Q(id__gte=start_id, id__lte=end_id)
 
     # ───── Archived toggle ─────
     if "include_archived" in filters and not filters["include_archived"]:
@@ -429,7 +539,7 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
         gage_prefix="gage__",
         module_prefix="calibrationformulation__",
         status_field="status__in",
-        run_start_field="run_start",
+        created_field="created_at",
         archived_field="is_archived"
     )
 
@@ -446,8 +556,8 @@ def apply_forecast_filters(query: Q, filters: dict) -> Q:
         query, filters,
         gage_prefix="calibration_run__gage__",
         module_prefix="calibration_run__calibrationformulation__",
-        status_field="status__in",  # ForecastRun's own status
-        run_start_field="calibration_run__run_start",
+        status_field="status__in",
+        created_field="created_at",
         archived_field="calibration_run__is_archived"
     )
 
@@ -464,8 +574,8 @@ def apply_verification_filters(query: Q, filters: dict) -> Q:
         query, filters,
         gage_prefix="forecast_run__calibration_run__gage__",
         module_prefix="forecast_run__calibration_run__calibrationformulation__",
-        status_field="status__in",  # VerificationRun's own status
-        run_start_field="forecast_run__calibration_run__run_start",
+        status_field="status__in",
+        created_field="created_at",
         archived_field="forecast_run__calibration_run__is_archived"
     )
 
@@ -536,6 +646,19 @@ def get_jobs(
     :return: Tuple (results, total_count). total_count reflects total rows BEFORE pagination.
     """
     filters = filters or {}
+
+    # ───── Validate module names (if provided) ─────
+    if "module_filter" in filters:
+        mf = filters["module_filter"] or {}
+        modules = mf.get("modules") or []
+        if modules:
+            valid_modules = {m.name for m in get_cached_modules_by_id().values()}
+            invalid = [m for m in modules if m not in valid_modules]
+            if invalid:
+                raise ValueError(
+                    f"Invalid module names: {invalid}. "
+                    f"Valid options are: {sorted(valid_modules)}"
+                )
 
     order_by = resolve_sort(sort, CalibrationSortField)
 
@@ -946,6 +1069,7 @@ def get_forecast_jobs(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     forecast_jobs, total_count = get_forecast_jobs_internal(
         request.user,
@@ -1010,6 +1134,7 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     forecast_jobs, total_count = get_forecast_jobs_internal(
         request.user, run_status=[StatusEnum.DONE],
@@ -1133,6 +1258,7 @@ def get_verification_jobs(request: Request) -> Response:
     offset = validator.get("offset", 0)
     filters = validator.get("filters") or {}
     sort = validator.get("sort")
+    filters, sort = _normalize_filters_and_sort(filters, sort)
 
     verification_jobs, total_count = get_verification_jobs_internal(
         request.user,

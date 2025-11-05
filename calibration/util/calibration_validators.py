@@ -26,10 +26,15 @@ class BaseSerializer(serializers.Serializer):
 def enum_validator(enum_class):
     """
     Validates if the value is a valid name or alias of the enum class, case-insensitively.
-    Raises a fatal error if the enum class does not implement get_names() or get_all_valid_names().
+    Allows blank values (empty strings or None) to pass through silently,
+    so they can be treated as "no selection" by the caller.
     """
 
     def validate_enum(value):
+        # Skip validation for blanks (handled as no-op)
+        if value is None or str(value).strip() == "":
+            return  # Allow blank or None
+
         # Convert input value to lowercase for case-insensitive comparison
         original_value = value  # Store original value for error message
         value = value.lower()
@@ -550,21 +555,32 @@ class LockJobRequestSerializer(CalibrationRunIdList):
 
 class ModuleFilterSerializer(serializers.Serializer):
     """Filter by one or more module names with logical operator ('and' | 'or')."""
-    operator = serializers.ChoiceField(choices=['or', 'and'], required=False, default='or')
-    modules = serializers.ListField(child=serializers.CharField(), required=True, allow_empty=False)
+    operator = serializers.ChoiceField(choices=['or', 'and'], required=False, default='and')
+    modules = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class DateFilterSerializer(serializers.Serializer):
-    """Filter by CalibrationRun.run_start using 'before' or 'after' logic."""
-    operator = serializers.ChoiceField(choices=['before', 'after'], required=True)
-    date = serializers.DateField(required=True)
+    """Filter by created_at using 'before', 'after' or 'between' logic."""
+    operator = serializers.ChoiceField(choices=['before', 'after', 'between'], required=False, allow_blank=True)
+    create_date = serializers.DateField(required=False, allow_null=True)
+    start_date = serializers.DateField(required=False, allow_null=True)
+    end_date = serializers.DateField(required=False, allow_null=True)
+
+
+class IdFilterSerializer(serializers.Serializer):
+    """Filter by id using 'before', 'after' or 'between' logic."""
+    operator = serializers.ChoiceField(choices=['before', 'after', 'between'], required=False, allow_blank=True)
+    id = serializers.IntegerField(required=False, allow_null=True)
+    start_id = serializers.IntegerField(required=False, allow_null=True)
+    end_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class FilterSerializer(BaseSerializer):
-    gage_id = serializers.CharField(required=False)
-    status = serializers.ListField(child=serializers.CharField(validators=[enum_validator(StatusEnum)]), required=False, allow_empty=False)
+    gage_id = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.ListField(child=serializers.CharField(validators=[enum_validator(StatusEnum)]), required=False, allow_empty=True)
     module_filter = ModuleFilterSerializer(required=False)
     date_filter = DateFilterSerializer(required=False)
+    id_filter = IdFilterSerializer(required=False)
     include_archived = serializers.BooleanField(default=False, required=False)
 
 
@@ -573,15 +589,15 @@ class SortSerializer(BaseSerializer):
 
 
 class CalibrationSortSerializer(SortSerializer):
-    field = serializers.CharField(required=True, validators=[enum_validator(CalibrationSortField)])
+    field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(CalibrationSortField)])
 
 
 class ForecastSortSerializer(SortSerializer):
-    field = serializers.CharField(required=True, validators=[enum_validator(ForecastSortField)])
+    field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(ForecastSortField)])
 
 
 class VerificationSortSerializer(SortSerializer):
-    field = serializers.CharField(required=True, validators=[enum_validator(VerificationSortField)])
+    field = serializers.CharField(required=False, allow_blank=True, validators=[enum_validator(VerificationSortField)])
 
 
 class PaginationSerializer(BaseSerializer):

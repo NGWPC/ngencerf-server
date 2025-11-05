@@ -7,7 +7,11 @@ for managing calibration jobs via a REST API.
 """
 
 import argparse
+import json
+import os
 import sys
+
+import yaml
 
 from ngencerf.cli_functions import (
     import_job,
@@ -163,6 +167,17 @@ def main():
     # Attach the subparsers to the main parser
     parser.set_subparsers(subparsers)
 
+    def _normalize_cli_arg(arg):
+        """
+        Normalize CLI positional args so a single file or ID isn't wrapped in a list.
+        Example:
+          ['calibration_jobs_2025-11-04_1455.md'] → 'calibration_jobs_2025-11-04_1455.md'
+          ['10', '11'] → ['10', '11']
+        """
+        if isinstance(arg, list) and len(arg) == 1:
+            return arg[0]
+        return arg
+
     def add_parser(name, help_text, *, hidden: bool = False):
         """
         Create a subparser for a specific command.
@@ -211,11 +226,10 @@ def main():
     archive_parser = add_parser("archive", "Archive one or more jobs")
     archive_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    archive_parser.set_defaults(func=lambda cmd_args: archive_job(cmd_args.run_ids))
+    archive_parser.set_defaults(func=lambda cmd_args: archive_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     cancel_parser = add_parser("cancel", "Cancel job")
     cancel_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -224,11 +238,10 @@ def main():
     delete_parser = add_parser("delete", "Delete job")
     delete_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibraiton job IDs or a Markdown list file"
     )
-    delete_parser.set_defaults(func=lambda cmd_args: delete_job(cmd_args.run_ids))
+    delete_parser.set_defaults(func=lambda cmd_args: delete_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     download_parser = add_parser("download", "Download ZIP file for a calibration job")
     download_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -313,16 +326,73 @@ def main():
         default="__DEFAULT__",
         help="Path to save the job list (optional output path)"
     )
-    jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(output_path=cmd_args.output_path))
-    
+    jobs_parser.add_argument(
+        "--filters",
+        help=(
+            "JSON string or path to JSON file containing filters, e.g. "
+            "'{\"gage_id\": \"01544887\", \"status\": [\"Done\", \"Failed\"]}' "
+            "or filters.json"
+        ),
+    )
+    jobs_parser.add_argument(
+        "--sort",
+        help=(
+            "JSON string or path to JSON file containing sort, e.g. "
+            "'{\"field\": \"submit_date\", \"direction\": \"desc\"}' "
+            "or sort.json"
+        ),
+    )
+
+    def _parse_json_arg(arg):
+        """
+        Parse input as JSON or YAML (supports comments if YAML).
+        Accepts either inline JSON/YAML string or path to a file.
+
+        Examples:
+            # Inline JSON
+            --filters '{"gage_id": "01544887"}'
+
+            # YAML file with comments
+            --filters filters.yaml
+
+            # JSON file
+            --filters filters.json
+
+        :param arg: A string containing either inline JSON/YAML or a path to a file.
+        :return: Parsed dictionary or None if no argument provided.
+        """
+        if not arg:
+            return None
+
+        if os.path.isfile(arg):
+            with open(arg, "r", encoding="utf-8") as f:
+                content = f.read()
+            try:
+                # Try YAML first (safe and allows comments)
+                return yaml.safe_load(content)
+            except yaml.YAMLError:
+                # Fallback to JSON if YAML fails
+                return json.loads(content)
+        else:
+            # Inline content; try JSON first
+            try:
+                return json.loads(arg)
+            except json.JSONDecodeError:
+                return yaml.safe_load(arg)
+
+    jobs_parser.set_defaults(func=lambda cmd_args: list_jobs(
+        output_path=cmd_args.output_path,
+        filters=_parse_json_arg(cmd_args.filters),
+        sort=_parse_json_arg(cmd_args.sort)
+    ))
+
     lock_parser = add_parser("lock", "lock one or more jobs")
     lock_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    lock_parser.set_defaults(func=lambda cmd_args: lock_job(cmd_args.run_ids))
+    lock_parser.set_defaults(func=lambda cmd_args: lock_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     observation_parser = add_parser("upload-obs", "Upload observational data CSV for a calibration job")
     observation_parser.add_argument("run_id", type=int, help="Calibration job ID")
@@ -361,7 +431,7 @@ def main():
         if cmd_args.id_file:
             run_ids_input = cmd_args.id_file
         elif cmd_args.run_ids:
-            run_ids_input = cmd_args.run_ids
+            run_ids_input = _normalize_cli_arg(cmd_args.run_ids)
         else:
             print("Error: You must provide either run IDs as arguments or via --id-file.")
             return 1
@@ -396,20 +466,18 @@ def main():
     unarchive_parser = add_parser("unarchive", "Unarchive one or more jobs")
     unarchive_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(cmd_args.run_ids))
+    unarchive_parser.set_defaults(func=lambda cmd_args: unarchive_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     unlock_parser = add_parser("unlock", "Unlock one or more jobs")
     unlock_parser.add_argument(
         "run_ids",
-        type=int,
-        nargs="+",  # One or more space-separated integers
-        help="One or more calibration job IDs"
+        nargs="+",
+        help="One or more calibration job IDs or a Markdown list file"
     )
-    unlock_parser.set_defaults(func=lambda cmd_args: unlock_job(cmd_args.run_ids))
+    unlock_parser.set_defaults(func=lambda cmd_args: unlock_job(_normalize_cli_arg(cmd_args.run_ids)))
 
     update_parser = add_parser("update", "Update job from a JSON file")
     update_parser.add_argument("run_id", type=int, help="Calibration job ID")
