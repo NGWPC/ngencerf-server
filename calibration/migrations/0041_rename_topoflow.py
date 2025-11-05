@@ -5,9 +5,10 @@ from django.db import migrations
 
 def rename_module(apps, schema_editor):
     Module = apps.get_model("calibration", "Module")
-    obj = Module.objects.get(name="Topoflow")
-    obj.name = "Topoflow-Glacier"
-    obj.save(update_fields=["name"])
+    obj = Module.objects.filter(name="Topoflow").first()
+    if obj:
+        obj.name = "Topoflow-Glacier"
+        obj.save(update_fields=["name"])
 
 
 class Migration(migrations.Migration):
