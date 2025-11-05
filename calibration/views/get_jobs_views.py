@@ -69,9 +69,14 @@ Use this shape for every request (omit keys you’re not using):
             modules: array of module names
         date_filter: object with:
             operator: "before" | "after" | "between"
-            create_date: "YYYY-MM-DD"          # used for 'before' or 'after'
-            start_date: "YYYY-MM-DD"           # used for 'between'
-            end_date: "YYYY-MM-DD"             # used for 'between'
+            create_date: "YYYY-MM-DD"    # used for 'before' or 'after'
+            start_date: "YYYY-MM-DD"     # used for 'between'
+            end_date: "YYYY-MM-DD"       # used for 'between'
+        id_filter: object with:
+            operator: "before" | "after" | "between"
+            id: integer                  # used for 'before' or 'after'
+            start_id: integer            # used for 'between'
+            end_id: integer              # used for 'between'
         include_archived: boolean (false by default on backend)
     sort: object with:
         field: one of the server-allowed fields
@@ -388,13 +393,28 @@ def _normalize_filters_and_sort(filters: dict | None, sort: dict | None) -> tupl
                 filters.pop("module_filter")
 
         if "date_filter" in filters and filters["date_filter"]:
-            df = filters["date_filter"]
-            op = (df.get("operator") or "").lower()
+            date_filter = filters["date_filter"]
+            op = (date_filter.get("operator") or "").lower()
+
             if op == "between":
-                if not df.get("start_date") or not df.get("end_date"):
+                # Require both start and end
+                if not date_filter.get("start_date") or not date_filter.get("end_date"):
                     filters.pop("date_filter")
-            elif not df.get("operator") or not df.get("create_date"):
+            elif not date_filter.get("operator") or not date_filter.get("create_date"):
+                # for 'before' / 'after', require a single value
                 filters.pop("date_filter")
+
+        if "id_filter" in filters and filters["id_filter"]:
+            id_filter = filters["id_filter"]
+            op = (id_filter.get("operator") or "").lower()
+
+            if op == "between":
+                # Require both start and end
+                if not id_filter.get("start_id") or not id_filter.get("end_id"):
+                    filters.pop("id_filter")
+            elif not id_filter.get("operator") or id_filter.get("id") is None:
+                # for 'before' / 'after', require a single id value
+                filters.pop("id_filter")
 
     if sort and (not sort.get("field") or str(sort.get("field")).strip() == ""):
         sort = None
@@ -418,7 +438,7 @@ def _apply_shared_filters(
     :param gage_prefix: ORM prefix path to gage_id (e.g., 'gage__' or 'calibration_run__gage__').
     :param module_prefix: ORM prefix path to module relationship (e.g., 'calibrationformulation__').
     :param status_field: ORM field path for status filtering (e.g., 'status__in').
-    :param run_start_field: ORM field path to the run_start date field.
+    :param created_field: ORM field path to the created_at date field.
     :param archived_field: ORM field path to the archive flag field (default 'is_archived').
     :return: Updated Q object with all applicable filters applied.
     """
@@ -473,10 +493,31 @@ def _apply_shared_filters(
                 query &= Q(**{f"{created_field}__gt": date_value})
 
         elif operator == "between":
-            start = date_info.get("start_date")
-            end = date_info.get("end_date")
-            if start and end:
-                query &= Q(**{f"{created_field}__gte": start, f"{created_field}__lte": end})
+            start_date = date_info.get("start_date")
+            end_date = date_info.get("end_date")
+            if start_date and end_date:
+                query &= Q(**{f"{created_field}__gte": start_date, f"{created_field}__lte": end_date})
+
+    # ───── ID filter ─────
+    if "id_filter" in filters:
+        id_info = filters["id_filter"]
+        operator = (id_info.get("operator") or "").lower()
+
+        if operator == "before":
+            id_value = id_info.get("id")
+            if id_value is not None:
+                query &= Q(id__lt=id_value)
+
+        elif operator == "after":
+            id_value = id_info.get("id")
+            if id_value is not None:
+                query &= Q(id__gt=id_value)
+
+        elif operator == "between":
+            start_id = id_info.get("start_id")
+            end_id = id_info.get("end_id")
+            if start_id is not None and end_id is not None:
+                query &= Q(id__gte=start_id, id__lte=end_id)
 
     # ───── Archived toggle ─────
     if "include_archived" in filters and not filters["include_archived"]:

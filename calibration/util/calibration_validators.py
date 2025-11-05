@@ -567,11 +567,20 @@ class DateFilterSerializer(serializers.Serializer):
     end_date = serializers.DateField(required=False, allow_null=True)
 
 
+class IdFilterSerializer(serializers.Serializer):
+    """Filter by id using 'before', 'after' or 'between' logic."""
+    operator = serializers.ChoiceField(choices=['before', 'after', 'between'], required=False, allow_blank=True)
+    id = serializers.IntegerField(required=False, allow_null=True)
+    start_id = serializers.IntegerField(required=False, allow_null=True)
+    end_id = serializers.IntegerField(required=False, allow_null=True)
+
+
 class FilterSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=True)
     status = serializers.ListField(child=serializers.CharField(validators=[enum_validator(StatusEnum)]), required=False, allow_empty=True)
     module_filter = ModuleFilterSerializer(required=False)
     date_filter = DateFilterSerializer(required=False)
+    id_filter = IdFilterSerializer(required=False)
     include_archived = serializers.BooleanField(default=False, required=False)
 
 
