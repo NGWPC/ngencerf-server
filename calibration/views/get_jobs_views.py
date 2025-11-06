@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Type
+from typing import Any, Type, Literal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Exists, OuterRef, Count
@@ -691,25 +691,26 @@ def get_jobs(
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
-    validation data inclusion, server-side filters, sorting, and optional pagination.
+    validation data inclusion, server-side filters, sorting, and pagination.
 
     Runs in READ ONLY mode to reduce contention.
 
     :param user: The user for whom the jobs are being fetched.
     :param run_status: Optional list of StatusEnum values to filter jobs (e.g., DONE, FAILED).
     :param include_validation_data: Determines the level of validation data to include:
-        - 'ids': Includes validation_run_ids and their count in validation_runs.
-        - 'status': Includes validation status details.
-        - 'done': Filters to only include jobs where both valid_control and valid_best are DONE.
+        - 'status': Includes validation status details for associated validation runs.
+        - 'done': Filters to include only calibration jobs where both valid_control and valid_best are DONE.
     :param include_stop_criteria: Whether to include stop_criteria in the queryset.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
-    :param ids_only: Only return the ids of the calibration jobs
+    :param ids_only: Only return the ids of the calibration jobs.
     :return: Tuple (results, total_count). total_count reflects total rows BEFORE pagination.
     """
     filters = filters or {}
+    order_by = resolve_sort(sort, CalibrationSortField)
+    status_ids = [s.db_instance for s in run_status] if run_status else None
 
     # ───── Validate module names (if provided) ─────
     if "module_filter" in filters:
@@ -724,16 +725,13 @@ def get_jobs(
                     f"Valid options are: {sorted(valid_modules)}"
                 )
 
-    order_by = resolve_sort(sort, CalibrationSortField)
-
     with readonly_transaction():
         # Base query: filter jobs for the user
         query = Q(owner=user)
 
         # If a specific status list is provided, filter by those statuses
-        if run_status:
-            query &= Q(status__in=[s.db_instance for s in run_status])
-
+        if status_ids:
+            query &= Q(status__in=status_ids)
         query = apply_calibration_filters(query, filters)
 
         # ───── annotate validation_run_count for sorting ─────
@@ -746,6 +744,8 @@ def get_jobs(
         )
         # ──────────────────────────────────────────────────────────
 
+
+        # ───── Fast path: ids_only ─────
         if ids_only:
             total_count = base_qs.count()
 
@@ -761,14 +761,14 @@ def get_jobs(
             base_qs = base_qs.annotate(
                 has_valid_control_done=Exists(
                     ValidationRun.objects.filter(
-                        calibration_run_id=OuterRef('pk'),
+                        calibration_run_id=OuterRef('id'),
                         validation_type=ValidationType.VALID_CONTROL.value,
                         status=StatusEnum.DONE.db_instance
                     )
                 ),
                 has_valid_best_done=Exists(
                     ValidationRun.objects.filter(
-                        calibration_run_id=OuterRef('pk'),
+                        calibration_run_id=OuterRef('id'),
                         validation_type=ValidationType.VALID_BEST.value,
                         status=StatusEnum.DONE.db_instance
                     )
@@ -780,13 +780,13 @@ def get_jobs(
 
         total_count = base_qs.count()
 
-        # Base query for CalibrationRun (dict results, lighter than ORM instances)
+        # ───── Build base ordered queryset (values dict) ─────
         calibration_runs_qs = (
             base_qs
             .order_by(*order_by)
             .values(
-                "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at", "user_formulation_name",
-                "calibration_start_period", "calibration_end_period",
+                "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
+                "user_formulation_name", "calibration_start_period", "calibration_end_period",
                 "status__name", "job_genesis", "created_at",
                 "objective_function__name", "optimization__name",
                 "is_archived", "is_locked"
@@ -803,31 +803,23 @@ def get_jobs(
         calibration_runs = list(calibration_runs_qs)
         run_ids = [r["id"] for r in calibration_runs]
 
-        # Fetch formulations separately and map them to run IDs
-        formulations_qs = (
+        # ───── Precompute which runs include an LSTM module ─────
+        lstm_run_ids = set(
             CalibrationFormulation.objects
-            .filter(calibration_run_id__in=run_ids)
-            .select_related("module")
-            .order_by('-id')
-            .values_list("calibration_run_id", "module__name")
+            .filter(
+                calibration_run_id__in=run_ids,
+                module__name__icontains="LSTM"
+            )
+            .values_list("calibration_run_id", flat=True)
+            .distinct()
         )
 
-        formulations_map: dict[int, list[str]] = {}
-        for run_id, module_name in formulations_qs:
-            formulations_map.setdefault(run_id, []).append(module_name)
-
-        # Preload validation runs if requested
+        # Preload validation runs if requested (STATUS only)
         validations_map: dict[int, list] = {}
-        if include_validation_data in [GetValidationJobsScope.IDS, GetValidationJobsScope.STATUS]:
-            validation_filter = Q()  # default to "no filter"
-            if include_validation_data == GetValidationJobsScope.IDS:
-                # Exclude VALID_CONTROL for IDS
-                validation_filter = ~Q(validation_type=ValidationType.VALID_CONTROL.value)
-
+        if include_validation_data == GetValidationJobsScope.STATUS:
             validations_qs = (
                 ValidationRun.objects
                 .filter(calibration_run_id__in=run_ids)
-                .filter(validation_filter)
                 .select_related("status")
                 .order_by('-id')
                 .values("id", "calibration_run_id", "validation_type", "status__name")
@@ -858,6 +850,7 @@ def get_jobs(
                 'optimization_algorithm': run.get('optimization__name'),  # may be None
                 'is_archived': run['is_archived'],
                 'is_locked': run['is_locked'],
+                'is_lstm': run_id in lstm_run_ids,
                 'submit_date': run['submit_date'],
                 'formulation_name': run['user_formulation_name'],
                 'calibration_start_period': run['calibration_start_period'],
@@ -865,15 +858,8 @@ def get_jobs(
                 'job_genesis': run['job_genesis'],
                 'created_at': run['created_at'],
                 'last_updated_on': run['updated_at'],
-                'modules': formulations_map.get(run_id, []),
                 'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
             }
-
-            # Include validation IDs and count if requested
-            if include_validation_data == GetValidationJobsScope.IDS:
-                ids = [v["id"] for v in validations_map.get(run_id, [])]
-                result['validation_run_ids'] = ids
-                result['validation_runs'] = len(ids)
 
             # Include detailed validation status if requested
             if include_validation_data == GetValidationJobsScope.STATUS:
@@ -885,8 +871,6 @@ def get_jobs(
                     }
                     for v in validations_map.get(run_id, [])
                 ]
-                result['validation_run_ids'] = [v["id"] for v in validations_map.get(run_id, [])]
-                result['validation_runs'] = len(validations_map.get(run_id, []))
 
             # Include stop criteria if requested
             if include_stop_criteria:
@@ -899,24 +883,20 @@ def get_jobs(
 
 def get_validation_jobs_internal(
         calibration_run_id: int,
-        detail_level: GetValidationJobsScope = GetValidationJobsScope.IDS,
-) -> list[dict[str, Any]] | list[int]:
+        detail_level: Literal[GetValidationJobsScope.STATUS, GetValidationJobsScope.DETAILS] = GetValidationJobsScope.STATUS,
+) -> list[dict[str, Any]]:
     """
     Retrieves validation jobs for a specific calibration job.
 
     :param calibration_run_id: ID of the calibration run to fetch validation jobs for.
-    :param detail_level: Determines the level of detail in the response:
-        - IDS: handled by get_jobs (this function returns []).
-        - STATUS: handled by get_jobs (this function returns []).
-        - DETAILS: returns full validation job details including parameters.
+    :param detail_level: Must be either STATUS (summary mode) or DETAILS (full job data).
     :return: [] unless detail_level == DETAILS, in which case a list of detailed dicts.
     """
-    # Keep batch logic only for DETAILS; IDS/STATUS are already handled in get_jobs
+    # Only return detailed data for DETAILS mode
     if detail_level != GetValidationJobsScope.DETAILS:
         return []
 
     with readonly_transaction():
-
         # 1) Fetch all validation runs for this calibration run
         validation_runs = list(
             ValidationRun.objects
@@ -932,7 +912,9 @@ def get_validation_jobs_internal(
         iteration_ids = [v.iteration_id for v in validation_runs if v.iteration_id]
 
         # 2) Preload iteration parameters in one query
-        iteration_params_qs = IterationParameter.objects.filter(iteration_id__in=iteration_ids).values(
+        iteration_params_qs = IterationParameter.objects.filter(
+            iteration_id__in=iteration_ids
+        ).values(
             "iteration_id", "calibration_parameter__name", "tuned_value"
         )
 
@@ -1299,7 +1281,7 @@ def get_verification_jobs_internal(
 
     # Normalize keys expected by the API response/serializer
     for r in rows:
-        r["verification_job_id"] = r.pop("id")
+        r["verification_run_id"] = r.pop("id")
         r["status"] = r.pop("status__name")
 
     return rows, total_count

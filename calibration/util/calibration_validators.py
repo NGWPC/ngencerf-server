@@ -422,19 +422,12 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
-    validation_runs = serializers.IntegerField(required=False)
-    validation_run_ids = serializers.ListSerializer(required=False, child=serializers.IntegerField())
     validations = serializers.ListSerializer(child=ValidationStatusSerializer(), required=False, allow_empty=True)
-    modules = serializers.ListSerializer(child=serializers.CharField(required=True, allow_null=False, allow_blank=False), required=True)
     is_archived = serializers.BooleanField(required=True, allow_null=True)
     is_locked = serializers.BooleanField(required=True, allow_null=True)
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
+    is_lstm = serializers.BooleanField(required=True, allow_null=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True)
-
-
-class CalibrationJobsForValidationResponseSerializer(CalibrationJobsResponseSerializer):
-    validation_runs = serializers.IntegerField(required=False)
-    validation_run_ids = serializers.ListSerializer(child=serializers.IntegerField())
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
@@ -448,7 +441,7 @@ class GetCalibrationJobIDsResponseSerializer(BaseSerializer):
 
 
 class GetCalibrationJobsForEvaluationResponseSerializer(BaseSerializer):
-    jobs = serializers.ListSerializer(child=CalibrationJobsForValidationResponseSerializer(), required=True, allow_empty=True)
+    jobs = serializers.ListSerializer(child=CalibrationJobsResponseSerializer(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
 
 
@@ -1263,7 +1256,7 @@ class VerificationJobSerializer(BaseSerializer):
 
 
 class VerificationJobsResponseSerializer(BaseSerializer):
-    verification_job_id = serializers.IntegerField(required=True)
+    verification_run_id = serializers.IntegerField(required=True)
     forecast_run = ForecastJobsResponseSerializer(required=False, allow_null=True)
     forecast_run_id = serializers.IntegerField(required=True, allow_null=True)
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
