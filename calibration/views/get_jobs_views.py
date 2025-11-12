@@ -515,8 +515,10 @@ def _apply_shared_filters(
                 if operator == "and":
                     subquery = (
                         CalibrationFormulation.objects
-                        .filter(calibration_run_id=OuterRef(f"{module_prefix.rstrip('__')}id"),
-                                module_id__in=module_ids)
+                        .filter(
+                            calibration_run_id=OuterRef("id"),
+                            module_id__in=module_ids
+                        )
                         .values("calibration_run_id")
                         .annotate(match_count=Count("module_id", distinct=True))
                         .filter(match_count=len(module_ids))
@@ -866,7 +868,7 @@ def get_jobs(
             .values(
                 "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
                 "user_formulation_name", "calibration_start_period", "calibration_end_period",
-                "status__name", "combined_status",  "job_genesis", "created_at",
+                "status__name", "combined_status", "job_genesis", "created_at",
                 "objective_function__name", "optimization__name",
                 "is_archived", "is_locked"
             )
