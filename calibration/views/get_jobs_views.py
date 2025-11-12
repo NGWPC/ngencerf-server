@@ -3,7 +3,8 @@ import logging
 from typing import Any, Type, Literal
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Exists, OuterRef, Count
+from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case
+from django.db.models.functions import Concat, Coalesce
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -691,7 +692,7 @@ def get_jobs(
 ) -> tuple[list[dict[str, Any]], int]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
-    validation data inclusion, server-side filters, sorting, and pagination.
+    validation data inclusion, server-side filters, sorting, and optional pagination.
 
     Runs in READ ONLY mode to reduce contention.
 
@@ -732,18 +733,96 @@ def get_jobs(
         # If a specific status list is provided, filter by those statuses
         if status_ids:
             query &= Q(status__in=status_ids)
+
+        # Apply all shared filters (gage, status, modules, date, etc.)
+        # ------------------------------------------------------------------
+        # This step adds user-specified filters (via the API payload) to the
+        # base Q object, limiting which calibration runs are included.
+        # ------------------------------------------------------------------
         query = apply_calibration_filters(query, filters)
 
-        # ───── annotate validation_run_count for sorting ─────
+        # ───── Annotate validation and status fields used for sorting and combined logic ─────
+        # The following annotations enrich each CalibrationRun with additional fields:
+        #   • validation_run_count — total number of non-control validation runs
+        #   • validation_control_status — status of the VALID_CONTROL validation run (if any)
+        #   • validation_best_status — status of the VALID_BEST validation run (if any)
+        #
+        # These annotations are required both for sorting and for computing the
+        # derived "combined_status" field below.
+        # ------------------------------------------------------------------
         base_qs = CalibrationRun.objects.filter(query).annotate(
+            # Number of validation runs (excluding VALID_CONTROL)
             validation_run_count=Count(
                 "validations",
                 filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value),
                 distinct=True
+            ),
+            validation_control_status=Subquery(
+                ValidationRun.objects.filter(
+                    calibration_run_id=OuterRef("pk"),
+                    validation_type=ValidationType.VALID_CONTROL.value
+                ).values("status__name")[:1]
+            ),
+            validation_best_status=Subquery(
+                ValidationRun.objects.filter(
+                    calibration_run_id=OuterRef("pk"),
+                    validation_type=ValidationType.VALID_BEST.value
+                ).values("status__name")[:1]
             )
         )
-        # ──────────────────────────────────────────────────────────
 
+        # ───── Simplified combined_status logic ─────
+        # Rules:
+        #   • If ANY of calibration, control, or best is Running → combined = "Running"
+        #   • If ALL existing (non-null) statuses are Done → combined = "Done"
+        #   • If ANY existing status is Submitted, Failed, Cancelled, or Server_Error → combined = that same status
+        #   • Missing validation runs are ignored entirely.
+        # ------------------------------------------------------------------
+        non_running_statuses = [
+            StatusEnum.SUBMITTED.value,
+            StatusEnum.FAILED.value,
+            StatusEnum.CANCELLED.value,
+            StatusEnum.SERVER_ERROR.value,
+        ]
+
+        base_qs = base_qs.annotate(
+            combined_status=Case(
+                # Any job currently running → combined = Running
+                When(
+                    Q(status__name=StatusEnum.RUNNING.value)
+                    | Q(validation_control_status=StatusEnum.RUNNING.value)
+                    | Q(validation_best_status=StatusEnum.RUNNING.value),
+                    then=Value(StatusEnum.RUNNING.value)
+                ),
+
+                # All existing jobs done → combined = Done
+                # (If a validation job is missing/null, it's not counted)
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
+                    & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
+                    then=Value(StatusEnum.DONE.value),
+                ),
+
+                # Any job in Submitted / Cancelled / Failed / Server Error → combined = calibration status
+                When(
+                    Q(status__name__in=non_running_statuses)
+                    | Q(validation_control_status__in=non_running_statuses)
+                    | Q(validation_best_status__in=non_running_statuses),
+                    then=F("status__name"),
+                ),
+
+                # Calibration job Saved or Ready → combined = calibration status
+                When(
+                    Q(status__name__in=[StatusEnum.SAVED.value, StatusEnum.READY.value]),
+                    then=F("status__name"),
+                ),
+
+                # Fallback (covers any future status additions)
+                default=F("status__name"),
+                output_field=CharField(),
+            )
+        )
 
         # ───── Fast path: ids_only ─────
         if ids_only:
@@ -787,7 +866,7 @@ def get_jobs(
             .values(
                 "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
                 "user_formulation_name", "calibration_start_period", "calibration_end_period",
-                "status__name", "job_genesis", "created_at",
+                "status__name", "combined_status",  "job_genesis", "created_at",
                 "objective_function__name", "optimization__name",
                 "is_archived", "is_locked"
             )
@@ -845,7 +924,7 @@ def get_jobs(
                 'calibration_run_id': run_id,
                 'gage_id': run['gage__gage_id'],
                 'domain_name': run['gage__domain__name'],
-                'status': run['status__name'],
+                'status': run['combined_status'],
                 'objective_function': run.get('objective_function__name'),  # may be None
                 'optimization_algorithm': run.get('optimization__name'),  # may be None
                 'is_archived': run['is_archived'],

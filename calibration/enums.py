@@ -3,8 +3,7 @@ from typing import Any, Type
 from django.core.cache import cache
 
 from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition, \
-    ForecastConfiguration, \
-    Metric
+    ForecastConfiguration, Metric
 from calibration.util.AbstractEnum import AbstractEnum
 
 
@@ -255,6 +254,7 @@ class JobGenesis(AbstractEnum):
 
 
 class GetValidationJobsScope(AbstractEnum):
+    IDS = 'ids'
     STATUS = 'status'
     DETAILS = 'details'
     DONE = 'done'
