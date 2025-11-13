@@ -4,7 +4,6 @@ from typing import Any, Type, Literal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case
-from django.db.models.functions import Concat, Coalesce
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -15,7 +14,7 @@ from calibration.enums_vanilla import CalibrationSortField, ForecastSortField, V
 from calibration.models import CalibrationFormulation, CalibrationRun, CalibrationStopCriteria, \
     ValidationRun, IterationParameter, ForecastRun, VerificationRun
 from calibration.util.caching import get_cached_modules_by_id
-from calibration.util.calibration_validators import GetCalibrationJobsForEvaluationResponseSerializer, ErrorResponseSerializer, \
+from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, CalibrationPaginationSerializer, \
     ForecastPaginationSerializer, VerificationPaginationSerializer, GetCalibrationJobIDsResponseSerializer
@@ -193,7 +192,7 @@ while prefetching makes transitions instantaneous.
         200: OpenApiResponse(
             response={
                 "oneOf": [
-                    GetCalibrationJobsForEvaluationResponseSerializer,
+                    GetCalibrationJobsResponseSerializer,
                     GetCalibrationJobIDsResponseSerializer,
                 ]
             },
@@ -232,8 +231,9 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     sort = validator.get("sort")
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
+    get_gages = validator.get("get_gages")
 
-    jobs, total_count = get_jobs(
+    jobs, total_count, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -242,18 +242,21 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
         offset=offset,
         filters=filters,
         sort=sort,
-        ids_only=ids_only
+        ids_only=ids_only,
+        get_gages=get_gages
     )
 
     response = {
         "jobs": jobs,
         "total_count": total_count
     }
+    if get_gages:
+        response["gages"] = gage_list  # type: ignore[assignment]
 
     if ids_only:
         serializer_class = GetCalibrationJobIDsResponseSerializer
     else:
-        serializer_class = GetCalibrationJobsForEvaluationResponseSerializer
+        serializer_class = GetCalibrationJobsResponseSerializer
 
     response_validator, error_response = validate_response(serializer_class, response, fields_to_truncate=['jobs'])
     if error_response:
@@ -303,8 +306,9 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     sort = validator.get("sort")
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
+    get_gages = validator.get("get_gages")
 
-    jobs, total_count = get_jobs(
+    jobs, total_count, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE],
         include_validation_data=GetValidationJobsScope.DONE,
@@ -313,13 +317,16 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
         offset=offset,
         filters=filters,
         sort=sort,
-        ids_only=ids_only
+        ids_only=ids_only,
+        get_gages=get_gages
     )
 
     response = {
         "jobs": jobs,
         "total_count": total_count
     }
+    if get_gages:
+        response["gages"] = gage_list  # type: ignore[assignment]
 
     if ids_only:
         serializer_class = GetCalibrationJobIDsResponseSerializer
@@ -380,8 +387,9 @@ def get_calibration_jobs(request):
     sort = validator.get("sort")
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
+    get_gages = validator.get("get_gages")
 
-    jobs, total_count = get_jobs(
+    jobs, total_count, gage_list = get_jobs(
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -390,13 +398,16 @@ def get_calibration_jobs(request):
         offset=offset,
         filters=filters,
         sort=sort,
-        ids_only=ids_only
+        ids_only=ids_only,
+        get_gages=get_gages
     )
 
     response = {
         "jobs": jobs,
         "total_count": total_count
     }
+    if get_gages:
+        response["gages"] = gage_list  # type: ignore[assignment]
 
     if ids_only:
         serializer_class = GetCalibrationJobIDsResponseSerializer
@@ -691,7 +702,8 @@ def get_jobs(
         filters: dict[str, Any] | None = None,
         sort: dict[str, str] | None = None,
         ids_only: bool = False,
-) -> tuple[list[dict[str, Any]], int]:
+        get_gages: bool = False
+) -> tuple[list[dict[str, Any]], int, list[str] | None]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
     validation data inclusion, server-side filters, sorting, and optional pagination.
@@ -709,6 +721,7 @@ def get_jobs(
     :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
+    :param get_gages: return the set of gages used by all the jobs
     :return: Tuple (results, total_count). total_count reflects total rows BEFORE pagination.
     """
     filters = filters or {}
@@ -735,6 +748,16 @@ def get_jobs(
         # If a specific status list is provided, filter by those statuses
         if status_ids:
             query &= Q(status__in=status_ids)
+
+        # ───── Collect gages before user filters (but after run_status restriction) ─────
+        gage_list = None
+        if get_gages:
+            gage_list = list(
+                CalibrationRun.objects
+                .filter(query, gage__isnull=False)  # exclude runs with no gage
+                .values_list("gage__gage_id", flat=True)
+                .distinct()
+            )
 
         # Apply all shared filters (gage, status, modules, date, etc.)
         # ------------------------------------------------------------------
@@ -835,7 +858,7 @@ def get_jobs(
             if limit:
                 ids_qs = ids_qs[offset: offset + limit]
 
-            return list(ids_qs), total_count
+            return list(ids_qs), total_count,  gage_list if get_gages else None
 
         # Only include jobs where both Valid_control and Valid_best jobs are DONE
         if include_validation_data == GetValidationJobsScope.DONE:
@@ -959,7 +982,7 @@ def get_jobs(
 
             results.append(result)
 
-        return results, total_count
+        return results, total_count, gage_list if get_gages else None
 
 
 def get_validation_jobs_internal(

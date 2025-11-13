@@ -433,16 +433,13 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
     jobs = serializers.ListSerializer(child=CalibrationJobsResponseSerializer(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
+    gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class GetCalibrationJobIDsResponseSerializer(BaseSerializer):
     jobs = serializers.ListField(child=serializers.IntegerField(), required=True, allow_empty=True)
     total_count = serializers.IntegerField(required=True)
-
-
-class GetCalibrationJobsForEvaluationResponseSerializer(BaseSerializer):
-    jobs = serializers.ListSerializer(child=CalibrationJobsResponseSerializer(), required=True, allow_empty=True)
-    total_count = serializers.IntegerField(required=True)
+    gages = serializers.ListField(child=serializers.CharField(), required=False, allow_empty=True)
 
 
 class ValidationJobsParameter(BaseSerializer):
@@ -607,6 +604,7 @@ class PaginationSerializer(BaseSerializer):
     limit = serializers.IntegerField(required=False, min_value=1, max_value=500)
     offset = serializers.IntegerField(required=False, min_value=0, default=0)
     filters = FilterSerializer(required=False, allow_null=True)
+    get_gages = serializers.BooleanField(required=False, default=False)
 
 
 class CalibrationPaginationSerializer(PaginationSerializer):
