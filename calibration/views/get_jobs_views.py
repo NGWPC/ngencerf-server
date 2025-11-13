@@ -4,6 +4,7 @@ from typing import Any, Type, Literal
 
 from django.contrib.auth import get_user_model
 from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case
+from django.db.models.functions import Lower
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -589,17 +590,22 @@ def _apply_shared_filters(
 
 def apply_calibration_filters(query: Q, filters: dict) -> Q:
     """
-    Apply standard calibration filters to a CalibrationRun queryset.
+    Apply standard calibration filters to a CalibrationRun queryset,
+    excluding 'status' because it's handled later on the derived
+    'combined_status' annotation.
 
     :param query: Base Q object (typically includes ownership constraint).
     :param filters: Dictionary of filter parameters (gage_id, modules, date_filter, etc.).
     :return: Q object with calibration-specific filters applied.
     """
+    # Make a shallow copy and remove 'status'
+    filters = {k: v for k, v in (filters or {}).items() if k != "status"}
+
     return _apply_shared_filters(
         query, filters,
         gage_prefix="gage__",
         module_prefix="calibrationformulation__",
-        status_field="status__in",
+        status_field="status__in",   # not used, since 'status' removed
         created_field="created_at",
         archived_field="is_archived"
     )
@@ -722,7 +728,7 @@ def get_jobs(
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
     :param get_gages: return the set of gages used by all the jobs
-    :return: Tuple (results, total_count). total_count reflects total rows BEFORE pagination.
+    :return: Tuple (results, total_count, gage_list). total_count reflects total rows BEFORE pagination.
     """
     filters = filters or {}
     order_by = resolve_sort(sort, CalibrationSortField)
@@ -759,106 +765,162 @@ def get_jobs(
                 .distinct()
             )
 
-        # Apply all shared filters (gage, status, modules, date, etc.)
-        # ------------------------------------------------------------------
-        # This step adds user-specified filters (via the API payload) to the
-        # base Q object, limiting which calibration runs are included.
+        # ───── Apply user-defined filters (except status) ─────
+        # Adds API-provided filters (gage, modules, dates, IDs, etc.)
+        # to the base query. The 'status' filter is applied later
+        # after annotation of the derived combined_status field.
         # ------------------------------------------------------------------
         query = apply_calibration_filters(query, filters)
 
-        # ───── Annotate validation and status fields used for sorting and combined logic ─────
-        # The following annotations enrich each CalibrationRun with additional fields:
-        #   • validation_run_count — total number of non-control validation runs
-        #   • validation_control_status — status of the VALID_CONTROL validation run (if any)
-        #   • validation_best_status — status of the VALID_BEST validation run (if any)
+        # ───── Build base queryset ─────
+        # If only IDs are requested, skip expensive annotations.
+        # Keep this lightweight unless we need full job detail.
+        base_qs = CalibrationRun.objects.filter(query)
+
+        if not ids_only:
+            # ───── Annotate validation and status fields used for sorting and combined logic ─────
+            # The following annotations enrich each CalibrationRun with additional fields:
+            #   • validation_run_count — total number of non-control validation runs
+            #   • validation_control_status — status of the VALID_CONTROL validation run (if any)
+            #   • validation_best_status — status of the VALID_BEST validation run (if any)
+            #
+            # These annotations are required both for sorting and for computing the
+            # derived "combined_status" field below.
+            # ------------------------------------------------------------------
+            base_qs = base_qs.annotate(
+                # Number of validation runs (excluding VALID_CONTROL)
+                validation_run_count=Count(
+                    "validations",
+                    filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value),
+                    distinct=True
+                ),
+                validation_control_status=Subquery(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef("pk"),
+                        validation_type=ValidationType.VALID_CONTROL.value
+                    ).values("status__name")[:1]
+                ),
+                validation_best_status=Subquery(
+                    ValidationRun.objects.filter(
+                        calibration_run_id=OuterRef("pk"),
+                        validation_type=ValidationType.VALID_BEST.value
+                    ).values("status__name")[:1]
+                )
+            )
+
+        # ───── Combined status computation ─────
+        # The Case/When sequence below defines deterministic precedence among statuses.
+        # Django’s Case() evaluates conditions in order and stops at the first match.
+        #     explicitly in descending order of severity. There’s no built-in way to compute
+        #     the “worst” status across multiple columns dynamically.
         #
-        # These annotations are required both for sorting and for computing the
-        # derived "combined_status" field below.
-        # ------------------------------------------------------------------
-        base_qs = CalibrationRun.objects.filter(query).annotate(
-            # Number of validation runs (excluding VALID_CONTROL)
-            validation_run_count=Count(
-                "validations",
-                filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value),
-                distinct=True
-            ),
-            validation_control_status=Subquery(
-                ValidationRun.objects.filter(
-                    calibration_run_id=OuterRef("pk"),
-                    validation_type=ValidationType.VALID_CONTROL.value
-                ).values("status__name")[:1]
-            ),
-            validation_best_status=Subquery(
-                ValidationRun.objects.filter(
-                    calibration_run_id=OuterRef("pk"),
-                    validation_type=ValidationType.VALID_BEST.value
-                ).values("status__name")[:1]
-            )
-        )
-
-        # ───── Simplified combined_status logic ─────
+        # Precedence (highest → lowest):
+        #   Running → Server_Error → Failed → Cancelled → Submitted → Done → Saved/Ready
+        #
         # Rules:
-        #   • If ANY of calibration, control, or best is Running → combined = "Running"
-        #   • If ALL existing (non-null) statuses are Done → combined = "Done"
-        #   • If ANY existing status is Submitted, Failed, Cancelled, or Server_Error → combined = that same status
-        #   • Missing validation runs are ignored entirely.
+        #   • If calibration is not Done → combined = calibration status
+        #   • If calibration is Done:
+        #       – If any validation is Failed → combined = Failed
+        #       – If any validation is Running → combined = Running
+        #       – If any validation is Server_Error → combined = Server_Error
+        #       – If any validation is Cancelled → combined = Cancelled
+        #       – If any validation is Submitted → combined = Submitted
+        #       – If all existing validations are Done → combined = Done
+        #   • Missing validations are ignored.
         # ------------------------------------------------------------------
-        non_running_statuses = [
-            StatusEnum.SUBMITTED.value,
-            StatusEnum.FAILED.value,
-            StatusEnum.CANCELLED.value,
-            StatusEnum.SERVER_ERROR.value,
-        ]
+        if ids_only:
+            base_qs = base_qs.annotate(combined_status=F("status__name"))
+        else:
+            base_qs = base_qs.annotate(
+                combined_status=Case(
+                    # Calibration not done → use calibration status directly
+                    When(~Q(status__name=StatusEnum.DONE.value), then=F("status__name")),
 
-        base_qs = base_qs.annotate(
-            combined_status=Case(
-                # Any job currently running → combined = Running
-                When(
-                    Q(status__name=StatusEnum.RUNNING.value)
-                    | Q(validation_control_status=StatusEnum.RUNNING.value)
-                    | Q(validation_best_status=StatusEnum.RUNNING.value),
-                    then=Value(StatusEnum.RUNNING.value)
-                ),
+                    # Calibration done but any validation running
+                    When(
+                        Q(status__name=StatusEnum.DONE.value)
+                        & (
+                            Q(validation_control_status=StatusEnum.RUNNING.value)
+                            | Q(validation_best_status=StatusEnum.RUNNING.value)
+                        ),
+                        then=Value(StatusEnum.RUNNING.value),
+                    ),
 
-                # All existing jobs done → combined = Done
-                # (If a validation job is missing/null, it's not counted)
-                When(
-                    Q(status__name=StatusEnum.DONE.value)
-                    & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
-                    & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
-                    then=Value(StatusEnum.DONE.value),
-                ),
+                    # Calibration done but any validation server error
+                    When(
+                        Q(status__name=StatusEnum.DONE.value)
+                        & (
+                            Q(validation_control_status=StatusEnum.SERVER_ERROR.value)
+                            | Q(validation_best_status=StatusEnum.SERVER_ERROR.value)
+                        ),
+                        then=Value(StatusEnum.SERVER_ERROR.value),
+                    ),
 
-                # Any job in Submitted / Cancelled / Failed / Server Error → combined = calibration status
-                When(
-                    Q(status__name__in=non_running_statuses)
-                    | Q(validation_control_status__in=non_running_statuses)
-                    | Q(validation_best_status__in=non_running_statuses),
-                    then=F("status__name"),
-                ),
+                    # Calibration done but any validation failed
+                    When(
+                        Q(status__name=StatusEnum.DONE.value)
+                        & (
+                            Q(validation_control_status=StatusEnum.FAILED.value)
+                            | Q(validation_best_status=StatusEnum.FAILED.value)
+                        ),
+                        then=Value(StatusEnum.FAILED.value),
+                    ),
 
-                # Calibration job Saved or Ready → combined = calibration status
-                When(
-                    Q(status__name__in=[StatusEnum.SAVED.value, StatusEnum.READY.value]),
-                    then=F("status__name"),
-                ),
+                    # Calibration done but any validation cancelled
+                    When(
+                        Q(status__name=StatusEnum.DONE.value)
+                        & (
+                            Q(validation_control_status=StatusEnum.CANCELLED.value)
+                            | Q(validation_best_status=StatusEnum.CANCELLED.value)
+                        ),
+                        then=Value(StatusEnum.CANCELLED.value),
+                    ),
 
-                # Fallback (covers any future status additions)
-                default=F("status__name"),
-                output_field=CharField(),
+                    # Calibration done but any validation submitted
+                    When(
+                        Q(status__name=StatusEnum.DONE.value)
+                        & (
+                            Q(validation_control_status=StatusEnum.SUBMITTED.value)
+                            | Q(validation_best_status=StatusEnum.SUBMITTED.value)
+                        ),
+                        then=Value(StatusEnum.SUBMITTED.value),
+                    ),
+
+                    # Calibration done and all validations done (or missing)
+                    When(
+                        Q(status__name=StatusEnum.DONE.value)
+                        & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
+                        & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
+                        then=Value(StatusEnum.DONE.value),
+                    ),
+
+                    # Calibration job Saved or Ready → combined = calibration status
+                    When(
+                        Q(status__name__in=[StatusEnum.SAVED.value, StatusEnum.READY.value]),
+                        then=F("status__name"),
+                    ),
+
+                    # Fallback (covers any future status additions)
+                    default=F("status__name"),
+                    output_field=CharField(),
+                )
             )
-        )
+
+        # ───── Apply status filter AFTER annotation ─────
+        if "status" in filters and filters["status"]:
+            normalized_statuses = [s.strip().lower() for s in filters["status"]]
+            base_qs = base_qs.annotate(_status_lower=Lower("combined_status"))
+            base_qs = base_qs.filter(_status_lower__in=normalized_statuses)
 
         # ───── Fast path: ids_only ─────
+        total_count = base_qs.count()
         if ids_only:
-            total_count = base_qs.count()
-
             # Apply sorting and pagination if specified
             ids_qs = base_qs.order_by(*order_by).values_list("id", flat=True)
             if limit:
                 ids_qs = ids_qs[offset: offset + limit]
 
-            return list(ids_qs), total_count,  gage_list if get_gages else None
+            return list(ids_qs), total_count, gage_list
 
         # Only include jobs where both Valid_control and Valid_best jobs are DONE
         if include_validation_data == GetValidationJobsScope.DONE:
@@ -881,8 +943,6 @@ def get_jobs(
                 has_valid_control_done=True,
                 has_valid_best_done=True
             )
-
-        total_count = base_qs.count()
 
         # ───── Build base ordered queryset (values dict) ─────
         calibration_runs_qs = (
