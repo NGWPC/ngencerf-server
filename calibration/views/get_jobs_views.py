@@ -605,7 +605,7 @@ def apply_calibration_filters(query: Q, filters: dict) -> Q:
         query, filters,
         gage_prefix="gage__",
         module_prefix="calibrationformulation__",
-        status_field="status__in",   # not used, since 'status' removed
+        status_field="status__in",  # not used, since 'status' removed
         created_field="created_at",
         archived_field="is_archived"
     )
@@ -840,8 +840,8 @@ def get_jobs(
                     When(
                         Q(status__name=StatusEnum.DONE.value)
                         & (
-                            Q(validation_control_status=StatusEnum.RUNNING.value)
-                            | Q(validation_best_status=StatusEnum.RUNNING.value)
+                                Q(validation_control_status=StatusEnum.RUNNING.value)
+                                | Q(validation_best_status=StatusEnum.RUNNING.value)
                         ),
                         then=Value(StatusEnum.RUNNING.value),
                     ),
@@ -850,8 +850,8 @@ def get_jobs(
                     When(
                         Q(status__name=StatusEnum.DONE.value)
                         & (
-                            Q(validation_control_status=StatusEnum.SERVER_ERROR.value)
-                            | Q(validation_best_status=StatusEnum.SERVER_ERROR.value)
+                                Q(validation_control_status=StatusEnum.SERVER_ERROR.value)
+                                | Q(validation_best_status=StatusEnum.SERVER_ERROR.value)
                         ),
                         then=Value(StatusEnum.SERVER_ERROR.value),
                     ),
@@ -860,8 +860,8 @@ def get_jobs(
                     When(
                         Q(status__name=StatusEnum.DONE.value)
                         & (
-                            Q(validation_control_status=StatusEnum.FAILED.value)
-                            | Q(validation_best_status=StatusEnum.FAILED.value)
+                                Q(validation_control_status=StatusEnum.FAILED.value)
+                                | Q(validation_best_status=StatusEnum.FAILED.value)
                         ),
                         then=Value(StatusEnum.FAILED.value),
                     ),
@@ -870,8 +870,8 @@ def get_jobs(
                     When(
                         Q(status__name=StatusEnum.DONE.value)
                         & (
-                            Q(validation_control_status=StatusEnum.CANCELLED.value)
-                            | Q(validation_best_status=StatusEnum.CANCELLED.value)
+                                Q(validation_control_status=StatusEnum.CANCELLED.value)
+                                | Q(validation_best_status=StatusEnum.CANCELLED.value)
                         ),
                         then=Value(StatusEnum.CANCELLED.value),
                     ),
@@ -880,8 +880,8 @@ def get_jobs(
                     When(
                         Q(status__name=StatusEnum.DONE.value)
                         & (
-                            Q(validation_control_status=StatusEnum.SUBMITTED.value)
-                            | Q(validation_best_status=StatusEnum.SUBMITTED.value)
+                                Q(validation_control_status=StatusEnum.SUBMITTED.value)
+                                | Q(validation_best_status=StatusEnum.SUBMITTED.value)
                         ),
                         then=Value(StatusEnum.SUBMITTED.value),
                     ),
@@ -906,23 +906,18 @@ def get_jobs(
                 )
             )
 
-        # ───── Apply status filter AFTER annotation ─────
-        if "status" in filters and filters["status"]:
-            normalized_statuses = [s.strip().lower() for s in filters["status"]]
-            base_qs = base_qs.annotate(_status_lower=Lower("combined_status"))
-            base_qs = base_qs.filter(_status_lower__in=normalized_statuses)
-
-        # ───── Fast path: ids_only ─────
-        total_count = base_qs.count()
-        if ids_only:
-            # Apply sorting and pagination if specified
-            ids_qs = base_qs.order_by(*order_by).values_list("id", flat=True)
-            if limit:
-                ids_qs = ids_qs[offset: offset + limit]
-
-            return list(ids_qs), total_count, gage_list
-
-        # Only include jobs where both Valid_control and Valid_best jobs are DONE
+        # ─────────────────────────────────────────────────────────────
+        # Apply DONE-validation enforcement (VALID_CONTROL and VALID_BEST)
+        # *after* all annotations are present, but *before* applying the
+        # user-supplied "status" filter.
+        #
+        # This ensures:
+        #   • combined_status has been computed
+        #   • validation annotations exist
+        #   • any user "status" filter is run against the final combined_status
+        #
+        # Only applies when include_validation_data == DONE.
+        # ─────────────────────────────────────────────────────────────
         if include_validation_data == GetValidationJobsScope.DONE:
             base_qs = base_qs.annotate(
                 has_valid_control_done=Exists(
@@ -944,11 +939,47 @@ def get_jobs(
                 has_valid_best_done=True
             )
 
-        # ───── Build base ordered queryset (values dict) ─────
+        # ─────────────────────────────────────────────────────────────
+        # APPLY USER STATUS FILTER — ALWAYS AFTER combined_status exists
+        # and after any DONE enforcement from above.
+        # ─────────────────────────────────────────────────────────────
+        if "status" in filters and filters["status"]:
+            # Normalize to lowercase for case-insensitive matching
+            normalized_statuses = [s.strip().lower() for s in filters["status"]]
+
+            # Annotate a lowercase version of combined_status and filter on it
+            base_qs = base_qs.annotate(_status_lower=Lower("combined_status"))
+            base_qs = base_qs.filter(_status_lower__in=normalized_statuses)
+
+        # ───── Finalize ordering and compute total count ─────
+        #   • DO NOT apply ordering before computing count.
+        #   • Count should reflect the total number of filtered rows, regardless of sort.
+        #   • Never apply offset/limit before counting.
+        total_count = base_qs.count()
+
+        # ───── Fast path: ids_only ─────
+        # For ID-only mode we apply ordering and pagination directly on the IDs queryset.
+        if ids_only:
+            # Apply sorting and pagination if specified
+            ids_qs = base_qs.order_by(*order_by).values_list("id", flat=True)
+
+            if limit:
+                ids_qs = ids_qs[offset: offset + limit]
+
+            return list(ids_qs), total_count, gage_list
+
+        # ───── Apply ordering BEFORE slicing ─────
+        # Django applies LIMIT/OFFSET in SQL only when slicing occurs.
+        # We must order first to ensure deterministic, correct pagination.
+        ordered_qs = base_qs.order_by(*order_by)
+
+        # ───── Apply pagination ONLY if limit provided ─────
+        if limit:
+            ordered_qs = ordered_qs[offset: offset + limit]
+
+        # ───── Extract values AFTER slicing ─────
         calibration_runs_qs = (
-            base_qs
-            .order_by(*order_by)
-            .values(
+            ordered_qs.values(
                 "id", "gage__gage_id", "gage__domain__name", "submit_date", "updated_at",
                 "user_formulation_name", "calibration_start_period", "calibration_end_period",
                 "status__name", "combined_status", "job_genesis", "created_at",
@@ -956,13 +987,6 @@ def get_jobs(
                 "is_archived", "is_locked"
             )
         )
-
-        # ───────────────────────────────────────
-        # Apply pagination ONLY if limit provided
-        # ───────────────────────────────────────
-        if limit:
-            calibration_runs_qs = calibration_runs_qs[offset: offset + limit]
-        # ───────────────────────────────────────
 
         calibration_runs = list(calibration_runs_qs)
         run_ids = [r["id"] for r in calibration_runs]
