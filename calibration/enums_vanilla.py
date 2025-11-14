@@ -1,4 +1,5 @@
 from enum import StrEnum, Enum
+from typing import Self
 
 
 # These enums are used from settings.py.  We need to avoid any references to the model
@@ -81,7 +82,7 @@ class CalibrationSortField(Enum):
     CREATED_AT = ("created_at", "created_at")
     LAST_UPDATED_ON = ("last_updated_on", "updated_at")
     JOB_GENESIS = ("job_genesis", "job_genesis")
-    STATUS = ("status", "status__name")
+    COMBINED_STATUS = ("status", "combined_status")
     OBJECTIVE_FUNCTION = ("objective_function", "objective_function__name")
     OPTIMIZATION_ALGORITHM = ("optimization_algorithm", "optimization__name")
     PERIOD = ("period", ["calibration_start_period", "calibration_end_period"])
