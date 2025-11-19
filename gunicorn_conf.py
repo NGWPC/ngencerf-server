@@ -1,6 +1,7 @@
 import logging
 import os
 
+from calibration.umask_debug import install_umask_trap
 
 # =====================================================================
 # IMPORTANT — READ THIS FIRST
@@ -132,6 +133,8 @@ def post_fork(_server, worker):
     Runs once for each worker (initial and respawned).
     Only performs per-worker logging setup and umask.
     """
+    install_umask_trap()
+
     _configure_logging(worker)
 
     # Enforce umask per-worker

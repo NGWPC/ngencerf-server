@@ -51,7 +51,6 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-
         # Detect local dev server (runserver)
         running_dev_server = (
                 'runserver' in sys.argv
