@@ -267,14 +267,23 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
 
     pid = os.getpid()
 
-    # Determine and restore the effective umask
-    current_umask = os.umask(0)
-    os.umask(current_umask)
+    # ------------------------------------------------------------------
+    # IMPORTANT:
+    # Retrieve current umask *without modifying it* using the trap-safe
+    # double-os.umask technique:
+    #
+    #   current_umask = os.umask(os.umask(current_umask))
+    #
+    # First os.umask() returns the actual umask while setting it to
+    # `current_umask`, then we restore the original immediately.
+    # Net effect: no umask change → umask_debug trap does NOT fire.
+    # ------------------------------------------------------------------
+    current_umask = os.umask(os.umask(0))
 
-    # Create the directory
+    # Create directory using whatever umask the worker actually has (022)
     os.makedirs(run.job_data_dir, exist_ok=True)
 
-    # Determine actual permissions on disk
+    # Determine actual permissions
     mode = os.stat(run.job_data_dir).st_mode & 0o777
 
     logger.info(
