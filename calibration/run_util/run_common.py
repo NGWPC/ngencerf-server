@@ -899,7 +899,7 @@ def subset_directory_by_time_range(
     - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
     - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     os.makedirs(output_directory, exist_ok=True)
 
     files_in = _list_dir_files(input_directory)
@@ -918,7 +918,7 @@ def subset_directory_by_time_range(
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         list(ex.map(_process, file_pairs))
 
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - start_time
     logger.info(f"Finished subsetting directory {input_directory} in {elapsed:.2f}s "
                 f"for Calibration Job {run.id}")
 
