@@ -1278,6 +1278,7 @@ def get_forecast_jobs_internal(
                 'calibration_run_id',
                 'configuration__name',
                 'configuration__domain__name',
+                'created_at',
                 'cycle_date',
                 'submit_date',
                 'calibration_run__gage__gage_id',

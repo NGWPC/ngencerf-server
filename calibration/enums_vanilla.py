@@ -38,6 +38,7 @@ class ForecastSortField(Enum):
     GAGE_ID = ("gage_id", "calibration_run__gage__gage_id")
     CALIBRATION_RUN_ID = ("calibration_run_id", "calibration_run__id")
     SUBMIT_DATE = ("submit_date", "submit_date")
+    CREATED_AT = ("created_at", "created_at")
     CYCLE_DATE = ("cycle_date", "cycle_date")
     CONFIGURATION = ("configuration", "configuration__name")
     DOMAIN_NAME = ("domain_name", "configuration__domain__name")
