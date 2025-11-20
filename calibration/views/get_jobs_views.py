@@ -717,7 +717,7 @@ def get_jobs(
         sort: dict[str, str] | None = None,
         ids_only: bool = False,
         get_gages: bool = False
-) -> tuple[list[dict[str, Any]], int, list[str] | None]:
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
     validation data inclusion, server-side filters, sorting, and optional pagination.
@@ -779,14 +779,7 @@ def get_jobs(
             )
 
         # ───── Get date and id range before filters (but after run_status restriction) ─────
-        range_qs = CalibrationRun.objects.filter(query).aggregate(
-            min_created_at=Min('created_at'), 
-            max_created_at=Max('created_at'),
-            min_job_id=Min('id'), 
-            max_job_id=Max('id'),
-        )
-        date_range = [range_qs['min_created_at'], range_qs['max_created_at']]
-        id_range = [range_qs['min_job_id'], range_qs['max_job_id']]
+        date_range, id_range = compute_range(CalibrationRun, query)
 
         # ───── Apply user-defined filters (except status) ─────
         # Adds API-provided filters (gage, modules, dates, IDs, etc.)
@@ -834,7 +827,7 @@ def get_jobs(
         # ───── Combined status computation ─────
         # The Case/When sequence below defines deterministic precedence among statuses.
         # Django’s Case() evaluates conditions in order and stops at the first match.
-        #     explicitly in descending order of severity. There’s no built-in way to compute
+        #     in descending order of severity. There’s no built-in way to compute
         #     the “worst” status across multiple columns dynamically.
         #
         # Precedence (highest → lowest):
@@ -1229,8 +1222,8 @@ def get_forecast_jobs_internal(
         limit: int | None = None,
         offset: int = 0,
         filters: dict[str, Any] | None = None,
-        sort: dict[str, str] | None = None  # NEW
-) -> tuple[list[dict[str, Any]], int]:
+        sort: dict[str, str] | None = None
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
     Internal helper to retrieve forecast jobs for a user (READ ONLY), with optional filtering,
     sorting, and pagination.
@@ -1252,17 +1245,17 @@ def get_forecast_jobs_internal(
 
     order_by = resolve_sort(sort, ForecastSortField)
 
-    range_qs = ForecastRun.objects.filter(calibration_run__owner=user).aggregate(
-        min_created_at=Min('created_at'), 
-        max_created_at=Max('created_at'),
-        min_job_id=Min('id'), 
-        max_job_id=Max('id'),
-    )
-    date_range = [range_qs['min_created_at'], range_qs['max_created_at']]
-    id_range = [range_qs['min_job_id'], range_qs['max_job_id']]
+    query = Q(calibration_run__owner=user)
 
-    query = apply_forecast_filters(Q(calibration_run__owner=user), filters)
+    # Compute ranges BEFORE user filters
+    date_range, id_range = compute_range(ForecastRun, query)
 
+    query = Q(calibration_run__owner=user)
+
+    # Now apply user filters
+    query = apply_forecast_filters(query, filters)
+
+    # Apply status restriction if needed
     if run_status:
         query &= Q(status_id__in=[s.db_instance.id for s in run_status])
 
@@ -1463,7 +1456,7 @@ def get_verification_jobs_internal(
         offset: int = 0,
         filters: dict[str, Any] | None = None,
         sort: dict[str, str] | None = None
-) -> tuple[list[dict[str, Any]], int]:
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
     Internal helper to retrieve verification jobs (READ ONLY) with optional
     filtering, sorting, and pagination.
@@ -1485,17 +1478,15 @@ def get_verification_jobs_internal(
 
     order_by = resolve_sort(sort, VerificationSortField)
 
-    range_qs = VerificationRun.objects.filter(forecast_run__calibration_run__owner=user).aggregate(
-        min_created_at=Min('created_at'), 
-        max_created_at=Max('created_at'),
-        min_job_id=Min('id'), 
-        max_job_id=Max('id'),
-    )
-    date_range = [range_qs['min_created_at'], range_qs['max_created_at']]
-    id_range = [range_qs['min_job_id'], range_qs['max_job_id']]
+    query = Q(forecast_run__calibration_run__owner=user)
 
-    query = apply_verification_filters(Q(forecast_run__calibration_run__owner=user), filters)
+    # Compute ranges BEFORE user filters
+    date_range, id_range = compute_range(VerificationRun, query)
 
+    # Now apply user filters
+    query = apply_verification_filters(query, filters)
+
+    # Apply status restriction if needed
     if run_status:
         query &= Q(status_id__in=[s.db_instance.id for s in run_status])
 
@@ -1594,3 +1585,23 @@ def get_verification_jobs(request: Request) -> Response:
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["verification_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
+
+
+def compute_range(model, query: Q) -> tuple[
+    list[Any],  # created_at range
+    list[Any],  # id range
+]:
+    """
+    Compute min/max created_at and id for any job model.
+    Returns (date_range, id_range) as two lists.
+    """
+    agg = model.objects.filter(query).aggregate(
+        min_created_at=Min('created_at'),
+        max_created_at=Max('created_at'),
+        min_job_id=Min('id'),
+        max_job_id=Max('id'),
+    )
+    return (
+        [agg['min_created_at'], agg['max_created_at']],
+        [agg['min_job_id'], agg['max_job_id']],
+    )
