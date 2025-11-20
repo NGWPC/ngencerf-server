@@ -3,7 +3,7 @@ import logging
 from typing import Any, Type, Literal
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case
+from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Min, Max
 from django.db.models.functions import Lower
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -160,6 +160,8 @@ UX expectations:
 
 - Show loading indicator while fetching. Disable pagination controls during load.
 - Always display total_count from server.
+- Always allow date filtering based on date_range from server.
+- Always allow id filtering based on id_range from server.
 - Show “Showing 26–50 of 137” style summary.
 - Keep filters + sort visibly summarized.
 - URL query string SHOULD reflect current limit/offset/filters/sort
@@ -234,7 +236,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
 
-    jobs, total_count, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -249,7 +251,9 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
 
     response = {
         "jobs": jobs,
-        "total_count": total_count
+        "total_count": total_count,
+        "date_range": date_range,
+        "id_range": id_range
     }
     if get_gages:
         response["gages"] = gage_list  # type: ignore[assignment]
@@ -309,7 +313,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
 
-    jobs, total_count, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE],
         include_validation_data=GetValidationJobsScope.DONE,
@@ -324,7 +328,9 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
 
     response = {
         "jobs": jobs,
-        "total_count": total_count
+        "total_count": total_count,
+        "date_range": date_range,
+        "id_range": id_range
     }
     if get_gages:
         response["gages"] = gage_list  # type: ignore[assignment]
@@ -390,7 +396,7 @@ def get_calibration_jobs(request):
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
 
-    jobs, total_count, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -405,7 +411,9 @@ def get_calibration_jobs(request):
 
     response = {
         "jobs": jobs,
-        "total_count": total_count
+        "total_count": total_count,
+        "date_range": date_range,
+        "id_range": id_range
     }
     if get_gages:
         response["gages"] = gage_list  # type: ignore[assignment]
@@ -547,12 +555,12 @@ def _apply_shared_filters(
         if operator == "before":
             date_value = date_info.get("create_date")
             if date_value:
-                query &= Q(**{f"{created_field}__lt": date_value})
+                query &= Q(**{f"{created_field}__lte": date_value})
 
         elif operator == "after":
             date_value = date_info.get("create_date")
             if date_value:
-                query &= Q(**{f"{created_field}__gt": date_value})
+                query &= Q(**{f"{created_field}__gte": date_value})
 
         elif operator == "between":
             start_date = date_info.get("start_date")
@@ -568,12 +576,12 @@ def _apply_shared_filters(
         if operator == "before":
             id_value = id_info.get("id")
             if id_value is not None:
-                query &= Q(id__lt=id_value)
+                query &= Q(id__lte=id_value)
 
         elif operator == "after":
             id_value = id_info.get("id")
             if id_value is not None:
-                query &= Q(id__gt=id_value)
+                query &= Q(id__gte=id_value)
 
         elif operator == "between":
             start_id = id_info.get("start_id")
@@ -728,7 +736,12 @@ def get_jobs(
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
     :param get_gages: return the set of gages used by all the jobs
-    :return: Tuple (results, total_count, gage_list). total_count reflects total rows BEFORE pagination.
+    :return: Tuple (results, total_count, date_range, id_range, gage_list). 
+        - total_count reflects total rows BEFORE pagination.
+        - date_range reflects the possible range of created_at dates for this job type 
+            BEFORE pagination and filtering.
+        - id_range reflects the possible range of job IDs for this job type 
+            BEFORE pagination and filtering.
     """
     filters = filters or {}
     order_by = resolve_sort(sort, CalibrationSortField)
@@ -764,6 +777,16 @@ def get_jobs(
                 .values_list("gage__gage_id", flat=True)
                 .distinct()
             )
+
+        # ───── Get date and id range before filters (but after run_status restriction) ─────
+        range_qs = CalibrationRun.objects.filter(query).aggregate(
+            min_created_at=Min('created_at'), 
+            max_created_at=Max('created_at'),
+            min_job_id=Min('id'), 
+            max_job_id=Max('id'),
+        )
+        date_range = [range_qs['min_created_at'], range_qs['max_created_at']]
+        id_range = [range_qs['min_job_id'], range_qs['max_job_id']]
 
         # ───── Apply user-defined filters (except status) ─────
         # Adds API-provided filters (gage, modules, dates, IDs, etc.)
@@ -966,7 +989,7 @@ def get_jobs(
             if limit:
                 ids_qs = ids_qs[offset: offset + limit]
 
-            return list(ids_qs), total_count, gage_list
+            return list(ids_qs), total_count, date_range, id_range, gage_list
 
         # ───── Apply ordering BEFORE slicing ─────
         # Django applies LIMIT/OFFSET in SQL only when slicing occurs.
@@ -1066,7 +1089,7 @@ def get_jobs(
 
             results.append(result)
 
-        return results, total_count, gage_list if get_gages else None
+        return results, total_count, date_range, id_range, gage_list if get_gages else None
 
 
 def get_validation_jobs_internal(
@@ -1218,12 +1241,25 @@ def get_forecast_jobs_internal(
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of FORECAST_SORT_FIELD_MAP keys, "direction": "asc" or "desc" }.
-    :return: Tuple (results, total_count). total_count reflects the total number of matching rows
-             BEFORE pagination is applied.
+    :return: Tuple (results, total_count, date_range, id_range). 
+        - total_count reflects the total number of matching rows BEFORE pagination is applied.
+        - date_range reflects the possible range of created_at dates for this job type 
+            BEFORE pagination and filtering.
+        - id_range reflects the possible range of job IDs for this job type 
+            BEFORE pagination and filtering.
     """
     filters = filters or {}
 
     order_by = resolve_sort(sort, ForecastSortField)
+
+    range_qs = ForecastRun.objects.filter(calibration_run__owner=user).aggregate(
+        min_created_at=Min('created_at'), 
+        max_created_at=Max('created_at'),
+        min_job_id=Min('id'), 
+        max_job_id=Max('id'),
+    )
+    date_range = [range_qs['min_created_at'], range_qs['max_created_at']]
+    id_range = [range_qs['min_job_id'], range_qs['max_job_id']]
 
     query = apply_forecast_filters(Q(calibration_run__owner=user), filters)
 
@@ -1282,7 +1318,7 @@ def get_forecast_jobs_internal(
             }
         # else: omit cold_start entirely
 
-    return rows, total_count
+    return rows, total_count, date_range, id_range
 
 
 @extend_schema(
@@ -1323,7 +1359,7 @@ def get_forecast_jobs(request: Request) -> Response:
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
-    forecast_jobs, total_count = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
         request.user,
         run_status=None,
         limit=limit,
@@ -1334,7 +1370,9 @@ def get_forecast_jobs(request: Request) -> Response:
 
     response = {
         "forecast_jobs": forecast_jobs,
-        "total_count": total_count
+        "total_count": total_count,
+        "date_range": date_range,
+        "id_range": id_range
     }
 
     response_validator, error_response = validate_response(
@@ -1388,7 +1426,7 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
-    forecast_jobs, total_count = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
         request.user, run_status=[StatusEnum.DONE],
         limit=limit,
         offset=offset,
@@ -1398,7 +1436,9 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
 
     response = {
         "forecast_jobs": forecast_jobs,
-        "total_count": total_count
+        "total_count": total_count,
+        "date_range": date_range,
+        "id_range": id_range
     }
 
     response_validator, error_response = validate_response(
@@ -1433,12 +1473,25 @@ def get_verification_jobs_internal(
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of FORECAST_SORT_FIELD_MAP keys, "direction": "asc" or "desc" }.
-    :return: Tuple (results, total_count). total_count reflects the total number of matching rows
-             BEFORE pagination is applied.
+    :return: Tuple (results, total_count, date_range, id_range).
+        - total_count reflects the total number of matching rows BEFORE pagination is applied.
+        - date_range reflects the possible range of created_at dates for this job type 
+            BEFORE pagination and filtering.
+        - id_range reflects the possible range of job IDs for this job type 
+            BEFORE pagination and filtering.
     """
     filters = filters or {}
 
     order_by = resolve_sort(sort, VerificationSortField)
+
+    range_qs = VerificationRun.objects.filter(forecast_run__calibration_run__owner=user).aggregate(
+        min_created_at=Min('created_at'), 
+        max_created_at=Max('created_at'),
+        min_job_id=Min('id'), 
+        max_job_id=Max('id'),
+    )
+    date_range = [range_qs['min_created_at'], range_qs['max_created_at']]
+    id_range = [range_qs['min_job_id'], range_qs['max_job_id']]
 
     query = apply_verification_filters(Q(forecast_run__calibration_run__owner=user), filters)
 
@@ -1472,7 +1525,7 @@ def get_verification_jobs_internal(
         r["verification_run_id"] = r.pop("id")
         r["status"] = r.pop("status__name")
 
-    return rows, total_count
+    return rows, total_count, date_range, id_range
 
 
 @extend_schema(
@@ -1512,7 +1565,7 @@ def get_verification_jobs(request: Request) -> Response:
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
-    verification_jobs, total_count = get_verification_jobs_internal(
+    verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
         request.user,
         run_status=None,
         limit=limit,
@@ -1523,7 +1576,9 @@ def get_verification_jobs(request: Request) -> Response:
 
     response = {
         'verification_jobs': verification_jobs,
-        "total_count": total_count
+        "total_count": total_count,
+        "date_range": date_range,
+        "id_range": id_range
     }
 
     response_validator, error_response = validate_response(
