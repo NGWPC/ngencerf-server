@@ -552,6 +552,17 @@ fi
       echo
   fi
 
+#=======================================================================
+# Flush Redis cache in dev mode
+#=======================================================================
+if [ "${CERF_VENV}" != "Docker" ]; then
+    echo "Flushing Redis cache (dev)..."
+    if command -v redis-cli >/dev/null 2>&1; then
+        redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
+    else
+        echo "WARNING: redis-cli not found; skipping Redis flush"
+    fi
+fi
 
 
 #=======================================================================

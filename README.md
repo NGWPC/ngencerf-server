@@ -27,6 +27,23 @@ cp $cerfServer/cerfServer/__.env cerfServer/.env
 The 2 template files are suitable for development and no changes need to be made.
 Note that these files are not checked in to Git
 
+# Install Redis
+Redis is used for the cache
+
+```
+sudo apt update
+sudo apt install redis-server -y
+```
+Copy `redis.conf.sample` to `/etc/redis/redis.conf` and then start the service
+```
+sudo cp redis.conf.sample /etc/redis/redis.conf
+
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+redis-cli ping
+```
+
 # Create data directory
 
 Create a directory that will hold the data.  It can be anything, such as `~/ngwpc/data`.  But a symbolic link needs to be created to match the location in the ngen/cal-mgr Docker, 
