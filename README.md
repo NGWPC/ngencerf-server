@@ -34,9 +34,9 @@ Redis is used for the cache
 sudo apt update
 sudo apt install redis-server -y
 ```
-Copy `redis.conf.sample` to `/etc/redis/redis.conf` and then start the service
+Copy `./redis/redis.conf.dev` to `/etc/redis/redis.conf` and then start the service
 ```
-sudo cp redis.conf.sample /etc/redis/redis.conf
+sudo cp ./redis/redis.conf.dev /etc/redis/redis.conf
 
 sudo systemctl enable redis-server
 sudo systemctl start redis-server

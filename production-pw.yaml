@@ -1,7 +1,25 @@
 name: ngencerf-server
 
 services:
+  redis:
+    image: redis:7.2
+    container_name: ngencerf-redis
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    volumes:
+      - ./redis/redis.conf.prod:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
   ngencerf-services:
+    depends_on:
+      redis:
+        condition: service_healthy
     build:
       dockerfile: ./Dockerfile.production-pw
       context: .
@@ -10,7 +28,6 @@ services:
         - NGEN_FORCING_TAG=${NGEN_FORCING_TAG:-development}
         - DATA_ASSIMILATION_TAG=${DATA_ASSIMILATION_TAG:-development}
         - CACHE_BUST=${CACHE_BUST:-1}
-
     image: ghcr.io/ngwpc/ngencerf-server:${NGENCERF_SERVER_TAG:-latest}
     pull_policy: always
     ports:
@@ -22,7 +39,6 @@ services:
       - ${CONTAINER_PATH}:/ngencerf/containers/
       - /var/run/docker.sock:/var/run/docker.sock
       - /ngencerf-app/aws:/root/.aws:ro
-      - /ngencerf-app/django_cache:/var/django_cache
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
