@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import shlex
+import uuid
 
 from django.conf import settings
 from django.core.cache import cache
@@ -25,6 +26,9 @@ def _indent_output(output: str, indent: int = 2) -> str:
 def copy_file_from_docker_image(image_name: str, container_name: str, src_path: str, dest_path: str) -> bool:
     """
     Copies a file from a Docker image using a temporary container and ensures cleanup.
+      - Automatically appends a unique suffix to avoid name collisions.
+      - Best-effort stale container cleanup for the base prefix.
+      - Preserves all existing logging and structure.
 
     :param image_name: Name of the Docker image.
     :param container_name: Temporary container name.
@@ -34,7 +38,23 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
     """
     success = False  # Default to failure
 
-    # Basic sanity checks that often explain "exit status 1" quickly
+    # Add a guaranteed-unique suffix to avoid container name collisions
+    unique_name = f"{container_name}_{uuid.uuid4().hex[:8]}"
+
+    # Clean stale containers based on prefix (best effort)
+    # IMPORTANT: match the UUID-suffixed names
+    try:
+        ps = subprocess.run(
+            ["docker", "ps", "-a", "--filter", f"name={container_name}_", "-q"],
+            capture_output=True, text=True
+        )
+        stale_ids = [c.strip() for c in ps.stdout.splitlines() if c.strip()]
+        for cid in stale_ids:
+            subprocess.run(["docker", "rm", "-f", cid], capture_output=True, text=True)
+    except Exception as e:
+        logger.warning(f"Failed to clean stale containers for prefix {container_name}: {e}")
+
+    # Basic sanity checks
     if shutil.which("docker") is None:
         logger.error("Docker binary not found on PATH.")
         return False
@@ -45,15 +65,16 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
         return False
 
     # Step 1: Create a temporary container
-    create_cmd = ["docker", "create", "--name", container_name, image_name]
+    create_cmd = ["docker", "create", "--name", unique_name, image_name]
     logger.debug(create_cmd)
     try:
         create_response = subprocess.run(create_cmd, check=True, capture_output=True, text=True)
         if create_response.stdout:
             container_id = create_response.stdout.strip()
-            logger.info(f"Created temporary container {container_name} (ID={container_id[:12]})")
+            logger.info(f"Created temporary container {unique_name} (ID={container_id[:12]})")
         if create_response.stderr:
             logger.debug(f"[docker create stderr]\n{_indent_output(create_response.stderr.strip())}")
+
     except subprocess.CalledProcessError as e:
         logger.error(
             "Failed to create temporary container "
@@ -64,13 +85,13 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
         )
         # Attempt best-effort cleanup in case the name was already taken
         try:
-            subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, text=True)
+            subprocess.run(["docker", "rm", "-f", unique_name], capture_output=True, text=True)
         except Exception:
             pass
         return False
 
     # Step 2: Copy the file from the container
-    copy_cmd = ["docker", "cp", f"{container_name}:{src_path}", dest_path]
+    copy_cmd = ["docker", "cp", f"{unique_name}:{src_path}", dest_path]
     logger.debug(copy_cmd)
     try:
         copy_response = subprocess.run(copy_cmd, check=True, capture_output=True, text=True)
@@ -82,6 +103,7 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
 
         logger.info(f"Successfully copied {src_path} to {dest_path}")
         success = True
+
     except subprocess.CalledProcessError as e:
         logger.error(
             "Error copying file from Docker container "
@@ -90,9 +112,10 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
             f"STDOUT:\n{_indent_output((e.stdout or '').strip())}\n"
             f"STDERR:\n{_indent_output((e.stderr or '').strip())}"
         )
+
     finally:
         # Step 3: Remove the temporary container (always runs, even if copy fails)
-        rm_cmd = ["docker", "rm", "-f", container_name]
+        rm_cmd = ["docker", "rm", "-f", unique_name]
         rm_response = subprocess.run(rm_cmd, capture_output=True, text=True)
         if rm_response.returncode != 0:
             logger.warning(
@@ -102,6 +125,8 @@ def copy_file_from_docker_image(image_name: str, container_name: str, src_path: 
                 f"STDOUT:\n{_indent_output((rm_response.stdout or '').strip())}\n"
                 f"STDERR:\n{_indent_output((rm_response.stderr or '').strip())}"
             )
+        else:
+            logger.debug(f"Removed temporary container {unique_name}")
 
     return success
 
