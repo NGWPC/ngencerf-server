@@ -41,6 +41,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     save_output_iteration = models.BooleanField(default=False)
     automatic_validation = models.BooleanField(null=False, default=False)
     is_archived = models.BooleanField(default=False)
+    archive_status_updated_at = models.DateTimeField(null=True)
     is_locked = models.BooleanField(default=False)
     mpi_nprocs = models.IntegerField(null=True)
     next_worker_number = models.PositiveIntegerField(default=1)
