@@ -623,6 +623,10 @@ def archive_jobs(request: Request) -> Response:
 
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
+
+        # -------------------------------
+        # Retrieve run (allows archived)
+        # -------------------------------
         run, error_return = get_calibration_run(
             calibration_run_id, request.user,
             run_status=list(StatusEnum),
@@ -645,8 +649,12 @@ def archive_jobs(request: Request) -> Response:
             })
             continue
 
-        # Check for any running jobs (including the calibration job itself)
+        # ===============================
+        # ARCHIVE (EFS → S3)
+        # ===============================
         if archive:
+
+            # Prevent archiving while job or children jobs are running
             running_jobs_error = has_running_associated_jobs(run)
             if running_jobs_error:
                 job_results.append({
@@ -656,25 +664,22 @@ def archive_jobs(request: Request) -> Response:
                 })
                 continue
 
-            # ---------------------------------------------------
-            # Actual archive copy to S3
-            # ---------------------------------------------------
             try:
-                src = run.job_data_dir   # bare local path
-                dst = join_url(
+                src_path = run.job_data_dir  # e.g. /ngencerf/data/.../1_peter
+                dst_prefix = join_url(
                     settings.NGENCERF_ARCHIVE_S3_PATH,
-                    os.path.basename(src)
+                    os.path.basename(src_path),
                 )
 
                 start = time.perf_counter()
-                logger.info(f"Archiving Calibration Job {run.id}: copy {src} -> {dst}")
+                logger.info(f"Archiving Calibration Job {run.id}: copy {src_path} -> {dst_prefix}")
 
-                copied = copy_tree(src, dst)
+                copied = copy_tree(src_path, dst_prefix, verify=True)
 
                 elapsed = time.perf_counter() - start
                 logger.info(
                     f"Archived {copied} files for Calibration Job {run.id} "
-                    f"to {dst} in {elapsed:.2f} seconds"
+                    f"to {dst_prefix} in {elapsed:.2f} seconds"
                 )
 
             except Exception as e:
@@ -685,14 +690,56 @@ def archive_jobs(request: Request) -> Response:
                 })
                 continue
 
-        # Flip archive flag
+        # ===============================
+        # UNARCHIVE (S3 → EFS)
+        # ===============================
+        else:
+            try:
+                # Cloud prefix containing archived run
+                src_cloud_prefix = join_url(
+                    settings.NGENCERF_ARCHIVE_S3_PATH,
+                    os.path.basename(run.job_data_dir)
+                )
+
+                # Testing mode: restore into a parallel directory:
+                #   1_peter       → 1_peter_restore
+                restore_dir = f"{run.job_data_dir}_restore"
+
+                start = time.perf_counter()
+                logger.info(
+                    f"Unarchiving Calibration Job {run.id}: "
+                    f"copy {src_cloud_prefix} -> {restore_dir}"
+                )
+
+                copied = copy_tree(src_cloud_prefix, restore_dir, verify=True)
+
+                elapsed = time.perf_counter() - start
+                logger.info(
+                    f"Unarchived {copied} files for Calibration Job {run.id} "
+                    f"from {src_cloud_prefix} in {elapsed:.2f} seconds"
+                )
+
+            except Exception as e:
+                job_results.append({
+                    "message": f"Failed to unarchive Calibration Job {run.id}: {e}",
+                    "calibration_run_id": calibration_run_id,
+                    "success": False
+                })
+                continue
+
+        # -------------------------------
+        # Update run flags
+        # -------------------------------
         run.is_archived = archive
-        # If we're archiving, then unlock it
+
+        # When archiving, always unlock (cannot modify archived jobs)
         run.is_locked = False if archive else run.is_locked
+
         run.save(update_fields=['is_archived', 'is_locked'])
 
         job_results.append({
-            'message': f'Calibration Job {run.id} has been {"archived" if archive else "unarchived"}',
+            'message': f'Calibration Job {run.id} has been '
+                       f'{"archived" if archive else "unarchived"}',
             "calibration_run_id": calibration_run_id,
             "success": True
         })
