@@ -636,6 +636,7 @@ def archive_jobs(request: Request) -> Response:
             })
             continue
 
+        # Already archived/not-archived?
         if archive == run.is_archived:
             job_results.append({
                 "message": f'Calibration Job {run.id} is {"already" if archive else "not"} archived',
@@ -658,10 +659,13 @@ def archive_jobs(request: Request) -> Response:
             # ---------------------------------------------------
             # Actual archive copy to S3
             # ---------------------------------------------------
-            src = run.job_data_dir
-            dst = join_url(settings.NGENCERF_ARCHIVE_S3_PATH, os.path.basename(src))
-
             try:
+                src = run.job_data_dir   # bare local path
+                dst = join_url(
+                    settings.NGENCERF_ARCHIVE_S3_PATH,
+                    os.path.basename(src)
+                )
+
                 start = time.perf_counter()
                 logger.info(f"Archiving Calibration Job {run.id}: copy {src} -> {dst}")
 
