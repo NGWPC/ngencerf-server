@@ -3,7 +3,7 @@ import logging
 from typing import Any, Type, Literal
 
 from django.contrib.auth import get_user_model
-from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case
+from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Min, Max
 from django.db.models.functions import Lower
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework.decorators import api_view
@@ -29,69 +29,59 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 """
-Instructions for UI developer.  Will be deleted once we have this implemented
+Job Retrieval Endpoints for Calibration, Forecast, and Verification
+===================================================================
 
-UI Behavior Requirements for Job List (Calibration + Forecast Screens)
-=====================================================================
+This module provides a unified, consistent interface for retrieving job
+records across the CERF workflow, including Calibration, Forecast, and
+Verification runs. All endpoints support:
 
-All filter and sorting changes trigger a fresh API call:
+  • Server-side filtering
+  • Server-side sorting
+  • Pagination with offset + limit
+  • Optional ID-only responses
+  • Optional gage list retrieval
+  • Consistent date and ID ranges for client-side filtering
+  • Read-only execution to reduce database contention
 
-- When the user changes any filter (gage_id, status, modules, include_archived, etc.),
-  immediately request data with offset = 0.
-- When the user changes sorting (either field or direction),
-  immediately request data with offset = 0.
-- No “Apply” button is required; auto-submit on change is acceptable.
-  The server is optimized for this pattern — each response should return
-  a single page of results almost instantly (well under one second in typical use).
-
-
-Pagination behavior
--------------------
-- Next/Previous page or page number click updates offset
-  to the appropriate value (e.g., offset = pageIndex * limit)
-- Changing limit resets offset to 0
-- Changing filters or sort always resets offset to 0
-- Implement anticipatory loading (prefetching):
-  When fetching a page (e.g., limit = 25), request and locally cache
-  both the previous and next pages relative to the current one.
-  This ensures that when the user scrolls forward (Next) or backward (Previous),
-  data for those adjacent pages is already available.
-  Once the user navigates to a new page, prefetch the next one in that direction.
-  This rolling prefetch avoids lag while keeping memory usage predictable.
+The central function `get_jobs()` implements Calibration job retrieval.
+Forecast and Verification endpoints follow the same pattern.
 
 Request payload shape
 ---------------------
-Use this shape for every request (omit keys you’re not using):
+Use this general shape for every request (omit keys you are not using):
 
     limit: integer page size (e.g., 25)
     offset: integer row offset (0-based)
     filters: object with any of:
         gage_id: string
-        status: array of validated status names (e.g. ["Done", "Failed"])
-        module_filter: object with:
-            operator: "and" | "or"       (default = "and")
-            modules: array of module names
-        date_filter: object with:
+        status: array of status labels (e.g. ["Done", "Failed"])
+        module_filter:
+            operator: "and" | "or"
+            modules: list of module names
+        date_filter:
             operator: "before" | "after" | "between"
-            create_date: "YYYY-MM-DD"    # used for 'before' or 'after'
-            start_date: "YYYY-MM-DD"     # used for 'between'
-            end_date: "YYYY-MM-DD"       # used for 'between'
-        id_filter: object with:
+            create_date: YYYY-MM-DD     # before/after
+            start_date: YYYY-MM-DD      # between
+            end_date: YYYY-MM-DD        # between
+        id_filter:
             operator: "before" | "after" | "between"
-            id: integer                  # used for 'before' or 'after'
-            start_id: integer            # used for 'between'
-            end_id: integer              # used for 'between'
-        include_archived: boolean (false by default on backend)
-    sort: object with:
-        field: one of the server-allowed fields
+            id: integer                 # before/after
+            start_id: integer           # between
+            end_id: integer             # between
+        include_archived: boolean
+    sort:
+        field: allowed sort field name
         direction: "asc" or "desc"
-    ids_only: boolean (false by default; when true, only job IDs are returned)
+    ids_only: boolean
+    get_gages: boolean
 
-Do NOT send empty/defaults.
-If there are no filters, omit "filters".
-If there is no sort, omit "sort".
+Do not send empty/default filters or sort objects.
 
-Example request (as plain text):
+Examples
+--------
+
+Full example:
 
     {
         "limit": 25,
@@ -113,77 +103,55 @@ Example request (as plain text):
             },
             "include_archived": false
         },
-        "sort": { "field": "submit_date", "direction": "asc" },
-        "ids_only": false
+        "sort": { "field": "submit_date", "direction": "asc" }
     }
 
-Example with date range filter:
+Date range example:
 
     {
-      "limit": 25,
-      "offset": 0,
-      "filters": {
-          "date_filter": {
-              "operator": "between",
-              "start_date": "2025-01-01",
-              "end_date": "2025-02-01"
-          }
-      }
+        "limit": 25,
+        "offset": 0,
+        "filters": {
+            "date_filter": {
+                "operator": "between",
+                "start_date": "2025-01-01",
+                "end_date": "2025-02-01"
+            }
+        }
     }
 
 Minimal example:
 
     { "limit": 25, "offset": 0 }
 
-Allowed sort fields (must match what backend supports):
+Key concepts
+------------
 
-- Calibration: id, gage_id, formulation_name, submit_date, create_date,
-  job_genesis, status, period, stop_criteria, validation_runs
-- Forecast: id, gage_id, submit_date, create_date, cycle_date, configuration, domain_name, status
-- Verification: id, forecast_run_id, submit_date, create_date, status
+Status handling
+    Calibration jobs include both their own status and the statuses of their
+    associated validation runs. The module computes a deterministic
+    combined_status, and all user-supplied status filters apply to this value.
 
-Default sort (when not provided): by -id on the server.
+Filtering
+    All job types support gage filters, status filters, module membership,
+    date filters, ID filters, and archive toggles.
 
-Client UI Interaction:
+Sorting
+    Sorting uses server-approved fields defined in Enum classes
+    (e.g., CalibrationSortField). Multi-field sorts are supported.
 
-- Single “Sort by” select for field, plus a toggle for asc/desc
-  (default asc when field is first selected).
-- gage_id: free-text input with debounce (250–400 ms). Pressing Enter or blur
-  immediately triggers request (offset = 0). Include a clear/reset button.
-- status: multi-select with backend-approved label values.
-- modules: multi-select from server-provided list.
-- include_archived: checkbox (unchecked by default).
-- All filter changes immediately fetch data with offset = 0.
-- Debounce text filters, but not dropdowns or checkboxes.
+Pagination
+    Offset/limit pagination applies after filtering and sorting.
+    The module always returns total_count before pagination.
 
-UX expectations:
+Range metadata
+    Each endpoint returns:
+        • date_range = [min_created_at, max_created_at]
+        • id_range   = [min_id, max_id]
 
-- Show loading indicator while fetching. Disable pagination controls during load.
-- Always display total_count from server.
-- Show “Showing 26–50 of 137” style summary.
-- Keep filters + sort visibly summarized.
-- URL query string SHOULD reflect current limit/offset/filters/sort
-  (optional but recommended).
-
-Error / Empty States:
-
-- If total_count = 0, show “No jobs match your filters. Clear filters?”.
-- If API error, show toast/banner, allow retry, keep last good data visible.
-- Ensure ARIA + keyboard accessibility.
-
-Performance guidance:
-
-- Don’t send the request if nothing actually changed.
-- Optimistically flip sort indicators during user interaction.
-- Optionally cache results by a hash of {limit, offset, filters, sort}.
-- Implement rolling prefetch for pagination (anticipatory loading):
-  Always keep both the previous and next pages of the current page preloaded.
-  Replace older cached pages as the user scrolls forward or backward
-  to keep memory footprint predictable.
-
-This ensures consistent behavior: any filter or sort change resets offset = 0
-and immediately fetches new server data. Pagination manipulates offset only,
-while prefetching makes transitions instantaneous.
+Read-only execution
+    All retrieval runs inside a read-only transaction wrapper to reduce
+    lock contention.
 """
 
 
@@ -234,7 +202,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
 
-    jobs, total_count, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -253,6 +221,9 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     }
     if get_gages:
         response["gages"] = gage_list  # type: ignore[assignment]
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
 
     if ids_only:
         serializer_class = GetCalibrationJobIDsResponseSerializer
@@ -309,7 +280,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
 
-    jobs, total_count, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE],
         include_validation_data=GetValidationJobsScope.DONE,
@@ -328,6 +299,9 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     }
     if get_gages:
         response["gages"] = gage_list  # type: ignore[assignment]
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
 
     if ids_only:
         serializer_class = GetCalibrationJobIDsResponseSerializer
@@ -390,7 +364,7 @@ def get_calibration_jobs(request):
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
 
-    jobs, total_count, gage_list = get_jobs(
+    jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
@@ -409,6 +383,9 @@ def get_calibration_jobs(request):
     }
     if get_gages:
         response["gages"] = gage_list  # type: ignore[assignment]
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
 
     if ids_only:
         serializer_class = GetCalibrationJobIDsResponseSerializer
@@ -547,12 +524,12 @@ def _apply_shared_filters(
         if operator == "before":
             date_value = date_info.get("create_date")
             if date_value:
-                query &= Q(**{f"{created_field}__lt": date_value})
+                query &= Q(**{f"{created_field}__lte": date_value})
 
         elif operator == "after":
             date_value = date_info.get("create_date")
             if date_value:
-                query &= Q(**{f"{created_field}__gt": date_value})
+                query &= Q(**{f"{created_field}__gte": date_value})
 
         elif operator == "between":
             start_date = date_info.get("start_date")
@@ -568,12 +545,12 @@ def _apply_shared_filters(
         if operator == "before":
             id_value = id_info.get("id")
             if id_value is not None:
-                query &= Q(id__lt=id_value)
+                query &= Q(id__lte=id_value)
 
         elif operator == "after":
             id_value = id_info.get("id")
             if id_value is not None:
-                query &= Q(id__gt=id_value)
+                query &= Q(id__gte=id_value)
 
         elif operator == "between":
             start_id = id_info.get("start_id")
@@ -709,7 +686,7 @@ def get_jobs(
         sort: dict[str, str] | None = None,
         ids_only: bool = False,
         get_gages: bool = False
-) -> tuple[list[dict[str, Any]], int, list[str] | None]:
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any], list[str] | None]:
     """
     Retrieves calibration jobs for the given user with optional status filtering,
     validation data inclusion, server-side filters, sorting, and optional pagination.
@@ -728,7 +705,12 @@ def get_jobs(
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
     :param get_gages: return the set of gages used by all the jobs
-    :return: Tuple (results, total_count, gage_list). total_count reflects total rows BEFORE pagination.
+    :return: Tuple (results, total_count, date_range, id_range, gage_list). 
+        - total_count reflects total rows BEFORE pagination.
+        - date_range reflects the possible range of created_at dates for this job type 
+            BEFORE pagination and filtering.
+        - id_range reflects the possible range of job IDs for this job type 
+            BEFORE pagination and filtering.
     """
     filters = filters or {}
     order_by = resolve_sort(sort, CalibrationSortField)
@@ -765,6 +747,9 @@ def get_jobs(
                 .distinct()
             )
 
+        # ───── Get date and id range before filters (but after run_status restriction) ─────
+        date_range, id_range = compute_range(CalibrationRun, query)
+
         # ───── Apply user-defined filters (except status) ─────
         # Adds API-provided filters (gage, modules, dates, IDs, etc.)
         # to the base query. The 'status' filter is applied later
@@ -773,9 +758,30 @@ def get_jobs(
         query = apply_calibration_filters(query, filters)
 
         # ───── Build base queryset ─────
-        # If only IDs are requested, skip expensive annotations.
-        # Keep this lightweight unless we need full job detail.
+        # Build base queryset; validation-status annotations will be applied next.
         base_qs = CalibrationRun.objects.filter(query)
+
+        # ─────────────────────────────────────────────────────────────
+        # Always annotate validation_control_status + validation_best_status.
+        # combined_status depends on these values, so they must be present
+        # for BOTH ids_only and full-detail modes.
+        # The only thing skipped in ids_only mode is validation_run_count,
+        # because it is not needed for combined_status or filtering.
+        # ─────────────────────────────────────────────────────────────
+        base_qs = base_qs.annotate(
+            validation_control_status=Subquery(
+                ValidationRun.objects.filter(
+                    calibration_run_id=OuterRef("pk"),
+                    validation_type=ValidationType.VALID_CONTROL.value
+                ).values("status__name")[:1]
+            ),
+            validation_best_status=Subquery(
+                ValidationRun.objects.filter(
+                    calibration_run_id=OuterRef("pk"),
+                    validation_type=ValidationType.VALID_BEST.value
+                ).values("status__name")[:1]
+            )
+        )
 
         if not ids_only:
             # ───── Annotate validation and status fields used for sorting and combined logic ─────
@@ -793,29 +799,20 @@ def get_jobs(
                     "validations",
                     filter=~Q(validations__validation_type=ValidationType.VALID_CONTROL.value),
                     distinct=True
-                ),
-                validation_control_status=Subquery(
-                    ValidationRun.objects.filter(
-                        calibration_run_id=OuterRef("pk"),
-                        validation_type=ValidationType.VALID_CONTROL.value
-                    ).values("status__name")[:1]
-                ),
-                validation_best_status=Subquery(
-                    ValidationRun.objects.filter(
-                        calibration_run_id=OuterRef("pk"),
-                        validation_type=ValidationType.VALID_BEST.value
-                    ).values("status__name")[:1]
                 )
             )
 
         # ───── Combined status computation ─────
-        # The Case/When sequence below defines deterministic precedence among statuses.
-        # Django’s Case() evaluates conditions in order and stops at the first match.
-        #     explicitly in descending order of severity. There’s no built-in way to compute
-        #     the “worst” status across multiple columns dynamically.
+        # Combined status computation:
+        # Django’s Case() evaluates WHEN clauses in order and stops at the first match.
+        # This explicit ordering defines the severity precedence manually.
         #
         # Precedence (highest → lowest):
         #   Running → Server_Error → Failed → Cancelled → Submitted → Done → Saved/Ready
+        #
+        # combined_status is ALWAYS computed (even when ids_only=True) so that:
+        #   • status filters behave consistently in both modes
+        #   • pagination and filtering always operate on the same rows
         #
         # Rules:
         #   • If calibration is not Done → combined = calibration status
@@ -828,83 +825,80 @@ def get_jobs(
         #       – If all existing validations are Done → combined = Done
         #   • Missing validations are ignored.
         # ------------------------------------------------------------------
-        if ids_only:
-            base_qs = base_qs.annotate(combined_status=F("status__name"))
-        else:
-            base_qs = base_qs.annotate(
-                combined_status=Case(
-                    # Calibration not done → use calibration status directly
-                    When(~Q(status__name=StatusEnum.DONE.value), then=F("status__name")),
+        base_qs = base_qs.annotate(
+            combined_status=Case(
+                # Calibration not done → use calibration status directly
+                When(~Q(status__name=StatusEnum.DONE.value), then=F("status__name")),
 
-                    # Calibration done but any validation running
-                    When(
-                        Q(status__name=StatusEnum.DONE.value)
-                        & (
-                                Q(validation_control_status=StatusEnum.RUNNING.value)
-                                | Q(validation_best_status=StatusEnum.RUNNING.value)
-                        ),
-                        then=Value(StatusEnum.RUNNING.value),
+                # Calibration done but any validation running
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (
+                            Q(validation_control_status=StatusEnum.RUNNING.value)
+                            | Q(validation_best_status=StatusEnum.RUNNING.value)
                     ),
+                    then=Value(StatusEnum.RUNNING.value),
+                ),
 
-                    # Calibration done but any validation server error
-                    When(
-                        Q(status__name=StatusEnum.DONE.value)
-                        & (
-                                Q(validation_control_status=StatusEnum.SERVER_ERROR.value)
-                                | Q(validation_best_status=StatusEnum.SERVER_ERROR.value)
-                        ),
-                        then=Value(StatusEnum.SERVER_ERROR.value),
+                # Calibration done but any validation server error
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (
+                            Q(validation_control_status=StatusEnum.SERVER_ERROR.value)
+                            | Q(validation_best_status=StatusEnum.SERVER_ERROR.value)
                     ),
+                    then=Value(StatusEnum.SERVER_ERROR.value),
+                ),
 
-                    # Calibration done but any validation failed
-                    When(
-                        Q(status__name=StatusEnum.DONE.value)
-                        & (
-                                Q(validation_control_status=StatusEnum.FAILED.value)
-                                | Q(validation_best_status=StatusEnum.FAILED.value)
-                        ),
-                        then=Value(StatusEnum.FAILED.value),
+                # Calibration done but any validation failed
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (
+                            Q(validation_control_status=StatusEnum.FAILED.value)
+                            | Q(validation_best_status=StatusEnum.FAILED.value)
                     ),
+                    then=Value(StatusEnum.FAILED.value),
+                ),
 
-                    # Calibration done but any validation cancelled
-                    When(
-                        Q(status__name=StatusEnum.DONE.value)
-                        & (
-                                Q(validation_control_status=StatusEnum.CANCELLED.value)
-                                | Q(validation_best_status=StatusEnum.CANCELLED.value)
-                        ),
-                        then=Value(StatusEnum.CANCELLED.value),
+                # Calibration done but any validation cancelled
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (
+                            Q(validation_control_status=StatusEnum.CANCELLED.value)
+                            | Q(validation_best_status=StatusEnum.CANCELLED.value)
                     ),
+                    then=Value(StatusEnum.CANCELLED.value),
+                ),
 
-                    # Calibration done but any validation submitted
-                    When(
-                        Q(status__name=StatusEnum.DONE.value)
-                        & (
-                                Q(validation_control_status=StatusEnum.SUBMITTED.value)
-                                | Q(validation_best_status=StatusEnum.SUBMITTED.value)
-                        ),
-                        then=Value(StatusEnum.SUBMITTED.value),
+                # Calibration done but any validation submitted
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (
+                            Q(validation_control_status=StatusEnum.SUBMITTED.value)
+                            | Q(validation_best_status=StatusEnum.SUBMITTED.value)
                     ),
+                    then=Value(StatusEnum.SUBMITTED.value),
+                ),
 
-                    # Calibration done and all validations done (or missing)
-                    When(
-                        Q(status__name=StatusEnum.DONE.value)
-                        & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
-                        & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
-                        then=Value(StatusEnum.DONE.value),
-                    ),
+                # Calibration done and all validations done (or missing)
+                When(
+                    Q(status__name=StatusEnum.DONE.value)
+                    & (Q(validation_control_status__isnull=True) | Q(validation_control_status=StatusEnum.DONE.value))
+                    & (Q(validation_best_status__isnull=True) | Q(validation_best_status=StatusEnum.DONE.value)),
+                    then=Value(StatusEnum.DONE.value),
+                ),
 
-                    # Calibration job Saved or Ready → combined = calibration status
-                    When(
-                        Q(status__name__in=[StatusEnum.SAVED.value, StatusEnum.READY.value]),
-                        then=F("status__name"),
-                    ),
+                # Calibration job Saved or Ready → combined = calibration status
+                When(
+                    Q(status__name__in=[StatusEnum.SAVED.value, StatusEnum.READY.value]),
+                    then=F("status__name"),
+                ),
 
-                    # Fallback (covers any future status additions)
-                    default=F("status__name"),
-                    output_field=CharField(),
-                )
+                # Fallback (covers any future status additions)
+                default=F("status__name"),
+                output_field=CharField(),
             )
+        )
 
         # ─────────────────────────────────────────────────────────────
         # Apply DONE-validation enforcement (VALID_CONTROL and VALID_BEST)
@@ -940,8 +934,10 @@ def get_jobs(
             )
 
         # ─────────────────────────────────────────────────────────────
-        # APPLY USER STATUS FILTER — ALWAYS AFTER combined_status exists
-        # and after any DONE enforcement from above.
+        # Apply user-supplied status filter LAST.
+        # Must come AFTER combined_status, because filtering is done on the
+        # derived combined_status value, not the raw calibration status.
+        # This ensures ids_only and full-detail return the same job set.
         # ─────────────────────────────────────────────────────────────
         if "status" in filters and filters["status"]:
             # Normalize to lowercase for case-insensitive matching
@@ -966,7 +962,7 @@ def get_jobs(
             if limit:
                 ids_qs = ids_qs[offset: offset + limit]
 
-            return list(ids_qs), total_count, gage_list
+            return list(ids_qs), total_count, date_range, id_range, gage_list
 
         # ───── Apply ordering BEFORE slicing ─────
         # Django applies LIMIT/OFFSET in SQL only when slicing occurs.
@@ -1066,7 +1062,7 @@ def get_jobs(
 
             results.append(result)
 
-        return results, total_count, gage_list if get_gages else None
+        return results, total_count, date_range, id_range, gage_list if get_gages else None
 
 
 def get_validation_jobs_internal(
@@ -1206,8 +1202,8 @@ def get_forecast_jobs_internal(
         limit: int | None = None,
         offset: int = 0,
         filters: dict[str, Any] | None = None,
-        sort: dict[str, str] | None = None  # NEW
-) -> tuple[list[dict[str, Any]], int]:
+        sort: dict[str, str] | None = None
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
     Internal helper to retrieve forecast jobs for a user (READ ONLY), with optional filtering,
     sorting, and pagination.
@@ -1218,15 +1214,28 @@ def get_forecast_jobs_internal(
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of FORECAST_SORT_FIELD_MAP keys, "direction": "asc" or "desc" }.
-    :return: Tuple (results, total_count). total_count reflects the total number of matching rows
-             BEFORE pagination is applied.
+    :return: Tuple (results, total_count, date_range, id_range). 
+        - total_count reflects the total number of matching rows BEFORE pagination is applied.
+        - date_range reflects the possible range of created_at dates for this job type 
+            BEFORE pagination and filtering.
+        - id_range reflects the possible range of job IDs for this job type 
+            BEFORE pagination and filtering.
     """
     filters = filters or {}
 
     order_by = resolve_sort(sort, ForecastSortField)
 
-    query = apply_forecast_filters(Q(calibration_run__owner=user), filters)
+    query = Q(calibration_run__owner=user)
 
+    # Compute ranges BEFORE user filters
+    date_range, id_range = compute_range(ForecastRun, query)
+
+    query = Q(calibration_run__owner=user)
+
+    # Now apply user filters
+    query = apply_forecast_filters(query, filters)
+
+    # Apply status restriction if needed
     if run_status:
         query &= Q(status_id__in=[s.db_instance.id for s in run_status])
 
@@ -1242,6 +1251,7 @@ def get_forecast_jobs_internal(
                 'calibration_run_id',
                 'configuration__name',
                 'configuration__domain__name',
+                'created_at',
                 'cycle_date',
                 'submit_date',
                 'calibration_run__gage__gage_id',
@@ -1282,7 +1292,7 @@ def get_forecast_jobs_internal(
             }
         # else: omit cold_start entirely
 
-    return rows, total_count
+    return rows, total_count, date_range, id_range
 
 
 @extend_schema(
@@ -1323,7 +1333,7 @@ def get_forecast_jobs(request: Request) -> Response:
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
-    forecast_jobs, total_count = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
         request.user,
         run_status=None,
         limit=limit,
@@ -1334,8 +1344,11 @@ def get_forecast_jobs(request: Request) -> Response:
 
     response = {
         "forecast_jobs": forecast_jobs,
-        "total_count": total_count
+        "total_count": total_count,
     }
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
 
     response_validator, error_response = validate_response(
         GetForecastJobsResponseSerializer, response,
@@ -1388,7 +1401,7 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
-    forecast_jobs, total_count = get_forecast_jobs_internal(
+    forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
         request.user, run_status=[StatusEnum.DONE],
         limit=limit,
         offset=offset,
@@ -1400,6 +1413,9 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
         "forecast_jobs": forecast_jobs,
         "total_count": total_count
     }
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
 
     response_validator, error_response = validate_response(
         GetForecastJobsResponseSerializer, response,
@@ -1422,7 +1438,7 @@ def get_verification_jobs_internal(
         offset: int = 0,
         filters: dict[str, Any] | None = None,
         sort: dict[str, str] | None = None
-) -> tuple[list[dict[str, Any]], int]:
+) -> tuple[list[dict[str, Any]], int, list[Any], list[Any]]:
     """
     Internal helper to retrieve verification jobs (READ ONLY) with optional
     filtering, sorting, and pagination.
@@ -1433,15 +1449,26 @@ def get_verification_jobs_internal(
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (reusing calibration filters, e.g. gage_id, status, modules).
     :param sort: Optional dict { "field": one of FORECAST_SORT_FIELD_MAP keys, "direction": "asc" or "desc" }.
-    :return: Tuple (results, total_count). total_count reflects the total number of matching rows
-             BEFORE pagination is applied.
+    :return: Tuple (results, total_count, date_range, id_range).
+        - total_count reflects the total number of matching rows BEFORE pagination is applied.
+        - date_range reflects the possible range of created_at dates for this job type 
+            BEFORE pagination and filtering.
+        - id_range reflects the possible range of job IDs for this job type 
+            BEFORE pagination and filtering.
     """
     filters = filters or {}
 
     order_by = resolve_sort(sort, VerificationSortField)
 
-    query = apply_verification_filters(Q(forecast_run__calibration_run__owner=user), filters)
+    query = Q(forecast_run__calibration_run__owner=user)
 
+    # Compute ranges BEFORE user filters
+    date_range, id_range = compute_range(VerificationRun, query)
+
+    # Now apply user filters
+    query = apply_verification_filters(query, filters)
+
+    # Apply status restriction if needed
     if run_status:
         query &= Q(status_id__in=[s.db_instance.id for s in run_status])
 
@@ -1472,7 +1499,7 @@ def get_verification_jobs_internal(
         r["verification_run_id"] = r.pop("id")
         r["status"] = r.pop("status__name")
 
-    return rows, total_count
+    return rows, total_count, date_range, id_range
 
 
 @extend_schema(
@@ -1512,7 +1539,7 @@ def get_verification_jobs(request: Request) -> Response:
     sort = validator.get("sort")
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
-    verification_jobs, total_count = get_verification_jobs_internal(
+    verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
         request.user,
         run_status=None,
         limit=limit,
@@ -1525,6 +1552,9 @@ def get_verification_jobs(request: Request) -> Response:
         'verification_jobs': verification_jobs,
         "total_count": total_count
     }
+    if total_count > 0:
+        response['date_range'] = date_range
+        response['id_range'] = id_range
 
     response_validator, error_response = validate_response(
         GetVerificationJobsResponseSerializer, response,
@@ -1538,3 +1568,23 @@ def get_verification_jobs(request: Request) -> Response:
         f'{json.dumps(truncate_large_fields(response_validator.data, fields_to_truncate=["verification_jobs"], max_length=10))}'
     )
     return Response(response_validator.data)
+
+
+def compute_range(model, query: Q) -> tuple[
+    list[Any],  # created_at range
+    list[Any],  # id range
+]:
+    """
+    Compute min/max created_at and id for any job model.
+    Returns (date_range, id_range) as two lists.
+    """
+    agg = model.objects.filter(query).aggregate(
+        min_created_at=Min('created_at'),
+        max_created_at=Max('created_at'),
+        min_job_id=Min('id'),
+        max_job_id=Max('id'),
+    )
+    return (
+        [agg['min_created_at'], agg['max_created_at']],
+        [agg['min_job_id'], agg['max_job_id']],
+    )
