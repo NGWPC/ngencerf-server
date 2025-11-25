@@ -3,8 +3,11 @@ import time
 
 from django.db import connection
 from django.http import HttpRequest, HttpResponse
+from django.utils.deprecation import MiddlewareMixin
 
 logger = logging.getLogger(__name__)
+
+CALIBRATION_PREFIX = "/calibration/"
 
 
 class TimingMiddleware:
@@ -54,5 +57,52 @@ class TimingMiddleware:
             if db_time is not None
             else f"TimingMiddleware: total={total_elapsed:.3f}s (db stats unavailable) for path {request.path}"
         )
+
+        return response
+
+
+class LogUnmatchedCalibrationRequestsMiddleware(MiddlewareMixin):
+    """
+    Logs requests to /calibration/* that never reach DRF views
+    and would normally only show 'Not Found' or 'Method Not Allowed'.
+    """
+
+    def process_view(self, request, view_func, view_args, view_kwargs):
+        # If a view is matched, do nothing
+        return None
+
+    def process_response(self, request, response):
+        path = request.path
+
+        # Only inspect calibration endpoints
+        if not path.startswith(CALIBRATION_PREFIX):
+            return response
+
+        # Case: URL not found or method not allowed
+        if response.status_code in (404, 405):
+            try:
+                user = getattr(request, "user", None)
+                user_str = (
+                    user.email
+                    if hasattr(user, "email") and user.is_authenticated
+                    else "Anonymous"
+                )
+            except Exception:
+                user_str = "Unknown"
+
+            # Best-effort body capture
+            try:
+                body = request.body.decode("utf-8", errors="ignore")
+            except Exception:
+                body = "<unreadable>"
+
+            user_agent = request.META.get("HTTP_USER_AGENT", "")
+            ip = request.META.get("REMOTE_ADDR")
+
+            logger.warning(
+                f"UNMATCHED API REQUEST: {path} "
+                f"method={request.method} user={user_str} ip={ip} "
+                f"user_agent='{user_agent}' body='{body}'"
+            )
 
         return response
