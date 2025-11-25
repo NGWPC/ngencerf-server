@@ -11,25 +11,23 @@ from calibration.umask_debug import install_umask_trap
 #
 #       --preload
 #
-# Without --preload, Django is NOT loaded in the master process and
-# settings are not available inside when_ready(), which will cause
-# “Requested setting ... not configured” errors.
+# Without --preload:
+#   • Django is NOT loaded in the master process
+#   • settings are unavailable
+#   • when_ready() cannot safely access Django APIs
 #
 # With --preload:
-#   * Django loads once in the MASTER
-#   * when_ready() can safely call django.setup()
-#   * Cache clearing runs ONCE per server startup
-#   * Workers inherit Django state from the master
+#   • Django loads ONCE in the MASTER
+#   • Workers fork from an initialized Django state
+#   • umask trap installs cleanly
 #
 # runCerf.sh script already uses --preload.
 #
 # =====================================================================
 
-#
 # ============================================================
 # Gunicorn native logging settings (Option A — disable noise)
 # ============================================================
-#
 
 # Disable access logs entirely
 accesslog = None
@@ -92,46 +90,23 @@ def on_starting(_server):
 
 def when_ready(_server):
     """
-    Runs once in the master AFTER Django is loaded (because of --preload),
-    and AFTER workers have been forked.
-
-    This is the correct place to do one-time Django initialization such as
-    clearing the file-based cache in production.
+    Runs once in the master AFTER Django is loaded.
+    Just configure logging.
     """
     _configure_logging()
 
     logger = logging.getLogger("gunicorn.error")
     logger.info("[gunicorn_conf] Master ready (PID=%s)", os.getpid())
-    logger.info("[gunicorn_conf] Clearing Django cache once at startup")
-
-    try:
-        import django
-        django.setup()
-
-        # These imports MUST occur after django.setup()
-        from django.conf import settings
-        from django.core.cache import caches
-
-        cache = caches["default"]
-        cache.clear()
-
-        logger.info(
-            "[gunicorn_conf] Cleared Django file-based cache at %s",
-            settings.CACHE_DIRECTORY
-        )
-
-    except Exception as e:
-        logger.error("[gunicorn_conf] ERROR clearing Django cache in when_ready: %s", e)
 
 
 # =====================================================================
-# 4. Hook: Worker initialization
+# 4. Hook: Worker initialization (per worker)
 # =====================================================================
 
 def post_fork(_server, worker):
     """
     Runs once for each worker (initial and respawned).
-    Only performs per-worker logging setup and umask.
+    Install umask trap + enforce umask for each worker.
     """
     install_umask_trap()
 

@@ -1,6 +1,21 @@
 name: ngencerf-server
 
 services:
+  redis:
+    image: redis:7.2
+    container_name: ngencerf-redis
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    volumes:
+      - ./redis/redis.conf.prod:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
   db:
     image: postgres:16
     ports:
@@ -19,6 +34,11 @@ services:
       timeout: 5s
 
   ngencerf-services:
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     build:
       context: .
       args:
@@ -41,7 +61,4 @@ services:
         required: true
       - path: ./ngencerf_services.override.env
         required: false
-    depends_on:
-      db:
-        condition: service_healthy
-        restart: true
+
