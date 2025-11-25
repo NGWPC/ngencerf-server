@@ -526,6 +526,7 @@ if [ "${CERF_VENV}" = "Docker" ]; then
     fi
 
     echo "Copying from $PREBUILT_DIR -> $TARGET_DIR"
+    # Copy contents only
     cp -a "$PREBUILT_DIR"/. "$TARGET_DIR"/
 
 else
@@ -542,8 +543,9 @@ else
     cd tmp-ngen-forcing
     git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates
 
-    mv NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates \
-        "$TARGET_DIR"
+    # Move *contents* of config_templates into TARGET_DIR
+    cp -a NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates/. \
+        "$TARGET_DIR"/
 
     cd "$STATIC_DIR"
     rm -rf tmp-ngen-forcing
