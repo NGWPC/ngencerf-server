@@ -199,19 +199,30 @@ COPY . /ngencerf/ngencerf-server/
 
 # Fetch forecast_forcing_templates into an internal, non-mounted path to be copied at runtime by runCerf.sh
 RUN set -eux && \
-    PREBUILT_DIR="/ngencerf/prebuilt" && \
-    mkdir -p "$PREBUILT_DIR" && \
-    cd "$PREBUILT_DIR" && \
-    rm -rf forecast_forcing_templates && \
+    PREBUILT_DIR="/ngencerf/prebuilt/forecast_forcing_templates" && \
+    NGEN_FORCING_URL="https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git" && \
     \
+    echo "Preparing forecast_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}" && \
+    \
+    # Ensure prebuilt directory exists and is empty
+    rm -rf "$PREBUILT_DIR" && \
+    mkdir -p "$PREBUILT_DIR" && \
+    \
+    # Clone sparse repo
     git clone --depth 1 --filter=blob:none --sparse \
-        -b "${NGEN_FORCING_TAG}" https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git tmp-ngen-forcing && \
+        -b "${NGEN_FORCING_TAG}" \
+        "$NGEN_FORCING_URL" tmp-ngen-forcing && \
+    \
     cd tmp-ngen-forcing && \
-    git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates && \
-    mv NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates \
-        "$PREBUILT_DIR/forecast_forcing_templates" && \
-    cd "$PREBUILT_DIR" && \
-    rm -rf tmp-ngen-forcing
+    git sparse-checkout set \
+        NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates && \
+    \
+    # Copy *contents* of config_templates into PREBUILT_DIR
+    cp -a NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates/. \
+        "$PREBUILT_DIR"/ && \
+    \
+    cd /ngencerf/ngencerf-server && \
+    rm -rf tmp-ngen-forcing || true
 
 
 # Build CLI executable in cli/dist
