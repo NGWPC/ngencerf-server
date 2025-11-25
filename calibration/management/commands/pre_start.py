@@ -104,15 +104,16 @@ class Command(BaseCommand):
                                 mark_error(run, "Invalid JSON response from Slurm")
                                 continue
 
-                            # Treat any error or non-RUNNING status as a failed job
+                            slurm_status = data.get("status")
+                            # Any Slurm error or non-running state counts as failure
                             if "error" in data:
                                 mark_error(run, f"Slurm returned error: {data['error']}")
-                            elif data.get("status") != "RUNNING":
-                                mark_error(run, f"Slurm status is {data.get('status')!r}, not RUNNING.")
+                            elif slurm_status not in ("RUNNING", "CONFIGURING"):
+                                mark_error(run, f"Slurm status is {slurm_status}, not RUNNING or CONFIGURING.")
                             else:
-                                # Job is truly still running — leave as-is
+                                # Job is still alive on Slurm
                                 logger.info(
-                                    f"Job still RUNNING on Slurm: "
+                                    f"Job still active on Slurm: "
                                     f"{model.__name__}(id={run.id}, slurm_job_id={slurm_id}) — leaving untouched."
                                 )
 
