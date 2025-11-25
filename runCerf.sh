@@ -611,7 +611,7 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
             --name ngencerf \
             --workers ${WORKERS} \
             --worker-class uvicorn.workers.UvicornWorker \
-            --max-requests ${GUNICORN_MAX_REQUESTS:-500} \
+            --max-requests ${GUNICORN_MAX_REQUESTS:-300} \
             --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-100} \
             --preload \
             --bind ${BIND_ADDR} \
