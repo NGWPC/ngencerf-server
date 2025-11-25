@@ -53,16 +53,24 @@ class Command(BaseCommand):
                 total_marked_error = 0  # how many we actually updated
 
                 def mark_error(run: BaseRun, reason: str):
-                    # Log with rich context: includes job type, id, name, slurm ID
+                    # Temporarily disabled: we are NOT modifying job status
                     nonlocal total_marked_error
                     total_marked_error += 1
+
                     job_description = get_job_description(run)
+
+                    # logger.warning(
+                    #     f"Marking job {job_description} as SERVER_ERROR: "
+                    #     f"slurm_job_id={run.slurm_job_id}) — reason: {reason}"
+                    # )
                     logger.warning(
-                        f"Marking job {job_description} as SERVER_ERROR: "
-                        f"slurm_job_id={run.slurm_job_id}) — reason: {reason}"
+                        f"[DRY-RUN] Would mark job {job_description} as SERVER_ERROR "
+                        f"(slurm_job_id={run.slurm_job_id}) — reason: {reason}. "
+                        f"Status NOT changed."
                     )
-                    run.status = error_status
-                    run.save(update_fields=["status"])
+                    # Disabled:
+                    # run.status = error_status
+                    # run.save(update_fields=["status"])
 
                 base_url = urljoin(settings.SLURM_URL, settings.SLURM_JOB_STATUS_ENDPOINT)
 
