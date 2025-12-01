@@ -1,6 +1,8 @@
+import gc
 import logging
 import os
 import sqlite3
+import time
 import traceback
 from contextlib import contextmanager
 from functools import lru_cache
@@ -312,7 +314,7 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
     - Reprojects all spatial layers to EPSG:4326 (WGS84) unless they are already in EPSG:5070
     - Copies all non-spatial tables as-is using raw SQLite operations
     - Overwrites the output file if it already exists
-    - If output_path is a directory (explicitly or by detection), saves the output using the same filename as gpkg_path
+    - If output_path is a directory (explicitly or by detection), saves the output using the same filename
     - If output_path is a file and does not end with '.gpkg', appends the extension
 
     Accepts a local path or a remote URL for gpkg_path (downloaded to the persistent cache first).
@@ -350,7 +352,7 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
         non_spatial_layers = []
 
         # First pass: identify spatial vs non-spatial and write spatial layers
-        with fiona.Env():  # ensures GDAL handles close at block exit
+        with fiona.Env():  # ensures GDAL's environment is created and then torn down cleanly
             for layer_name in before_layers:
                 try:
                     gdf = safe_read_gpkg(local_path, layer=layer_name)
@@ -362,6 +364,7 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
                 # Detect whether it's non-spatial
                 if not isinstance(gdf, gpd.GeoDataFrame) or gdf.geometry.name not in gdf.columns:
                     non_spatial_layers.append(layer_name)
+                    del gdf
                     continue
 
                 # Reproject or copy as-is
@@ -376,19 +379,62 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
                                 f"for {_pp(orig_path, local_path)}.")
                     gdf_out = gdf.to_crs(epsg=4326)
 
+                # Write spatial layer
                 gdf_out.to_file(Path(output_path), layer=layer_name, driver="GPKG")
 
                 spatial_layers.append(layer_name)
 
+                # IMPORTANT: release Fiona/GDAL objects immediately so underlying
+                # SQLite file handles can be closed by Python's GC.
+                del gdf
+                del gdf_out
+
+        # Force cleanup of any remaining Fiona/GDAL dataset handles to release SQLite locks
+        gc.collect()
+
         # Second pass: copy non-spatial tables using SQLite
-        with sqlite3.connect(local_path) as src_conn, sqlite3.connect(output_path) as dst_conn:
-            for table in non_spatial_layers:
-                logger.info(f"Copying non-spatial table '{table}' from {_pp(orig_path, local_path)}")
-                try:
-                    copy_non_spatial_table_one(table, src_conn, dst_conn)
-                except Exception as e:
-                    logger.error(f"Failed to copy non-spatial table '{table}' from {_pp(orig_path, local_path)}. Error: {e}")
-                    traceback.print_exc()
+        # Retry loop is required because GDAL/GDAL's SQLite driver sometimes closes
+        # its file handles slightly after Python's GC runs. This small race window
+        # (a few ms) can cause a transient "database is locked" error.
+        max_attempts = 5
+
+        for attempt in range(max_attempts):
+            try:
+                # Second pass: copy non-spatial tables using SQLite
+                with sqlite3.connect(local_path) as src_conn, sqlite3.connect(output_path) as dst_conn:
+                    for table in non_spatial_layers:
+                        logger.info(f"Copying non-spatial table '{table}' from {_pp(orig_path, local_path)}")
+                        try:
+                            copy_non_spatial_table_one(table, src_conn, dst_conn)
+                        except Exception as e:
+                            logger.error(f"Failed to copy non-spatial table '{table}' from {_pp(orig_path, local_path)}. Error: {e}")
+                            traceback.print_exc()
+                break  # success → exit retry loop
+
+            except sqlite3.OperationalError as e:
+                msg = str(e).lower()
+
+                # Retry only on actual SQLite lock/busy errors; any other failure is real.
+                if "locked" in msg or "busy" in msg:
+                    # Backoff gives GDAL time to finish closing lingering file handles.
+                    delay = 0.05 * (attempt + 1)
+                    logger.warning(
+                        f"SQLite locked after GDAL cleanup (attempt {attempt+1}/{max_attempts}). "
+                        f"Retrying in {delay:.2f}s... Error: {e}"
+                    )
+                    time.sleep(delay)
+                    continue
+
+                # Non-locking error → re-raise immediately
+                logger.error(f"SQLite failure after GDAL cleanup: {e}")
+                raise
+
+        else:
+            # All attempts exhausted
+            raise RuntimeError(
+                f"Could not open SQLite DB after {max_attempts} attempts due to persistent lock "
+                f"on {_pp(orig_path, local_path)}"
+            )
 
         # --- Show layers after normalization ---
         try:
