@@ -719,7 +719,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
         try:
             job_data_dir = run.job_data_dir
             zip_name = f"{os.path.basename(job_data_dir)}_{run.user_formulation_name}"
-            zip_path = os.path.join(settings.CACHE_DIRECTORY, f'{zip_name}.zip')
+            zip_path = os.path.join('/tmp', f'{zip_name}.zip')
 
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 for root, _, files in os.walk(job_data_dir):
