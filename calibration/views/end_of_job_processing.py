@@ -579,7 +579,11 @@ def process_params_row(calibration_run: CalibrationRun,
             calibration_parameter=parameter,
             tuned_value=tuned_value
         )
-        logger.debug(f'{job_description}: Creating Iteration parameter for {param_obj}')
+        logger.debug(
+            f"{job_description}: Creating IterationParameter "
+            f"for iteration={iteration.iteration_num}, param={parameter.name}, value={tuned_value}"
+        )
+
         params_to_create.append(param_obj)
 
 
