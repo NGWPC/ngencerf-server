@@ -1043,8 +1043,6 @@ def _process_job_action(
         return 1
 
     # ───── Optional pre-display for single-job operations ─────
-    print('pre_display_func', pre_display_func)
-    print('calibration_run_ids', calibration_run_ids)
     if pre_display_func and len(calibration_run_ids) == 1:
         print("\nFetching job details for confirmation...\n")
         pre_display_func(calibration_run_ids[0], display=True)
