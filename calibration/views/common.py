@@ -250,14 +250,16 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
     :param genesis: Origin of the job (optional).
     :return: New CalibrationRun instance.
     """
-    run = CalibrationRun.objects.create(is_active=True, owner=user, status=StatusEnum.SAVED.db_instance)
+    run = CalibrationRun.objects.create(
+        is_active=True,
+        owner=user,
+        status=StatusEnum.SAVED.db_instance,
+        job_genesis=genesis.value if genesis else JobGenesis.GUI.value,
+    )
 
     # Just get the user part, before the @ sign
     username = run.owner.username.split('@')[0]
     run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f"{run.id}_{username}")
-
-    # Set the job genesis based on the provided genesis or default to JobGenesis.GUI
-    run.job_genesis = genesis.value if genesis else JobGenesis.GUI.value
 
     # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory if it already exists (should not happen in production)
     if os.path.exists(run.job_data_dir):
@@ -286,6 +288,7 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
     # Determine actual permissions
     mode = os.stat(run.job_data_dir).st_mode & 0o777
 
+    # This log statement is here for when we were trouble-shooting a umask issue.  It can be simplified (don't need pid and umask to be displayed)
     logger.info(
         f"Directory created: {run.job_data_dir} | perms={oct(mode)} | "
         f"PID={pid} | umask={oct(current_umask)}"
@@ -293,7 +296,7 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
 
     # This is always true
     run.automatic_validation = True
-    run.save(update_fields=['job_data_dir', 'automatic_validation', 'job_genesis'])
+    run.save(update_fields=['job_data_dir', 'automatic_validation'])
     return run
 
 
