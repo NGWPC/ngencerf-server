@@ -29,8 +29,7 @@ import os
 # Disable access logs entirely
 accesslog = None
 
-# Disable Gunicorn's own stderr logging format
-# (Django logging already handles everything cleanly)
+# Send Gunicorn's error log to stderr (Django logging handles content)
 errorlog = "-"
 
 # Ensure Gunicorn does NOT add its own handlers
@@ -52,8 +51,6 @@ def _configure_logging(worker=None):
     here will cause duplicate log messages.
     """
     try:
-        # Django has already installed its handlers by the time loggers
-        # are used here (because of --preload).
         django_root = logging.getLogger()
         django_handlers = django_root.handlers
 
