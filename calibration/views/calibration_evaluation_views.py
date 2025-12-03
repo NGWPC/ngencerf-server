@@ -719,7 +719,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
         try:
             job_data_dir = run.job_data_dir
             zip_name = f"{os.path.basename(job_data_dir)}_{run.user_formulation_name}"
-            zip_path = os.path.join(settings.CACHE_DIRECTORY, f'{zip_name}.zip')
+            zip_path = os.path.join('/tmp', f'{zip_name}.zip')
 
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 for root, _, files in os.walk(job_data_dir):
@@ -823,7 +823,7 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
 
             # Stream loop: keep checking the job status until it is "done" or "error"
             while True:
-                # Retrieve the current zip status from in-memory map
+                # Retrieve the current zip status from in-memory cache
                 current_zip_status = cache.get(cache_key, {"status": "not_found"})
 
                 # Format the status as an SSE-compatible message
@@ -928,6 +928,15 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         response = FileResponse(open(zip_path, 'rb'), content_type='application/zip')
         filename = os.path.basename(zip_path)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Content-Length'] = str(zip_size)
+
+        # Prevent browsers/intermediaries from caching the response.
+        # Ensures the client always performs a fresh request so Nginx does not reuse a stale/broken cached stream.
+        response['Cache-Control'] = 'no-cache'
+
+        # Tell Nginx NOT to buffer the file before sending it downstream.
+        # This avoids Nginx holding a 1.5 GB file in memory/disk buffers, which can trigger timeouts or stall the transfer.
+        response['X-Accel-Buffering'] = 'no'
 
         def cleanup():
             try:

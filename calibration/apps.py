@@ -35,7 +35,7 @@ def print_banner():
 ██║╚██╗██║██║   ██║██╔══╝  ██║╚██╗██║██║     ██╔══╝  ██╔══██╗██╔══╝ta  
 ██║ ╚████║╚██████╔╝███████╗██║ ╚████║╚██████╗███████╗██║  ██║██║     
 ╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚═╝     
-                                                                     
+
 ███████╗███████╗██████╗ ██╗   ██╗███████╗██████╗                     
 ██╔════╝██╔════╝██╔══██╗██║   ██║██╔════╝██╔══██╗                    
 ███████╗█████╗  ██████╔╝██║   ██║█████╗  ██████╔╝                    
@@ -51,58 +51,34 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
-        # Check if we're running the server or a management command
-        running_server = (
-                'runserver' in sys.argv
-                or 'runsslserver' in sys.argv
-                or any('gunicorn' in arg for arg in sys.argv)
-        )
+        # -------------------------------------------------------------
+        # Detect dev server or gunicorn
+        # -------------------------------------------------------------
+        running_dev_server = any(cmd in sys.argv for cmd in ('runserver', 'runsslserver'))
+        running_gunicorn = any('gunicorn' in arg for arg in sys.argv)
 
-        if running_server:
+        # -------------------------------------------------------------
+        # Banner + basic info
+        # -------------------------------------------------------------
+        if running_dev_server or running_gunicorn:
             print_banner()
         else:
+            # Management command
             logger.info(f'*** Running {sys.argv[1]}')
 
         logger.info(f'Environment: {settings.NGEN_ENVIRONMENT_STR}')
         log_worker_info()
-        if running_server:
-            # ------------------------------------------------------------------
-            # Clear Django file-based cache at startup (runs once per worker)
-            #
-            # Note:
-            #   This is technically overkill since all workers share the same
-            #   file-based cache directory, but Gunicorn doesn’t provide an
-            #   easy way to execute initialization logic just once at master
-            #   startup. Clearing here is harmless and ensures a clean cache.
-            # -------------------------------------------------------------
-            try:
-                cache = caches['default']
-                cache.clear()
-                logger.info(f'Cleared Django file-based cache at {settings.CACHE_DIRECTORY}')
 
-                # --- SANITY TEST ---
-                test_key = "cache_sanity_check_key"
-                cache.set(test_key, "OK", timeout=None)
-                if cache.get(test_key) == "OK":
-                    logger.info("Django file-based cache is WORKING (write/read success)")
-                else:
-                    logger.warning("Django cache SET/GET check FAILED — likely fallback to LocMemCache or DummyCache")
-
-            except Exception as e:
-                logger.error(f'Django cache failed during init SET/GET check: {e}')
-
-            logger.info('')
-            print_git_info_all()
-
-        try:
-            os.umask(0o022)
-            logger.info("Set process umask to 0o22.")
-        except Exception as e:
-            logger.warning(f"Failed to set umask: {e}")
+        # ------------------------------------------------------------------
+        # ALWAYS display Git, DB and environment info
+        # ------------------------------------------------------------------
+        logger.info('')
+        print_git_info_all()
 
         logger.info('')
         print_db_info()
         logger.info('')
+
         logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
         logger.info(f'NGEN_CAL_MOUNT_POINT: {settings.NGEN_CAL_MOUNT_POINT}')
         logger.info(f'NGEN_STATIC_DIR: {settings.NGEN_STATIC_DIR}')
@@ -112,4 +88,5 @@ class CalibrationConfig(AppConfig):
 
         check_files()
 
+        # Diagnostics wrapper for DB
         patch_ensure_connection_with_diagnostics()

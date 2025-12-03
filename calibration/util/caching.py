@@ -6,42 +6,23 @@ used throughout calibration, validation, and forecast processes.
 
 Caching Strategy
 ----------------
-All data loaded here is static for the lifetime of the server process. To minimize
-database access and redundant serialization across Gunicorn workers, we use a two-layer
-approach:
-
-1. **@lru_cache (in-memory per worker)**
-   - Keeps frequently accessed data resident in each worker’s memory.
-   - Prevents repeated lookups in the Django cache layer.
-   - Ideal for static data since it never changes during runtime.
-
-2. **Django file-based cache (shared across workers)**
-   - Configured in `settings.py` using:
-         CACHES = {
-             "default": {
-                 "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-                 "LOCATION": "/tmp/django_cache",
-             }
-         }
-   - Stores serialized cache entries on disk so all Gunicorn workers share the same
-     underlying data without re-querying the database.
-   - Provides consistency across workers with negligible overhead.
+Redis is used as the Django cache backend. All workers share the same cache
 
 Behavior Summary
 ----------------
-- On first access, the function checks the Django file-based cache.
-- If no entry exists, it queries the database and writes the result to disk.
-- The @lru_cache layer keeps that data in RAM for subsequent access in the same worker.
-- Because the data is static for the life of the process, no invalidation logic is needed.
+- All cache lookups use Django’s Redis backend.
+- On cache miss, functions query the DB and store serialized data in Redis.
+- Since Redis is shared across workers, the first load benefits all workers.
+- No invalidation logic is required because this data is static for the lifetime
+  of the server.
 
-This pattern ensures:
-- Shared cache state across Gunicorn workers
-- In-memory speed after the first lookup
-- No external dependencies (no Redis or Memcached required)
+This ensures:
+- Shared high-speed caching across workers
+- No per-worker duplication of memory
+- Clean and consistent cached state
 """
 import json
 import os
-from functools import lru_cache
 
 import yaml
 from django.conf import settings
@@ -50,19 +31,17 @@ from django.core.cache import cache
 from calibration.enums import PlotDefinitionsEnum, ForecastConfigEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import Module, ModuleGroup, Gage, CalibrationRun, ValidationRun, CalibrationFormulation, OptimizationInput
+from calibration.views.cache_prefix import CACHE_PREFIX
 
-_CACHED_MODULES_KEY = "cached_modules_with_groups"
+_CACHED_MODULES_KEY = f"{CACHE_PREFIX}cached_modules_with_groups"
 
 
-@lru_cache(maxsize=1)
 def get_cached_modules_with_groups() -> dict[str, Module]:
     """
     Retrieve all active Module ORM objects with prefetched groups/output_variables,
     cached so that no further DB hits occur when accessing relationships.
 
-    - Cached globally in Django cache and also with lru_cache.
-    - Prefetch ensures groups and output_variables can be accessed without new queries.
-    - Fully safe to reuse for UI display, validations, or parameter resolution.
+    Redis-backed cache provides global sharing across workers.
 
     :return Returns a dict keyed by module name.
     """
@@ -75,15 +54,18 @@ def get_cached_modules_with_groups() -> dict[str, Module]:
             .only("id", "name", "display_name", "description", "is_active")
         )
         modules = {m.name: m for m in qs}
-        # Force evaluate groups/output_variables to avoid lazy loading
+
+        # Force evaluate related fields to avoid lazy lookups
         for m in modules.values():
             list(m.groups.all())
             list(m.output_variables.all())
+
         cache.set(_CACHED_MODULES_KEY, modules, timeout=None)
+
     return modules
 
 
-_MODULE_GROUPS_CACHE_KEY = 'cached_module_groups'
+_MODULE_GROUPS_CACHE_KEY = f"{CACHE_PREFIX}cached_module_groups"
 
 
 def get_cached_module_groups() -> list[str]:
@@ -105,19 +87,15 @@ def get_cached_module_groups() -> list[str]:
     return module_groups
 
 
-@lru_cache(maxsize=1)
 def get_cached_modules_by_id() -> dict[int, Module]:
     """
     Canonical accessor: ID → Module (authoritative module cache)
 
-    Caching strategy:
-    - FIRST, we pull from Django's file-based cache (shared across Gunicorn workers).
-    - THEN we memoize the result with @lru_cache so this worker does not re-read from disk.
-      (Each worker gets its own in-memory copy — safely isolated.)
+    Redis provides shared global state
 
     :return: Dict mapping {module.id → fully hydrated Module instance}.
     """
-    modules_by_name = get_cached_modules_with_groups()  # shared on disk, hydrated once per worker
+    modules_by_name = get_cached_modules_with_groups()
     return {m.id: m for m in modules_by_name.values()}
 
 
@@ -125,19 +103,18 @@ def get_cached_module_by_name(module_name: str) -> Module | None:
     """
     Convenience lookup: name → Module
 
-    We DO NOT directly hit Django's file cache here.
-    Instead, we derive from the canonical ID-based in-memory cache.
-    This guarantees consistency and avoids duplicate disk reads.
+    We DO NOT directly hit the cache backend here.
+    Instead, we derive from the canonical name-based module cache.
 
     :param module_name: Exact name of module to fetch.
     :return: Module instance, or None if not found.
     """
-    modules_by_id = get_cached_modules_by_id()  # single source of truth (per-worker @lru_cached)
+    modules_by_id = get_cached_modules_by_id()  # derived from the shared Redis-backed module cache
     modules_by_name = {m.name: m for m in modules_by_id.values()}  # derived lightweight view
     return modules_by_name.get(module_name)
 
 
-_CACHED_GAGES_KEY = 'cached_gages'
+_CACHED_GAGES_KEY = f"{CACHE_PREFIX}cached_gages"
 
 
 def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
@@ -154,7 +131,7 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
     # Check if the gages are already cached
 
     gages_lookup = cache.get(_CACHED_GAGES_KEY)
-    if not gages_lookup:
+    if gages_lookup is None:
         # Fetch from DB and cache results as a dictionary
         gages = Gage.objects.all().values(
             'gage_id', 'agency', 'station_name', 'latitude', 'longitude',
@@ -166,6 +143,7 @@ def get_cached_gages() -> dict[str, dict[str, str | float | int | None]]:
             gage['domain'] = gage.pop('domain__name')
 
         cache.set(_CACHED_GAGES_KEY, gages_lookup, timeout=None)
+
     return gages_lookup
 
 
@@ -234,7 +212,7 @@ def get_cached_optimization_inputs(optimization_name: str) -> list[dict[str, str
     :param optimization_name: The name of the optimization.
     :return: A list of dictionaries with details of each optimization input (name, description, data_type, etc.).
     """
-    cache_key = f'optimization_inputs_{optimization_name}'
+    cache_key = f"{CACHE_PREFIX}optimization_inputs_{optimization_name}"
     optimization_inputs = cache.get(cache_key)
 
     # If not in cache, query and cache the results
@@ -331,7 +309,7 @@ def have_LSTM(run: CalibrationRun) -> bool:
     return any(modules_by_id[f.module_id].name == "LSTM" for f in formulations if f.module_id in modules_by_id)
 
 
-_FORECAST_CFG_FILE_CACHE_KEY = "forecast_config_file_created"
+_FORECAST_CFG_FILE_CACHE_KEY = f"{CACHE_PREFIX}forecast_config_file_created"
 
 
 class _FlowSeqDumper(yaml.SafeDumper):
