@@ -116,6 +116,9 @@ def create_and_run_validation(request: Request) -> Response:
     Validates the request, checks if a validation job already exists for the specified calibration run
     and iteration, and creates and submits a new validation job if not.
 
+    Additionally, disallows submission if either the VALID_CONTROL or VALID_BEST
+    validation job for this calibration run is still RUNNING or SUBMITTED.
+
     :param request: The HTTP request object containing calibration and iteration details.
     :return: JSON response with validation run details or error information.
     """
@@ -132,6 +135,34 @@ def create_and_run_validation(request: Request) -> Response:
     calibration_run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.DONE])
     if error_return:
         return error_return
+
+    # ─────────────────────────────────────────────
+    # Require BOTH VALID_CONTROL and VALID_BEST to be DONE.
+    # Block if EITHER is missing or not DONE.
+    # ─────────────────────────────────────────────
+    required_types = [
+        ValidationType.VALID_CONTROL.value,
+        ValidationType.VALID_BEST.value,
+    ]
+
+    control_best_dict = {
+        vr.validation_type: vr
+        for vr in ValidationRun.objects.filter(
+            calibration_run=calibration_run,
+            validation_type__in=required_types
+        )
+    }
+
+    # Ensure both exist and both are DONE
+    for vt in required_types:
+        vr = control_best_dict.get(vt)
+        if not vr or vr.status.name != StatusEnum.DONE.name:
+            label = "VALID_CONTROL" if vt == ValidationType.VALID_CONTROL.value else "VALID_BEST"
+            status_name = vr.status.name if vr else "MISSING"
+            return ResponseError(
+                f"Cannot submit a new validation job because {label} is {status_name} for "
+                f"Calibration Job {calibration_run.id}. Both VALID_CONTROL and VALID_BEST must be DONE."
+            )
 
     # Check if a ValidationRun already exists for this CalibrationRun and Iteration
     existing_validation_run_id = (
