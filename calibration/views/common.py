@@ -261,38 +261,19 @@ def create_calibration_run_internal(user: User, genesis: JobGenesis | None = Non
     username = run.owner.username.split('@')[0]
     run.job_data_dir = os.path.join(settings.NGEN_CAL_RUN_DIR, f"{run.id}_{username}")
 
-    # The directory will be created when we build the job in ready_to_run().  But clean up any existing directory if it already exists (should not happen in production)
+    # Clean up any existing directory if it already exists (should not happen in production)
     if os.path.exists(run.job_data_dir):
         # Append timestamp to existing directory name to avoid overwriting
         new_name = f"{run.job_data_dir}_{datetime.now().isoformat()}"
         os.rename(run.job_data_dir, new_name)
 
-    pid = os.getpid()
-
-    # ------------------------------------------------------------------
-    # IMPORTANT:
-    # Retrieve current umask *without modifying it* using the trap-safe
-    # double-os.umask technique:
-    #
-    #   current_umask = os.umask(os.umask(current_umask))
-    #
-    # First os.umask() returns the actual umask while setting it to
-    # `current_umask`, then we restore the original immediately.
-    # Net effect: no umask change → umask_debug trap does NOT fire.
-    # ------------------------------------------------------------------
-    current_umask = os.umask(os.umask(0))
-
-    # Create directory using whatever umask the worker actually has (022)
+    # Create directory (uses worker umask=022 enforced by Gunicorn)
     os.makedirs(run.job_data_dir, exist_ok=True)
 
     # Determine actual permissions
     mode = os.stat(run.job_data_dir).st_mode & 0o777
 
-    # This log statement is here for when we were trouble-shooting a umask issue.  It can be simplified (don't need pid and umask to be displayed)
-    logger.info(
-        f"Directory created: {run.job_data_dir} | perms={oct(mode)} | "
-        f"PID={pid} | umask={oct(current_umask)}"
-    )
+    logger.info(f"Directory created: {run.job_data_dir} | perms={oct(mode)}")
 
     # This is always true
     run.automatic_validation = True
