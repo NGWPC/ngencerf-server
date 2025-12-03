@@ -380,8 +380,9 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
                     gdf_out = gdf.to_crs(epsg=4326)
 
                 # Write spatial layer
-                gdf_out.to_file(Path(output_path), layer=layer_name, driver="GPKG")
-
+                # Use 'w' for the first layer (create file), then 'a' to append additional layers.
+                mode = "w" if not os.path.exists(output_path) else "a"
+                gdf_out.to_file(Path(output_path), layer=layer_name, driver="GPKG", mode=mode)
                 spatial_layers.append(layer_name)
 
                 # IMPORTANT: release Fiona/GDAL objects immediately so underlying
