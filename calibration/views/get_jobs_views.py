@@ -206,12 +206,10 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
         request.user,
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
-        include_stop_criteria=True,
-        limit=limit,
-        offset=offset,
-        filters=filters,
-        sort=sort,
-        ids_only=ids_only,
+        require_both_validations_done=True,
+        include_stop_criteria=True, limit=limit,
+        offset=offset, filters=filters,
+        sort=sort, ids_only=ids_only,
         get_gages=get_gages
     )
 
@@ -283,7 +281,8 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=[StatusEnum.DONE],
-        include_validation_data=GetValidationJobsScope.DONE,
+        include_validation_data=None,
+        require_both_validations_done=True,
         include_stop_criteria=True,
         limit=limit,
         offset=offset,
@@ -678,7 +677,8 @@ def resolve_sort(sort: dict | None, enum_class: Type[CalibrationSortField | Fore
 def get_jobs(
         user: User,
         run_status: list[StatusEnum] = None,
-        include_validation_data: GetValidationJobsScope = None,
+        include_validation_data: GetValidationJobsScope | None = None,
+        require_both_validations_done: bool = False,
         include_stop_criteria: bool = False,
         limit: int | None = None,
         offset: int = 0,
@@ -697,7 +697,6 @@ def get_jobs(
     :param run_status: Optional list of StatusEnum values to filter jobs (e.g., DONE, FAILED).
     :param include_validation_data: Determines the level of validation data to include:
         - 'status': Includes validation status details for associated validation runs.
-        - 'done': Filters to include only calibration jobs where both valid_control and valid_best are DONE.
     :param include_stop_criteria: Whether to include stop_criteria in the queryset.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
@@ -705,6 +704,7 @@ def get_jobs(
     :param sort: Optional dict { "field": "created_at", "direction": "asc" or "desc" }.
     :param ids_only: Only return the ids of the calibration jobs.
     :param get_gages: return the set of gages used by all the jobs
+    :param require_both_validations_done: If True, only include calibration jobs where both VALID_CONTROL and VALID_BEST validation runs exist and are DONE.
     :return: Tuple (results, total_count, date_range, id_range, gage_list). 
         - total_count reflects total rows BEFORE pagination.
         - date_range reflects the possible range of created_at dates for this job type 
@@ -909,10 +909,8 @@ def get_jobs(
         #   • combined_status has been computed
         #   • validation annotations exist
         #   • any user "status" filter is run against the final combined_status
-        #
-        # Only applies when include_validation_data == DONE.
         # ─────────────────────────────────────────────────────────────
-        if include_validation_data == GetValidationJobsScope.DONE:
+        if require_both_validations_done:
             base_qs = base_qs.annotate(
                 has_valid_control_done=Exists(
                     ValidationRun.objects.filter(
