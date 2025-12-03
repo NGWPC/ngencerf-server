@@ -401,8 +401,8 @@ def generate_custom_token(user: User, scope: str) -> str:
     :return: JWT token string.
     """
     access = AccessToken.for_user(user)
-    # Set the expiration to 7 days from now
-    access.set_exp(lifetime=timedelta(days=7))
+    # Set the expiration to 30 days from now
+    access.set_exp(lifetime=timedelta(days=30))
 
     # Set our custom scope
     access['scope'] = scope
