@@ -5,6 +5,8 @@ from typing import Type, TypeVar
 from django.core.cache import cache
 from django.db import models
 
+from calibration.views.cache_prefix import CACHE_PREFIX
+
 # Create a generic type variable for models and Enums
 T = TypeVar('T', bound=models.Model)
 E = TypeVar('E', bound='AbstractEnum')
@@ -56,10 +58,11 @@ class AbstractEnum(Generic[T], Enum):
         if not cls.get_model():
             return None
 
-        items = cache.get(f'{cls.__name__}_cache')
+        cache_key = f"{CACHE_PREFIX}{cls.__name__}_cache"
+        items = cache.get(cache_key)
         if items is None:
             cls.load_items()
-            items = cache.get(f'{cls.__name__}_cache')
+            items = cache.get(cache_key)
         return items
 
     @classmethod
@@ -122,6 +125,7 @@ class AbstractEnum(Generic[T], Enum):
         model = cls.get_model()
 
         if model:
+            cache_key = f"{CACHE_PREFIX}{cls.__name__}_cache"
             # Get any filter criteria specified in the subclass
             filter_criteria = cls.get_filter() or {}
 
@@ -131,7 +135,7 @@ class AbstractEnum(Generic[T], Enum):
             item_dict = {item.name: item for item in items}
 
             # Store the item dictionary in cache
-            cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
+            cache.set(cache_key, item_dict, timeout=None)
 
     @classmethod
     def get_instance(cls, name: str) -> T:

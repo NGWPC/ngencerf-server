@@ -89,6 +89,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'calibration.util.middleware.LogUnmatchedCalibrationRequestsMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
@@ -126,27 +127,15 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
-CACHE_DIRECTORY = "/var/django_cache"
-
-# Let this crash *naturally* if not permitted
-os.makedirs(CACHE_DIRECTORY, exist_ok=True)
-
-# 2) Explicitly assert writability — crash if not
-if not os.access(CACHE_DIRECTORY, os.W_OK):
-    raise PermissionError(f"Django cache directory is NOT writable: {CACHE_DIRECTORY}")
-
-print(f"Using Django cache directory: {CACHE_DIRECTORY}")
-
-# --- Now safe to define CACHES; Django will see a guaranteed writable path ---
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
-        "LOCATION": CACHE_DIRECTORY,  # any directory writable by Gunicorn
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": os.getenv('REDIS_URL', "redis://127.0.0.1:6379/1"),
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient"
+        }
     }
 }
-
-print(f"Django file cache LOCATION: {CACHES['default']['LOCATION']}")
-
 
 AUTH_USER_MODEL = 'calibration.CustomUser'
 

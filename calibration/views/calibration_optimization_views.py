@@ -1,6 +1,5 @@
 import json
 import logging
-from functools import lru_cache
 from typing import Any
 
 from django.db import transaction
@@ -11,7 +10,7 @@ from rest_framework.response import Response
 
 from calibration.enums import OptimizationEnum, StatusEnum, MetricEnum
 from calibration.models import Optimization, CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationRun
-from calibration.util.caching import get_cached_optimization_inputs, have_LSTM
+from calibration.util.caching import have_LSTM
 from calibration.util.calibration_validators import CalibrationRunSerializer, LoadOptimizationResponseSerializer, \
     SaveOptimizationRequestSerializer, ErrorResponseSerializer, GenericResponseSerializer
 from calibration.views import ngen_cal_input
@@ -69,7 +68,17 @@ def load_optimization_tab(request) -> Response:
     metrics = MetricEnum.get_choices_with_fields(fields=['name', 'display_name', 'categorical', 'event_based'],
                                                  extra_filter={'objective_function': True})
 
-    optimization_list = get_static_optimizations()
+    optimization_list = OptimizationEnum.get_choices_with_fields(
+        fields=['name', 'description', 'is_active']
+    )
+    for o in optimization_list:
+        item = OptimizationEnum.get_instance(o['name'])
+        o['inputs'] = list(
+            item.inputs.values(
+                'name', 'description', 'data_type',
+                'default_value', 'min', 'max', 'is_active'
+            )
+        )
 
     ngen_cal_input.ready_to_run(run)
     response = {'calibration_run_id': run.id, 'status': run.status.name,
@@ -109,36 +118,6 @@ def get_user_optimization(run: CalibrationRun) -> tuple[str | None, list[dict[st
         optimization_inputs = []
 
     return optimization, optimization_inputs
-
-
-@lru_cache(maxsize=None)
-def _cached_inputs_for_optimization(opt_name: str) -> list[dict]:
-    """
-    Retrieve and cache input field definitions for a given optimization.
-
-    :param opt_name: The name of the optimization.
-    :return: A list of dictionaries describing input fields, including
-             name, description, data type, active status, default value, min, and max.
-    """
-    opt = OptimizationEnum.get_instance(opt_name)  # cached by AbstractEnum
-    return list(opt.inputs.values('name', 'description', 'data_type', 'is_active', 'default_value', 'min', 'max'))
-
-
-@lru_cache(maxsize=1)
-def get_static_optimizations() -> list[dict[str, Any]]:
-    """
-    Retrieve all available optimizations with their associated input field definitions.
-
-    :return: A list of dictionaries, where each dictionary represents an optimization
-             and includes its name, description, active status, and a list of inputs.
-    """
-    optimization_list = OptimizationEnum.get_choices_with_fields(
-        fields=['name', 'description', 'is_active']
-    )
-    for optimization in optimization_list:
-        optimization['inputs'] = _cached_inputs_for_optimization(optimization['name'])
-
-    return optimization_list
 
 
 # noinspection PyUnusedLocal
@@ -258,9 +237,13 @@ def validate_optimizations(run: CalibrationRun, optimization_name: str, optimiza
 
     if optimization_inputs:
         # Retrieve cached optimization inputs
+        opt = OptimizationEnum.get_instance(optimization_name)
         valid_inputs_dict = {
-            input_data['name']: input_data
-            for input_data in get_cached_optimization_inputs(optimization_name)
+            i['name']: i
+            for i in opt.inputs.values(
+                'name', 'description', 'data_type',
+                'default_value', 'min', 'max', 'id', 'is_active'
+            )
         }
 
         for o in optimization_inputs:
@@ -336,7 +319,8 @@ def validate_objective_function(run: CalibrationRun, objective_function_name: st
     return None
 
 
-def write_optimization_inputs(run: CalibrationRun, prepared_inputs: list[CalibrationOptimizationInput] | None, keep_ids: set[int] | None = None) -> None:
+def write_optimization_inputs(run: CalibrationRun, prepared_inputs: list[CalibrationOptimizationInput] | None,
+                              keep_ids: set[int] | None = None) -> None:
     """
     Write or update optimization input records for a calibration run.
 

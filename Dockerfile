@@ -1,15 +1,16 @@
 FROM rockylinux:8
 
-# Install runtime dependencies
+# Install build and runtime dependencies
 RUN set -eux && \
     dnf install -y yum-utils epel-release && \
     dnf install -y \
-        file \
         findutils \
+        file \
         jq \
         libpq \
         git \
         openssl openssl-devel \
+        # Python 3.11 stack
         python3.11 python3.11-libs python3.11-devel \
         python3.11-pip \
         python3.11-setuptools && \
@@ -38,12 +39,15 @@ ARG MSWM_ORG=NGWPC
 ARG MSWM_TAG=development
 
 ARG DATA_ASSIMILATION_ORG=NGWPC
-ARG DATA_ASSIMILATION_BRANCH=development
+ARG DATA_ASSIMILATION_TAG=development
+
+ARG NGEN_FORCING_ORG=NGWPC
+ARG NGEN_FORCING_TAG=development
 
 ARG CACHE_BUST=1
 RUN set -eux && \
     echo $CACHE_BUST && pip3 install "git+https://github.com/${MSWM_ORG}/nwm-msw-mgr.git@${MSWM_TAG}" && \
-    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/data-assimilation-engine.git@${DATA_ASSIMILATION_BRANCH}" && \
+    echo $CACHE_BUST && pip3 install "git+https://github.com/${DATA_ASSIMILATION_ORG}/data-assimilation-engine.git@${DATA_ASSIMILATION_TAG}" && \
     pip3 cache purge
 
 # Should parallel similar functionality in the run_cerf.sh
@@ -103,6 +107,34 @@ COPY cli /ngencerf/ngencerf-server/cli
 
 # Copy application code
 COPY . /ngencerf/ngencerf-server/
+
+# Fetch forecast_forcing_templates into an internal, non-mounted path to be copied at runtime by runCerf.sh
+RUN set -eux && \
+    PREBUILT_DIR="/ngencerf/prebuilt/forecast_forcing_templates" && \
+    NGEN_FORCING_URL="https://github.com/${NGEN_FORCING_ORG}/ngen-forcing.git" && \
+    \
+    echo "Preparing forecast_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}" && \
+    \
+    # Ensure prebuilt directory exists and is empty
+    rm -rf "$PREBUILT_DIR" && \
+    mkdir -p "$PREBUILT_DIR" && \
+    \
+    # Clone sparse repo
+    git clone --depth 1 --filter=blob:none --sparse \
+        -b "${NGEN_FORCING_TAG}" \
+        "$NGEN_FORCING_URL" tmp-ngen-forcing && \
+    \
+    cd tmp-ngen-forcing && \
+    git sparse-checkout set \
+        NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates && \
+    \
+    # Copy *contents* of config_templates into PREBUILT_DIR
+    cp -a NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates/. \
+        "$PREBUILT_DIR"/ && \
+    \
+    cd /ngencerf/ngencerf-server && \
+    rm -rf tmp-ngen-forcing || true
+
 
 # Build CLI executable in cli/dist
 RUN cli/build_cli.sh

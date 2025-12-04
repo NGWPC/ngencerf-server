@@ -124,67 +124,66 @@ def get_status(request: Request) -> Response:
 
     # --- Validation responses ---
     validation_response = []
-    for run in validation_runs:
+    for validation_run in validation_runs:
         validation_data = {
-            'validation_run_id': run.id,
-            'status': run.status.name,
-            'validation_type': run.validation_type,
-            'iteration_num': run.iteration_num,
-            'submit_date': run.submit_date,
-            'run_start': run.run_start,
-            'run_end': run.run_end
+            'validation_run_id': validation_run.id,
+            'status': validation_run.status.name,
+            'validation_type': validation_run.validation_type,
+            'iteration_num': validation_run.iteration_num,
+            'submit_date': validation_run.submit_date,
+            'sent_date': validation_run.sent_date,
+            'run_start': validation_run.run_start,
+            'run_end': validation_run.run_end
         }
 
-        fm = parse_failure_messages(run.failure_messages)
+        fm = parse_failure_messages(validation_run.failure_messages)
         if fm:
             validation_data['failure_messages'] = fm
 
-        if run.performance_metrics:
-            validation_data['elapsed_time'] = run.performance_metrics.elapsed_time
-        elif run.run_start and run.run_end:
-            validation_data['elapsed_time'] = run.run_end - run.run_start
+        if validation_run.run_end and validation_run.submit_date:
+            validation_data['elapsed_time'] = validation_run.run_end - validation_run.submit_date
         else:
             validation_data['elapsed_time'] = None
 
-        if should_include_metrics(run.status, include_performance_metrics):
-            validation_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
+        if should_include_metrics(validation_run.status, include_performance_metrics):
+            validation_data['performance_metrics'] = get_performance_metrics(validation_run.performance_metrics)
 
         validation_response.append(validation_data)
 
     # --- Forecast responses ---
     forecast_response = []
-    for run in forecast_runs:
+    for forecast_run in forecast_runs:
         forecast_data = {
-            'forecast_run_id': run.id,
-            'status': run.status.name,
-            'configuration': run.configuration.name,
-            'cycle_date': run.cycle_date,
-            'submit_date': run.submit_date,
-            'run_start': run.run_start,
-            'run_end': run.run_end
+            'forecast_run_id': forecast_run.id,
+            'status': forecast_run.status.name,
+            'configuration': forecast_run.configuration.name,
+            'cycle_date': forecast_run.cycle_date,
+            'submit_date': forecast_run.submit_date,
+            'sent_date': forecast_run.sent_date,
+            'run_start': forecast_run.run_start,
+            'run_end': forecast_run.run_end
         }
 
-        fm = parse_failure_messages(run.failure_messages)
+        fm = parse_failure_messages(forecast_run.failure_messages)
         if fm:
             forecast_data['failure_messages'] = fm
 
-        if run.performance_metrics:
-            forecast_data['elapsed_time'] = run.performance_metrics.elapsed_time
-        elif run.run_start and run.run_end:
-            forecast_data['elapsed_time'] = run.run_end - run.run_start
+        if forecast_run.run_end and forecast_run.submit_date:
+            forecast_data['elapsed_time'] = forecast_run.run_end - forecast_run.submit_date
         else:
             forecast_data['elapsed_time'] = None
 
-        if should_include_metrics(run.status, include_performance_metrics):
-            forecast_data['performance_metrics'] = get_performance_metrics(run.performance_metrics)
+        if should_include_metrics(forecast_run.status, include_performance_metrics):
+            forecast_data['performance_metrics'] = get_performance_metrics(forecast_run.performance_metrics)
 
         # --- Cold start ---
-        cold_start_run = getattr(run, "cold_start_run", None)
+        cold_start_run = getattr(forecast_run, "cold_start_run", None)
         if cold_start_run:
             cold_start_data = {
                 'cold_start_run_id': cold_start_run.id,
                 'status': cold_start_run.status.name,
                 'submit_date': cold_start_run.submit_date,
+                'sent_date': cold_start_run.sent_date,
                 'run_start': cold_start_run.run_start,
                 'run_end': cold_start_run.run_end,
             }
@@ -193,10 +192,8 @@ def get_status(request: Request) -> Response:
             if fm_cs:
                 cold_start_data['failure_messages'] = fm_cs
 
-            if cold_start_run.performance_metrics:
-                cold_start_data['elapsed_time'] = cold_start_run.performance_metrics.elapsed_time
-            elif cold_start_run.run_start and cold_start_run.run_end:
-                cold_start_data['elapsed_time'] = cold_start_run.run_end - cold_start_run.run_start
+            if cold_start_run.run_end and cold_start_run.submit_date:
+                cold_start_data['elapsed_time'] = cold_start_run.run_end - cold_start_run.submit_date
             else:
                 cold_start_data['elapsed_time'] = None
 
@@ -213,6 +210,7 @@ def get_status(request: Request) -> Response:
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'submit_date': calibration_run.submit_date,
+        'sent_date': calibration_run.sent_date,
         'run_start': calibration_run.run_start,
         'run_end': calibration_run.run_end,
         'validations': validation_response,
@@ -223,10 +221,8 @@ def get_status(request: Request) -> Response:
     if fm_cal:
         response['failure_messages'] = fm_cal
 
-    if calibration_run.performance_metrics:
-        response['elapsed_time'] = calibration_run.performance_metrics.elapsed_time
-    elif calibration_run.run_start and calibration_run.run_end:
-        response['elapsed_time'] = calibration_run.run_end - calibration_run.run_start
+    if calibration_run.run_end and calibration_run.submit_date:
+        response['elapsed_time'] = calibration_run.run_end - calibration_run.submit_date
     else:
         response['elapsed_time'] = None
 
@@ -324,7 +320,7 @@ def get_status_for_comparison(request: Request) -> Response:
                     'run_start': calibration_run.run_start,
                     'run_end': calibration_run.run_end,
                     'elapsed_time': (
-                        calibration_run.performance_metrics.elapsed_time
+                        calibration_run.performance_metrics.run_time
                         if calibration_run.performance_metrics
                         else (
                             calibration_run.run_end - calibration_run.run_start
@@ -417,12 +413,12 @@ def get_performance_metrics(performance_metrics) -> dict[str, str | int | float 
     """
     if not performance_metrics:
         return {field: None for field in [
-            "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
+            "run_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time", "io_throughput"
         ]}
 
     # Convert numeric fields to kilobytes
     metrics_dict = model_to_dict(performance_metrics, fields=[
-        "elapsed_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
+        "run_time", "num_cpus", "cpu_time", "max_rss", "max_disk_read", "max_disk_write", "reserved_time"
     ])
     # Manually add io_throughput since it's a generated field
     metrics_dict["io_throughput"] = performance_metrics.io_throughput
@@ -785,33 +781,79 @@ def cancel_job(request: Request) -> Response:
     # Determine job type and retrieve the appropriate run instance
     if calibration_run_id:
         run_type = JobType.CALIBRATION.value
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED])
+        run, error_return = get_calibration_run(
+            calibration_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+        )
+        if error_return:
+            return error_return
+
     elif validation_run_id:
         run_type = JobType.VALIDATION.value
-        run, error_return = get_validation_run(validation_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED])
-    else:
-        forecast_run, error_return = get_forecast_run(forecast_run_id, request.user, run_status=list(StatusEnum))
+        run, error_return = get_validation_run(
+            validation_run_id, request.user, run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+        )
+        if error_return:
+            return error_return
 
-        if forecast_run.cold_start_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
-            # Cold start job is running, so cancel it
-            run_type = JobType.COLD_START.value
-            run = forecast_run.cold_start_run
-        elif forecast_run.cold_start_run.status == StatusEnum.DONE.db_instance:
-            # Cold start is done, check the status of the forecast job
-            if forecast_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+    else:
+        # --------------------
+        # FORECAST LOGIC ONLY
+        # --------------------
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id, request.user, run_status=list(StatusEnum)
+        )
+        if error_return:
+            return error_return
+
+        cold_start_run = forecast_run.cold_start_run
+
+        # --- CASE 1: No cold start at all → cancel forecast directly ---
+        if cold_start_run is None:
+            if forecast_run.status in [StatusEnum.RUNNING.db_instance,
+                                       StatusEnum.SUBMITTED.db_instance]:
                 run_type = JobType.FORECAST.value
                 run = forecast_run
             else:
-                error = (f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
-                         f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
-                         f'Current status: {forecast_run.status.name}')
+                error = (
+                    f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
+                    f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
+                    f'Current status: {forecast_run.status.name}'
+                )
                 return ResponseError(error)
-        else:
-            error = (f'{ColdStartRun.__name__} {forecast_run.cold_start_run.id} is not in an allowed status: '
-                     f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
-                     f'Current status: {forecast_run.cold_start_run.status.name}')
-            return ResponseError(error)
 
+        else:
+            # --- CASE 2: Cold start is running/submitted → cancel cold start ---
+            if cold_start_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+                # Cold start job is running, so cancel it
+                run_type = JobType.COLD_START.value
+                run = cold_start_run
+
+            # --- CASE 3: Cold start DONE → cancel forecast (if running/submitted) ---
+            elif cold_start_run.status == StatusEnum.DONE.db_instance:
+                # Cold start is done, check the status of the forecast job
+                if forecast_run.status in [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]:
+                    run_type = JobType.FORECAST.value
+                    run = forecast_run
+                else:
+                    error = (
+                        f'{ForecastRun.__name__} {forecast_run.id} is not in an allowed status: '
+                        f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
+                        f'Current status: {forecast_run.status.name}'
+                    )
+                    return ResponseError(error)
+
+            # --- CASE 4: Cold start exists but in an invalid state ---
+            else:
+                error = (
+                    f'{ColdStartRun.__name__} {cold_start_run.id} is not in an allowed status: '
+                    f'{join_with_or([StatusEnum.RUNNING.value, StatusEnum.SUBMITTED.value])}. '
+                    f'Current status: {cold_start_run.status.name}'
+                )
+                return ResponseError(error)
+
+    # --------------------
+    # COMMON CANCEL LOGIC
+    # --------------------
     if not cancel_job_common(run):
         return ResponseError(f"Unable to cancel {run_type.capitalize()} Job {run.id}")
 

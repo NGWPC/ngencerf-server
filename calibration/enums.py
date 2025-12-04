@@ -3,9 +3,9 @@ from typing import Any, Type
 from django.core.cache import cache
 
 from calibration.models import Status, ForcingSource, ObservationalSource, Domain, Optimization, GeopackageSource, PlotDefinition, \
-    ForecastConfiguration, \
-    Metric
+    ForecastConfiguration, Metric
 from calibration.util.AbstractEnum import AbstractEnum
+from calibration.views.cache_prefix import CACHE_PREFIX
 
 
 class StatusEnum(AbstractEnum):
@@ -158,7 +158,12 @@ class OptimizationEnum(AbstractEnum):
 
     @classmethod
     def load_items(cls) -> None:
-        # Fetch optimization items with prefetching for 'inputs' relation
+        """
+        Override: load Optimization rows and prefetch inputs so they are cached
+        once per server run and used everywhere else without extra SELECTs.
+        """
+        cache_key = f"{CACHE_PREFIX}{cls.__name__}_cache"
+
         model = cls.get_model()
         filter_criteria = cls.get_filter() or {}
 
@@ -167,7 +172,7 @@ class OptimizationEnum(AbstractEnum):
         # Store the results in a dictionary with the item's name as the key
         item_dict = {item.name: item for item in items}
 
-        cache.set(f'{cls.__name__}_cache', item_dict, timeout=None)
+        cache.set(cache_key, item_dict, timeout=None)
 
 
 class PlotDefinitionsEnum(AbstractEnum):

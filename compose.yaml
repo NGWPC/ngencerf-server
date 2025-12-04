@@ -1,6 +1,21 @@
 name: ngencerf-server
 
 services:
+  redis:
+    image: redis:7.2
+    container_name: ngencerf-redis
+    command: [ "redis-server", "/usr/local/etc/redis/redis.conf" ]
+    volumes:
+      - ./redis/redis.conf.prod:/usr/local/etc/redis/redis.conf:ro
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
   db:
     image: postgres:16
     ports:
@@ -19,12 +34,18 @@ services:
       timeout: 5s
 
   ngencerf-services:
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     build:
       context: .
       args:
-        - MSWM_TAG=${MSWM_TAG}
-        - NGEN_FORCING_TAG=${NGEN_FORCING_TAG}
-        - CACHE_BUST=${CACHE_BUST}
+        - MSWM_TAG=${MSWM_TAG:-development}
+        - NGEN_FORCING_TAG=${NGEN_FORCING_TAG:-development}
+        - DATA_ASSIMILATION_TAG=${DATA_ASSIMILATION_TAG:-development}
+        - CACHE_BUST=${CACHE_BUST:-1}
     image: ghcr.io/ngwpc/ngencerf-server:latest
     pull_policy: build
     ports:
@@ -33,8 +54,6 @@ services:
       - ../data/.ngencerf-init:/ngencerf/ngencerf-server/.init/
       - ${NGEN_CAL_DATA_PATH}:/ngencerf/data/
       - ../logs/ngencerf-server:/ngencerf/ngencerf-server/logs/
-      - ${FORCING_DATA_S3_PATH}:${FORCING_DATA_MOUNT_PATH}
-      - ${HF_DATA_S3_PATH}:${HF_DATA_MOUNT_PATH}
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
@@ -42,7 +61,4 @@ services:
         required: true
       - path: ./ngencerf_services.override.env
         required: false
-    depends_on:
-      db:
-        condition: service_healthy
-        restart: true
+

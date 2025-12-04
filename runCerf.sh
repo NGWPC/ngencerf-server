@@ -338,6 +338,7 @@ if [ "${CERF_VENV}" != "Docker" ]; then
         #MSWM_BRANCH='jwade_NGWPC-7589_add_aet_rootzone'
         MSWM_BRANCH='development'
         DATA_ASSIMILATION_BRANCH='development'
+        NGEN_FORCING_TAG='development'
 
         echo
         echo "Installing mswm"
@@ -490,6 +491,82 @@ else
     fi
 fi
 
+ echo
+ echo --------------------------------------------------------
+#=======================================================================
+# Ensure forecast_forcing_templates in ngen-static-files
+#   - Docker: copy from image-staged /ngencerf/prebuilt into bind-mounted dir
+#   - Non-Docker: clone from Git into /ngencerf/data/ngen-static-files
+#=======================================================================
+
+# Detect Docker (either /.dockerenv or explicit CERF_VENV flag)
+IN_DOCKER=false
+if [ -f "/.dockerenv" ] || [ "${CERF_VENV}" = "Docker" ]; then
+    IN_DOCKER=true
+fi
+
+STATIC_DIR="/ngencerf/data/ngen-static-files"
+TARGET_DIR="${STATIC_DIR}/forecast_forcing_templates"
+
+# Create static base and ensure a clean target location (shared logic)
+mkdir -p "$STATIC_DIR"
+rm -rf "$TARGET_DIR"
+mkdir -p "$TARGET_DIR"
+
+if [ "${CERF_VENV}" = "Docker" ]; then
+    echo "Running in Docker: replacing forecast_forcing_templates from prebuilt data"
+
+    PREBUILT_DIR="/ngencerf/prebuilt/forecast_forcing_templates"
+
+    # Verify Dockerfile populated this directory
+    if [ ! -d "$PREBUILT_DIR" ]; then
+        echo "ERROR: Prebuilt forecast_forcing_templates not found at $PREBUILT_DIR"
+        echo "Dockerfile must populate this directory during build."
+        exit 1
+    fi
+
+    echo "Copying from $PREBUILT_DIR -> $TARGET_DIR"
+    # Copy contents only
+    cp -a "$PREBUILT_DIR"/. "$TARGET_DIR"/
+
+else
+    NGEN_FORCING_URL="https://github.com/NGWPC/ngen-forcing.git"
+
+    echo "Not running in Docker: cloning forecast_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
+
+    cd "$STATIC_DIR"
+
+    git clone --depth 1 --filter=blob:none --sparse \
+        -b "${NGEN_FORCING_TAG}" \
+        "$NGEN_FORCING_URL" tmp-ngen-forcing
+
+    cd tmp-ngen-forcing
+    git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates
+
+    # Move *contents* of config_templates into TARGET_DIR
+    cp -a NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates/. \
+        "$TARGET_DIR"/
+
+    cd "$STATIC_DIR"
+    rm -rf tmp-ngen-forcing
+
+    echo "forecast_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
+    echo
+fi
+
+#=======================================================================
+# Flush Redis cache in dev mode
+#=======================================================================
+if [ "${CERF_VENV}" != "Docker" ]; then
+    echo "Flushing Redis cache (dev)..."
+    if command -v redis-cli >/dev/null 2>&1; then
+        redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
+    else
+        echo "WARNING: redis-cli not found; skipping Redis flush"
+    fi
+fi
+
+
 #=======================================================================
 # Pre-start hook and start server
 #=======================================================================
@@ -519,14 +596,14 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
     # but we cap it at 8 workers to avoid excessive memory use on small servers
     # and set a minimum of 2 workers to handle multiple requests
     WORKERS=${GUNICORN_WORKERS:-$(
-    cpu=$(nproc)
-    workers=$((cpu * 2 + 1))
-    if [ "$workers" -lt 2 ]; then
-        workers=2
-    elif [ "$workers" -gt 8 ]; then
-        workers=8
-    fi
-    echo "$workers"
+        cpu=$(nproc)
+        workers=$((cpu * 2 + 1))
+        if [ "$workers" -lt 2 ]; then
+            workers=2
+        elif [ "$workers" -gt 8 ]; then
+            workers=8
+        fi
+        echo "$workers"
     )}
 
     TIMEOUT=${GUNICORN_TIMEOUT:-120}
@@ -536,12 +613,13 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
             --name ngencerf \
             --workers ${WORKERS} \
             --worker-class uvicorn.workers.UvicornWorker \
+            --max-requests ${GUNICORN_MAX_REQUESTS:-300} \
+            --max-requests-jitter ${GUNICORN_MAX_REQUESTS_JITTER:-100} \
+            --preload \
             --bind ${BIND_ADDR} \
-            --log-level ${GUNICORN_LOG_LEVEL:-info} \
             --timeout ${TIMEOUT} \
             --graceful-timeout ${GUNICORN_GRACEFUL_TIMEOUT:-30} \
-            --access-logfile - \
-            --error-logfile -
+            --config "$(dirname "$0")/gunicorn_conf.py"
 else
     echo "Launching Django development server (runserver)"
     python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
