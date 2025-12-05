@@ -450,6 +450,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info(f"Starting load_calibration_run_data for Calibration Job {run.id} - {run.status.name}")
 
     calibration_run_data: dict = {}
+    formulations = None
 
     #############################
     # Time Range (computed only)
@@ -464,13 +465,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         serialized_time_range['start_time'] = time_range['start_time'].isoformat()
         serialized_time_range['end_time'] = time_range['end_time'].isoformat()
     logger.info(f"Time range computation completed in {time.time() - time_range_start:.2f}s")
-
-    # Get module IDs once for this run
-    module_ids = list(
-        CalibrationFormulation.objects
-        .filter(calibration_run=run)
-        .values_list('module_id', flat=True)
-    )
 
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
     num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
@@ -569,7 +563,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['external_data_status'] = get_data_files_status(run)
         logger.info(f"Data Files status completed in {time.time() - data_files_status_start:.2f}s")
 
-        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(module_ids)
+        formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+        calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(formulations)
         logger.info(f"UI display data preparation completed in {time.time() - ui_display_start:.2f}s")
 
     #############################
@@ -588,6 +583,9 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     formulation_start = time.time()
 
     calibration_run_data['formulation_name'] = run.user_formulation_name
+
+    # # Get module IDs for this run
+    module_ids = list(formulations.values_list('module_id', flat=True))
 
     # Use cache for module resolution
     modules_by_id = get_cached_modules_by_id()
