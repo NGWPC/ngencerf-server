@@ -136,17 +136,17 @@ def load_tuning_tab(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def has_user_selected_tuning_parameters(formulation_ids: list[int]) -> bool:
+def has_user_selected_tuning_parameters(formulations: QuerySet[CalibrationFormulation]) -> bool:
     """
-    Check whether any user-selected tuning parameters exist for the given module IDs.
-    Avoids resolving Module objects via the DB.
+    Check whether any parameters tied to the provided calibration formulations
+    are marked user_selected_for_tuning.
 
-    :param formulation_ids: List of module IDs from CalibrationFormulation.
-    :return: True if at least one user-selected parameter exists, else False.
+    :param formulations: QuerySet of CalibrationFormulation objects for a single run.
+    :return: True if at least one parameter in these formulations is marked
+             user_selected_for_tuning, otherwise False.
     """
-
     return CalibrationParameter.objects.filter(
-        calibration_formulation__module_id__in=formulation_ids,
+        calibration_formulation__in=formulations,
         user_selected_for_tuning=True
     ).exists()
 
@@ -209,7 +209,6 @@ def get_parameters_for_export(run: CalibrationRun) -> list[dict]:
             "calibration_formulation__module_id"
         )
     )
-    print('params', params)
 
     result = []
     for p in params:
@@ -222,7 +221,6 @@ def get_parameters_for_export(run: CalibrationRun) -> list[dict]:
             "maximum": p["maximum"],
             "module": module_name,
         })
-    print('result', result)
     return result
 
 
@@ -266,9 +264,9 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
         return {}
 
     # If both paths are available, calculate intersection and update run
-    daterange_intersection_start = time.time()
+    daterange_intersection_start = time.perf_counter()
     daterange = get_date_range_intersection(observation_path, forcing_path)
-    logger.info(f"Date range intersection completed in {time.time() - daterange_intersection_start:.2f}s")
+    logger.info(f"Date range intersection completed in {time.perf_counter() - daterange_intersection_start:.2f}s")
 
     if daterange:
         return {'start_time': daterange.start_datetime, 'end_time': daterange.end_datetime}
@@ -1102,7 +1100,6 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     :param forcing_dir_path: Directory path or cloud URL containing forcing data files.
     :return: DateTimeRange covering all CSV files, or None if no files found.
     """
-    print('forcing_dir_path', forcing_dir_path)
     csv_files = cloud_util.list_files(forcing_dir_path, pattern="*.csv")
     if not csv_files:
         return None

@@ -170,7 +170,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     error_object = ErrorReport()
     config: dict[str, dict[str, str | int | float | bool]] = {}
     config_file: str | None = None
-    catchments: list[str] | None = None
 
     # -----------------------------
     # READ-ONLY PHASE
@@ -243,7 +242,10 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
                 if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
                     catchments = list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())
-                    logger.info(f"Found {len(catchments)} catchments in {datafile['hydrofab_file']}: {catchments}")
+
+                    num_catchments = len(catchments)
+                    run.num_catchments = num_catchments
+                    logger.info(f"Found {num_catchments} catchments in {datafile['hydrofab_file']}: {catchments}")
 
             # Determine the source of the forcing data (user-uploaded or EDS)
             if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
@@ -494,9 +496,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             config['Parallel'] = parallel
             if catchments:
-                nprocs = get_mpi_nodes(len(catchments))
-                parallel['nprocs'] = nprocs
-                run.mpi_nprocs = nprocs
+                run.mpi_nprocs = get_mpi_nodes(num_catchments)
+                parallel['nprocs'] = run.mpi_nprocs
+                run.node_type = get_node_type(num_catchments)
 
     # -----------------------------
     # WRITE PHASE
@@ -509,11 +511,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 run.status = StatusEnum.READY.db_instance
             elif run.status == StatusEnum.READY.db_instance and (error_object.has_errors() or error_object.has_warnings()):
                 run.status = StatusEnum.SAVED.db_instance
-
-        # Update MPI info if applicable
-        if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS and catchments:
-            run.mpi_nprocs = get_mpi_nodes(len(catchments))
-
+     
         run.save()
 
     # -----------------------------
@@ -614,7 +612,7 @@ def is_missing(value: Any, label: str, report: ErrorReport, have_LSTM_flag: bool
     return False
 
 
-# Global table of MPI rules.  Can be updated dynamically with endpoint
+# Global table of MPI rules.  Can be updated dynamically with endpoint update_mpi_rules
 # Each pair represents [max_catchments, num_nodes]
 MPI_NODE_RULES = [
     [10, 1],
@@ -625,11 +623,30 @@ MPI_NODE_RULES = [
 
 
 def get_mpi_nodes(num_catchments: int) -> int:
-    mpi_nodes = 1
-    for max_catchments, nodes in MPI_NODE_RULES:
+
+    mpi_nodes = None
+    for max_catchments, mpi_nodes in MPI_NODE_RULES:
         if max_catchments == -1 or num_catchments <= max_catchments:
-            mpi_nodes = nodes
             break
 
     logger.info(f'{num_catchments} catchments using {mpi_nodes} nodes')
     return mpi_nodes
+
+
+# Global table of node type rules.
+# Each pair represents [max_catchments, node_type]
+NODE_TYPE_RULES = [
+    [500, 'c5n-18xlarge'],
+    [-1, 'r8a-12xlarge']
+]
+
+
+def get_node_type(num_catchments: int) -> str:
+
+    node_type = None
+    for max_catchments, node_type in NODE_TYPE_RULES:
+        if max_catchments == -1 or num_catchments <= max_catchments:
+            break
+
+    logger.info(f'{num_catchments} catchments using node type {node_type}')
+    return node_type

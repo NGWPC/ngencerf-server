@@ -2,7 +2,8 @@ import json
 import logging
 import os
 import shutil
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from django.conf import settings
@@ -25,7 +26,8 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
-    LockJobRequestSerializer
+    LockJobRequestSerializer, S3DirectoryValidator
+from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -535,7 +537,11 @@ def delete_jobs(request: Request) -> Response:
 
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
+        run, error_return = get_calibration_run(
+            calibration_run_id,
+            request.user,
+            run_status=list(StatusEnum)
+        )
         if error_return:
             job_results.append({
                 "message": error_return.data.get('message'),
@@ -547,7 +553,7 @@ def delete_jobs(request: Request) -> Response:
         # Can't delete if the job is locked
         if run.is_locked:
             job_results.append({
-                "message": f'Calibration Job {run.id} is locked for deletion',
+                "message": f'Calibration Job {run.id} is locked for archiving/deleting',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -602,7 +608,9 @@ def delete_jobs(request: Request) -> Response:
 @handle_exceptions
 def archive_jobs(request: Request) -> Response:
     """
-    Archive or unarchive multiple calibration jobs. Essentially a soft delete by setting an archive flag.
+    Archive or unarchive multiple calibration jobs. A soft-delete mechanism:
+    archiving moves job data to S3 and removes the local directory;
+    unarchiving restores from S3 into a clean directory.
 
     :param request: The HTTP request object.
     :return: A Response object with the archive confirmation.
@@ -617,11 +625,32 @@ def archive_jobs(request: Request) -> Response:
     calibration_run_ids = validator.get('calibration_run_ids')
     archive = validator.get('archive')
 
+    if not settings.NGENCERF_ARCHIVE_S3_PATH:
+        return ResponseError("NGENCERF_ARCHIVE_S3_PATH is undefined")
+
+    # Make sure it's s3 and ends with a directory slash
+    try:
+        S3DirectoryValidator(data={"uri": settings.NGENCERF_ARCHIVE_S3_PATH}).is_valid(raise_exception=True)
+    except Exception:
+        return ResponseError("NGENCERF_ARCHIVE_S3_PATH must be a valid S3 directory (e.g. s3://ngencerf_archive/<system_name>/)")
+
+    if not path_exists(settings.NGENCERF_ARCHIVE_S3_PATH):
+        return ResponseError(
+            f"NGENCERF_ARCHIVE_S3_PATH does not exist on S3: {settings.NGENCERF_ARCHIVE_S3_PATH}"
+        )
+
     job_results = []
 
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum), include_archived=True)
+
+        # Process each calibration_run_id in the list (include archived)
+        run, error_return = get_calibration_run(
+            calibration_run_id,
+            request.user,
+            run_status=list(StatusEnum),
+            include_archived=True
+        )
         if error_return:
             job_results.append({
                 "message": error_return.data.get('message'),
@@ -630,6 +659,16 @@ def archive_jobs(request: Request) -> Response:
             })
             continue
 
+        # Can't archive if the job is locked
+        if run.is_locked:
+            job_results.append({
+                "message": f'Calibration Job {run.id} is locked for archiving/deleting',
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
+
+        # Already archived/not-archived?
         if archive == run.is_archived:
             job_results.append({
                 "message": f'Calibration Job {run.id} is {"already" if archive else "not"} archived',
@@ -638,35 +677,122 @@ def archive_jobs(request: Request) -> Response:
             })
             continue
 
-        # Check for any running jobs (including the calibration job itself)
-        if archive:
-            running_jobs_error = has_running_associated_jobs(run)
-            if running_jobs_error:
-                job_results.append({
-                    "message": running_jobs_error,
-                    "calibration_run_id": calibration_run_id,
-                    "success": False
-                })
-                continue
+        try:
+            # ===============================
+            # ARCHIVE (EFS → S3)
+            # ===============================
+            if archive:
+                # Prevent archiving while job or child jobs are running
+                running_jobs_error = has_running_associated_jobs(run)
+                if running_jobs_error:
+                    job_results.append({
+                        "message": running_jobs_error,
+                        "calibration_run_id": calibration_run_id,
+                        "success": False
+                    })
+                    continue
 
-        run.is_archived = archive
-        # If we're archiving, then unlock it
-        run.is_locked = False if archive else run.is_locked
-        run.save(update_fields=['is_archived', 'is_locked'])
+                src_path = run.job_data_dir  # e.g. /ngencerf/data/.../1_peter
+                dst_prefix = join_url(
+                    settings.NGENCERF_ARCHIVE_S3_PATH,
+                    os.path.basename(src_path),
+                )
 
-        job_results.append({
-            'message': f'Calibration Job {run.id} has been {"archived" if archive else "unarchived"}',
-            "calibration_run_id": calibration_run_id,
-            "success": True
-        })
+                start = time.perf_counter()
+                logger.info(f"Archiving Calibration Job {run.id}: copy {src_path} -> {dst_prefix}")
+
+                # ---- COPY LOCAL → CLOUD ----
+                copied = copy_tree(src_path, dst_prefix, verify=True)
+
+                elapsed = time.perf_counter() - start
+                logger.info(
+                    f"Archived {copied} files for Calibration Job {run.id} "
+                    f"to {dst_prefix} in {elapsed:.2f}s"
+                )
+
+                # ---- DELETE LOCAL DIRECTORY AFTER SUCCESS ----
+                if os.path.isdir(src_path):
+                    try:
+                        shutil.rmtree(src_path)
+                        logger.info(f"Deleted local directory after archive: {src_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete local directory {src_path}: {e}")
+                        raise
+
+            # ===============================
+            # UNARCHIVE (S3 → EFS)
+            # ===============================
+            else:
+                src_cloud_prefix = join_url(
+                    settings.NGENCERF_ARCHIVE_S3_PATH,
+                    os.path.basename(run.job_data_dir)
+                )
+
+                dest_dir = run.job_data_dir
+
+                # Ensure the destination directory exists (empty)
+                if os.path.isdir(dest_dir):
+                    shutil.rmtree(dest_dir)
+                os.makedirs(dest_dir, exist_ok=True)
+
+                start = time.perf_counter()
+                logger.info(
+                    f"Unarchiving Calibration Job {run.id}: "
+                    f"copy {src_cloud_prefix} -> {dest_dir}"
+                )
+
+                # ---- COPY CLOUD → LOCAL ----
+                copied = copy_tree(src_cloud_prefix, dest_dir, verify=True)
+
+                elapsed = time.perf_counter() - start
+                logger.info(
+                    f"Unarchived {copied} files for Calibration Job {run.id} "
+                    f"into {dest_dir} in {elapsed:.2f} seconds"
+                )
+
+                # ---- DELETE CLOUD DIRECTORY AFTER SUCCESS ----
+                try:
+                    cloud_fs, _ = get_filesystem(src_cloud_prefix)
+                    cloud_fs.rm(src_cloud_prefix, recursive=True)
+                    logger.info(f"Deleted cloud directory after unarchive: {src_cloud_prefix}")
+                except Exception as e:
+                    logger.error(f"Failed to delete cloud directory {src_cloud_prefix}: {e}")
+                    raise
+
+            # ------------------------------------------------------------
+            # Update run flags + archive timestamp
+            # ------------------------------------------------------------
+            run.is_archived = archive
+            run.archive_status_updated_at = datetime.now(tz=timezone.utc)
+
+            run.save(update_fields=['is_archived', 'archive_status_updated_at'])
+
+            job_results.append({
+                'message': f'Calibration Job {run.id} has been '
+                           f'{"archived" if archive else "unarchived"}',
+                "calibration_run_id": calibration_run_id,
+                "success": True
+            })
+
+        except Exception as e:
+            logger.exception(f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}")
+            job_results.append({
+                "message": f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}",
+                "calibration_run_id": calibration_run_id,
+                "success": False
+            })
+            continue
 
     response = {"jobs": job_results}
 
     response_validator, error_response = validate_response(CalibrationRunListResponse, response)
     if error_response:
         return error_response
+
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}'
+    )
 
     return Response(response_validator.data)
 

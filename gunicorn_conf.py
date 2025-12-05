@@ -1,8 +1,6 @@
 import logging
 import os
 
-from calibration.umask_debug import install_umask_trap
-
 # =====================================================================
 # IMPORTANT — READ THIS FIRST
 # =====================================================================
@@ -19,7 +17,6 @@ from calibration.umask_debug import install_umask_trap
 # With --preload:
 #   • Django loads ONCE in the MASTER
 #   • Workers fork from an initialized Django state
-#   • umask trap installs cleanly
 #
 # runCerf.sh script already uses --preload.
 #
@@ -106,10 +103,8 @@ def when_ready(_server):
 def post_fork(_server, worker):
     """
     Runs once for each worker (initial and respawned).
-    Install umask trap + enforce umask for each worker.
+    Configure logging and enforce umask per worker.
     """
-    install_umask_trap()
-
     _configure_logging(worker)
 
     # Enforce umask per-worker

@@ -84,47 +84,34 @@ aws_secret_access_key = <access_key>
 aws_session_token = <token>
 ```
 
+# Archive Directory
 
-In order to not have any AWS specific code, AWS buckets are mounted as a regular file system.  
-There are any number of tools that can do this.  I've tested `s3fs` and `goofys` on AWS Workspace.
-Create a directory to contain the contents of a specific S3 bucket.
-For example, if we will be using `ngwpc-dev`' create a directory called `~/s3/ngwpc-dev`.  
-Then install  either `s3fs` or `goofys` and mount the bucket
+In `ngencerf/.env`, Define an s3 bucket/directory that will be used for archiving.
 
-### S3FS
+In AWS Workspace, you can use any directory that you have write access to.  For example,
 ```
-$ sudo apt update
-$ sudo apt install s3fs
-$ mkdir -p ~/s3/ngwpc-dev
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev 
-$ ls ~/s3/ngwpc-dev
-```
+`NGENCERF_ARCHIVE_S3_PATH=s3://ngwpc-dev/peter.kronenberg/ngencerf_archive/`
+ ```
+Use your own directory. Do not sure a directory with someone else
 
-### Goofys
+For Parallel Works, you must use the directory corresponding to the cluster and for which you have read/write access.
+The bucket used is `s3://ngwpc-ngencerf-archive` and the directory will be unique for each cluster, e.g., `s3://ngwpc-ngencerf-archive/integration`
 ```
-$ sudo wget https://github.com/kahing/goofys/releases/download/v0.24.0/goofys -O /usr/local/bin/goofys
-$ sudo chmod +x /usr/local/bin/goofys
-$ mkdir -p ~/s3/ngwpc-dev
-$ goofys ngwpc-dev ~/s3/ngwpc-dev
-$ ls ~/s3/ngwpc-dev
+`NGENCERF_ARCHIVE_S3_PATH=s3://ngwpc-ngencerf-archive/integration
 ```
 
-To unmount it at some later point use
+**_Important:_**
+Since S3 directories aren't real directories, they will not persist if they are empty.  So it is important to
+create a dummy file in the directory that will remain there.  Enter this command
 ```
-fusermount -u ~/s3/ngwpc-dev
+printf "Do not delete.\nThis placeholder file ensures this S3 prefix is retained.\nS3 does not preserve empty directories; at least one object must exist.\n" \
+  | aws s3 cp - s3://ngwpc-dev/peter.kronenberg/ngencerf_archive/.keep
 ```
-When refreshing your AWS credentials, you will have to unmount and re-mount
+or
 ```
-$ fusermount -u ~/s3/ngwpc-dev
-$ s3fs ngwpc-dev ~/s3/ngwpc-dev or goofys ngwpc-dev ~/s3/ngwpc-dev
-$ ls ~/s3/ngwpc-dev
+printf "Do not delete.\nThis placeholder file ensures this S3 prefix is retained.\nS3 does not preserve empty directories; at least one object must exist.\n" \
+  | aws s3 cp - s3://ngwpc-ngencerf-archive/integration/.keep
 ```
-
-**Note:** There are other tools that perform the same functionally as `s3fs`,  and 
-environments, such as Parallel Works 
-have other ways of implementing this functionality.  There is nothing in the server code
-that is dependent on `s3fs`.  All that matters is that the bucket is mounted as a file space.
-
 
 # Static Files
 There are some static files that are required for Ngen to run.  They should be in a directory under the data directory at `/ngencerf/data` called `ngen-static-files`.  

@@ -23,8 +23,10 @@ from calibration.models.base_run import BaseRun
 from calibration.util.git_util import get_git_info_internal
 from calibration.util.ngen_locations import get_calibration_input_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_calibration_stdout_file, get_validation_best_input_file, get_validation_control_input_file, get_validation_iteration_stdout_file, \
-    get_forecast_stdout_file, get_forecast_dir, get_validation_iteration_git_info_file, get_validation_special_git_info_file, get_calibration_git_info_file, \
-    get_forecast_git_info_file, get_forcing_dir_for_job, get_verification_yaml_config_file, get_verification_git_info_file, get_verification_stdout_file, \
+    get_forecast_stdout_file, get_forecast_dir, get_validation_iteration_git_info_file, get_validation_special_git_info_file, \
+    get_calibration_git_info_file, \
+    get_forecast_git_info_file, get_forcing_dir_for_job, get_verification_yaml_config_file, get_verification_git_info_file, \
+    get_verification_stdout_file, \
     get_observational_file_for_job, get_forecast_realization_file, get_cold_start_realization_file, get_cold_start_stdout_file, get_cold_start_dir, \
     get_cold_start_git_info_file
 from calibration.views import ngen_cal_input
@@ -200,7 +202,6 @@ def execute_job(run: BaseRun, cmd_line_args: dict[str, str], stdout_file: str, s
     run.save(update_fields=['sent_date'])
 
 
-
 def cancel_job_common(run: BaseRun) -> bool:
     """
     Cancel a job using the appropriate environment-specific logic.
@@ -241,7 +242,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file, 'nprocs': str(calibration_run.mpi_nprocs)},
+        {'input_file': input_file},
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
@@ -562,7 +563,9 @@ def create_and_submit_validation_control(calibration_run: CalibrationRun) -> Non
 
 def process_validation_output_and_maybe_create_best(validation_run: ValidationRun, failed_so_far: bool) -> None:
     """
-    Process the validation output and create a new VALID_BEST run if the validation type is VALID_CONTROL.
+    Process validation output and, if this was a VALID_CONTROL run,
+    create and submit a follow-up VALID_BEST run after the current
+    DB transaction commits.
 
     :param validation_run: The ValidationRun object representing the job run.
     :param failed_so_far: Indicates whether the job has failed up to this point.
@@ -584,18 +587,37 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
         set_job_status(validation_run, StatusEnum.FAILED, failure_messages)
         return  # Stop further processing if the job failed
 
-    if not failed_so_far:
-        # If we just ran Validation Control, see if we want to run Validation Best
-        if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
-            if validation_run.calibration_run.automatic_validation:
-                best_validation_run = create_validation_run_internal(
-                    validation_run.calibration_run, None, validation_type=ValidationType.VALID_BEST
-                )
-                # Set the iteration containing the best values before we run it
-                iteration = Iteration.objects.filter(calibration_run=validation_run.calibration_run, best_params=True).get()
-                best_validation_run.iteration = iteration
-                best_validation_run.save(update_fields=['iteration'])
-                submit_job(best_validation_run)
+    if failed_so_far:
+        return
+
+    # Only VALID_CONTROL can trigger a follow-up VALID_BEST run
+    if validation_run.validation_type != ValidationType.VALID_CONTROL.value:
+        return
+
+    if not validation_run.calibration_run.automatic_validation:
+        return
+
+    # We just ran Validation Control, so need to run Validation Best
+    # Create the VALID_BEST run now, but don't attach the iteration yet.
+    best_validation_run = create_validation_run_internal(
+        validation_run.calibration_run, None, validation_type=ValidationType.VALID_BEST
+    )
+
+    # Run this AFTER the surrounding transaction commits,
+    # so we see the final 'best_params' state (not the intermediate writes).
+    def _finish():
+        with transaction.atomic():
+            iteration = (
+                Iteration.objects
+                .filter(calibration_run=validation_run.calibration_run, best_params=True)
+                .get()
+            )
+            # Set the iteration containing the best values before we run it
+            best_validation_run.iteration = iteration
+            best_validation_run.save(update_fields=['iteration'])
+            submit_job(best_validation_run)
+
+    transaction.on_commit(_finish)
 
 
 def run_generic_job_end_callback(
@@ -876,7 +898,7 @@ def subset_directory_by_time_range(
     - If running on a high-performance instance (e.g., AWS EC2 with high network bandwidth), this value can be increased.
     - If running on a slow or metered connection, keeping this at 4 prevents potential slowdowns.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     os.makedirs(output_directory, exist_ok=True)
 
     files_in = _list_dir_files(input_directory)
@@ -895,7 +917,7 @@ def subset_directory_by_time_range(
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         list(ex.map(_process, file_pairs))
 
-    elapsed = time.time() - start_time
+    elapsed = time.perf_counter() - start_time
     logger.info(f"Finished subsetting directory {input_directory} in {elapsed:.2f}s "
                 f"for Calibration Job {run.id}")
 
