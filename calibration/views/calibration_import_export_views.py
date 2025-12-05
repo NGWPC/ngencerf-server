@@ -305,6 +305,13 @@ def import_calibration_run_data(request: Request,
                 return None, None, ResponseError(parameter_errors)
             save_parameters(run, parameters, allow_nulls=True)
 
+        # This needs to be done after the gage is set
+        time_range = compute_time_range(run)
+
+        if time_range and (not run.time_range_start or not run.time_range_end):
+            with transaction.atomic():
+                persist_time_range(run, time_range)
+
         # Times (persist)
         error_message = validate_and_save_times(run, calibration_times, validation_times)
         if error_message:
