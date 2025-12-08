@@ -41,7 +41,7 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
         logger.info(f"Data Services payload: {payload}")
 
     try:
-        start_time = time.time()  # Record the start time for performance tracking
+        start_time = time.perf_counter()  # Record the start time for performance tracking
 
         # Send the appropriate HTTP request based on the method
         if method == 'GET':
@@ -52,7 +52,7 @@ def fetch_from_data_services(method: str, url: str, headers: dict = None, payloa
             raise DataServicesException(f"Unsupported HTTP method: {method}")
 
         # Log the time taken for the request
-        elapsed_time = time.time() - start_time
+        elapsed_time = time.perf_counter() - start_time
         minutes, seconds = divmod(elapsed_time, 60)  # Convert to minutes and seconds
         logger.info(f"Request to {url} took {int(minutes)}:{int(seconds):02} (minutes:seconds).")
 
