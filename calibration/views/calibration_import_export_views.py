@@ -563,7 +563,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['external_data_status'] = get_data_files_status(run)
         logger.info(f"Data Files status completed in {time.perf_counter() - data_files_status_start:.2f}s")
 
-         formulations = CalibrationFormulation.objects.filter(calibration_run=run)
+        formulations = CalibrationFormulation.objects.filter(calibration_run=run)
         calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(formulations)
         logger.info(f"UI display data preparation completed in {time.perf_counter() - ui_display_start:.2f}s")
 
