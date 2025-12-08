@@ -702,7 +702,6 @@ def archive_jobs(request: Request) -> Response:
                 logger.info(f"Archiving Calibration Job {run.id}: copy {src_path} -> {dst_prefix}")
 
                 # ---- COPY LOCAL → CLOUD ----
-                print(f'copy from {src_path} to {dst_prefix}')
                 copied = copy_tree(src_path, dst_prefix, verify=True)
 
                 elapsed = time.perf_counter() - start
