@@ -26,9 +26,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("1", "true", "yes")
 
-dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
-print(f'Loading values from {dotenv_path}')
-load_dotenv(dotenv_path)
+base_env = os.path.join(os.path.dirname(__file__), '.env')
+print(f'Loading values from {base_env}')
+load_dotenv(base_env, override=False)
+
+override_env = os.path.join(os.path.dirname(__file__), '.env-override')
+print(f'Loading values from {override_env}')
+load_dotenv(override_env, override=True)
 
 version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
