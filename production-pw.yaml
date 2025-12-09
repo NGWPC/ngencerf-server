@@ -9,7 +9,7 @@ services:
       - ./redis/redis.conf.prod:/usr/local/etc/redis/redis.conf:ro
     ports:
       - "6379:6379"
-    restart: unless-stopped
+    restart: no  # ensure Redis is recreated fresh on each deploy; no auto-restart
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s

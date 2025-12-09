@@ -45,6 +45,8 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     is_locked = models.BooleanField(default=False)
     mpi_nprocs = models.IntegerField(null=True)
     next_worker_number = models.PositiveIntegerField(default=1)
+    num_catchments = models.IntegerField(null=True)
+    node_type = models.CharField(max_length=20, null=True)
 
     class Meta:
         db_table = 'calibration_run'
