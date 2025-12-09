@@ -103,8 +103,6 @@ RUN set -eux && \
 # Remove .git directory
 RUN rm -rf .git
 
-COPY cli /ngencerf/ngencerf-server/cli
-
 # Copy application code
 COPY . /ngencerf/ngencerf-server/
 
