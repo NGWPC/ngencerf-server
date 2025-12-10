@@ -537,11 +537,7 @@ def delete_jobs(request: Request) -> Response:
 
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
-        run, error_return = get_calibration_run(
-            calibration_run_id,
-            request.user,
-            run_status=list(StatusEnum)
-        )
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
         if error_return:
             job_results.append({
                 "message": error_return.data.get('message'),
@@ -553,7 +549,7 @@ def delete_jobs(request: Request) -> Response:
         # Can't delete if the job is locked
         if run.is_locked:
             job_results.append({
-                "message": f'Calibration Job {run.id} is locked for archiving/deleting',
+                "message": f'Calibration Job {run.id} is locked for deletion',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -630,7 +626,9 @@ def archive_jobs(request: Request) -> Response:
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
 
-        # Process each calibration_run_id in the list (include archived)
+        # -------------------------------
+        # Retrieve run (allows archived)
+        # -------------------------------
         run, error_return = get_calibration_run(
             calibration_run_id,
             request.user,
@@ -640,15 +638,6 @@ def archive_jobs(request: Request) -> Response:
         if error_return:
             job_results.append({
                 "message": error_return.data.get('message'),
-                "calibration_run_id": calibration_run_id,
-                "success": False
-            })
-            continue
-
-        # Can't archive if the job is locked
-        if run.is_locked:
-            job_results.append({
-                "message": f'Calibration Job {run.id} is locked for archiving/deleting',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -668,7 +657,8 @@ def archive_jobs(request: Request) -> Response:
             # ARCHIVE (EFS → S3)
             # ===============================
             if archive:
-                # Prevent archiving while job or child jobs are running
+
+                # Prevent archiving while job or children jobs are running
                 running_jobs_error = has_running_associated_jobs(run)
                 if running_jobs_error:
                     job_results.append({
@@ -751,7 +741,10 @@ def archive_jobs(request: Request) -> Response:
             run.is_archived = archive
             run.archive_status_updated_at = datetime.now(tz=timezone.utc)
 
-            run.save(update_fields=['is_archived', 'archive_status_updated_at'])
+            # When archiving, always unlock (cannot modify archived jobs)
+            run.is_locked = False if archive else run.is_locked
+
+            run.save(update_fields=['is_archived', 'is_locked', 'archive_status_updated_at'])
 
             job_results.append({
                 'message': f'Calibration Job {run.id} has been '
