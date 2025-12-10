@@ -136,17 +136,17 @@ def load_tuning_tab(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-def has_user_selected_tuning_parameters(formulations: QuerySet[CalibrationFormulation]) -> bool:
+def has_user_selected_tuning_parameters(formulation_ids: list[int]) -> bool:
     """
-    Check whether any parameters tied to the provided calibration formulations
-    are marked user_selected_for_tuning.
+    Check whether any user-selected tuning parameters exist for the given module IDs.
+    Avoids resolving Module objects via the DB.
 
-    :param formulations: QuerySet of CalibrationFormulation objects for a single run.
-    :return: True if at least one parameter in these formulations is marked
-             user_selected_for_tuning, otherwise False.
+    :param formulation_ids: List of module IDs from CalibrationFormulation.
+    :return: True if at least one user-selected parameter exists, else False.
     """
+
     return CalibrationParameter.objects.filter(
-        calibration_formulation__in=formulations,
+        calibration_formulation__module_id__in=formulation_ids,
         user_selected_for_tuning=True
     ).exists()
 
