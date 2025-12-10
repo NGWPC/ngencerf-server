@@ -334,66 +334,15 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     best_params_dict: Dict[str, float] = {}
 
     have_LSTM_flag = have_LSTM(calibration_run)
-
-    logger.debug(
-        f"[BESTPARAMS CHECK] Run {calibration_run.id} using optimization={calibration_run.optimization}; "
-        f"DDS={calibration_run.optimization == OptimizationEnum.DDS.db_instance}, "
-        f"LSTM={have_LSTM_flag}"
-    )
-
-    # ----------------------------------------------------------------------
-    # NON-DDS branch (GWO / PSO)
-    # Only load global best params if NOT DDS AND NOT LSTM
-    # ----------------------------------------------------------------------
     if calibration_run.optimization != OptimizationEnum.DDS.db_instance:
         if not have_LSTM_flag:
             global_best_params_file = get_global_best_params_file(calibration_run)
-
-            logger.debug(
-                f"[BESTPARAMS CHECK] Non-DDS + Non-LSTM: expecting global_best_params_file={global_best_params_file}"
-            )
-
             if not os.path.isfile(global_best_params_file):
-                logger.error(
-                    f"[BESTPARAMS ERROR] global_best_params_file does NOT exist for run {calibration_run.id}: "
-                    f"{global_best_params_file}"
-                )
                 raise CerfException(f"{global_best_params_file} does not exist")
 
-            # File exists — load it
-            logger.debug(
-                f"[BESTPARAMS CHECK] Loading global best params file for run {calibration_run.id}"
-            )
             # Read the global best parameters into a dictionary
-
             df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
-            best_params_dict = pd.Series(
-                df['value'].astype(float).values, index=df['name']
-            ).to_dict()
-
-            logger.debug(
-                f"[BESTPARAMS CHECK] Loaded {len(best_params_dict)} best params for run {calibration_run.id}: "
-                f"{list(best_params_dict.keys())[:10]}..."
-            )
-
-    # ----------------------------------------------------------------------
-    # DDS branch — SHOULD NOT USE global best params
-    # But we add diagnostics if the file exists
-    # ----------------------------------------------------------------------
-    else:
-        global_best_params_file = get_global_best_params_file(calibration_run)
-        if os.path.isfile(global_best_params_file):
-            logger.error(
-                f"[DDS WARNING] global_best_params_file EXISTS for DDS run {calibration_run.id}: "
-                f"{global_best_params_file}. DDS should not produce this file."
-            )
-        else:
-            logger.debug(
-                f"[DDS OK] No global_best_params_file present for DDS run {calibration_run.id}"
-            )
-
-        # Explicitly ensure no params are used
-        best_params_dict = {}
+            best_params_dict = pd.Series(df['value'].astype(float).values, index=df['name']).to_dict()
 
     # Query all Iteration objects for the calibration run and prefetch related metrics and parameters
     iterations = list(
@@ -409,9 +358,7 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
     )
     params_lookup = {p.name.lower(): p for p in job_parameters}
 
-    # ----------------------------------------------------------------------
     # Group the iterations by worker and process them
-    # ----------------------------------------------------------------------
     for worker_name, worker_iterations in groupby(iterations, key=attrgetter('worker_name')):
         process_iterations_for_a_worker(
             calibration_run,
@@ -422,34 +369,6 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
             params_lookup
         )
 
-    # ----------------------------------------------------------------------
-    # FINAL DIAGNOSTIC — Make sure exactly one best iteration exists
-    # Applies to DDS, GWO/PSO, LSTM
-    # ----------------------------------------------------------------------
-    best_list = list(
-        Iteration.objects
-        .filter(calibration_run=calibration_run, best_params=True)
-        .values_list("id", "iteration_num", "worker_name")
-    )
-
-    if len(best_list) == 0:
-        logger.error(
-            f"[BESTPARAMS ERROR] No best iteration found after processing for run {calibration_run.id}. "
-            f"(optimization={calibration_run.optimization}, LSTM={have_LSTM_flag})"
-        )
-    elif len(best_list) > 1:
-        logger.error(
-            f"[BESTPARAMS ERROR] Multiple ({len(best_list)}) best iterations found for run {calibration_run.id}. "
-            f"Expected exactly one. Details: {best_list}"
-        )
-    else:
-        logger.debug(
-            f"[BESTPARAMS OK] Exactly one best iteration found for run {calibration_run.id}: {best_list[0]}"
-        )
-
-    # ----------------------------------------------------------------------
-    # Final check — only runs without LSTM require best iteration detection
-    # ----------------------------------------------------------------------
     if not have_LSTM_flag:
         # Raise an error if no best iteration was found
         has_best = Iteration.objects.filter(
@@ -565,7 +484,14 @@ def process_iterations_for_a_worker(
 
             # Determine if best iteration
             params_row = {k: v for k, v in row_dict.items() if k != 'iteration'}
-            is_best_match = params_match_best(params_row, best_params_dict)
+            is_best_match = (
+                    len(params_row) == len(best_params_dict) and
+                    all(
+                        param_name in best_params_dict and
+                        math.isclose(float(value), best_params_dict[param_name], rel_tol=1e-9, abs_tol=0.0)
+                        for param_name, value in params_row.items()
+                    )
+            )
 
             iteration.best_params = (
                     is_best_match or
@@ -682,8 +608,6 @@ def process_params_row(
     """
     Process a single row from the parameters file and create IterationParameter objects.
     Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
-    DDS: best is determined ONLY by objective_log_best_file.
-    GWO/PSO: best may also be determined by matching global best parameters.
 
     :param calibration_run: The CalibrationRun instance.
     :param iteration: The Iteration object for the current iteration.
@@ -697,45 +621,24 @@ def process_params_row(
     # Filter out the 'iteration' column
     params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
 
-    # ----------------------------------------------------------------------
-    # DDS: it should never use parameter-match logic. Warn if data is present.
-    # ----------------------------------------------------------------------
-    if calibration_run.optimization == OptimizationEnum.DDS.db_instance:
-        if best_params_dict:
-            logger.error(
-                f"[DDS WARNING] best_params_dict is NON-EMPTY for CalibrationRun {calibration_run.id}. "
-                f"Seen {len(best_params_dict)} params: {list(best_params_dict.keys())[:10]}..."
+    # Check if the current params_row matches the global best parameters
+    # The is_best_match logic is done for PSO and GWO.  We actually compare the values of the parameters
+    is_best_match = (
+            len(params_row) == len(best_params_dict) and
+            all(
+                param_name in best_params_dict and
+                math.isclose(float(value), best_params_dict[param_name], rel_tol=1e-9, abs_tol=0.0)
+                for param_name, value in params_row.items()
             )
-        else:
-            logger.debug(
-                f"[DDS OK] best_params_dict is empty for CalibrationRun {calibration_run.id} "
-                f"(expected for DDS)."
-            )
-        # DDS never uses param matching
-        is_best_match = False
+    )
 
+    # If the iteration is the best (based on matching parameters or best iteration number (from objective_log file for DDS))
+    if is_best_match or iteration.iteration_num == best_iteration_for_worker:
+        logger.debug(f'{calibration_run.id}_{calibration_run.owner.username} Found best iteration: {iteration.iteration_num}, for {job_description}')
+        iteration.best_params = True
     else:
-        # ----------------------------------------------------------------------
-        # Non-DDS (GWO/PSO): normal parameter-match logic
-        # ----------------------------------------------------------------------
-        is_best_match = params_match_best(params_row, best_params_dict)
+        iteration.best_params = False
 
-        if is_best_match:
-            logger.debug(
-                f"{calibration_run.id}_{calibration_run.owner.username} "
-                f"Iteration {iteration.iteration_num} matches global best parameters."
-            )
-
-    # ----------------------------------------------------------------------
-    # IMPORTANT:
-    # We DO NOT write iteration.best_params here.
-    # We DO NOT save the iteration here.
-    # That logic is handled entirely in process_iterations_for_a_worker().
-    # ----------------------------------------------------------------------
-
-    # ----------------------------------------------------------------------
-    # Create IterationParameter objects
-    # ----------------------------------------------------------------------
     for param_name, value in params_row.items():
         # Perform case-insensitive lookup for the parameter
         parameter = params_lookup.get(param_name.lower())
@@ -949,39 +852,3 @@ def parse_performance_metrics(file_path: str) -> PerformanceMetrics | None:
         return metrics
 
     return None
-
-
-def params_match_best(params_row: dict[str, float | None], best_params_dict: dict[str, float]) -> bool:
-    """
-    Determine whether a row of tuned parameters exactly matches the known global-best parameters.
-
-    NOTES:
-    - Used only for GWO/PSO jobs. DDS never uses parameter matching.
-    - best_params_dict comes from global_best_params_file.
-    - A match requires:
-        1. Same number of parameters.
-        2. Same parameter names.
-        3. Values matching within floating-point tolerance.
-    - This check is used for:
-        - Diagnostics (logging in process_params_row)
-        - Actual best-iteration selection in process_iterations_for_a_worker
-    """
-    # If we have no global best params (DDS or missing file), never match.
-    if not best_params_dict:
-        return False
-
-    # Must have the exact same set of parameter names
-    if len(params_row) != len(best_params_dict):
-        return False
-
-    # Check that each parameter exists in best_params_dict and
-    # that its value matches within floating-point tolerance.
-    return all(
-        param_name in best_params_dict and math.isclose(
-            float(value),
-            best_params_dict[param_name],
-            rel_tol=1e-9,
-            abs_tol=0.0
-        )
-        for param_name, value in params_row.items()
-    )
