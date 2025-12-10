@@ -41,7 +41,8 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'calibration_run_id': (None, run.id),
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
-            'nprocs': (None, arguments['nprocs'])
+            'nprocs': (None, str(run.mpi_nprocs)),
+            'node_type': (None, run.node_type)
         }
     elif isinstance(run, ValidationRun):
         url_endpoint = settings.SLURM_SUBMIT_VALIDATION_JOB_ENDPOINT
@@ -51,6 +52,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
             'nprocs': (None, arguments['nprocs']),
+            'node_type': (None, run.calibration_run.node_type),
             'worker_name': (None, arguments.get('worker_name')),
             'iteration': (None, arguments.get('iteration_num'))
         }

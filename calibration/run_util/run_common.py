@@ -242,7 +242,7 @@ def run_calibration_job(calibration_run: CalibrationRun) -> None:
 
     execute_job(
         calibration_run,
-        {'input_file': input_file, 'nprocs': str(calibration_run.mpi_nprocs)},
+        {'input_file': input_file},
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.CALIBRATION, False)
     )
