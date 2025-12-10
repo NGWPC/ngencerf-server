@@ -26,8 +26,15 @@ __LOG_DIR__/ngencerf.log {
     missingok
     # don’t rotate empty logs
     notifempty
-    # safe with multi-process writers like Gunicorn
-    copytruncate
+    sharedscripts
+
+    # Create a fresh file owned by the invoking user (dev environment)
+    create 644 - -
+
+    # Tell Gunicorn master to reopen logs cleanly
+    postrotate
+        pkill -USR1 -f "gunicorn: master"
+    endscript
 
     # use date- and time-based rotation
     dateext
@@ -50,8 +57,15 @@ __LOG_DIR__/ngencerf_db.log {
     missingok
     # don’t rotate empty logs
     notifempty
-    # safe with multi-process writers like Gunicorn
-    copytruncate
+    sharedscripts
+
+    # Create a fresh file owned by the invoking user (dev environment)
+    create 644 - -
+
+    # Tell Gunicorn master to reopen logs cleanly
+    postrotate
+        pkill -USR1 -f "gunicorn: master"
+    endscript
 
     # use date- and time-based rotation
     dateext
