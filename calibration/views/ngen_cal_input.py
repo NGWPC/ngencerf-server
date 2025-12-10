@@ -636,8 +636,8 @@ def get_mpi_nodes(num_catchments: int) -> int:
 # Global table of node type rules.
 # Each pair represents [max_catchments, node_type]
 NODE_TYPE_RULES = [
-    [500, 'c5n'],
-    [-1, 'hpc6a']
+    [500, 'c5n-18xlarge'],
+    [-1, 'r8a-12xlarge']
 ]
 
 
