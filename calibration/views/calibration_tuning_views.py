@@ -209,6 +209,7 @@ def get_parameters_for_export(run: CalibrationRun) -> list[dict]:
             "calibration_formulation__module_id"
         )
     )
+    print('params', params)
 
     result = []
     for p in params:
@@ -221,6 +222,7 @@ def get_parameters_for_export(run: CalibrationRun) -> list[dict]:
             "maximum": p["maximum"],
             "module": module_name,
         })
+    print('result', result)
     return result
 
 
@@ -1100,6 +1102,7 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     :param forcing_dir_path: Directory path or cloud URL containing forcing data files.
     :return: DateTimeRange covering all CSV files, or None if no files found.
     """
+    print('forcing_dir_path', forcing_dir_path)
     csv_files = cloud_util.list_files(forcing_dir_path, pattern="*.csv")
     if not csv_files:
         return None
