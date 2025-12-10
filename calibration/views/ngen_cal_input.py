@@ -617,8 +617,8 @@ def is_missing(value: Any, label: str, report: ErrorReport, have_LSTM_flag: bool
 MPI_NODE_RULES = [
     [10, 1],
     [50, 2],
-    [500, 4],
-    [-1, 8]
+    [250, 8],
+    [-1, 16]
 ]
 
 
