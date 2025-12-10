@@ -24,7 +24,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         logger.info("Starting cleanup of running jobs")
 
-        running_status = StatusEnum.RUNNING.db_instance
+        running_status = [StatusEnum.RUNNING.db_instance, StatusEnum.SUBMITTED.db_instance]
         error_status = StatusEnum.SERVER_ERROR.db_instance
 
         try:
@@ -36,7 +36,7 @@ class Command(BaseCommand):
 
                 total_count = 0
                 for model in RUN_MODELS:
-                    count = model.objects.filter(status=running_status).update(status=error_status)
+                    count = model.objects.filter(status__in=running_status).update(status=error_status)
                     logger.info(f'Updated {count} {model.__name__} records')
                     total_count += count
 
@@ -53,7 +53,6 @@ class Command(BaseCommand):
                 total_marked_error = 0  # how many we actually updated
 
                 def mark_error(run: BaseRun, reason: str):
-                    # Temporarily disabled: we are NOT modifying job status
                     nonlocal total_marked_error
                     total_marked_error += 1
 
@@ -61,7 +60,7 @@ class Command(BaseCommand):
 
                     logger.warning(
                         f"Marking job {job_description} as SERVER_ERROR: "
-                        f"slurm_job_id={run.slurm_job_id}) — reason: {reason}"
+                        f"slurm_job_id={run.slurm_job_id} — reason: {reason}"
                     )
                     # logger.warning(
                     #     f"[DRY-RUN] Would mark job {job_description} as SERVER_ERROR "
@@ -71,12 +70,12 @@ class Command(BaseCommand):
                     run.status = error_status
                     run.save(update_fields=["status"])
 
-                base_url = urljoin(settings.SLURM_URL, settings.SLURM_JOB_STATUS_ENDPOINT)
+                base_url = f"{settings.SLURM_URL.rstrip('/')}/{settings.SLURM_JOB_STATUS_ENDPOINT.lstrip('/')}"
 
                 # Iterate across all job models
                 for model in RUN_MODELS:
-                    # Only jobs that are *currently marked* RUNNING in the DB
-                    for run in model.objects.filter(status=running_status):
+                    # Only jobs that are *currently marked* RUNNING/SUBMITTED in the DB
+                    for run in model.objects.filter(status__in=running_status):
                         total_running += 1
                         slurm_id = run.slurm_job_id
 
