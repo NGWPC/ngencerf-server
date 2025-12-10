@@ -145,6 +145,7 @@ def create_and_run_validation(request: Request) -> Response:
         ValidationType.VALID_BEST.value,
     ]
 
+    # Build dict of existing runs
     control_best_dict = {
         vr.validation_type: vr
         for vr in ValidationRun.objects.filter(
@@ -156,7 +157,7 @@ def create_and_run_validation(request: Request) -> Response:
     # Ensure both exist and both are DONE
     for vt in required_types:
         vr = control_best_dict.get(vt)
-        if not vr or vr.status.name != StatusEnum.DONE.name:
+        if not vr or vr.status != StatusEnum.DONE.db_instance:
             label = "VALID_CONTROL" if vt == ValidationType.VALID_CONTROL.value else "VALID_BEST"
             status_name = vr.status.name if vr else "MISSING"
             return ResponseError(
