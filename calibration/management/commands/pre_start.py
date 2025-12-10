@@ -59,17 +59,18 @@ class Command(BaseCommand):
 
                     job_description = get_job_description(run)
 
-                    logger.warning(
-                        f"Marking job {job_description} as SERVER_ERROR: "
-                        f"slurm_job_id={run.slurm_job_id}) — reason: {reason}"
-                    )
                     # logger.warning(
-                    #     f"[DRY-RUN] Would mark job {job_description} as SERVER_ERROR "
-                    #     f"(slurm_job_id={run.slurm_job_id}) — reason: {reason}. "
-                    #     f"Status NOT changed."
+                    #     f"Marking job {job_description} as SERVER_ERROR: "
+                    #     f"slurm_job_id={run.slurm_job_id}) — reason: {reason}"
                     # )
-                    run.status = error_status
-                    run.save(update_fields=["status"])
+                    logger.warning(
+                        f"[DRY-RUN] Would mark job {job_description} as SERVER_ERROR "
+                        f"(slurm_job_id={run.slurm_job_id}) — reason: {reason}. "
+                        f"Status NOT changed."
+                    )
+                    # Disabled:
+                    # run.status = error_status
+                    # run.save(update_fields=["status"])
 
                 base_url = urljoin(settings.SLURM_URL, settings.SLURM_JOB_STATUS_ENDPOINT)
 
