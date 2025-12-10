@@ -82,7 +82,7 @@ def get_run_instance(
     try:
         run = query.get()
     except model.DoesNotExist:
-        user_info = f' or is not owned by {cast(CustomUser, user).email}' if user else ''
+        user_info = f' or is not owned by {user.email}' if user else ''
         model_name = model.__name__.replace("Run", " Job")
         error = f'{model_name} {run_id} does not exist{user_info}'
         return None, ResponseError(error)

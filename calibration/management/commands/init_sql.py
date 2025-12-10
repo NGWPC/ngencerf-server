@@ -119,7 +119,7 @@ class Command(BaseCommand):
             logger.error('********************************')
             sys.exit(1)
 
-        logger.info(f"In init_sql: email: {cast(CustomUser, self.user).email}")
+        logger.info(f"In init_sql: email: {self.user.email}")
 
         # List of all initialization functions to run in sequence
         steps = [
