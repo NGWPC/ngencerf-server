@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import shutil
-import time
 from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 
@@ -27,7 +26,6 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
     LockJobRequestSerializer
-from calibration.util.cloud_util import join_url, copy_tree
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -623,11 +621,7 @@ def archive_jobs(request: Request) -> Response:
 
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
-        run, error_return = get_calibration_run(
-            calibration_run_id, request.user,
-            run_status=list(StatusEnum),
-            include_archived=True
-        )
+        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum), include_archived=True)
         if error_return:
             job_results.append({
                 "message": error_return.data.get('message'),
@@ -655,33 +649,6 @@ def archive_jobs(request: Request) -> Response:
                 })
                 continue
 
-            # ---------------------------------------------------
-            # Actual archive copy to S3
-            # ---------------------------------------------------
-            src = run.job_data_dir
-            dst = join_url(settings.NGENCERF_ARCHIVE_S3_PATH, os.path.basename(src))
-
-            try:
-                start = time.perf_counter()
-                logger.info(f"Archiving Calibration Job {run.id}: copy {src} -> {dst}")
-
-                copied = copy_tree(src, dst)
-
-                elapsed = time.perf_counter() - start
-                logger.info(
-                    f"Archived {copied} files for Calibration Job {run.id} "
-                    f"to {dst} in {elapsed:.2f} seconds"
-                )
-
-            except Exception as e:
-                job_results.append({
-                    "message": f"Failed to archive Calibration Job {run.id}: {e}",
-                    "calibration_run_id": calibration_run_id,
-                    "success": False
-                })
-                continue
-
-        # Flip archive flag
         run.is_archived = archive
         # If we're archiving, then unlock it
         run.is_locked = False if archive else run.is_locked
@@ -699,9 +666,7 @@ def archive_jobs(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-        f'{json.dumps(response_validator.data)}'
-    )
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
