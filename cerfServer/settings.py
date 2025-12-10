@@ -212,7 +212,8 @@ FORCING_DATA_DIRS_RETRO = {
     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
 }
 
-NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
+# Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
+S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
 
 # -----------------------------
 # ngen/nwm-cal-mgr Locations
