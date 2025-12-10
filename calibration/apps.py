@@ -4,6 +4,7 @@ import sys
 
 from django.apps import AppConfig
 from django.conf import settings
+from django.core.cache import caches
 
 from calibration.util.db_diagnostics import patch_ensure_connection_with_diagnostics
 from calibration.util.git_util import print_git_info_all
@@ -81,7 +82,6 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGWPC Enterprise Data Server url: {settings.ENTERPRISE_DATA_URL}\n')
         logger.info(f'NGEN_CAL_MOUNT_POINT: {settings.NGEN_CAL_MOUNT_POINT}')
         logger.info(f'NGEN_STATIC_DIR: {settings.NGEN_STATIC_DIR}')
-        logger.info(f'NGENCERF_ARCHIVE_S3_PATH: {settings.NGENCERF_ARCHIVE_S3_PATH}')
         logger.info(f'DJANGO DEBUG: {settings.DEBUG}')
 
         from calibration.util.ngen_locations import check_files

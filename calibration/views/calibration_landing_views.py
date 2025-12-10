@@ -26,8 +26,8 @@ from calibration.util.calibration_validators import FooterResponseSerializer, \
     CreateAndRunValidationResponseSerializer, CreateValidationRequestSerializer, \
     EmptySerializer, CreateForecastRequestSerializer, CreateAndRunForecastResponseSerializer, \
     ArchiveJobRequestSerializer, GetGitInfoResponseSerializer, CalibrationRunIdList, CalibrationRunListResponse, ImportSerializer, \
-    LockJobRequestSerializer, S3DirectoryValidator
-from calibration.util.cloud_util import join_url, copy_tree, get_filesystem, path_exists
+    LockJobRequestSerializer
+from calibration.util.cloud_util import join_url, copy_tree, get_filesystem
 from calibration.util.git_util import get_git_info_internal
 from calibration.views import ngen_cal_input
 from calibration.views.calibration_import_export_views import load_calibration_run_data, import_calibration_run_data
@@ -625,20 +625,6 @@ def archive_jobs(request: Request) -> Response:
     calibration_run_ids = validator.get('calibration_run_ids')
     archive = validator.get('archive')
 
-    if not settings.NGENCERF_ARCHIVE_S3_PATH:
-        return ResponseError("NGENCERF_ARCHIVE_S3_PATH is undefined")
-
-    # Make sure it's s3 and ends with a directory slash
-    try:
-        S3DirectoryValidator(data={"uri": settings.NGENCERF_ARCHIVE_S3_PATH}).is_valid(raise_exception=True)
-    except Exception:
-        return ResponseError("NGENCERF_ARCHIVE_S3_PATH must be a valid S3 directory (e.g. s3://ngencerf_archive/<system_name>/)")
-
-    if not path_exists(settings.NGENCERF_ARCHIVE_S3_PATH):
-        return ResponseError(
-            f"NGENCERF_ARCHIVE_S3_PATH does not exist on S3: {settings.NGENCERF_ARCHIVE_S3_PATH}"
-        )
-
     job_results = []
 
     # Process each calibration_run_id in the list
@@ -702,7 +688,6 @@ def archive_jobs(request: Request) -> Response:
                 logger.info(f"Archiving Calibration Job {run.id}: copy {src_path} -> {dst_prefix}")
 
                 # ---- COPY LOCAL → CLOUD ----
-                print(f'copy from {src_path} to {dst_prefix}')
                 copied = copy_tree(src_path, dst_prefix, verify=True)
 
                 elapsed = time.perf_counter() - start
@@ -776,7 +761,7 @@ def archive_jobs(request: Request) -> Response:
             })
 
         except Exception as e:
-            logger.exception(f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}")
+            logger.error(f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}")
             job_results.append({
                 "message": f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}",
                 "calibration_run_id": calibration_run_id,
