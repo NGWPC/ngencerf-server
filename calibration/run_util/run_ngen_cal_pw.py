@@ -52,6 +52,7 @@ def submit_job_to_slurm(run: BaseRun, owner: User, arguments: dict[str, str], st
             'input_file': (None, arguments['input_file']),
             'output_file': (None, stdout_file),
             'nprocs': (None, arguments['nprocs']),
+            'node_type': (None, run.calibration_run.node_type),
             'worker_name': (None, arguments.get('worker_name')),
             'iteration': (None, arguments.get('iteration_num'))
         }
