@@ -266,9 +266,9 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
         return {}
 
     # If both paths are available, calculate intersection and update run
-    daterange_intersection_start = time.perf_counter()
+    daterange_intersection_start = time.time()
     daterange = get_date_range_intersection(observation_path, forcing_path)
-    logger.info(f"Date range intersection completed in {time.perf_counter() - daterange_intersection_start:.2f}s")
+    logger.info(f"Date range intersection completed in {time.time() - daterange_intersection_start:.2f}s")
 
     if daterange:
         return {'start_time': daterange.start_datetime, 'end_time': daterange.end_datetime}
