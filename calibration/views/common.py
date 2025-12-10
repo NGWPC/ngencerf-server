@@ -302,16 +302,14 @@ def create_validation_run_internal(
             raise CerfException(f"Values must be supplied for both iteration_id")
 
         try:
-            iteration_object = Iteration.objects.get(calibration_run_id=calibration_run.id, id=iteration_id)
+            iteration_object = Iteration.objects.filter(calibration_run=calibration_run, id=iteration_id).get()
         except Iteration.DoesNotExist:
             raise CerfException(f"Cannot find Iteration Id {iteration_id} for Calibration Job {calibration_run.id}")
 
-    validation_run = ValidationRun.objects.create(
-        status=StatusEnum.SAVED.db_instance,
-        calibration_run_id=calibration_run.id,
-        validation_type=validation_type.value,
-        iteration=iteration_object
-    )
+    validation_run = ValidationRun.objects.create(status=StatusEnum.SAVED.db_instance,
+                                                  calibration_run=calibration_run,
+                                                  validation_type=validation_type.value,
+                                                  iteration=iteration_object)
     logger.info(f"Creating Validation Job {validation_run.id} for Calibration Job {calibration_run.id} with validation_type {validation_type}")
 
     return validation_run
@@ -333,13 +331,11 @@ def create_cold_start_run_internal(
     :return: The newly created ColdStartRun instance.
     """
 
-    cold_start_run = ColdStartRun.objects.create(
-        status=StatusEnum.SAVED.db_instance,
-        calibration_run_id=calibration_run.id,
-        configuration_id=configuration.id,
-        cold_start_date=cold_start_date,
-        cycle_date=cycle_date
-    )
+    cold_start_run = ColdStartRun.objects.create(status=StatusEnum.SAVED.db_instance,
+                                                 calibration_run=calibration_run,
+                                                 configuration=configuration,
+                                                 cold_start_date=cold_start_date,
+                                                 cycle_date=cycle_date)
     os.makedirs(get_cold_start_dir(cold_start_run))
     logger.info(f"Creating {get_job_description(cold_start_run)}")
 
@@ -362,13 +358,11 @@ def create_forecast_run_internal(
     :return: The newly created ForecastRun instance.
     """
 
-    forecast_run = ForecastRun.objects.create(
-        status=StatusEnum.SAVED.db_instance,
-        calibration_run_id=calibration_run.id,
-        cold_start_run_id=cold_start_run.id,
-        configuration_id=configuration.id,
-        cycle_date=cycle_date
-    )
+    forecast_run = ForecastRun.objects.create(status=StatusEnum.SAVED.db_instance,
+                                              calibration_run=calibration_run,
+                                              cold_start_run=cold_start_run,
+                                              configuration=configuration,
+                                              cycle_date=cycle_date)
     os.makedirs(get_forecast_dir(forecast_run))
     logger.info(f"Creating {get_job_description(forecast_run)}")
 
@@ -384,10 +378,9 @@ def create_verification_job_internal(user: User, forecast_run: ForecastRun) -> V
     :return: New VerificationRun instance.
     """
     verification_run = VerificationRun.objects.create(
-        owner_id=user.id,
-        forecast_run_id=forecast_run.id,
-        status=StatusEnum.SAVED.db_instance
-    )
+        owner=user,
+        forecast_run=forecast_run,
+        status=StatusEnum.SAVED.db_instance)
 
     os.makedirs(get_verification_run_dir(verification_run))
     logger.info(f"Creating {get_job_description(verification_run)}")
