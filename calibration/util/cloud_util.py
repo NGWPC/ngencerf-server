@@ -243,8 +243,6 @@ def copy_tree(src_url: str,
     Manifest rules:
       • LOCAL → CLOUD with verify=True: manifest.json is CREATED on cloud.
       • CLOUD → LOCAL with verify=True: manifest.json is USED but NOT RESTORED.
-      • Symlinks are preserved: stored as metadata in manifest and recreated on restore.
-
 
     ------------------------------------------------------------------
     URL HANDLING
@@ -353,11 +351,9 @@ def copy_tree(src_url: str,
     dst_base, dst_prefix = _norm_prefix(dst_url)
 
     # Used ONLY during local→cloud verification.
-    # manifest_entries collects file hash entries for writing new manifest.json.
+    # Manifest entries are recorded only when the destination
+    # is a cloud provider (dst_scheme != "file").
     manifest_entries = [] if verify and dst_scheme != "file" else None
-
-    # Symlink metadata (stored only during local→cloud to recreate symlinks on restore)
-    manifest_symlinks = [] if verify and dst_scheme != "file" else None
 
     # ------------------------------------------------------------
     # Helper to compute SHA256 when verify=True
@@ -372,8 +368,7 @@ def copy_tree(src_url: str,
     # ------------------------------------------------------------
     # If verify and source is cloud → load manifest.json
     # ------------------------------------------------------------
-    source_manifest_dict = None          # fast lookup dict: rel_path → sha256
-    source_manifest_raw = None      # full manifest JSON (includes symlinks)
+    source_manifest = None
     if verify and src_scheme != "file":
         manifest_url = join_url(src_base, src_prefix, "_manifest.json")
 
@@ -381,22 +376,16 @@ def copy_tree(src_url: str,
         if src_fs.exists(manifest_url):
             try:
                 with src_fs.open(manifest_url, "r") as mf:
-                    source_manifest_raw = json.load(mf)   # keep full structure (files + symlinks)
-
-                # Convert file list to dict for fast hash verification
-                source_manifest_dict = {
-                    entry["relative"]: entry["sha256"]
-                    for entry in source_manifest_raw.get("files", [])
-                }
-
+                    data = json.load(mf)
+                # convert list to dict for fast lookup
+                source_manifest = {entry["relative"]: entry["sha256"] for entry in data["files"]}
                 logger.info(f"Loaded manifest for cloud→local verify: {manifest_url}")
-
             except Exception as e:
                 logger.error(f"Failed to load manifest.json at {manifest_url}: {e}")
-                source_manifest_dict = None
+                source_manifest = None
         else:
             logger.warning("Verification enabled, but no manifest.json found on source cloud directory.")
-            source_manifest_dict = None
+            source_manifest = None
 
     # ------------------------------------------------------------
     # STEP 1 — Generate the file list correctly
@@ -515,22 +504,6 @@ def copy_tree(src_url: str,
         t0 = time.perf_counter()
         dst_full = make_dst(rel_path)
 
-        # ------------------------------------------------------------
-        # Handle symlinks: preserve metadata instead of copying
-        # ------------------------------------------------------------
-        if src_scheme == "file" and os.path.islink(abs_src):
-            target = os.readlink(abs_src)
-
-            # Record symlink for local→cloud write
-            if manifest_symlinks is not None:
-                manifest_symlinks.append({
-                    "relative": rel_path,
-                    "target": target,
-                })
-
-            logger.info(f"Recorded symlink {rel_path} -> {target}")
-            return dst_full, 0.0, -1
-
         # Make parent directory on destination
         dst_parent = os.path.dirname(urlparse(dst_full).path)
         try:
@@ -586,9 +559,9 @@ def copy_tree(src_url: str,
                 logger.info(f"{base_msg}{throughput} — skipped manifest verification")
                 return dst_full, dt, size_bytes
 
-            # CLOUD → LOCAL verification (use manifest for hash lookup)
-            if source_manifest_dict and src_scheme != "file":
-                expected = source_manifest_dict.get(rel_path)  # O(1) lookup
+            # CLOUD → LOCAL verification (use manifest)
+            if source_manifest and src_scheme != "file":
+                expected = source_manifest.get(rel_path)
                 if expected is None:
                     raise RuntimeError(f"No manifest entry for {rel_path}")
 
@@ -661,36 +634,10 @@ def copy_tree(src_url: str,
         try:
             manifest_path = join_url(dst_base, dst_prefix, "_manifest.json")
             with dst_fs.open(manifest_path, "w") as mf:
-                mf.write(json.dumps({
-                    "files": manifest_entries,
-                    "symlinks": manifest_symlinks or [],
-                }, indent=2))
+                mf.write(json.dumps({"files": manifest_entries}, indent=2))
             logger.info(f"Wrote manifest: {manifest_path}")
         except Exception as e:
             logger.error(f"Failed to write manifest.json: {e}")
-
-    # ------------------------------------------------------------
-    # Recreate symlinks after CLOUD → LOCAL restore
-    # (uses source_manifest_raw since it contains symlink metadata)
-    # ------------------------------------------------------------
-    if (
-        verify
-        and src_scheme != "file"
-        and source_manifest_raw
-        and "symlinks" in source_manifest_raw
-    ):
-        dest_root = urlparse(dst_url).path
-        for entry in source_manifest_raw["symlinks"]:
-            rel = entry["relative"]
-            target = entry["target"]
-            link_path = os.path.join(dest_root, rel)
-
-            os.makedirs(os.path.dirname(link_path), exist_ok=True)
-            try:
-                os.symlink(target, link_path)  # creates symlink even if target missing
-                logger.info(f"Restored symlink {rel} -> {target}")
-            except Exception as e:
-                logger.error(f"Failed to recreate symlink {rel}: {e}")
 
     return completed
 
