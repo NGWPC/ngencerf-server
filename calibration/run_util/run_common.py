@@ -620,6 +620,7 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
     transaction.on_commit(_finish)
 
 
+
 def run_generic_job_end_callback(
         run: BaseRun,
         status: Future | SlurmStatusEnum,

@@ -457,6 +457,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info(f"Starting load_calibration_run_data for Calibration Job {run.id} - {run.status.name}")
 
     calibration_run_data: dict = {}
+    formulations = None
 
     #############################
     # Time Range (computed only)
@@ -474,10 +475,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
 
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
     num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
-
-    # Always load formulations once, for both export and UI modes
-    formulations = CalibrationFormulation.objects.filter(calibration_run=run)
-
 
     #############################
     # Export or Clone Mode
@@ -573,6 +570,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         calibration_run_data['external_data_status'] = get_data_files_status(run)
         logger.info(f"Data Files status completed in {time.perf_counter() - data_files_status_start:.2f}s")
 
+        formulations = CalibrationFormulation.objects.filter(calibration_run=run)
         calibration_run_data['parameters_selected'] = has_user_selected_tuning_parameters(formulations)
         logger.info(f"UI display data preparation completed in {time.perf_counter() - ui_display_start:.2f}s")
 
@@ -588,7 +586,6 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     #############################
     # Formulation Data
     #############################
-
     logger.info("Processing formulation data")
     formulation_start = time.perf_counter()
 
