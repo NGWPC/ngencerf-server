@@ -227,8 +227,7 @@ def join_url(base: str, *parts: str) -> str:
 def copy_tree(src_url: str,
               dst_url: str,
               workers: int = 16,
-              buffer_size: int = 8 * 1024 * 1024,
-              verify: bool = False) -> int:
+              buffer_size: int = 8 * 1024 * 1024) -> int:
     """
     Generic and reliable tree copy between:
         • EFS → S3/GCS/Azure
@@ -312,20 +311,11 @@ def copy_tree(src_url: str,
         Only applies when copying via this process (EFS↔S3, EFS↔Local, etc.).
         Ignored for server-side cloud copies.
 
-    :param verify:
-        When True:
-          • LOCAL → CLOUD:
-                - SHA256 both sides (src + dst)
-                - Manifest is written at the cloud destination (_manifest.json)
-          • CLOUD → LOCAL:
-                - Manifest must already exist at source
-                - Each file’s SHA256 is checked against manifest entries
-                - _manifest.json is copied but skipped during verification
-
     :return:
         Number of files successfully copied. If source prefix is empty,
         returns 0. Errors propagated to caller unless captured as
         S3CredentialsExpired for AWS credential issues.
+
     """
     logger.info(called_from())
 
@@ -343,43 +333,6 @@ def copy_tree(src_url: str,
     # Split source/dest into (base, prefix)
     src_base, src_prefix = _norm_prefix(src_url)  # e.g. ("file:///","/ngen/.../1_peter")
     dst_base, dst_prefix = _norm_prefix(dst_url)
-
-    # Used ONLY during local→cloud verification.
-    # Manifest entries are recorded only when the destination
-    # is a cloud provider (dst_scheme != "file").
-    manifest_entries = [] if verify and dst_scheme != "file" else None
-
-    # ------------------------------------------------------------
-    # Helper to compute SHA256 when verify=True
-    # ------------------------------------------------------------
-    def compute_sha256(fs, path) -> str:
-        h = hashlib.sha256()
-        with fs.open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(1024 * 1024), b""):
-                h.update(chunk)
-        return h.hexdigest()
-
-    # ------------------------------------------------------------
-    # If verify and source is cloud → load manifest.json
-    # ------------------------------------------------------------
-    source_manifest = None
-    if verify and src_scheme != "file":
-        manifest_url = join_url(src_base, src_prefix, "_manifest.json")
-
-        # Explicit existence check — DO NOT use fs.find() for this
-        if src_fs.exists(manifest_url):
-            try:
-                with src_fs.open(manifest_url, "r") as mf:
-                    data = json.load(mf)
-                # convert list to dict for fast lookup
-                source_manifest = {entry["relative"]: entry["sha256"] for entry in data["files"]}
-                logger.info(f"Loaded manifest for cloud→local verify: {manifest_url}")
-            except Exception as e:
-                logger.error(f"Failed to load manifest.json at {manifest_url}: {e}")
-                source_manifest = None
-        else:
-            logger.warning("Verification enabled, but no manifest.json found on source cloud directory.")
-            source_manifest = None
 
     # ------------------------------------------------------------
     # STEP 1 — Generate the file list correctly
@@ -404,15 +357,8 @@ def copy_tree(src_url: str,
         for a cloud-provider source.
 
         IMPORTANT:
-          fs.find() returns backend-dependent paths:
-            • 'bucket/key'
-            • 'key'
-            • or fully-qualified URLs (s3://bucket/key)
-
-        The implementation normalizes all cases into full URLs
-        the provider URL manually (using join_url), rather than using
-        normalize_url(), because normalize_url() would incorrectly treat
-        provider keys as local paths.
+          fs.find() may return scheme-less keys like "bucket/key".
+          Do NOT run normalize_url() on those; rebuild proper URLs instead.
         """
         try:
             all_objs = src_fs.find(prefix_url)
@@ -422,47 +368,23 @@ def copy_tree(src_url: str,
                 raise S3CredentialsExpired("Your AWS credentials have expired") from e
             raise
 
-        # Normalize prefix for path comparison
-        parsed = urlparse(prefix_url)
-        prefix_bucket = parsed.netloc  # "ngwpc-dev"
-        prefix_path = parsed.path.lstrip("/")  # "peter/.../1_peter"
+        prefix_norm = prefix_url.rstrip("/")
         out = []
-
         for obj in all_objs:
             if obj.endswith("/"):
                 continue
-
-            # obj may be:
-            #   "bucket/key"            (S3-style)
-            #   "key"                   (GCS/other)
-            #   "s3://bucket/key"       (full URL)
-            # We must rebuild the full provider URL WITHOUT using normalize_url()
-
-            if "://" in obj:
-                full = obj
-                full_path = urlparse(obj).path.lstrip("/")
-            else:
-                # Extract the key portion
-                if obj.startswith(prefix_bucket + "/"):
-                    key = obj.split("/", 1)[1]
-                else:
-                    key = obj
-
-                # Rebuild full provider URL
-                full = join_url(src_base, key)
-                full_path = key
-
-            # Compute rel-path strictly from the provider path
-            if full_path.startswith(prefix_path):
-                rel = full_path[len(prefix_path):].lstrip("/")
-            else:
-                rel = os.path.basename(full_path)
-
+            # obj may be "bucket/key" or full URL — normalize
+            full = normalize_url(obj)
+            # compute relative path
+            rel = full.replace(prefix_norm, "").lstrip("/")
             out.append((full, rel))
-
         return out
 
-    src_files = list_local_files(src_url) if src_scheme == "file" else list_cloud_files(src_url)
+    # Choose listing strategy
+    if src_scheme == "file":
+        src_files = list_local_files(src_url)
+    else:
+        src_files = list_cloud_files(src_url)
 
     if not src_files:
         logger.warning(f"No files found at {src_url}")
@@ -482,7 +404,7 @@ def copy_tree(src_url: str,
         return join_url(dst_base, dst_prefix, rel)
 
     # ------------------------------------------------------------
-    # STEP 2 — Copy + (optional) verify one file
+    # STEP 2 — Copy a single file
     # ------------------------------------------------------------
     def _copy_one(abs_src: str, rel_path: str) -> tuple[str, float, int]:
         t0 = time.perf_counter()
@@ -523,68 +445,21 @@ def copy_tree(src_url: str,
 
         dt = time.perf_counter() - t0
 
-        # Base message (without throughput yet)
-        base_msg = f"Copied {abs_src} -> {dst_full} in {dt:.3f}s"
-
-        # Compute throughput if possible
+        # Per-file timing
         if size_bytes > 0:
             mib = size_bytes / (1024 * 1024)
             rate = mib / dt if dt > 0 else 0
-            throughput = f" ({mib:.2f} MiB @ {rate:.2f} MiB/s)"
+            logger.info(
+                f"Copied {abs_src} -> {dst_full} in {dt:.3f}s "
+                f"({mib:.2f} MiB @ {rate:.2f} MiB/s)"
+            )
         else:
-            throughput = ""
-
-        # ------------------------------------------------------------
-        # Verification - ensure copy is accurate
-        # ------------------------------------------------------------
-        if verify:
-            # Skip verification for manifest on restore
-            if rel_path == "_manifest.json":
-                logger.info(f"{base_msg}{throughput} — skipped manifest verification")
-                return dst_full, dt, size_bytes
-
-            # CLOUD → LOCAL verification (use manifest)
-            if source_manifest and src_scheme != "file":
-                expected = source_manifest.get(rel_path)
-                if expected is None:
-                    raise RuntimeError(f"No manifest entry for {rel_path}")
-
-                # Hash ONLY destination (local)
-                dst_hash = compute_sha256(dst_fs, dst_full)
-
-                if expected != dst_hash:
-                    raise RuntimeError(f"Verification FAILED for {rel_path}: {expected} != {dst_hash}")
-
-            else:
-                # LOCAL → CLOUD verification (hash both)
-                src_hash = compute_sha256(src_fs, abs_src)
-                dst_hash = compute_sha256(dst_fs, dst_full)
-
-                if src_hash != dst_hash:
-                    raise RuntimeError(f"Verification FAILED for {rel_path}: {src_hash} != {dst_hash}")
-
-                # Store manifest entry ONLY for local→cloud case
-                if dst_scheme != "file" and manifest_entries is not None:
-                    manifest_entries.append({
-                        "relative": rel_path,
-                        "sha256": dst_hash,
-                        "size": size_bytes if size_bytes > 0 else None
-                    })
-
-        # ----------------------------
-        # UNIFIED LOG LINE
-        # ----------------------------
-        if verify:
-            logger.info(f"{base_msg}{throughput} — verified OK")
-
-        else:
-            # Unified no-verify line
-            logger.info(f"{base_msg}{throughput}")
+            logger.info(f"Copied {abs_src} -> {dst_full} in {dt:.3f}s")
 
         return dst_full, dt, size_bytes
 
     # ------------------------------------------------------------
-    # STEP 4 — Fan-out threads to copy
+    # STEP 4 — Fan-out threads
     # ------------------------------------------------------------
     wall_start = time.perf_counter()
     total_bytes = 0
@@ -600,6 +475,7 @@ def copy_tree(src_url: str,
 
     wall = time.perf_counter() - wall_start
 
+    # Summary log
     if total_bytes > 0:
         mib = total_bytes / (1024 * 1024)
         rate = mib / wall if wall > 0 else 0
@@ -610,18 +486,6 @@ def copy_tree(src_url: str,
         )
     else:
         logger.info(f"Copy summary: {completed} files in {wall:.3f}s (workers={workers})")
-
-    # ------------------------------------------------------------
-    # Write manifest.json ONLY when verify=True AND destination is cloud
-    # ------------------------------------------------------------
-    if verify and dst_scheme != "file" and manifest_entries:
-        try:
-            manifest_path = join_url(dst_base, dst_prefix, "_manifest.json")
-            with dst_fs.open(manifest_path, "w") as mf:
-                mf.write(json.dumps({"files": manifest_entries}, indent=2))
-            logger.info(f"Wrote manifest: {manifest_path}")
-        except Exception as e:
-            logger.error(f"Failed to write manifest.json: {e}")
 
     return completed
 
