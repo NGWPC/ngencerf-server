@@ -3,7 +3,7 @@ import logging
 import os
 import shutil
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 
 from django.conf import settings
@@ -731,12 +731,11 @@ def archive_jobs(request: Request) -> Response:
         # Update run flags
         # -------------------------------
         run.is_archived = archive
-        run.archive_status_updated_at = datetime.now(tz=timezone.utc)
 
         # When archiving, always unlock (cannot modify archived jobs)
         run.is_locked = False if archive else run.is_locked
 
-        run.save(update_fields=['is_archived', 'is_locked', 'archive_status_updated_at'])
+        run.save(update_fields=['is_archived', 'is_locked'])
 
         job_results.append({
             'message': f'Calibration Job {run.id} has been '
