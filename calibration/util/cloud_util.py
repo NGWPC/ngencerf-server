@@ -236,13 +236,7 @@ def copy_tree(src_url: str,
         • Cloud → Cloud (server-side when supported)
         • Local → Local
 
-    Preserves directory structure. Can optionally verify via SHA256.
-    When copying S3→local with verify=True, uses the source manifest instead
-    of re-hashing cloud objects.
-
-    Manifest rules:
-      • LOCAL → CLOUD with verify=True: manifest.json is CREATED on cloud.
-      • CLOUD → LOCAL with verify=True: manifest.json is USED but NOT RESTORED.
+    Always preserves directory structure.
 
     ------------------------------------------------------------------
     URL HANDLING
@@ -415,7 +409,7 @@ def copy_tree(src_url: str,
             • 'key'
             • or fully-qualified URLs (s3://bucket/key)
 
-        The implementation normalizes all cases into full URLs by rebuilding
+        The implementation normalizes all cases into full URLs
         the provider URL manually (using join_url), rather than using
         normalize_url(), because normalize_url() would incorrectly treat
         provider keys as local paths.
@@ -473,16 +467,6 @@ def copy_tree(src_url: str,
     if not src_files:
         logger.warning(f"No files found at {src_url}")
         return 0
-
-    # ------------------------------------------------------------
-    # SKIP restoring manifest.json when CLOUD → LOCAL with verify=True
-    # ------------------------------------------------------------
-    if verify and src_scheme != "file":
-        before = len(src_files)
-        src_files = [(a, r) for (a, r) in src_files if r != "_manifest.json"]
-        after = len(src_files)
-        if before != after:
-            logger.info("Skipped restoring _manifest.json (manifest is used but not copied).")
 
     logger.info(f"Copying {len(src_files)} files from {src_url} to {dst_url} using {workers} workers")
 
