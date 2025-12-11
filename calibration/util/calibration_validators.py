@@ -568,9 +568,39 @@ class ModuleFilterSerializer(serializers.Serializer):
 class DateFilterSerializer(serializers.Serializer):
     """Filter by created_at using 'before', 'after' or 'between' logic."""
     operator = serializers.ChoiceField(choices=['before', 'after', 'between'], required=False, allow_blank=True)
-    create_date = serializers.DateField(required=False, allow_null=True)
-    start_date = serializers.DateField(required=False, allow_null=True)
-    end_date = serializers.DateField(required=False, allow_null=True)
+    create_date = serializers.DateTimeField(required=False, allow_null=True)
+    start_date = serializers.DateTimeField(required=False, allow_null=True)
+    end_date = serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        operator = (attrs.get("operator") or "").lower()
+
+        if operator in ("before", "after"):
+            # require ONLY create_date
+            if not attrs.get("create_date"):
+                raise serializers.ValidationError(
+                    "create_date is required when operator is 'before' or 'after'."
+                )
+            # forbid range fields
+            if attrs.get("start_date") or attrs.get("end_date"):
+                raise serializers.ValidationError(
+                    "start_date and end_date are not allowed when operator is 'before' or 'after'."
+                )
+
+        elif operator == "between":
+            # require BOTH start and end
+            if not attrs.get("start_date") or not attrs.get("end_date"):
+                raise serializers.ValidationError(
+                    "start_date and end_date are required when operator is 'between'."
+                )
+            # forbid create_date
+            if attrs.get("create_date"):
+                raise serializers.ValidationError(
+                    "create_date is not allowed when operator is 'between'."
+                )
+
+        return attrs
+
 
 
 class IdFilterSerializer(serializers.Serializer):
@@ -580,6 +610,30 @@ class IdFilterSerializer(serializers.Serializer):
     start_id = serializers.IntegerField(required=False, allow_null=True)
     end_id = serializers.IntegerField(required=False, allow_null=True)
 
+    def validate(self, attrs):
+        operator = (attrs.get("operator") or "").lower()
+
+        if operator in ("before", "after"):
+            if attrs.get("id") is None:
+                raise serializers.ValidationError(
+                    "id is required when operator is 'before' or 'after'."
+                )
+            if attrs.get("start_id") is not None or attrs.get("end_id") is not None:
+                raise serializers.ValidationError(
+                    "start_id and end_id are not allowed when operator is 'before' or 'after'."
+                )
+
+        elif operator == "between":
+            if attrs.get("start_id") is None or attrs.get("end_id") is None:
+                raise serializers.ValidationError(
+                    "start_id and end_id are required when operator is 'between'."
+                )
+            if attrs.get("id") is not None:
+                raise serializers.ValidationError(
+                    "id is not allowed when operator is 'between'."
+                )
+
+        return attrs
 
 class FilterSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=True)
