@@ -934,6 +934,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         zip_file = open(zip_path, 'rb')
         response = FileResponse(zip_file, content_type='application/zip')
         set_streaming_cors_headers(request, response)
+        
         filename = os.path.basename(zip_path)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Content-Length'] = str(zip_size)
