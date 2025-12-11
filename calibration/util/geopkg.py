@@ -1,7 +1,9 @@
 import gc
 import logging
 import os
+import shutil
 import sqlite3
+import tempfile
 import time
 import traceback
 from contextlib import contextmanager
@@ -72,8 +74,34 @@ def _pp(orig: str, local: str) -> str:
 def _localize_gpkg(gpkg_path: str):
     # Always use persistent cache for GeoPackages. Infer suffix for robustness.
     ext = os.path.splitext(str(gpkg_path))[1] or ".gpkg"
-    with localize_to_path(gpkg_path, enable_cache=True, suffix=ext) as (orig, local):
-        yield orig, local
+
+    # localize_to_path() returns:
+    #   orig        = the original path/URL (string)
+    #   cached_path = path to the cached local file under /var/tmp/fsspec-cache
+    with localize_to_path(gpkg_path, enable_cache=True, suffix=ext) as (orig, cached_path):
+
+        # Create a per-process temp copy of the cached file.
+        # Each process uses its own isolated SQLite DB file to avoid cross-process locks.
+        tmp_local = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        tmp_local_path = tmp_local.name
+        tmp_local.close()
+
+        shutil.copy(cached_path, tmp_local_path)
+
+        # The contextmanager 'yield' returns a tuple (orig, tmp_local_path)
+        # back to the caller of _localize_gpkg().
+        #
+        # Argument 1: orig            → the original remote/local path for logging/debug
+        # Argument 2: tmp_local_path  → the private per-process copy to actually read
+        try:
+            yield orig, tmp_local_path
+        finally:
+            # Cleanup the per-process temp file.
+            if os.path.exists(tmp_local_path):
+                try:
+                    os.remove(tmp_local_path)
+                except Exception:
+                    pass
 
 
 # ----------------------------
