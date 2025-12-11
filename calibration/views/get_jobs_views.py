@@ -61,9 +61,10 @@ Use this general shape for every request (omit keys you are not using):
             modules: list of module names
         date_filter:
             operator: "before" | "after" | "between"
-            create_date: YYYY-MM-DD     # before/after
-            start_date: YYYY-MM-DD      # between
-            end_date: YYYY-MM-DD        # between
+            create_date: ISO-8601 datetime (e.g., "2025-01-01T12:34:56Z")
+            start_date: ISO-8601 datetime (e.g., "2025-01-01T00:00:00-05:00")
+            end_date: ISO-8601 datetime (e.g., "2025-02-01T23:59:59Z")
+
         id_filter:
             operator: "before" | "after" | "between"
             id: integer                 # before/after
@@ -95,8 +96,9 @@ Full example:
             },
             "date_filter": {
                 "operator": "after",
-                "create_date": "2025-01-01"
-            },
+                "create_date": "2025-01-01T00:00:00Z"
+        }
+
             "id_filter": {
                 "operator": "before",
                 "id": 500
@@ -114,9 +116,10 @@ Date range example:
         "filters": {
             "date_filter": {
                 "operator": "between",
-                "start_date": "2025-01-01",
-                "end_date": "2025-02-01"
+                "start_date": "2025-01-01T00:00:00-05:00",
+                "end_date": "2025-02-01T23:59:59Z"
             }
+
         }
     }
 
