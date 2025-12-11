@@ -80,12 +80,25 @@ def _localize_gpkg(gpkg_path: str):
     #   cached_path = path to the cached local file under /var/tmp/fsspec-cache
     with localize_to_path(gpkg_path, enable_cache=True, suffix=ext) as (orig, cached_path):
 
-        # Create a per-process temp copy of the cached file.
-        # Each process uses its own isolated SQLite DB file to avoid cross-process locks.
-        tmp_local = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
-        tmp_local_path = tmp_local.name
-        tmp_local.close()
+        # Preserve original basename so downstream code can extract gage_id.
+        original_name = os.path.basename(cached_path)  # e.g., "01123000.gpkg"
 
+        # Strip extension cleanly, rebuild a correct filename
+        if original_name.endswith(ext):
+            name_no_ext = original_name[:-len(ext)]
+        else:
+            name_no_ext = original_name
+
+        pid = os.getpid()
+        unique_suffix = next(tempfile._get_candidate_names())
+
+        # Final per-process temp file, e.g. /tmp/01123000__proc1234_abcd.gpkg
+        tmp_local_path = os.path.join(
+            tempfile.gettempdir(),
+            f"{name_no_ext}__proc{pid}_{unique_suffix}{ext}"
+        )
+
+        # Make the per-process isolated copy
         shutil.copy(cached_path, tmp_local_path)
 
         # The contextmanager 'yield' returns a tuple (orig, tmp_local_path)
