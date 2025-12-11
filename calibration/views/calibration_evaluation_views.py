@@ -620,7 +620,7 @@ downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, St
 @handle_exceptions
 def get_calibration_job_zip(request: Request) -> HttpResponse:
     """
-    Zips up all files in the user's working directory for the given calibration_job_id and returns the 
+    Zips up all files in the user's working directory for the given calibration_job_id and returns the
     resulting file as a response to the browser.
 
     :param request: The HTTP request object containing calibration run data.
@@ -735,8 +735,8 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             cache.set(cache_key, {
                 'status': 'done',
                 'path': zip_path,
-                'started_at': cache.get(cache_key).get('started_at')
-            }, timeout=None)
+                'started_at': cache.get(cache_key).get('started_at'),
+            }, timeout=3600)  # Once it's done, don't leave it around forever
 
             duration = datetime.now() - start_time
             zip_size = os.path.getsize(zip_path)
@@ -750,7 +750,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
                 'status': 'error',
                 'path': None,
                 'started_at': cache.get(cache_key).get('started_at')
-            }, timeout=None)
+            }, timeout=3600)  # Once it's done, don't leave it around forever
             duration = datetime.now() - start_time
             logger.exception(f"Failed to zip Calibration Job {run.id} after {duration.total_seconds():.2f} seconds: {e}")
 
@@ -794,10 +794,12 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
     """
     SSE (Server-Sent Events) endpoint that streams the status of a background zip job.
 
-    - Streams status updates (e.g., "pending", "done", "error") to the client.
-    - Closes the connection once the job is complete or encounters an error.
-    - Returns a JSON error response if no zip job has been started.
-    - Uses require_GET instead of @api_view to support SSE without 406 errors due to DRF content negotiation.
+    - Streams status updates (e.g., "pending", "done", "error") to the client as JSON-encoded SSE messages.
+    - Closes the stream automatically once the job completes or fails.
+    - Returns a JSON error response if no zip job has been started or the cache entry is missing.
+    - Emits lightweight heartbeats (":" lines) every 15s to prevent idle timeouts from Nginx, ALB, or browsers.
+    - Uses require_GET and plain Django StreamingHttpResponse to bypass DRF content negotiation,
+      which can otherwise reject "text/event-stream" requests with a 406 Not Acceptable error.
 
     :param request: HTTP request object.
     :param calibration_run_id: The ID of the calibration job being zipped.
@@ -843,9 +845,11 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
                 # Send a lightweight heartbeat every 30 seconds
                 # (comment line ':' is valid SSE syntax and keeps proxies alive)
                 # ─────────────────────────────────────────────────────────────
+                heartbeat_interval = 15  # seconds
                 now = time.time()
-                if now - last_keepalive >= 30:  # every 30 seconds
+                if now - last_keepalive >= heartbeat_interval:
                     yield ": keep-alive\n\n"
+
                     last_keepalive = now
                 # ─────────────────────────────────────────────────────────────
 
@@ -860,11 +864,12 @@ def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpRe
 
     # Return a streaming HTTP response using the generator function above
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    set_streaming_cors_headers(request, response)
 
-    # Add CORS header if Origin is allowed
-    origin = request.headers.get("Origin")
-    if origin in settings.CORS_ALLOWED_ORIGINS:
-        response["Access-Control-Allow-Origin"] = origin
+    # Always send correct SSE headers
+    response["Cache-Control"] = "no-cache"          # Prevent buffering or caching
+    response["X-Accel-Buffering"] = "no"            # Disable Nginx proxy buffering
+    response["Transfer-Encoding"] = "chunked"       # Ensure streamed flushing
 
     return response
 
@@ -924,8 +929,11 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB"
     )
 
+    zip_file = None
     try:
-        response = FileResponse(open(zip_path, 'rb'), content_type='application/zip')
+        zip_file = open(zip_path, 'rb')
+        response = FileResponse(zip_file, content_type='application/zip')
+        set_streaming_cors_headers(request, response)
         filename = os.path.basename(zip_path)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Content-Length'] = str(zip_size)
@@ -937,6 +945,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         # Tell Nginx NOT to buffer the file before sending it downstream.
         # This avoids Nginx holding a 1.5 GB file in memory/disk buffers, which can trigger timeouts or stall the transfer.
         response['X-Accel-Buffering'] = 'no'
+        response['Content-Encoding'] = 'identity'  # Prevent response from being gzipped (especially ZIP files) by middleware
 
         def cleanup():
             try:
@@ -954,6 +963,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         original_close = response.close
 
         def wrapped_close():
+            logger.debug(f"Calling wrapped_close() for {zip_path}")
             cleanup()
             return original_close()
 
@@ -965,5 +975,22 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         return response
 
     except IOError as e:
+        if zip_file:
+            zip_file.close()
         logger.exception(f"Failed to read zip file for Calibration Job {calibration_run_id}: {e}")
         return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
+
+
+def set_streaming_cors_headers(request: Request, response: StreamingHttpResponse | FileResponse) -> None:
+    """
+    Adds CORS and chunked transfer headers if the Origin is allowed.
+
+    This is used by SSE or file download endpoints that may run for a long time.
+
+    :param request: The incoming request (used to extract Origin).
+    :param response: The outgoing response object (StreamingHttpResponse or FileResponse).
+    """
+    origin = request.headers.get("Origin")
+    if origin in settings.CORS_ALLOWED_ORIGINS:
+        response["Access-Control-Allow-Origin"] = origin
+        response["Transfer-Encoding"] = "chunked"
