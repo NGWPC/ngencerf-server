@@ -4,7 +4,6 @@ import logging
 import math
 import os
 import threading
-import time
 import zipfile
 from collections import defaultdict
 from datetime import datetime
@@ -12,8 +11,7 @@ from datetime import datetime
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import F, QuerySet
-from django.http import HttpResponse, StreamingHttpResponse, FileResponse, JsonResponse
-from django.views.decorators.http import require_GET
+from django.http import HttpResponse, FileResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -25,7 +23,7 @@ from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRu
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
-    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer
+    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer, GetZipStatusSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
 from calibration.views.calibration_forecast_views import get_forecast_log, get_cold_start_log
@@ -787,7 +785,7 @@ downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, St
 @handle_exceptions
 def get_calibration_job_zip(request: Request) -> HttpResponse:
     """
-    Zips up all files in the user's working directory for the given calibration_job_id and returns the 
+    Zips up all files in the user's working directory for the given calibration_job_id and returns the
     resulting file as a response to the browser.
 
     :param request: The HTTP request object containing calibration run data.
@@ -902,8 +900,8 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             cache.set(cache_key, {
                 'status': 'done',
                 'path': zip_path,
-                'started_at': cache.get(cache_key).get('started_at')
-            }, timeout=None)
+                'started_at': cache.get(cache_key).get('started_at'),
+            }, timeout=3600)  # Once it's done, don't leave it around forever
 
             duration = datetime.now() - start_time
             zip_size = os.path.getsize(zip_path)
@@ -917,7 +915,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
                 'status': 'error',
                 'path': None,
                 'started_at': cache.get(cache_key).get('started_at')
-            }, timeout=None)
+            }, timeout=3600)  # Once it's done, don't leave it around forever
             duration = datetime.now() - start_time
             logger.exception(f"Failed to zip Calibration Job {run.id} after {duration.total_seconds():.2f} seconds: {e}")
 
@@ -937,7 +935,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: OpenApiResponse(description="Server-Sent Events stream with zip job status updates"),
+        200: GetZipStatusSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -947,93 +945,52 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Streams zip status updates in real time via Server-Sent Events (SSE)"
+    description="Polling endpoint that returns the current status of a calibration zip job"
 )
-# NOTE: We use require_GET instead of @api_view because:
-# - @api_view is part of Django REST Framework (DRF), which handles content negotiation.
-# - For Server-Sent Events (SSE), DRF expects the client to accept "application/json", which causes issues.
-# - If the client sends "text/event-stream", DRF may reject it with a 406 Not Acceptable error.
-# - require_GET is a plain Django view decorator that avoids DRF’s content negotiation and lets us stream raw SSE.
-# - Because this bypasses DRF, we return a JsonResponse directly for errors instead of DRF’s Response.
-@require_GET
+@api_view(['GET', 'POST'])
 @handle_exceptions
-def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse | JsonResponse:
+def get_zip_status(request: Request) -> Response:
     """
-    SSE (Server-Sent Events) endpoint that streams the status of a background zip job.
+    Polling endpoint that returns the current status of a background zip job.
 
-    - Streams status updates (e.g., "pending", "done", "error") to the client.
-    - Closes the connection once the job is complete or encounters an error.
-    - Returns a JSON error response if no zip job has been started.
-    - Uses require_GET instead of @api_view to support SSE without 406 errors due to DRF content negotiation.
-
-    :param request: HTTP request object.
-    :param calibration_run_id: The ID of the calibration job being zipped.
-    :return: StreamingHttpResponse with real-time status updates, or JsonResponse if the job is not found.
+    - Returns zip job status: pending | done | error
+    - Reads from shared cache set by start_zip_for_calibration_job
+    - Safe for frequent polling (every 2–5 seconds)
     """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_response = validate_request(CalibrationRunSerializer, data)
+    if error_response:
+        return error_response
+
+    calibration_run_id = validator.get("calibration_run_id")
     cache_key = get_zip_cache_key(calibration_run_id)
+
     zip_status = cache.get(cache_key)
     if not zip_status:
-        logger.info(f"get_zip_status called for Calibration Job {calibration_run_id} but no zip job found")
-        return JsonResponse(
-            {
-                "response_type": "error",
-                "message": f"No zip job found for Calibration Job {calibration_run_id}"
-            },
-            status=404
-        )
+        return ResponseError(f"No zip job found for Calibration Job {calibration_run_id}")
 
-    def event_stream():
-        try:
-            start_time = datetime.now()
-            last_keepalive = time.time()
-            logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} for Calibration Run id {calibration_run_id}')
+    response = {
+        "calibration_run_id": calibration_run_id,
+        "zip_status": zip_status.get("status"),
+        "path": zip_status.get("path"),
+        "started_at": zip_status.get("started_at"),
+    }
 
-            # Stream loop: keep checking the job status until it is "done" or "error"
-            while True:
-                # Retrieve the current zip status from in-memory cache
-                current_zip_status = cache.get(cache_key, {"status": "not_found"})
+    response_validator, error_response = validate_response(
+        GetZipStatusSerializer,
+        response
+    )
+    if error_response:
+        return error_response
 
-                # Format the status as an SSE-compatible message
-                yield f"data: {json.dumps(current_zip_status)}\n\n"
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}'
+        f'{get_elapsed_str(request)} - {json.dumps(response_validator.data)}'
+    )
 
-                # If job has finished or failed, stop the stream (connection closes)
-                if current_zip_status["status"] in ["done", "error"]:
-                    duration = datetime.now() - start_time
-                    logger.debug(
-                        f'{get_caller_name()}() streaming complete for {get_user_email(request)} - '
-                        f'calibration_run_id={calibration_run_id} - status={current_zip_status["status"]} - '
-                        f'duration={duration.total_seconds():.2f}s'
-                    )
-                    break
-
-                # ─────────────────────────────────────────────────────────────
-                # Send a lightweight heartbeat every 30 seconds
-                # (comment line ':' is valid SSE syntax and keeps proxies alive)
-                # ─────────────────────────────────────────────────────────────
-                now = time.time()
-                if now - last_keepalive >= 30:  # every 30 seconds
-                    yield ": keep-alive\n\n"
-                    last_keepalive = now
-                # ─────────────────────────────────────────────────────────────
-
-                # Sleep before checking again (keeps CPU usage low and reduces frequency)
-                time.sleep(1)
-
-        except GeneratorExit:
-            # Happens if the client closes the connection
-            logger.info(f"Client disconnected during SSE stream for run {calibration_run_id}")
-        except Exception as e:
-            logger.exception(f"Unhandled exception in event_stream for {calibration_run_id}: {e}")
-
-    # Return a streaming HTTP response using the generator function above
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-
-    # Add CORS header if Origin is allowed
-    origin = request.headers.get("Origin")
-    if origin in settings.CORS_ALLOWED_ORIGINS:
-        response["Access-Control-Allow-Origin"] = origin
-
-    return response
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -1091,8 +1048,14 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB"
     )
 
+    zip_file = None
     try:
-        response = FileResponse(open(zip_path, 'rb'), content_type='application/zip')
+        zip_file = open(zip_path, 'rb')
+        response = FileResponse(zip_file, content_type='application/zip')
+        origin = request.headers.get("Origin")
+        if origin in settings.CORS_ALLOWED_ORIGINS:
+            response["Access-Control-Allow-Origin"] = origin
+
         filename = os.path.basename(zip_path)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Content-Length'] = str(zip_size)
@@ -1104,6 +1067,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         # Tell Nginx NOT to buffer the file before sending it downstream.
         # This avoids Nginx holding a 1.5 GB file in memory/disk buffers, which can trigger timeouts or stall the transfer.
         response['X-Accel-Buffering'] = 'no'
+        response['Content-Encoding'] = 'identity'  # Prevent response from being gzipped (especially ZIP files) by middleware
 
         def cleanup():
             try:
@@ -1121,6 +1085,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         original_close = response.close
 
         def wrapped_close():
+            logger.debug(f"Calling wrapped_close() for {zip_path}")
             cleanup()
             return original_close()
 
@@ -1132,5 +1097,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         return response
 
     except IOError as e:
+        if zip_file:
+            zip_file.close()
         logger.exception(f"Failed to read zip file for Calibration Job {calibration_run_id}: {e}")
         return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
