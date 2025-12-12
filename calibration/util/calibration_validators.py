@@ -1443,6 +1443,12 @@ class ErrorResponseSerializer(BaseSerializer):
 ##################################
 # Evaluation
 ##################################
+class GetZipStatusSerializer(CalibrationRunSerializer):
+    zip_status = serializers.ChoiceField(choices=['pending', 'done', 'error'], required=True, allow_null=False)
+    started_at = serializers.DateTimeField(required=True, allow_null=False)
+    path = serializers.CharField(required=True,  allow_null=True, allow_blank=False)
+
+
 class ParameterDataByIteration(BaseSerializer):
     parameter_name = serializers.CharField(required=True, allow_blank=False, allow_null=False)
     parameter_value = serializers.FloatField(required=True, allow_null=False)
