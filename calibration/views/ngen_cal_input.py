@@ -243,14 +243,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     geopackage_file = get_single_file(geopackage_dir)
                     if geopackage_file:
                         datafile['hydrofab_file'] = geopackage_file
-
-                if datafile.get('hydrofab_file') and os.path.exists(datafile['hydrofab_file']):
-                    catchments = list(get_geometry_from_gpkg(datafile['hydrofab_file'])['catchments'].keys())
-
-                    num_catchments = len(catchments)
-                    run.num_catchments = num_catchments
-                    logger.info(f"Found {num_catchments} catchments in {datafile['hydrofab_file']}: {catchments}")
-
+    
             # Determine the source of the forcing data (user-uploaded or EDS)
             if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
                 is_conus = run.gage.domain == DomainEnum.CONUS.db_instance

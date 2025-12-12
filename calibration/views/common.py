@@ -529,7 +529,7 @@ def get_valid_path(eds_path, get_path_func):
     """
     job_specific_file = get_path_func()
 
-    # job_specific_file is there, then always use it
+    # if job_specific_file is there, then always use it
     # If it's not there, then use the EDS file
     if job_specific_file and path_exists(job_specific_file):
         return job_specific_file

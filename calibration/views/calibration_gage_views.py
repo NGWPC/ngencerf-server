@@ -13,10 +13,10 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum, StatusEnum
+from calibration.enums import ObservationalSourceEnum, ForcingSourceEnum, DomainEnum, GeopackageSourceEnum
 from calibration.models import Gage, CalibrationRun, CalibrationFormulation
 from calibration.util.caching import get_cached_gages, get_gage_by_id, update_and_get_cached_gage_status
-from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, CalibrationRunSerializer, UploadForcingSerializer, \
+from calibration.util.calibration_validators import SaveGageRequestSerializer, GageIdSerializer, UploadForcingSerializer, \
     SaveGageResponseSerializer, LoadGageResponseSerializer, GageSerializer, GenericResponseSerializer, ErrorResponseSerializer, \
     UploadObservationalSerializer, UploadGeopackageSerializer, UploadGeopackageResponseSerializer, UpdateGageStatusRequestSerializer, \
     UpdateGageStatusResponseSerializer, EmptySerializer
@@ -250,9 +250,12 @@ def save_gage_tab(request: Request):
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
         geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
+        if geopackage_path:
+            catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
+            run.num_catchments = len(catchments)
+            logger.info(f"Found {run.num_catchments} catchments in {geopackage_path}: {catchments}")
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
-        num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path else None
 
         # Process observational source and delete user-uploaded file if necessary
         if observational_source_name and observational_source_name != ObservationalSourceEnum.UPLOAD.value:
@@ -691,9 +694,13 @@ def upload_geopackage_data(request: Request) -> Response:
     fs.save(user_geopackage_file.name, user_geopackage_file)
 
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
-    geopackage_image_url = get_geopackage_image_url(geopackage_path) if return_geopackage_url else None
 
-    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path else None
+    if geopackage_path:
+        catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
+        run.num_catchments = len(catchments)
+        logger.info(f"Found {run.num_catchments} catchments in {geopackage_path}: {catchments}")
+
+    geopackage_image_url = get_geopackage_image_url(geopackage_path) if return_geopackage_url else None
 
     with transaction.atomic():
         run.save()
@@ -703,7 +710,7 @@ def upload_geopackage_data(request: Request) -> Response:
     response = {
         'message': f"Geopackage file '{user_geopackage_file.name}' saved for Calibration Job {run.id}",
         'calibration_run_id': run.id,
-        'num_catchments': num_catchments,
+        'num_catchments': run.num_catchments,
         'status': run.status.name
     }
     if geopackage_image_url:

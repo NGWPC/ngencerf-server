@@ -242,6 +242,11 @@ def import_calibration_run_data(request: Request,
                     'message': str(e),
                     'status_code': e.status_code if e.status_code else None
                 })
+        geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
+        if geopackage_path:
+            catchments = list(get_geometry_from_gpkg(geopackage_path)['catchments'].keys())
+            run.num_catchments = len(catchments)
+            logger.info(f"Found {run.num_catchments} catchments in {geopackage_path}: {catchments}")
 
         # -----------------------------
         # Forcing data
@@ -472,12 +477,8 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
         serialized_time_range['end_time'] = time_range['end_time'].isoformat()
     logger.info(f"Time range computation completed in {time.perf_counter() - time_range_start:.2f}s")
 
-    geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
-    num_catchments = len(get_geometry_from_gpkg(geopackage_path)['catchments'].keys()) if geopackage_path and os.path.exists(geopackage_path) else None
-
     # Always load formulations once, for both export and UI modes
     formulations = CalibrationFormulation.objects.filter(calibration_run=run)
-
 
     #############################
     # Export or Clone Mode
@@ -490,7 +491,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'source_status': run.status.name,
             'time_range': serialized_time_range,
             'job_data_dir': resolve_job_data_dir(run),
-            'num_catchments': num_catchments,
+            'num_catchments': run.num_catchments,
             'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None,
         }
         fm = parse_failure_messages(run.failure_messages)
@@ -548,7 +549,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
             'longitude': run.gage.longitude,
             'altitude': run.gage.altitude
         } if run.gage else None
-        calibration_run_data['num_catchments'] = num_catchments
+        calibration_run_data['num_catchments'] = run.num_catchments
         calibration_run_data['status'] = run.status.name
         fm = parse_failure_messages(run.failure_messages)
         if fm is not None:
