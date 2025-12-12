@@ -494,7 +494,7 @@ fi
  echo
  echo --------------------------------------------------------
 #=======================================================================
-# Ensure forecast_forcing_templates in ngen-static-files
+# Ensure bmi_forcing_templates in ngen-static-files
 #   - Docker: copy from image-staged /ngencerf/prebuilt into bind-mounted dir
 #   - Non-Docker: clone from Git into /ngencerf/data/ngen-static-files
 #=======================================================================
@@ -506,7 +506,7 @@ if [ -f "/.dockerenv" ] || [ "${CERF_VENV}" = "Docker" ]; then
 fi
 
 STATIC_DIR="/ngencerf/data/ngen-static-files"
-TARGET_DIR="${STATIC_DIR}/forecast_forcing_templates"
+TARGET_DIR="${STATIC_DIR}/bmi_forcing_templates"
 
 # Create static base and ensure a clean target location (shared logic)
 mkdir -p "$STATIC_DIR"
@@ -514,13 +514,13 @@ rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 
 if [ "${CERF_VENV}" = "Docker" ]; then
-    echo "Running in Docker: replacing forecast_forcing_templates from prebuilt data"
+    echo "Running in Docker: replacing bmi_forcing_templates from prebuilt data"
 
-    PREBUILT_DIR="/ngencerf/prebuilt/forecast_forcing_templates"
+    PREBUILT_DIR="/ngencerf/prebuilt/bmi_forcing_templates"
 
     # Verify Dockerfile populated this directory
     if [ ! -d "$PREBUILT_DIR" ]; then
-        echo "ERROR: Prebuilt forecast_forcing_templates not found at $PREBUILT_DIR"
+        echo "ERROR: Prebuilt bmi_forcing_templates not found at $PREBUILT_DIR"
         echo "Dockerfile must populate this directory during build."
         exit 1
     fi
@@ -532,7 +532,7 @@ if [ "${CERF_VENV}" = "Docker" ]; then
 else
     NGEN_FORCING_URL="https://github.com/NGWPC/ngen-forcing.git"
 
-    echo "Not running in Docker: cloning forecast_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
+    echo "Not running in Docker: cloning bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
 
     cd "$STATIC_DIR"
 
@@ -550,7 +550,7 @@ else
     cd "$STATIC_DIR"
     rm -rf tmp-ngen-forcing
 
-    echo "forecast_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
+    echo "bmi_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
     echo
 fi
 
