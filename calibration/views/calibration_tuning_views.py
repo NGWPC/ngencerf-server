@@ -262,7 +262,10 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
     )
 
     # TODO More cleanup when we are exclusively using bmi forcing
-    is_conus = run.gage.domain == DomainEnum.CONUS.db_instance
+    is_conus = (
+            run.gage is not None
+            and run.gage.domain == DomainEnum.CONUS.db_instance
+    )
     is_aorc = run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
     if not observation_path or ((not is_conus or not is_aorc) and not forcing_path):
         return {}
