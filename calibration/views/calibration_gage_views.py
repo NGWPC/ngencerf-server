@@ -218,7 +218,6 @@ def save_gage_tab(request: Request):
     eds_errors = []
 
     geopackage_image_url = None
-    num_catchments = None
 
     if gage_id:
         try:
@@ -310,7 +309,7 @@ def save_gage_tab(request: Request):
                 'calibration_run_id': run.id,
                 'status': run.status.name,
                 'geopackage_image_url': geopackage_image_url,
-                'num_catchments': num_catchments,
+                'num_catchments': run.num_catchments,
                 'forcing_source_requested': run.forcing_source_requested.name if run.forcing_source_requested else None,
                 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
     if run.forcing_source_requested != run.forcing_source_actual:
