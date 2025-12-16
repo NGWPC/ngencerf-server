@@ -214,7 +214,6 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         modules_by_id = get_cached_modules_by_id()  # authoritative, no DB or disk after first hit
         modules_by_name = {m.name: m for m in modules_by_id.values()}  # lightweight derived view for name-based lookups
 
-        catchments = None
         # Validate and configure the gage ID and station name
         if not is_missing(run.gage, 'gage_id', error_object):
             general['basin'] = run.gage.gage_id
@@ -507,10 +506,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
 
         if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             config['Parallel'] = parallel
-            if catchments:
-                run.mpi_nprocs = get_mpi_nodes(num_catchments)
-                parallel['nprocs'] = run.mpi_nprocs
-                run.node_type = get_node_type(num_catchments)
+            run.mpi_nprocs = get_mpi_nodes(run.num_catchments)
+            parallel['nprocs'] = run.mpi_nprocs
+            run.node_type = get_node_type(run.num_catchments)
 
     # -----------------------------
     # WRITE PHASE
