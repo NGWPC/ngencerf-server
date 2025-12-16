@@ -35,7 +35,7 @@ from calibration.views.calibration_run_views import resolve_job_data_dir
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, get_calibration_run, create_calibration_run_internal, ResponseError, \
     validate_request, create_validation_run_internal, create_forecast_run_internal, get_user_email, get_elapsed_str, readonly_transaction, \
-    format_datetime, create_cold_start_run_internal, get_job_description
+    format_datetime, create_cold_start_run_internal, get_job_description, get_calibration_runs_bulk
 
 logger = logging.getLogger(__name__)
 
@@ -567,25 +567,33 @@ def delete_jobs(request: Request) -> Response:
 
     job_results = []
 
+    # Bulk fetch all the calibration jobs
+    runs_by_id, errors_by_id = get_calibration_runs_bulk(
+        calibration_run_ids=calibration_run_ids,
+        user=request.user,
+        run_status=list(StatusEnum),
+        include_archived=False,
+    )
+
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
-        run, error_return = get_calibration_run(
-            calibration_run_id,
-            request.user,
-            run_status=list(StatusEnum)
-        )
-        if error_return:
+
+        # Handle validation / access errors
+        error = errors_by_id.get(calibration_run_id)
+        if error:
             job_results.append({
-                "message": error_return.data.get('message'),
+                "message": error.data.get('message'),
                 "calibration_run_id": calibration_run_id,
-                "success": False
+                "success": False,
             })
             continue
+
+        run = runs_by_id[calibration_run_id]
 
         # Can't delete if the job is locked
         if run.is_locked:
             job_results.append({
-                "message": f'Calibration Job {run.id} is locked for archiving/deleting',
+                "message": f'Calibration Job {calibration_run_id} is locked for archiving/deleting',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -616,7 +624,8 @@ def delete_jobs(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}()'
+        f'{get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -673,28 +682,32 @@ def archive_jobs(request: Request) -> Response:
 
     job_results = []
 
+    # Bulk fetch all the calibration jobs including archived jobs
+    runs_by_id, errors_by_id = get_calibration_runs_bulk(
+        calibration_run_ids=calibration_run_ids,
+        user=request.user,
+        run_status=list(StatusEnum),
+        include_archived=True,
+    )
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
 
-        # Process each calibration_run_id in the list (include archived)
-        run, error_return = get_calibration_run(
-            calibration_run_id,
-            request.user,
-            run_status=list(StatusEnum),
-            include_archived=True
-        )
-        if error_return:
+        # Validation / access errors
+        error = errors_by_id.get(calibration_run_id)
+        if error:
             job_results.append({
-                "message": error_return.data.get('message'),
+                "message": error.data.get('message'),
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
             continue
 
+        run = runs_by_id[calibration_run_id]
+
         # Can't archive if the job is locked
         if run.is_locked:
             job_results.append({
-                "message": f'Calibration Job {run.id} is locked for archiving/deleting',
+                "message": f'Calibration Job {calibration_run_id} is locked for archiving/deleting',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -703,7 +716,7 @@ def archive_jobs(request: Request) -> Response:
         # Already archived/not-archived?
         if archive == run.is_archived:
             job_results.append({
-                "message": f'Calibration Job {run.id} is {"already" if archive else "not"} archived',
+                "message": f'Calibration Job {calibration_run_id} is {"already" if archive else "not"} archived',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -731,14 +744,14 @@ def archive_jobs(request: Request) -> Response:
                 )
 
                 start = time.perf_counter()
-                logger.info(f"Archiving Calibration Job {run.id}: copy {src_path} -> {dst_prefix}")
+                logger.info(f"Archiving Calibration Job {calibration_run_id}: copy {src_path} -> {dst_prefix}")
 
                 # ---- COPY LOCAL → CLOUD ----
                 copied = copy_tree(src_path, dst_prefix, verify=True)
 
                 elapsed = time.perf_counter() - start
                 logger.info(
-                    f"Archived {copied} files for Calibration Job {run.id} "
+                    f"Archived {copied} files for Calibration Job {calibration_run_id} "
                     f"to {dst_prefix} in {elapsed:.2f}s"
                 )
 
@@ -769,7 +782,7 @@ def archive_jobs(request: Request) -> Response:
 
                 start = time.perf_counter()
                 logger.info(
-                    f"Unarchiving Calibration Job {run.id}: "
+                    f"Unarchiving Calibration Job {calibration_run_id}: "
                     f"copy {src_cloud_prefix} -> {dest_dir}"
                 )
 
@@ -778,7 +791,7 @@ def archive_jobs(request: Request) -> Response:
 
                 elapsed = time.perf_counter() - start
                 logger.info(
-                    f"Unarchived {copied} files for Calibration Job {run.id} "
+                    f"Unarchived {copied} files for Calibration Job {calibration_run_id} "
                     f"into {dest_dir} in {elapsed:.2f} seconds"
                 )
 
@@ -800,16 +813,16 @@ def archive_jobs(request: Request) -> Response:
             run.save(update_fields=['is_archived', 'archive_status_updated_at'])
 
             job_results.append({
-                'message': f'Calibration Job {run.id} has been '
+                'message': f'Calibration Job {calibration_run_id} has been '
                            f'{"archived" if archive else "unarchived"}',
                 "calibration_run_id": calibration_run_id,
                 "success": True
             })
 
         except Exception as e:
-            logger.exception(f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}")
+            logger.exception(f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {calibration_run_id}: {e}")
             job_results.append({
-                "message": f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {run.id}: {e}",
+                "message": f"Failed to {'archive' if archive else 'unarchive'} Calibration Job {calibration_run_id}: {e}",
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -851,7 +864,7 @@ def lock_jobs(request: Request) -> Response:
     Lock or unlock multiple calibration jobs.  Locking a job prevents it from being deleted
 
     :param request: The HTTP request object.
-    :return: A Response object with the lock confirmation.
+    :return: A Response object with the lock/unlock status for each calibration job.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -865,20 +878,32 @@ def lock_jobs(request: Request) -> Response:
 
     job_results = []
 
+    # Bulk fetch all the calibration jobs
+    runs_by_id, errors_by_id = get_calibration_runs_bulk(
+        calibration_run_ids=calibration_run_ids,
+        user=request.user,
+        run_status=list(StatusEnum),
+        include_archived=False,
+    )
+
     # Process each calibration_run_id in the list
     for calibration_run_id in calibration_run_ids:
-        run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=list(StatusEnum))
-        if error_return:
+        # Validation / access errors
+        error = errors_by_id.get(calibration_run_id)
+        if error:
             job_results.append({
-                "message": error_return.data.get('message'),
+                "message": error.data.get('message'),
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
             continue
 
+        run = runs_by_id[calibration_run_id]
+
+        # Already locked / unlocked?
         if lock == run.is_locked:
             job_results.append({
-                "message": f'Calibration Job {run.id} is {"already" if lock else "not"} locked',
+                "message": f'Calibration Job {calibration_run_id} is {"already" if lock else "not"} locked',
                 "calibration_run_id": calibration_run_id,
                 "success": False
             })
@@ -888,7 +913,7 @@ def lock_jobs(request: Request) -> Response:
         run.save(update_fields=['is_locked'])
 
         job_results.append({
-            'message': f'Calibration Job {run.id} has been {"locked" if lock else "unlocked"}',
+            'message': f'Calibration Job {calibration_run_id} has been {"locked" if lock else "unlocked"}',
             "calibration_run_id": calibration_run_id,
             "success": True
         })
@@ -899,7 +924,8 @@ def lock_jobs(request: Request) -> Response:
     if error_response:
         return error_response
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}()'
+        f'{get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
 
     return Response(response_validator.data)
 
@@ -910,24 +936,20 @@ def hard_delete(run: CalibrationRun) -> None:
 
     :param run: The CalibrationRun instance to be deleted.
     """
-    collector = Collector(using=router.db_for_write(run.__class__))
-
-    # Collect related objects that will be deleted due to cascade
-    collector.collect([run])
 
     job_data_dir = run.job_data_dir  # stash before delete
 
-    with transaction.atomic():
-        logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
-        # Iterate through the collected objects and list IDs and other fields
-        for model, instances in collector.data.items():
-            logger.debug(f"Calibration Job {run.id} - {model.__name__}: {len(instances)} instance(s) will be deleted")
-            for instance in instances:
-                logger.debug(f' - {instance}')
-        run.delete()
+    logger.debug(f"Deleting (hard delete) Calibration Job {run.id}, associated records and files")
+    run.delete()
+
     logger.debug(f'Deleting directory {job_data_dir} for Calibration Job {run.id}')
-    if os.path.exists(job_data_dir):
-        shutil.rmtree(job_data_dir)
+    if job_data_dir and os.path.isdir(job_data_dir):
+        try:
+            shutil.rmtree(job_data_dir)
+        except Exception:
+            logger.exception(
+                f"Failed to delete job directory {job_data_dir} for Calibration Job {run.id}"
+            )
 
 
 @extend_schema(
