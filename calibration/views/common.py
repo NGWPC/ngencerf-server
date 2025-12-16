@@ -47,6 +47,102 @@ SLOTH = 'SLoTH'
 User = get_user_model()
 
 
+def validate_run_instance(
+    run: BaseRun,
+    run_id: int,
+    run_status: list[StatusEnum] | None,
+    is_archived_field: str,
+    include_archived: bool,
+    model_name: str,
+) -> Response | None:
+    run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
+    allowed_statuses = [s.db_instance for s in run_status]
+
+    is_archived = getattr(run, is_archived_field, False)
+    if is_archived and not include_archived:
+        return ResponseError(
+            f'{model_name} {run_id} is archived and should be unarchived before additional operations can be performed.'
+        )
+
+    if run.status not in allowed_statuses:
+        allowed_names = [s.name for s in allowed_statuses]
+        return ResponseError(
+            f'{model_name} {run_id} is not in an allowed status: '
+            f'{join_with_or(allowed_names)}. '
+            f'Current status: {run.status.name}'
+        )
+
+    return None
+
+def get_calibration_runs_bulk(
+    calibration_run_ids: list[int],
+    user: User | None,
+    run_status: list[StatusEnum] | None = None,
+    include_archived: bool = False,
+) -> tuple[dict[int, CalibrationRun], dict[int, Response]]:
+    """
+    Bulk retrieval and validation of CalibrationRun instances.
+
+    This function performs a single database query to retrieve all requested
+    CalibrationRun objects, then applies the same ownership, archive, and
+    status validation logic used by `get_calibration_run` on a per-ID basis.
+
+    It preserves per-run error reporting semantics by returning two mappings:
+      - a dict of valid CalibrationRun instances keyed by run ID
+      - a dict of error Responses keyed by run ID for invalid or inaccessible runs
+
+    No deletion or mutation is performed by this function.
+
+    :param calibration_run_ids: List of CalibrationRun IDs to retrieve and validate.
+                                Order is preserved when iterating results.
+    :param user: The user requesting the CalibrationRuns. If provided, only runs
+                 owned by this user are considered valid.
+    :param run_status: Optional list of allowed StatusEnum values. If not provided,
+                       defaults to [READY, SAVED], matching `get_calibration_run`.
+    :param include_archived: Whether archived jobs are allowed. If False, archived
+                             jobs will return an error response.
+    :return: A tuple containing:
+             - runs_by_id: dict mapping run_id -> CalibrationRun for all valid runs
+             - errors_by_id: dict mapping run_id -> ResponseError for invalid runs
+    """
+    qs = CalibrationRun.objects.filter(id__in=calibration_run_ids)
+
+    if user:
+        qs = qs.filter(owner=user)
+
+    runs = {run.id: run for run in qs}
+
+    runs_by_id: dict[int, CalibrationRun] = {}
+    errors_by_id: dict[int, Response] = {}
+
+    for run_id in calibration_run_ids:
+        run = runs.get(run_id)
+        model_name = "Calibration Job"
+
+        if not run:
+            user_info = f' or is not owned by {user.email}' if user else ''
+            errors_by_id[run_id] = ResponseError(
+                f'{model_name} {run_id} does not exist{user_info}'
+            )
+            continue
+
+        error = validate_run_instance(
+            run=run,
+            run_id=run_id,
+            run_status=run_status,
+            is_archived_field='is_archived',
+            include_archived=include_archived,
+            model_name=model_name,
+        )
+
+        if error:
+            errors_by_id[run_id] = error
+        else:
+            runs_by_id[run_id] = run
+
+    return runs_by_id, errors_by_id
+
+
 def get_run_instance(
         model: Type[BaseRun],
         run_id: int,
@@ -87,21 +183,19 @@ def get_run_instance(
         error = f'{model_name} {run_id} does not exist{user_info}'
         return None, ResponseError(error)
 
-    # Explicitly check if the job is archived and include_archived=False
-    is_archived = getattr(run, is_archived_field, False)
-    if is_archived and not include_archived:
-        model_name = model.__name__.replace("Run", " Job")
-        error = f'{model_name} {run_id} is archived and should be unarchived before additional operations can be performed.'
-        return None, ResponseError(error)
+    model_name = model.__name__.replace("Run", " Job")
 
-    # Check if the status of the run is in the allowed statuses
-    if run.status not in allowed_statuses:
-        allowed_status_names = [allowed_status.name for allowed_status in allowed_statuses]
-        model_name = model.__name__.replace("Run", " Job")
-        error = (f'{model_name} {run_id} is not in an allowed status: '
-                 f'{join_with_or(allowed_status_names)}. '
-                 f'Current status: {run.status.name}')
-        return run, ResponseError(error)
+    error = validate_run_instance(
+        run=run,
+        run_id=run_id,
+        run_status=run_status,
+        is_archived_field=is_archived_field,
+        include_archived=include_archived,
+        model_name=model_name,
+    )
+
+    if error:
+        return run, error
 
     return run, None
 
@@ -122,6 +216,7 @@ def get_calibration_run(
     :return: Tuple of CalibrationRun or None, and Response if error or None.
     """
     return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_archived', include_archived)
+
 
 
 def get_validation_run(
