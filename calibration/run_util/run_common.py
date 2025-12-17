@@ -345,21 +345,21 @@ def run_forecast_job(forecast_run: ForecastRun) -> None:
     )
 
 
-def run_verification_job(verification_job: VerificationRun) -> None:
+def run_verification_job(verification_run: VerificationRun) -> None:
     """
     Start a verification job by determining input and output file paths.
 
     This function is intended to be passed as an argument to `submit_job`
     and not called directly.
 
-    :param verification_job: The VerificationRun object representing the job.
+    :param verification_run: The VerificationRun object representing the job.
     """
-    stdout_file = get_verification_stdout_file(verification_job)
+    stdout_file = get_verification_stdout_file(verification_run)
 
     execute_job(
-        verification_job,
+        verification_run,
         {
-            'verification_config': get_verification_yaml_config_file(verification_job),
+            'verification_config': get_verification_yaml_config_file(verification_run),
         },
         stdout_file,
         simulate=settings.SIMULATE_FLAGS.get(JobType.VERIFICATION, False)
