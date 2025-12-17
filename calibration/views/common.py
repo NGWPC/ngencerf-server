@@ -9,9 +9,8 @@ import time
 from contextlib import contextmanager
 from datetime import timedelta, datetime
 from functools import wraps
-from typing import Type, Any, Callable, cast
+from typing import Type, Any, Callable
 
-import numpy as np
 import yaml
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -27,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, NgenLogging
-from calibration.models import CalibrationRun, ValidationRun, Status, ForecastConfiguration, ForecastRun, CustomUser, ColdStartRun, \
+from calibration.models import CalibrationRun, ValidationRun, Status, ForecastConfiguration, ForecastRun, ColdStartRun, \
     CalibrationFormulation, VerificationRun
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
@@ -801,30 +800,6 @@ def get_job_description(run: BaseRun) -> str:
         return f"Verification Job {run.id} for Forecast Job {run.forecast_run.id} for Calibration Job {run.forecast_run.calibration_run.id}, user: {run.forecast_run.calibration_run.owner.username}"
 
     raise ValueError(f"Unknown job type: {type(run).__name__}")
-
-
-def replace_nan_and_inf_with_none(data: Any) -> Any:
-    """
-    Replace NaN and infinity values with None recursively in data.
-
-    :param data: Input data (list, dict, or scalar).
-    :return: Data with NaN and inf replaced by None.
-    """
-
-    # If the data is a list, recursively process each item in the list
-    if isinstance(data, list):
-        return [replace_nan_and_inf_with_none(item) for item in data]
-
-    # If the data is a dictionary, recursively process each key-value pair
-    elif isinstance(data, dict):
-        return {key: replace_nan_and_inf_with_none(value) for key, value in data.items()}
-
-    # If the data is a float and it's NaN or inf, replace it with None
-    elif isinstance(data, float) and (np.isnan(data) or np.isinf(data)):
-        return None
-
-    # If the data is any other type (int, str, etc.), return it unchanged
-    return data
 
 
 # Regular expression pattern to match directories like "ngen_xxxxxxx_worker"
