@@ -1,10 +1,12 @@
 import io
 import json
 import logging
+import math
 import os
 import threading
 import time
 import zipfile
+from collections import defaultdict
 from datetime import datetime
 
 from django.conf import settings
@@ -19,7 +21,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
-from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, IterationParameter, IterationMetric
 from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
@@ -30,10 +32,37 @@ from calibration.views.calibration_forecast_views import get_forecast_log, get_c
 from calibration.views.calibration_verification_views import get_verification_log
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str, \
+    get_validation_run, CerfException, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str, \
     get_forecast_run, get_verification_run
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_float(value):
+    """
+    Normalize numeric values for JSON serialization.
+
+    - JSON does NOT support NaN or +/-Infinity.
+    - Django/DRF will happily pass these through until serialization,
+      where they can cause hard failures or invalid JSON.
+    - This helper converts any non-finite float (NaN, +inf, -inf) to None.
+    - Non-float values (ints, strings, dicts, lists, etc.) are returned unchanged.
+
+    This is intentionally lightweight and meant to be applied ONLY at the
+    points where floating-point values originate (metrics, objective values),
+    instead of recursively walking the entire response payload.
+    """
+
+    # Preserve None as-is
+    if value is None:
+        return None
+
+    # Only floats can be NaN or Infinity; ints are always safe
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+
+    # All other values pass through unchanged
+    return value
 
 
 @extend_schema(
@@ -82,7 +111,6 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         NWMRetrospectiveMetrics.objects
         .filter(period=ValidationMetricPeriod.valid.value, calibration_run=run)
         .select_related('metric')
-        .only('metric__name', 'metric_value')
         .annotate(
             metric_name=F('metric__name'),
             metric_display_name=F('metric__display_name'),
@@ -92,19 +120,58 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
 
     retrospective_data = [{'name': 'NWM 3.0', 'data': nwm_retrospective_data}]
 
-    iterations = get_iterations_for_calibration_job(run)
+    iterations = list(get_iterations_for_calibration_job(run))
+    iteration_ids = [it.id for it in iterations]
 
     # Prefetch validation runs for all iterations
-    validation_runs = ValidationRun.objects.filter(
-        iteration__in=iterations,
-        status__in=[
-            StatusEnum.DONE.db_instance,
-            StatusEnum.RUNNING.db_instance,
-            StatusEnum.SUBMITTED.db_instance,
-        ],
-    ).select_related('calibration_run')
+    validation_runs = (
+        ValidationRun.objects
+        .filter(
+            iteration_id__in=iteration_ids,
+            status__in=[
+                StatusEnum.DONE.db_instance,
+                StatusEnum.RUNNING.db_instance,
+                StatusEnum.SUBMITTED.db_instance,
+            ],
+        )
+        .only('id', 'iteration_id')
+    )
 
     validation_runs_by_iteration = {vr.iteration_id: vr for vr in validation_runs}
+
+    params_by_iter = defaultdict(list)
+    for p in (
+            IterationParameter.objects
+                    .filter(iteration_id__in=iteration_ids)
+                    .select_related('calibration_parameter')
+                    .values(
+                'iteration_id',
+                'calibration_parameter__name',
+                'tuned_value',
+            )
+    ):
+        params_by_iter[p['iteration_id']].append({
+            'parameter_name': p['calibration_parameter__name'],
+            'parameter_value': p['tuned_value'],
+        })
+
+    metrics_by_iter = defaultdict(list)
+    for m in (
+            IterationMetric.objects
+                    .select_related('metric')
+                    .filter(iteration_id__in=iteration_ids)
+                    .values(
+                'iteration_id',
+                'metric__name',
+                'metric__display_name',
+                'metric_value',
+            )
+    ):
+        metrics_by_iter[m['iteration_id']].append({
+            'metric_name': m['metric__name'],
+            'metric_display_name': m['metric__display_name'],
+            'metric_value': normalize_float(m['metric_value']),
+        })
 
     # Construct iteration data with parameters, metrics, and validation reference
     iteration_data = []
@@ -116,22 +183,14 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
-            'objective_function_value': iteration.objective_function_value,
-            'parameters': [
-                {'parameter_name': param.calibration_parameter.name, 'parameter_value': param.tuned_value}
-                for param in iteration.iterationparameter_set.all()
-            ],
-            'metrics': [
-                {
-                    'metric_name': metric.metric.name,
-                    'metric_display_name': metric.metric.display_name,
-                    'metric_value': metric.metric_value
-                }
-                for metric in iteration.iterationmetric_set.all()
-            ]
+            'objective_function_value': normalize_float(iteration.objective_function_value),
+            'parameters': params_by_iter.get(iteration.id, []),
+            'metrics': metrics_by_iter.get(iteration.id, []),
         }
+
         if validation_run:
             iteration_element['validation_run_id'] = validation_run.id
+
         iteration_data.append(iteration_element)
 
     response = {
@@ -141,9 +200,6 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         'iteration_data': iteration_data,
         'retrospective_data': retrospective_data
     }
-
-    # Replace NaN values with None for JSON compatibility
-    response = replace_nan_and_inf_with_none(response)
 
     response_validator, error_response = validate_response(
         GetCalibrationDataByIterationResponseSerializer,
@@ -372,6 +428,11 @@ def get_log(request: Request) -> Response:
         validate_log_name(log_category, log_name)
     except ValueError as e:
         raise CerfException(str(e))
+
+    validation_run = None
+    forecast_run = None
+    cold_start_run = None
+    verification_run = None
 
     if validation_run_id:
         validation_run, error_return = get_validation_run(
