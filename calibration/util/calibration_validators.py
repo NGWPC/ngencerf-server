@@ -1541,7 +1541,7 @@ class GetValidationJobsResponseSerializer(BaseSerializer):
     validation_jobs = serializers.ListSerializer(child=ValidationJobsResponseSerializer(), required=True, allow_empty=True)
 
 
-class GetLogRequestSerializer(CalibrationOrValidationRunSerializer):
+class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
     log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
     log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
     start = serializers.IntegerField(required=False, default=0, min_value=-1)

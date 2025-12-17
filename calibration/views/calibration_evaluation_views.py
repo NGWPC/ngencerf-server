@@ -20,15 +20,18 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
 from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun
-from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationRunSerializer, \
+from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
     GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
+from calibration.views.calibration_forecast_views import get_forecast_log, get_cold_start_log
+from calibration.views.calibration_verification_views import get_verification_log
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str
+    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str, \
+    get_forecast_run, get_verification_run
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +188,7 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun, worker_n
 
 
 @extend_schema(
-    request=CalibrationOrValidationRunSerializer,
+    request=CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
     responses={
         200: GetLogNamesResponseSerializer,
         400: OpenApiResponse(
@@ -206,7 +209,7 @@ def get_log_names(request: Request) -> Response:
     Retrieves a list of available log names for a specific calibration or validation run.
 
     - Handles request validation and user permissions.
-    - Returns logs categorized by their association (calibration, validation, global, or forecast).
+    - Returns logs categorized by their association (calibration, validation, forecast, cold start, verification, global).
 
     :param request: The HTTP request object containing validation run ID.
     :return: JSON response with log names or error details.
@@ -214,12 +217,14 @@ def get_log_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+    verification_run_id = validator.get('verification_run_id')
 
     if validation_run_id:
         validation_run, error_return = get_validation_run(
@@ -229,14 +234,41 @@ def get_log_names(request: Request) -> Response:
         )
         if error_return:
             return error_return
-        # TODO calibration_run variable not used right now, but we might need later for forecast
-        # calibration_run = validation_run.calibration_run
 
         # Define available log categories and names
         log_names = [
             {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
             {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
             {LogCategory.GLOBAL.value: ['ngen']},
+        ]
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            request.user,
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        cold_start_run = forecast_run.cold_start_run
+
+        # Define available log categories and names
+        log_names = [
+            {LogCategory.FORECAST.value: ['forecast stdout', 'ngen stdout', 'mswm', 'ngen']}
+        ]
+        if cold_start_run:
+            log_names.append({LogCategory.COLD_START.value: ['cold start stdout', 'ngen stdout', 'mswm', 'ngen']})
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+
+        # Define available log categories and names
+        log_names = [
+            {LogCategory.VERIFICATION.value: ['verification', 'verification stdout']}
         ]
     else:
         calibration_run, error_return = get_calibration_run(
@@ -253,11 +285,6 @@ def get_log_names(request: Request) -> Response:
             {LogCategory.GLOBAL.value: ['ngen']},
         ]
 
-    # Include forecast logs if applicable
-    # Commenting out for now since we have nowhere for the UI to display these
-    # if ForecastRun.objects.filter(calibration_run=calibration_run).exists():
-    #     log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
-
     response = {'log_names': log_names}
 
     response_validator, error_response = validate_response(GetLogNamesResponseSerializer, response)
@@ -272,7 +299,9 @@ def get_log_names(request: Request) -> Response:
 VALID_LOG_NAMES = {
     LogCategory.CALIBRATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
     LogCategory.VALIDATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
-    LogCategory.FORECAST: [LogName.FORECAST_STDOUT, LogName.NGEN_STDOUT],
+    LogCategory.FORECAST: [LogName.FORECAST_STDOUT, LogName.NGEN_STDOUT, LogName.MSWM, LogName.NGEN],
+    LogCategory.COLD_START: [LogName.COLD_START_STDOUT, LogName.NGEN_STDOUT, LogName.MSWM, LogName.NGEN],
+    LogCategory.VERIFICATION: [LogName.VERIFICATION, LogName.VERIFICATION_STDOUT],
     LogCategory.GLOBAL: [LogName.NGEN]
 }
 
@@ -314,12 +343,12 @@ def validate_log_name(log_category: LogCategory, log_name: LogName):
 @handle_exceptions
 def get_log(request: Request) -> Response:
     """
-    Retrieves a specific log file for a calibration run (or validation run and its associated calibration run).
+    Retrieves a specific log file for a calibration, validation, forecast, cold start, or verification run.
 
     - Supports pagination for large log files.
     - Validates log category and log name.
 
-    :param request: The HTTP request object containing calibration/validation run and log information.
+    :param request: The HTTP request object containing run and log information.
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -331,6 +360,8 @@ def get_log(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+    verification_run_id = validator.get('verification_run_id')
     log_category = LogCategory(validator.get('log_category'))
     log_name = LogName(validator.get('log_name'))
     start = validator.get('start')
@@ -351,6 +382,25 @@ def get_log(request: Request) -> Response:
         if error_return:
             return error_return
         calibration_run = validation_run.calibration_run
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            request.user,
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = forecast_run.calibration_run
+        cold_start_run = forecast_run.cold_start_run
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = verification_run.forecast_run.calibration_run
     else:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
@@ -369,7 +419,22 @@ def get_log(request: Request) -> Response:
             if validation_run:
                 log_path = get_validation_log(validation_run, log_name)
             else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for calibration run")
+                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
+        case LogCategory.FORECAST:
+            if forecast_run:
+                log_path = get_forecast_log(forecast_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
+        case LogCategory.COLD_START:
+            if forecast_run and cold_start_run:
+                log_path = get_cold_start_log(cold_start_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
+        case LogCategory.VERIFICATION:
+            if verification_run:
+                log_path = get_verification_log(verification_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
         case LogCategory.GLOBAL:
             if validation_run:
                 log_path = get_global_log(validation_run, log_name)
@@ -410,9 +475,17 @@ def get_log(request: Request) -> Response:
         'log_data': paginated_lines,
         'log_path': log_path,
         'byte_offset': file_size,
-        'pagination_metadata': pagination_metadata,
-        'status': validation_run.status.name if validation_run else calibration_run.status.name
+        'pagination_metadata': pagination_metadata
     }
+    match log_category:
+        case LogCategory.VALIDATION:
+            response['status'] = validation_run.status.name
+        case LogCategory.FORECAST:
+            response['status'] = forecast_run.status.name
+        case LogCategory.COLD_START:
+            response['status'] = forecast_run.cold_start_run.status.name
+        case _:
+            response['status'] = calibration_run.status.name
 
     response_validator, error_response = validate_response(GetLogsResponseSerializer, response, fields_to_truncate=['log_data'], max_length=10)
     if error_response:
