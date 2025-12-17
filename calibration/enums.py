@@ -211,7 +211,7 @@ class DataTypeEnum(AbstractEnum):
     STRING = 'string'
 
 
-class SlurmStatusEnum(AbstractEnum):
+class SlurmCallbackStatusEnum(AbstractEnum):
     DONE = 'DONE'
     FAILED = 'FAILED'
     CANCELED = 'CANCELED'

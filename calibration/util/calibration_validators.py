@@ -5,7 +5,7 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, LogName, NgenLogging
+    OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, LogName, NgenLogging
 from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField
 from calibration.util.caching import get_cached_modules_with_groups
 
@@ -1187,23 +1187,23 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
 
 
 class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
 
 
 class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
 
 
 class ColdStartJobSlurmCallbackRequestSerializer(ColdStartRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
 
 
 class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
 
 
 class VerificationJobSlurmCallbackRequestSerializer(VerificationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
 
 
 class RunCalibrationJob(CalibrationRunSerializer):
