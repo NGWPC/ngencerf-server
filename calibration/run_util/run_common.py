@@ -16,7 +16,7 @@ from django.db import transaction
 from mswm.manager import build_fcst, build_calib
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, SlurmStatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum
+from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
@@ -622,8 +622,8 @@ def process_validation_output_and_maybe_create_best(validation_run: ValidationRu
 
 def run_generic_job_end_callback(
         run: BaseRun,
-        status: Future | SlurmStatusEnum,
-        check_if_failed: Callable[[BaseRun, Future | SlurmStatusEnum], bool],
+        status: Future | SlurmCallbackStatusEnum,
+        check_if_failed: Callable[[BaseRun, Future | SlurmCallbackStatusEnum], bool],
         finalize_func: Callable[[BaseRun, bool], None]
 ) -> None:
     """

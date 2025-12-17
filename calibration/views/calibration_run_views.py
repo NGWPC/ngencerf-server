@@ -17,7 +17,7 @@ from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType, SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
-from calibration.run_util.run_ngen_cal_pw import SlurmStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
+from calibration.run_util.run_ngen_cal_pw import SlurmCallbackStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_cold_start_job_callback_pw, run_verification_job_callback_pw
 from calibration.util.calibration_validators import CalibrationRunSerializer, GenericResponseSerializer, \
     ErrorResponseSerializer, ReportIterationSerializer, SubmitCalibrationJobResponseSerializer, GetIterationsResponseSerializer, \
@@ -1083,20 +1083,20 @@ def handle_slurm_callback(request: Request, serializer_class, get_run_fn, job_en
 
     run_id = validator.get(next(k for k in validator.keys() if k.endswith("_id")))
     job_status = validator.get("job_status")
-    slurm_status = SlurmStatusEnum(job_status)
+    slurm_status = SlurmCallbackStatusEnum(job_status)
 
     # If Slurm is reporting that the job is now starting, we expect to be in Submitted status
     # For any other status changes, we should be Running or Submitted.  We allow Submitted just in case
     #  1) The job doesn't properly transition to Running
     #  2) To allow a submitted job to be canceled
-    expected_status = [StatusEnum.SUBMITTED] if slurm_status == SlurmStatusEnum.STARTING else [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
+    expected_status = [StatusEnum.SUBMITTED] if slurm_status == SlurmCallbackStatusEnum.STARTING else [StatusEnum.RUNNING, StatusEnum.SUBMITTED]
 
     run, error_return = get_run_fn(run_id, None, run_status=expected_status)
     if error_return:
         return error_return
 
     job_description = f"{get_job_description(run)} (slurm_job_id: {run.slurm_job_id})"
-    if slurm_status == SlurmStatusEnum.STARTING:
+    if slurm_status == SlurmCallbackStatusEnum.STARTING:
         logger.info(f'{job_description} is starting')
         run.status = StatusEnum.RUNNING.db_instance
         run.run_start = datetime.now(timezone.utc)
