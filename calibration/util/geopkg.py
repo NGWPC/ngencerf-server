@@ -11,6 +11,8 @@ from functools import lru_cache
 from io import BytesIO
 from itertools import cycle
 from pathlib import Path
+from typing import Literal
+from urllib.parse import urlparse
 
 import fiona
 import geopandas as gpd
@@ -92,10 +94,10 @@ def _localize_gpkg(gpkg_path: str):
         pid = os.getpid()
         unique_suffix = next(tempfile._get_candidate_names())
 
-        # Final per-process temp file, e.g. /tmp/01123000__proc1234_abcd.gpkg
+        # Final per-process temp file, e.g. /tmp/01123000__pid1234_abcd.gpkg
         tmp_local_path = os.path.join(
             tempfile.gettempdir(),
-            f"{name_no_ext}__proc{pid}_{unique_suffix}{ext}"
+            f"{name_no_ext}__pid{pid}_{unique_suffix}{ext}"
         )
 
         # Make the per-process isolated copy
@@ -365,7 +367,16 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
     :param output_is_dir: If True, force output_path to be interpreted as a directory, even if it does not exist.
     """
     with _localize_gpkg(gpkg_path) as (orig_path, local_path):
-        input_filename = os.path.basename(local_path)
+        # NOTE:
+        #   _localize_gpkg() returns a per-process temporary *copy* of the GeoPackage.
+        #   That copy is given a unique filename (PID + random suffix) to avoid
+        #   SQLite/GDAL locking across concurrent processes.
+        #
+        #   orig_path is the original source path/URL and must be used for
+        #   stable output naming. The randomized local filename must never
+        #   propagate into the final output path.
+        #
+        input_filename = os.path.basename(urlparse(str(orig_path)).path)
 
         # Determine final output file path
         if output_is_dir or (os.path.exists(output_path) and os.path.isdir(output_path)):
@@ -422,7 +433,7 @@ def normalize_gpkg(gpkg_path: str, output_path: str, *, output_is_dir: bool = Fa
 
                 # Write spatial layer
                 # Use 'w' for the first layer (create file), then 'a' to append additional layers.
-                mode = "w" if not os.path.exists(output_path) else "a"
+                mode: Literal["w", "a"] = "w" if not os.path.exists(output_path) else "a"
                 gdf_out.to_file(Path(output_path), layer=layer_name, driver="GPKG", mode=mode)
                 spatial_layers.append(layer_name)
 
