@@ -501,8 +501,6 @@ def get_log(request: Request) -> Response:
                 log_path = get_global_log(validation_run, log_name)
             else:
                 log_path = get_global_log(calibration_run, log_name)
-        case _:
-            raise CerfException(f"Unknown log category '{log_category.value}'")
 
     # Check if the log file exists
     if log_path and not os.path.exists(log_path):
@@ -545,6 +543,8 @@ def get_log(request: Request) -> Response:
             response['status'] = forecast_run.status.name
         case LogCategory.COLD_START:
             response['status'] = forecast_run.cold_start_run.status.name
+        case LogCategory.VERIFICATION:
+            response['status'] = verification_run.status.name
         case _:
             response['status'] = calibration_run.status.name
 
@@ -582,7 +582,7 @@ def get_log_status(request: Request) -> Response:
 
     - Uses byte_offset to compare the size of the last data set retrieved to what is currently in the file/cache.
 
-    :param request: The HTTP request object containing calibration/validation run and log information.
+    :param request: The HTTP request object containing run and log information.
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -594,8 +594,14 @@ def get_log_status(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+    verification_run_id = validator.get('verification_run_id')
     log_path = validator.get('log_path')
     byte_offset = validator.get('byte_offset')
+
+    validation_run = None
+    forecast_run = None
+    verification_run = None
 
     if validation_run_id:
         validation_run, error_return = get_validation_run(
@@ -606,6 +612,24 @@ def get_log_status(request: Request) -> Response:
         if error_return:
             return error_return
         calibration_run = validation_run.calibration_run
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            request.user,
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = forecast_run.calibration_run
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = verification_run.forecast_run.calibration_run
     else:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
@@ -614,7 +638,6 @@ def get_log_status(request: Request) -> Response:
         )
         if error_return:
             return error_return
-        validation_run = None
 
     # Check if the log file exists
     # TO DO: Get this from the cache if it's already been cached
@@ -626,9 +649,16 @@ def get_log_status(request: Request) -> Response:
 
     response = {
         'message': f"log file {log_path} has " + ("changed" if file_size != byte_offset else "not changed"),
-        'file_updated': True if file_size != byte_offset else False,
-        'status': validation_run.status.name if validation_run else calibration_run.status.name
+        'file_updated': True if file_size != byte_offset else False
     }
+    if validation_run_id:
+        response['status'] = validation_run.status.name
+    elif forecast_run_id:
+        response['status'] = forecast_run.status.name
+    elif verification_run_id:
+        response['status'] = verification_run.status.name
+    else:
+        response['status'] = calibration_run.status.name
 
     response_validator, error_response = validate_response(GetLogStatusResponseSerializer, response)
     if error_response:
