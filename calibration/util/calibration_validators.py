@@ -1548,7 +1548,7 @@ class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVeri
     limit = serializers.IntegerField(required=False, default=100, min_value=1)
 
 
-class GetLogStatusRequestSerializer(CalibrationOrValidationRunSerializer):
+class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
     log_path = serializers.CharField(required=True)
     byte_offset = serializers.IntegerField(required=True, min_value=0)
 
