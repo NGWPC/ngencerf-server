@@ -463,7 +463,7 @@ def create_forecast_run_internal(
     forecast_run = ForecastRun.objects.create(
         status=StatusEnum.SAVED.db_instance,
         calibration_run_id=calibration_run.id,
-        cold_start_run_id=cold_start_run.id,
+        cold_start_run=cold_start_run,
         configuration_id=configuration.id,
         cycle_date=cycle_date
     )
