@@ -210,7 +210,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
         require_both_validations_done=True,
-        include_stop_criteria=True, limit=limit,
+        limit=limit,
         offset=offset, filters=filters,
         sort=sort, ids_only=ids_only,
         get_gages=get_gages
@@ -286,7 +286,6 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
         run_status=[StatusEnum.DONE],
         include_validation_data=None,
         require_both_validations_done=True,
-        include_stop_criteria=True,
         limit=limit,
         offset=offset,
         filters=filters,
@@ -365,12 +364,13 @@ def get_calibration_jobs(request):
     ids_only = validator.get("ids_only")
     filters, sort = _normalize_filters_and_sort(filters, sort)
     get_gages = validator.get("get_gages")
+    include_modules = validator.get("include_modules")
 
     jobs, total_count, date_range, id_range, gage_list = get_jobs(
         request.user,
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
-        include_stop_criteria=True,
+        include_modules=include_modules,
         limit=limit,
         offset=offset,
         filters=filters,
@@ -682,7 +682,7 @@ def get_jobs(
         run_status: list[StatusEnum] = None,
         include_validation_data: GetValidationJobsScope | None = None,
         require_both_validations_done: bool = False,
-        include_stop_criteria: bool = False,
+        include_modules: bool = False,
         limit: int | None = None,
         offset: int = 0,
         filters: dict[str, Any] | None = None,
@@ -700,7 +700,7 @@ def get_jobs(
     :param run_status: Optional list of StatusEnum values to filter jobs (e.g., DONE, FAILED).
     :param include_validation_data: Determines the level of validation data to include:
         - 'status': Includes validation status details for associated validation runs.
-    :param include_stop_criteria: Whether to include stop_criteria in the queryset.
+    :param include_modules: Whether to include module list in the queryset.
     :param limit: Optional maximum number of rows to return (for pagination). If None, return all.
     :param offset: Optional number of rows to skip before returning results (for pagination).
     :param filters: Optional dict of filter criteria (e.g. gage_id, status, modules).
@@ -988,6 +988,21 @@ def get_jobs(
         calibration_runs = list(calibration_runs_qs)
         run_ids = [r["id"] for r in calibration_runs]
 
+        # ───── Preload modules if requested ─────
+        modules_map: dict[int, list[str]] = {}
+
+        if include_modules and run_ids:
+            modules_qs = (
+                CalibrationFormulation.objects
+                .filter(calibration_run_id__in=run_ids)
+                .select_related("module")
+                .order_by("-id")
+                .values_list("calibration_run_id", "module__name")
+            )
+
+            for run_id, module_name in modules_qs:
+                modules_map.setdefault(run_id, []).append(module_name)
+
         # ───── Precompute which runs include an LSTM module ─────
         lstm_run_ids = set(
             CalibrationFormulation.objects
@@ -1013,15 +1028,17 @@ def get_jobs(
             for v in validations_qs:
                 validations_map.setdefault(v["calibration_run_id"], []).append(v)
 
-        # Preload stop criteria if requested
-        stop_criteria_map: dict[int, str] = {}
-        if include_stop_criteria:
-            stop_qs = (
-                CalibrationStopCriteria.objects
-                .filter(calibration_run_id__in=run_ids)
-                .values("calibration_run_id", "value")
-            )
-            stop_criteria_map = {sc["calibration_run_id"]: sc["value"] for sc in stop_qs}
+        # Preload stop criteria
+        stop_qs = (
+            CalibrationStopCriteria.objects
+            .filter(calibration_run_id__in=run_ids)
+            .values("calibration_run_id", "value")
+        )
+
+        stop_criteria_map: dict[int, str | None] = {
+            sc["calibration_run_id"]: sc["value"]
+            for sc in stop_qs
+        }
 
         results = []
         for run in calibration_runs:
@@ -1046,6 +1063,9 @@ def get_jobs(
                 'is_downloadable': StatusEnum.from_name(run['status__name']) in downloadable_statuses,
             }
 
+            if include_modules:
+                result['modules'] = modules_map.get(run_id, [])
+
             # Include detailed validation status if requested
             if include_validation_data == GetValidationJobsScope.STATUS:
                 result['validations'] = [
@@ -1057,9 +1077,7 @@ def get_jobs(
                     for v in validations_map.get(run_id, [])
                 ]
 
-            # Include stop criteria if requested
-            if include_stop_criteria:
-                result['stop_criteria'] = stop_criteria_map.get(run_id)
+            result['stop_criteria'] = stop_criteria_map.get(run_id)
 
             results.append(result)
 

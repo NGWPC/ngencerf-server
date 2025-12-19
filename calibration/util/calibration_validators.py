@@ -5,7 +5,8 @@ from rest_framework.fields import empty
 from rest_framework.settings import api_settings
 
 from calibration.enums import DataTypeEnum, UnitsEnum, LocationEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum, StatusEnum, \
-    OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, LogName, NgenLogging
+    OptimizationEnum, GeopackageSourceEnum, SlurmCallbackStatusEnum, JobGenesis, PlotDefinitionsEnum, ForecastConfigEnum, LogCategory, LogName, \
+    NgenLogging
 from calibration.enums_vanilla import CalibrationSortField, VerificationSortField, ForecastSortField
 from calibration.util.caching import get_cached_modules_with_groups
 
@@ -428,6 +429,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     is_downloadable = serializers.BooleanField(required=True, allow_null=False)
     is_lstm = serializers.BooleanField(required=True, allow_null=False)
     stop_criteria = serializers.IntegerField(required=False, allow_null=True)
+    modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
 
 
 class GetCalibrationJobsResponseSerializer(BaseSerializer):
@@ -491,7 +493,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_image_url = serializers.CharField(required=False)
     external_data_status = serializers.JSONField(required=False)
-    modules = serializers.ListField(child=serializers.CharField(required=False))
+    modules = serializers.ListField(child=serializers.CharField(required=True))
     is_aet_rootzone = serializers.BooleanField(required=False)
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_errors = serializers.JSONField(required=False)
@@ -602,7 +604,6 @@ class DateFilterSerializer(serializers.Serializer):
         return attrs
 
 
-
 class IdFilterSerializer(serializers.Serializer):
     """Filter by id using 'before', 'after' or 'between' logic."""
     operator = serializers.ChoiceField(choices=['before', 'after', 'between'], required=False, allow_blank=True)
@@ -634,6 +635,7 @@ class IdFilterSerializer(serializers.Serializer):
                 )
 
         return attrs
+
 
 class FilterSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_blank=True)
@@ -670,6 +672,7 @@ class PaginationSerializer(BaseSerializer):
 class CalibrationPaginationSerializer(PaginationSerializer):
     sort = CalibrationSortSerializer(required=False, allow_null=True)
     ids_only = serializers.BooleanField(required=False, default=False)
+    include_modules = serializers.BooleanField(required=False, default=False)
 
 
 class ForecastPaginationSerializer(PaginationSerializer):
@@ -1400,7 +1403,7 @@ class ExportResponseSerializer(BaseSerializer):
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
-    modules = serializers.ListField(child=serializers.CharField(required=False), default=[])
+    modules = serializers.ListField(child=serializers.CharField(required=True), default=[])
     is_aet_rootzone = serializers.BooleanField(required=False)
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
@@ -1432,7 +1435,7 @@ class ImportDataSerializer(BaseSerializer):
     observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
     geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    modules = serializers.ListField(child=serializers.CharField(required=False), required=False, allow_empty=True)
+    modules = serializers.ListField(child=serializers.CharField(required=True), required=False, allow_empty=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
     formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
