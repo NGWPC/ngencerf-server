@@ -13,7 +13,7 @@ import time
 import zipfile
 from contextlib import ExitStack
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Any
 
 import requests
 import tabulate
@@ -585,7 +585,7 @@ def list_jobs(output_path: str | None = None, filters: dict | None = None, sort:
     # ───────────────────────────────
     # Construct payload
     # ───────────────────────────────
-    payload = {}
+    payload: dict[str, Any] = {"include_modules": True}
     if filters:
         payload["filters"] = filters
     if sort:
@@ -627,12 +627,18 @@ def list_jobs(output_path: str | None = None, filters: dict | None = None, sort:
             job.get("objective_function") or "-",
             job.get("optimization_algorithm") or "-",
             (job.get("created_at") or "-").replace("T", " ").split(".")[0],
+            (job.get("last_updated_on") or "-").replace("T", " ").split(".")[0],
+            (job.get("submit_date") or "-").replace("T", " ").split(".")[0],
+            "yes" if job.get("is_archived") else "no",
+            "yes" if job.get("is_locked") else "no",
             ", ".join(job.get("modules", []))
         ])
 
     headers = [
         "Run ID", "Gage", "Status", "Start", "End",
-        "Formulation", "Objective", "Optimization", "Created", "Modules"
+        "Formulation", "Objective", "Optimization",
+        "Created", "Last Updated", "Submitted",
+        "Archived", "Locked", "Modules"
     ]
 
     markdown_table = tabulate.tabulate(rows, headers=headers, tablefmt="github")
