@@ -5,9 +5,8 @@ import shutil
 
 import yaml
 from django.core.cache import cache
-from django.db import transaction, router
-from django.db.models.deletion import Collector
-from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
+from django.db import transaction
+from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
