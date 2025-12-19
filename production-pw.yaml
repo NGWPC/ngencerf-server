@@ -42,8 +42,8 @@ services:
     environment:
       - NGEN_CAL_DATA_PATH=${NGEN_CAL_DATA_PATH}
     env_file:
-      - path: ./ngencerf_services.env
+      - path: ./cerfServer/.env-docker-prod
         required: true
-      - path: ./ngencerf_services.override.env
-        required: false
+      - path: cerfServer/.env-override
+        required: true
     privileged: true

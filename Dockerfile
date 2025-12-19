@@ -139,7 +139,6 @@ RUN cli/build_cli.sh
 
 # Copy additional configuration files
 COPY ./cerfserver-docker.env /ngencerf/ngencerf-server/cerfserver.env
-COPY ./cerfServer/__.env-docker-dev /ngencerf/ngencerf-server/cerfServer/.env
 COPY ./cerfServer/__local_settings.py /ngencerf/ngencerf-server/cerfServer/local_settings.py
 
 # Set the entry point and expose the application port
