@@ -28,6 +28,7 @@ from calibration.views.calibration_secondary_data_views import should_generate_s
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
+from calibration.views.data_services import should_use_bmi_forcing
 from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,8 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     # READ-ONLY PHASE
     # -----------------------------
     with readonly_transaction():
+        use_bmi = should_use_bmi_forcing(run)
+
         allowed_status_names = [StatusEnum.SAVED.value, StatusEnum.READY.value]
         if build:
             allowed_status_names.append(StatusEnum.SUBMITTED.value)
@@ -245,25 +248,24 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     
             # Determine the source of the forcing data (user-uploaded or EDS)
             if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
-                is_conus = run.gage.domain == DomainEnum.CONUS.db_instance
-                is_aorc = run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
-                if not is_conus or not is_aorc:
-                    logger.info("Using CSV forcing for not Conus or not AORC")
-                    forcing_dir = get_forcing_dir_for_job(run)
-                    forcing_provider = 'csv'
-                    forcing_configuration = ""
-                else:
-                    logger.info("Using BMI forcing for Conus and AORC")
+                if use_bmi:
+                    logger.info("Using BMI forcing (USE_BMI_FORCING enabled, CONUS + AORC)")
                     forcing_dir = None
                     forcing_provider = 'bmi'
                     forcing_configuration = "aorc"
+                else:
+                    logger.info("Using CSV forcing (BMI disabled or conditions not met)")
+                    forcing_dir = get_forcing_dir_for_job(run)
+                    forcing_provider = 'csv'
+                    forcing_configuration = ""
 
                 is_forcing_upload = run.forcing_source_requested == ForcingSourceEnum.UPLOAD.db_instance
 
-                if is_forcing_upload and (not forcing_dir or not os.path.exists(forcing_dir)):
-                    error_object.add_warning('Forcing data must be uploaded')
-                else:
-                    if not is_conus or not is_aorc:
+                if not use_bmi:
+                    # CSV forcing path rules apply
+                    if is_forcing_upload and (not forcing_dir or not os.path.exists(forcing_dir)):
+                        error_object.add_warning('Forcing data must be uploaded')
+                    else:
                         if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
                             pass
 

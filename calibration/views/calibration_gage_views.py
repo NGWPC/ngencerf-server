@@ -30,7 +30,7 @@ from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path, get_user_email, get_elapsed_str
 from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
-    get_forcing_data_from_s3, DataServicesException, get_module_metadata_from_data_services, clear_times, use_bmi_forcing
+    get_forcing_data_from_s3, DataServicesException, get_module_metadata_from_data_services, clear_times, should_use_bmi_forcing
 
 logger = logging.getLogger(__name__)
 
@@ -740,7 +740,7 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     """
     observation_path = get_valid_path(run.observational_eds_file_path, lambda: get_observational_file_for_job(run))
 
-    forcing_path = True if use_bmi_forcing(run) else get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
+    forcing_path = True if should_use_bmi_forcing(run) else get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
 
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
 

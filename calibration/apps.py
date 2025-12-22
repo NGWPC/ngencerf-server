@@ -83,6 +83,7 @@ class CalibrationConfig(AppConfig):
         logger.info(f'NGEN_STATIC_DIR: {settings.NGEN_STATIC_DIR}')
         logger.info(f'NGENCERF_ARCHIVE_S3_PATH: {settings.NGENCERF_ARCHIVE_S3_PATH}')
         logger.info(f'DJANGO DEBUG: {settings.DEBUG}')
+        logger.info(f'USE_BMI_FORCING: {settings.USE_BMI_FORCING}')
 
         from calibration.util.ngen_locations import check_files
 
