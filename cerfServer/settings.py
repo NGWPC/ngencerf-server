@@ -24,7 +24,7 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("1", "true", "yes")
+DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
 
 version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
@@ -211,6 +211,7 @@ FORCING_DATA_DIRS_RETRO = {
 
 # Default time range for BMI forcing data
 FORCING_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
+USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
 
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
 # S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))

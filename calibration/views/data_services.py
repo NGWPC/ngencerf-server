@@ -197,9 +197,9 @@ def clear_times(run: CalibrationRun, cli: bool = False):
         run.validation_eval_end_period = None
 
 
-def use_bmi_forcing(run: CalibrationRun) -> bool:
+def should_use_bmi_forcing(run: CalibrationRun) -> bool:
     # Use BMI forcing only if Conus and AORC
-    return run.gage.domain == DomainEnum.CONUS.db_instance and run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
+    return settings.USE_BMI_FORCING and run.gage.domain == DomainEnum.CONUS.db_instance and run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
 
 
 def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
@@ -212,7 +212,7 @@ def get_forcing_data_from_s3(run: CalibrationRun, forcing_source_name: str):
     :param forcing_source_name: The name of the forcing source to retrieve data for.
     :raises DataServicesException: If the forcing data cannot be found in the local S3 directories.
     """
-    if use_bmi_forcing(run):
+    if should_use_bmi_forcing(run):
         logger.info("Skipping forcing retrieval for CONUS and AORC")
         return
 
