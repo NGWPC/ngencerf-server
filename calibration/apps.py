@@ -5,6 +5,7 @@ import sys
 from django.apps import AppConfig
 from django.conf import settings
 
+from calibration.util.cloud_util import check_aws_credentials, S3CredentialsExpired
 from calibration.util.db_diagnostics import patch_ensure_connection_with_diagnostics
 from calibration.util.git_util import print_git_info_all
 
@@ -50,6 +51,7 @@ class CalibrationConfig(AppConfig):
     name = 'calibration'
 
     def ready(self):
+
         # -------------------------------------------------------------
         # Detect dev server or gunicorn
         # -------------------------------------------------------------
@@ -60,6 +62,13 @@ class CalibrationConfig(AppConfig):
         # Banner + basic info
         # -------------------------------------------------------------
         if running_dev_server or running_gunicorn:
+            # Fail fast. Do NOT let the server limp along with bad creds.
+            try:
+                check_aws_credentials()
+            except S3CredentialsExpired:
+                logger.error("AWS credential sanity check failed at startup")
+                raise
+
             print_banner()
         else:
             # Management command

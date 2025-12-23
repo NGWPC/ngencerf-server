@@ -60,6 +60,7 @@ from pathlib import Path
 from typing import Iterator, Tuple
 from urllib.parse import urlparse
 
+import boto3
 import botocore.exceptions
 import fsspec
 
@@ -372,8 +373,8 @@ def copy_tree(src_url: str,
     # ------------------------------------------------------------
     # If verify and source is cloud → load manifest.json
     # ------------------------------------------------------------
-    source_manifest_dict = None          # fast lookup dict: rel_path → sha256
-    source_manifest_raw = None      # full manifest JSON (includes symlinks)
+    source_manifest_dict = None  # fast lookup dict: rel_path → sha256
+    source_manifest_raw = None  # full manifest JSON (includes symlinks)
     if verify and src_scheme != "file":
         manifest_url = join_url(src_base, src_prefix, "_manifest.json")
 
@@ -381,7 +382,7 @@ def copy_tree(src_url: str,
         if src_fs.exists(manifest_url):
             try:
                 with src_fs.open(manifest_url, "r") as mf:
-                    source_manifest_raw = json.load(mf)   # keep full structure (files + symlinks)
+                    source_manifest_raw = json.load(mf)  # keep full structure (files + symlinks)
 
                 # Convert file list to dict for fast hash verification
                 source_manifest_dict = {
@@ -674,10 +675,10 @@ def copy_tree(src_url: str,
     # (uses source_manifest_raw since it contains symlink metadata)
     # ------------------------------------------------------------
     if (
-        verify
-        and src_scheme != "file"
-        and source_manifest_raw
-        and "symlinks" in source_manifest_raw
+            verify
+            and src_scheme != "file"
+            and source_manifest_raw
+            and "symlinks" in source_manifest_raw
     ):
         dest_root = urlparse(dst_url).path
         for entry in source_manifest_raw["symlinks"]:
@@ -1059,3 +1060,48 @@ def localize_to_path(
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+def check_aws_credentials(*, timeout_seconds: int = 3) -> None:
+    """
+    Fast sanity check that AWS credentials are present and valid.
+
+    Raises S3CredentialsExpired if credentials are missing, expired,
+    or otherwise invalid. Intended for startup / readiness checks.
+    """
+    try:
+        sts = boto3.client(
+            "sts",
+            config=boto3.session.Config(
+                connect_timeout=timeout_seconds,
+                read_timeout=timeout_seconds,
+                retries={"max_attempts": 1},
+            ),
+        )
+
+        identity = sts.get_caller_identity()
+
+        logger.info(
+            "AWS credentials OK: account=%s arn=%s",
+            identity.get("Account"),
+            identity.get("Arn"),
+        )
+
+    except (botocore.exceptions.NoCredentialsError, botocore.exceptions.PartialCredentialsError) as e:
+        # Boto3 could not construct a usable credential set locally
+        # (missing, incomplete, unreadable, or unresolved credentials).
+        # No request was made to AWS.
+        raise S3CredentialsExpired("AWS credentials are missing or incomplete") from None
+
+    except botocore.exceptions.ClientError as e:
+        # Credentials were constructed successfully and a request reached AWS STS,
+        # but STS rejected the request due to invalid, expired, or otherwise
+        # unacceptable credentials.
+        code = e.response.get("Error", {}).get("Code", "Unknown")
+
+        if code in {"ExpiredToken", "InvalidClientTokenId"}:
+            raise S3CredentialsExpired("AWS credentials are expired or invalid") from None
+
+        # Any other STS error at startup still indicates unusable credentials
+        # (e.g. wrong account, broken assume-role chain, signature issues).
+        raise S3CredentialsExpired(f"AWS credential check failed: {code}") from None
