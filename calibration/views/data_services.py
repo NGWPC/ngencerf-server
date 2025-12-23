@@ -198,6 +198,10 @@ def clear_times(run: CalibrationRun, cli: bool = False):
 
 
 def should_use_bmi_forcing(run: CalibrationRun) -> bool:
+    # Use BMI forcing only if CONUS + AORC and a gage is present
+    if run.gage is None:
+        return False
+    
     # Use BMI forcing only if Conus and AORC
     return settings.USE_BMI_FORCING and run.gage.domain == DomainEnum.CONUS.db_instance and run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
 
