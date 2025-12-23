@@ -16,7 +16,7 @@ from django.db import transaction
 from mswm.manager import build_fcst, build_calib
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DomainEnum
+from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum, ForcingSourceEnum, ObservationalSourceEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
@@ -31,6 +31,7 @@ from calibration.util.ngen_locations import get_calibration_input_file, get_vali
     get_cold_start_git_info_file
 from calibration.views import ngen_cal_input
 from calibration.views.common import ResponseError, CerfException, create_validation_run_internal, get_job_description, write_ngen_logging_file
+from calibration.views.data_services import should_use_bmi_forcing
 from calibration.views.end_of_job_processing import read_validation_output, read_calibration_output, read_forecast_output, \
     read_cold_start_output, read_verification_output
 from calibration.views.forecast_input import create_forecast_input
@@ -796,31 +797,35 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
     """
     errors: list[str] = []
 
-    # Subset forcing data
-    is_conus = run.gage.domain == DomainEnum.CONUS.db_instance
-    is_aorc = run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
-    if not is_conus or not is_aorc:
-        if run.forcing_source_requested != ForcingSourceEnum.UPLOAD.db_instance:
-            subset_directory_by_time_range(
-                run,
-                run.forcing_eds_dir_path,
-                get_forcing_dir_for_job(run),
-                DateTimeRange(
-                    min(run.calibration_start_period, run.validation_start_period),
-                    max(run.calibration_end_period, run.validation_end_period)
-                )
-            )
+    date_range = DateTimeRange(
+        min(run.calibration_start_period, run.validation_start_period),
+        max(run.calibration_end_period, run.validation_end_period),
+    )
 
-    # Subset observational data
+    use_bmi = should_use_bmi_forcing(run)
+
+    # ─────────────────────────────────────────────────────────────
+    # Forcing data
+    # ─────────────────────────────────────────────────────────────
+    # BMI forcing: nothing to subset here
+    # CSV forcing: subset unless user-uploaded
+    if not use_bmi and run.forcing_source_requested != ForcingSourceEnum.UPLOAD.db_instance:
+        subset_directory_by_time_range(
+            run,
+            run.forcing_eds_dir_path,
+            get_forcing_dir_for_job(run),
+            date_range
+        )
+
+    # ─────────────────────────────────────────────────────────────
+    # Observational data
+    # ─────────────────────────────────────────────────────────────
     if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
         subset_by_time_range(
             run,
             run.observational_eds_file_path,
             get_observational_file_for_job(run),
-            DateTimeRange(
-                min(run.calibration_start_period, run.validation_start_period),
-                max(run.calibration_end_period, run.validation_end_period)
-            )
+            date_range
         )
 
     return errors

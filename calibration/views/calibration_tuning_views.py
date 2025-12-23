@@ -18,7 +18,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, DomainEnum, ForcingSourceEnum
+from calibration.enums import StatusEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationFormulation, CalibrationParameter, CalibrationRun
 from calibration.util import cloud_util
@@ -30,6 +30,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
     get_valid_path, format_datetime, get_user_email, get_elapsed_str, readonly_transaction
+from calibration.views.data_services import should_use_bmi_forcing
 
 logger = logging.getLogger(__name__)
 
@@ -232,15 +233,14 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
 
     Behavior:
       - If the run already has a persisted time range (both start and end), that exact range is returned.
-      - If observational or forcing data is missing, returns None.
+      - If required data is missing, returns an empty dict.
       - If both sources are available, computes the intersection and returns a dictionary with:
           * 'start_time': datetime (UTC, timezone-aware),
           * 'end_time': datetime (UTC, timezone-aware).
       - If there is no valid overlap between observational and forcing ranges, returns None.
 
     :param run: CalibrationRun instance.
-    :return: A dictionary containing 'start_time' and 'end_time' if available,
-             otherwise None.
+    :return: A dictionary containing 'start_time' and 'end_time', or {} if unavailable.
     """
     if run.time_range_start and run.time_range_end:
         logger.info("Time range is already set")
@@ -255,28 +255,40 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
         lambda: get_forcing_dir_for_job(run)
     )
 
+    use_bmi = should_use_bmi_forcing(run)
+
     # Explicitly log the resolved paths
     logger.info(
         f"get_time_range: observation_path={observation_path}, "
-        f"forcing_path={forcing_path}"
+        f"forcing_path={forcing_path},"
+        f"use_bmi_forcing={use_bmi}"
     )
 
+    # Observation data is always required
+    if not observation_path:
+        return {}
+
     # TODO More cleanup when we are exclusively using bmi forcing
-    is_conus = (
-            run.gage is not None
-            and run.gage.domain == DomainEnum.CONUS.db_instance
-    )
-    is_aorc = run.forcing_source_requested == ForcingSourceEnum.AORC.db_instance
-    if not observation_path or ((not is_conus or not is_aorc) and not forcing_path):
+    # For CSV forcing, forcing_path is also required
+    if not use_bmi and not forcing_path:
         return {}
 
     # If both paths are available, calculate intersection and update run
     daterange_intersection_start = time.perf_counter()
-    daterange = get_date_range_intersection(observation_path, None if is_conus and is_aorc else forcing_path)
-    logger.info(f"Date range intersection completed in {time.perf_counter() - daterange_intersection_start:.2f}s")
+
+    daterange = get_date_range_intersection(
+        observation_path,
+        None if use_bmi else forcing_path
+    )
+
+    logger.info(f"Date range intersection completed in "
+                f"{time.perf_counter() - daterange_intersection_start:.2f}s")
 
     if daterange:
-        return {'start_time': daterange.start_datetime, 'end_time': daterange.end_datetime}
+        return {
+            'start_time': daterange.start_datetime,
+            'end_time': daterange.end_datetime
+        }
 
     return {}
 
