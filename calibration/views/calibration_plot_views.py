@@ -765,7 +765,10 @@ def load_and_merge_hydrograph_files_with_pagination_and_count(
         total_count = len(merged_df)
 
         # Step 3: Extract a paginated subset of the merged DataFrame
-        paginated_data = merged_df.iloc[start:start + limit].to_dict(orient="records")
+        paginated_data = cast(
+            list[dict[str, Any]],
+            merged_df.iloc[start:start + limit].to_dict(orient="records")
+        )
 
         # Step 4: Convert all Timestamp objects in the key column to ISO 8601 strings
         for row in paginated_data:

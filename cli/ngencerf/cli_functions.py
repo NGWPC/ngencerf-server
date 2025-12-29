@@ -1029,7 +1029,7 @@ def _process_job_action(
         *,
         require_confirmation: bool = False,
         confirm_keyword: str = "delete",
-        pre_display_func: Callable[[int], int] | None = None,
+        pre_display_func: Callable[..., int] | None = None,
 ) -> int:
     """
     Common handler for job actions (delete, archive, lock, unlock).

@@ -539,17 +539,21 @@ def upload_user_parameters(request: Request) -> Response:
         return ResponseError('No data rows found. Provide at least one parameter row.')
 
     # Validate numeric columns and report exact offending lines/values
-    invalid_details = {}
+    invalid_details: dict[str, list[dict[str, object]]] = {}
     for col in ['min', 'max', 'init']:
         # Re-coerce to catch NaN in case dtype enforcement was bypassed by space sep quirks
         coerced = pd.to_numeric(df[col], errors='coerce')
-        bad_mask = coerced.isna()
+        bad_mask = pd.isna(coerced)
         if bad_mask.any():
             bad_rows = df[bad_mask]
             # +2 => header is line 1; df index 0 is line 2
             invalid_details[col] = [
-                {'line': int(idx) + 2, 'param': str(row.get('param')), 'value': row.get(col)}
-                for idx, row in bad_rows.iterrows()
+                {
+                    'line': offset + 2,
+                    'param': str(row['param']),
+                    'value': row.get(col)
+                }
+                for offset, (_, row) in enumerate(bad_rows.iterrows())
             ]
 
     if invalid_details:
@@ -563,8 +567,13 @@ def upload_user_parameters(request: Request) -> Response:
     if bad_minmax_mask.any():
         rows = df[bad_minmax_mask]
         range_errors['min_gt_max'] = [
-            {'line': int(idx) + 2, 'param': str(row['param']), 'min': row['min'], 'max': row['max']}
-            for idx, row in rows.iterrows()
+            {
+                'line': offset + 2,
+                'param': str(row['param']),
+                'min': row['min'],
+                'max': row['max']
+            }
+            for offset, (_, row) in enumerate(rows.iterrows())
         ]
 
     bad_init_low = df['init'] < df['min']
@@ -572,8 +581,13 @@ def upload_user_parameters(request: Request) -> Response:
         rows = df[bad_init_low]
         range_errors.setdefault('init_lt_min', [])
         range_errors['init_lt_min'].extend(
-            {'line': int(idx) + 2, 'param': str(row['param']), 'init': row['init'], 'min': row['min']}
-            for idx, row in rows.iterrows()
+            {
+                'line': offset + 2,
+                'param': str(row['param']),
+                'init': row['init'],
+                'min': row['min']
+            }
+            for offset, (_, row) in enumerate(rows.iterrows())
         )
 
     bad_init_high = df['init'] > df['max']
@@ -581,8 +595,13 @@ def upload_user_parameters(request: Request) -> Response:
         rows = df[bad_init_high]
         range_errors.setdefault('init_gt_max', [])
         range_errors['init_gt_max'].extend(
-            {'line': int(idx) + 2, 'param': str(row['param']), 'init': row['init'], 'max': row['max']}
-            for idx, row in rows.iterrows()
+            {
+                'line': offset + 2,
+                'param': str(row['param']),
+                'init': row['init'],
+                'max': row['max']
+            }
+            for offset, (_, row) in enumerate(rows.iterrows())
         )
 
     if range_errors:
