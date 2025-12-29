@@ -26,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import AccessToken
 
 from calibration.enums import StatusEnum, ValidationType, JobGenesis, NgenLogging
-from calibration.models import CalibrationRun, ValidationRun, Status, ForecastConfiguration, ForecastRun, ColdStartRun, \
+from calibration.models import CalibrationRun, ValidationRun, ForecastConfiguration, ForecastRun, ColdStartRun, \
     CalibrationFormulation, VerificationRun
 from calibration.models import Iteration
 from calibration.models.base_run import BaseRun
@@ -81,27 +81,40 @@ def get_calibration_runs_bulk(
         include_archived: bool = False,
 ) -> tuple[dict[int, CalibrationRun], dict[int, Response]]:
     """
-    Bulk retrieval and validation of CalibrationRun instances.
+    Bulk retrieve and validate multiple CalibrationRun instances by ID.
 
-    This function performs a single database query to retrieve all requested
-    CalibrationRun objects, then applies the same ownership, archive, and
-    status validation logic used by `get_calibration_run` on a per-ID basis.
+    This function performs a single database query to fetch all requested
+    CalibrationRun objects, then applies the same validation logic used by
+    `get_run_instance` on a per-run basis, including:
 
-    It preserves per-run error reporting semantics by returning two mappings:
-      - a dict of valid CalibrationRun instances keyed by run ID
-      - a dict of error Responses keyed by run ID for invalid or inaccessible runs
+    - Optional filtering by owning user (owner_field='owner')
+    - Validation of allowed job statuses
+    - Enforcement of archived-job access rules (is_archived_field='is_archived')
 
-    No deletion or mutation is performed by this function.
+    The database query itself does NOT filter out archived jobs. Instead, archive
+    handling is enforced explicitly during validation so that callers can
+    distinguish between:
+      - non-existent runs
+      - unauthorized access
+      - disallowed status
+      - archived-but-disallowed runs
+
+    Validation is performed independently for each requested run ID. Results
+    preserve per-ID error semantics by returning two mappings:
+      - valid runs keyed by run ID
+      - error responses keyed by run ID
+
+    This function does not mutate or delete any data.
 
     :param calibration_run_ids: List of CalibrationRun IDs to retrieve and validate.
                                 Order is preserved when iterating results.
-    :param user: The user requesting the CalibrationRuns. If provided, only runs
-                 owned by this user are considered valid.
-    :param run_status: Optional list of allowed StatusEnum values. If not provided,
-                       defaults to [READY, SAVED], matching `get_calibration_run`.
+    :param user: The user requesting the runs. If provided, only runs owned by
+                 this user are considered valid.
+    :param run_status: Optional list of allowed StatusEnum values. Defaults to
+                       [READY, SAVED] if not provided.
     :param include_archived: Whether archived jobs are allowed. If False, archived
-                             jobs will return an error response.
-    :return: A tuple containing:
+                             runs will return an error response.
+    :return: A tuple (runs_by_id, errors_by_id):
              - runs_by_id: dict mapping run_id -> CalibrationRun for all valid runs
              - errors_by_id: dict mapping run_id -> ResponseError for invalid runs
     """
@@ -155,23 +168,43 @@ def get_run_instance(
         select_related_fields: tuple[str, ...] = (),
 ) -> tuple[BaseRun | None, Response | None]:
     """
-    Retrieve an instance of a BaseRun-derived model by its ID,
-    optionally filtering by owner, status, and handling the 'is_archived' flag.
+    Retrieve and validate a single BaseRun-derived instance by ID.
+
+    This function performs a database lookup for the specified run ID and applies
+    common validation logic used across all job types (Calibration, Validation,
+    Forecast, Cold Start, Verification), including:
+
+    - Optional filtering by owning user
+    - Validation of allowed job statuses
+    - Enforcement of archived-job access rules
+    - Optional eager-loading of related objects via select_related
+
+    The database query itself does NOT filter out archived jobs. Instead, archive
+    handling is enforced explicitly via validation logic so that callers can
+    distinguish between:
+      - non-existent runs
+      - unauthorized access
+      - disallowed status
+      - archived-but-disallowed runs
+
+    This function does not mutate or delete any data.
 
     :param model: The BaseRun-derived model class to query.
     :param run_id: The ID of the run to retrieve.
     :param user: The user requesting the run; if None, no filtering by owner is done.
-    :param run_status: A list of StatusEnum members to filter by.
+    :param run_status: Optional list of StatusEnum members to filter by.  Defaults to
+                       [READY, SAVED] if not provided.
     :param owner_field: The field used to filter by owner (default 'owner').
-    :param is_archived_field: The field name for the 'is_archived' flag (default 'is_archived').
-    :param include_archived: Whether to include archived jobs.
+    :param is_archived_field: ame of the boolean field indicating archived state.
+                              May traverse relationships. (default 'is_archived')
+    :param include_archived: Whether to include archived jobs.  If False, archived runs will return an error response.
     :param select_related_fields: Optional tuple of related field names to eagerly
                                   load via select_related.
-    :return: Tuple containing the run instance or None, and Response if error or None.
+    :return: A tuple (run, error):
+             - run: The retrieved model instance, or None if not found
+             - error: A ResponseError if validation fails, otherwise None
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
-
-    allowed_statuses: list[Status] = [status_enum.db_instance for status_enum in run_status]
 
     # Query without filtering out archived jobs
     query: QuerySet = model.objects.filter(id=run_id)
@@ -232,6 +265,7 @@ def get_calibration_run(
         include_archived=include_archived,
         select_related_fields=('status', 'performance_metrics', 'owner'),
     )
+
 
 def get_validation_run(
         validation_run_id: int,
@@ -1262,16 +1296,6 @@ def create_verification_input(run: VerificationRun) -> None:
 
     # error_object = ErrorReport()
     config = copy.deepcopy(CONFIG_TEMPLATE)
-
-    # allowed_status_names = [StatusEnum.SAVED.value, StatusEnum.READY.value]
-    # if run.status.name not in allowed_status_names:
-    #     job_name = 'Verification'
-    #     error_object.add_warning(
-    #         f'{job_name} Job {run.id} is not in an allowed status: '
-    #         f'{join_with_or(allowed_status_names)}. '
-    #         f'Current status: {run.status.name}'
-    #     )
-    #     return error_object
 
     # Add hard-coded file paths to YAML
     config['file_paths'] = {

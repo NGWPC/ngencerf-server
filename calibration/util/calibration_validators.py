@@ -516,7 +516,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     save_output_iteration = serializers.BooleanField(required=True, allow_null=True)
     stop_criteria = serializers.IntegerField(required=True, allow_null=True, min_value=2)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-    failure_messages = serializers.DictField(required=False, allow_null=False)
+    failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
 
 
 class GitInfoSerializer(BaseSerializer):
@@ -1078,7 +1078,7 @@ class CommonStatusFieldsMixin(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=False)
     formulation_name = serializers.CharField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
-    failure_messages = serializers.DictField(required=False, allow_null=False)
+    failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     sent_date = serializers.DateTimeField(required=False, allow_null=True)
     run_start = serializers.DateTimeField(required=False, allow_null=True)
@@ -1101,7 +1101,7 @@ class GetStatusColdStartSerializer(BaseSerializer):
     run_start = serializers.DateTimeField(required=False, allow_null=True)
     run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
-    failure_messages = serializers.DictField(required=False, allow_null=False)
+    failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
     performance_metrics = PerformanceMetricsSerializer(required=False)
 
 
@@ -1309,7 +1309,7 @@ class GetVerificationStatusResponseSerializer(GenericMessageAndStatusResponseSer
     run_end = serializers.DateTimeField(required=False, allow_null=True)
     elapsed_time = serializers.DurationField(required=False, allow_null=True)
     performance_metrics = PerformanceMetricsSerializer(required=False)
-    failure_messages = serializers.DictField(required=False, allow_null=False)
+    failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
 
 
 class GetVerificationPlotNamesResponseSerializer(BaseSerializer):
