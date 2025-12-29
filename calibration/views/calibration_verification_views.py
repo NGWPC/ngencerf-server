@@ -18,12 +18,10 @@ from calibration.models import VerificationRun
 from calibration.run_util.run_common import submit_job
 from calibration.util.calibration_validators import ErrorResponseSerializer, VerificationJobSerializer, \
     CreateAndRunVerificationRequestSerializer, CreateAndRunVerificationResponseSerializer, \
-    GetVerificationStatusRequestSerializer, GetVerificationStatusResponseSerializer, \
     GetVerificationPlotNamesResponseSerializer, GetVerificationPlotRequestSerializer, \
     GetVerificationPlotResponseSerializer, DeleteVerificationJobResponseSerializer
 from calibration.util.ngen_locations import get_verification_run_dir, get_verification_yaml_config_file, \
     get_verification_log_file, get_verification_stdout_file
-from calibration.views.calibration_run_views import get_performance_metrics, should_include_metrics, parse_failure_messages
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_response, validate_request, \
     get_forecast_run, get_verification_run, ResponseError, get_user_email, get_elapsed_str, \
@@ -97,87 +95,6 @@ def create_and_run_verification_job(request: Request) -> Response:
     logger.debug(
         f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
     return Response(response_validator.data, status=status.HTTP_201_CREATED)
-
-
-@extend_schema(
-    request=GetVerificationStatusRequestSerializer,
-    responses={
-        200: GetVerificationStatusResponseSerializer,
-        400: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Validation error or parsing error"
-        ),
-        500: OpenApiResponse(
-            response=ErrorResponseSerializer,
-            description="Internal server error"
-        )
-    },
-    description="Return the status of a verification job"
-)
-@api_view(['GET', 'POST'])
-@handle_exceptions
-def get_verification_status(request: Request) -> Response:
-    """
-    Retrieves the status of a verification job.
-    Optionally includes performance metrics based on the request parameters.
-
-    :param request: HTTP request containing verification run details.
-    :return: JSON response with the status and associated job details.
-    """
-    data = request.data
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-
-    validator, error_return = validate_request(GetVerificationStatusRequestSerializer, data)
-    if error_return:
-        return error_return
-
-    verification_run_id = validator.get('verification_run_id')
-    include_performance_metrics = validator.get('include_performance_metrics')
-
-    verification_run, error_return = get_verification_run(verification_run_id, request.user, run_status=list(StatusEnum))
-    if error_return:
-        return error_return
-
-    # Prepare the main response
-    response = {
-        'message': f'Verification Job {verification_run.id}, status is {verification_run.status.name}',
-        'verification_run_id': verification_run.id,
-        'status': verification_run.status.name,
-        'submit_date': verification_run.submit_date,
-        'run_start': verification_run.run_start,
-        'run_end': verification_run.run_end,
-        'elapsed_time': verification_run.run_end - verification_run.submit_date if verification_run.run_end and verification_run.submit_date else None
-    }
-
-    if verification_run.run_end and verification_run.submit_date:
-        response['elapsed_time'] = verification_run.run_end - verification_run.submit_date
-    else:
-        response['elapsed_time'] = None
-
-    # Conditionally retrieve verification performance metrics
-    verification_metrics = get_performance_metrics(verification_run.performance_metrics) if should_include_metrics(verification_run.status,
-                                                                                                                   include_performance_metrics) else None
-
-    # Conditionally add verification run performance metrics to response if requested and status is DONE or FAIL
-    if verification_metrics:
-        response['performance_metrics'] = verification_metrics
-
-    fm_ver = parse_failure_messages(verification_run.failure_messages)
-    if fm_ver is not None:
-        response['failure_messages'] = fm_ver
-
-    response_validator, error_response = validate_response(GetVerificationStatusResponseSerializer, response)
-    if error_response:
-        return error_response
-    logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
-        f'{json.dumps(response_validator.data)}'
-    )
-    logger.debug(f"[DEBUG] view request type: {type(request)}")
-    logger.debug(f"[DEBUG] request._request type: {type(getattr(request, '_request', None))}")
-    logger.debug(f"[DEBUG] elapsed_time on _request: {getattr(getattr(request, '_request', None), 'elapsed_time', 'MISSING')}")
-
-    return Response(response_validator.data)
 
 
 @extend_schema(

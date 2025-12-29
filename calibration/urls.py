@@ -112,7 +112,6 @@ urlpatterns = [
     ##################################
     path('calibration/get_verification_jobs/', calibration.views.get_jobs_views.get_verification_jobs, name="getVerificationJobs"),
     path('calibration/create_and_run_verification_job/', calibration_verification_views.create_and_run_verification_job, name="createVerificationJob"),
-    path('calibration/get_verification_status/', calibration_verification_views.get_verification_status, name="getVerificationStatus"),
     path('calibration/get_verification_plot_names/', calibration_verification_views.get_verification_plot_names, name="getVerificationPlotNames"),
     path('calibration/get_verification_plot/', calibration_verification_views.get_verification_plot, name="getVerificationPlot"),
     path('calibration/delete_verification_job/', calibration_verification_views.delete_verification_job, name="deleteVerificationJob"),

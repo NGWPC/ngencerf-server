@@ -150,7 +150,9 @@ def get_run_instance(
         run_status: list[StatusEnum] | None = None,
         owner_field: str = 'owner',
         is_archived_field: str = 'is_archived',
-        include_archived: bool = False
+        include_archived: bool = False,
+        *,
+        select_related_fields: tuple[str, ...] = (),
 ) -> tuple[BaseRun | None, Response | None]:
     """
     Retrieve an instance of a BaseRun-derived model by its ID,
@@ -163,6 +165,8 @@ def get_run_instance(
     :param owner_field: The field used to filter by owner (default 'owner').
     :param is_archived_field: The field name for the 'is_archived' flag (default 'is_archived').
     :param include_archived: Whether to include archived jobs.
+    :param select_related_fields: Optional tuple of related field names to eagerly
+                                  load via select_related.
     :return: Tuple containing the run instance or None, and Response if error or None.
     """
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
@@ -171,6 +175,9 @@ def get_run_instance(
 
     # Query without filtering out archived jobs
     query: QuerySet = model.objects.filter(id=run_id)
+
+    if select_related_fields:
+        query = query.select_related(*select_related_fields)
 
     if user:
         query = query.filter(**{f"{owner_field}": user})
@@ -215,8 +222,16 @@ def get_calibration_run(
     :param include_archived: Include archived jobs if True.
     :return: Tuple of CalibrationRun or None, and Response if error or None.
     """
-    return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_archived', include_archived)
-
+    return get_run_instance(
+        CalibrationRun,
+        calibration_run_id,
+        user,
+        run_status,
+        owner_field='owner',
+        is_archived_field='is_archived',
+        include_archived=include_archived,
+        select_related_fields=('status', 'performance_metrics', 'owner'),
+    )
 
 def get_validation_run(
         validation_run_id: int,
@@ -231,7 +246,20 @@ def get_validation_run(
     :param run_status: Allowed statuses for the ValidationRun.
     :return: Tuple of ValidationRun or None, and Response if error or None.
     """
-    return get_run_instance(ValidationRun, validation_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
+    return get_run_instance(
+        ValidationRun,
+        validation_run_id,
+        user,
+        run_status,
+        owner_field='calibration_run__owner',
+        is_archived_field='calibration_run__is_archived',
+        select_related_fields=(
+            'status',
+            'performance_metrics',
+            'calibration_run',
+            'calibration_run__owner',
+        ),
+    )
 
 
 def get_cold_start_run(
@@ -247,7 +275,21 @@ def get_cold_start_run(
     :param run_status: Allowed statuses for the ColdStartRun.
     :return: Tuple of ColdStartRun or None, and Response if error or None.
     """
-    return get_run_instance(ColdStartRun, cold_start_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
+    return get_run_instance(
+        ColdStartRun,
+        cold_start_run_id,
+        user,
+        run_status,
+        owner_field='calibration_run__owner',
+        is_archived_field='calibration_run__is_archived',
+        select_related_fields=(
+            'status',
+            'performance_metrics',
+            'calibration_run',
+            'calibration_run__owner',
+        ),
+
+    )
 
 
 def get_forecast_run(
@@ -263,7 +305,24 @@ def get_forecast_run(
     :param run_status: Allowed statuses for the ForecastRun.
     :return: Tuple of ForecastRun or None, and Response if error or None.
     """
-    return get_run_instance(ForecastRun, forecast_run_id, user, run_status, 'calibration_run__owner', 'calibration_run__is_archived')
+    return get_run_instance(
+        ForecastRun,
+        forecast_run_id,
+        user,
+        run_status,
+        owner_field='calibration_run__owner',
+        is_archived_field='calibration_run__is_archived',
+        select_related_fields=(
+            'status',
+            'performance_metrics',
+            'calibration_run',
+            'calibration_run__owner',
+            'configuration',
+            'cold_start_run',
+            'cold_start_run__status',
+            'cold_start_run__performance_metrics',
+        ),
+    )
 
 
 def get_verification_run(
@@ -279,7 +338,24 @@ def get_verification_run(
     :param run_status: Allowed statuses for the VerificationRun.
     :return: Tuple of VerificationRun or None, and Response if error or None.
     """
-    return get_run_instance(VerificationRun, verification_run_id, user, run_status, 'forecast_run__calibration_run__owner', 'is_archived')
+    return get_run_instance(
+        VerificationRun,
+        verification_run_id,
+        user,
+        run_status,
+        owner_field='forecast_run__calibration_run__owner',
+        is_archived_field='is_archived',
+        select_related_fields=(
+            'status',
+            'performance_metrics',
+            'forecast_run',
+            'forecast_run__status',
+            'forecast_run__performance_metrics',
+            'forecast_run__configuration',
+            'forecast_run__calibration_run',
+            'forecast_run__calibration_run__owner',
+        )
+    )
 
 
 def join_with_or(items: list[str]) -> str:
