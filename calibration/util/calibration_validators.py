@@ -198,7 +198,7 @@ class CreateValidationRequestSerializer(CalibrationRunSerializer):
 
 class LoggingConfigSerializer(BaseSerializer):
     logging_enabled = serializers.BooleanField(required=False, default=True)
-    modules = serializers.DictField(child=serializers.CharField(), default=[])
+    modules = serializers.DictField(child=serializers.CharField(), default=dict)
 
     def validate_modules(self, value: dict) -> dict:
         """
@@ -1032,7 +1032,7 @@ class ModuleMetadataSerializer(BaseSerializer):
 
 # List of module objects from Data Services containing module parameters and output variables
 class ModuleDataListSerializer(BaseSerializer):
-    modules = ModuleMetadataSerializer(many=True, min_length=1, required=True)
+    modules = serializers.ListSerializer(child=ModuleMetadataSerializer(), min_length=1, required=True)
 
 
 class SaveTuningRequestSerializer(BaseSerializer):
@@ -1190,23 +1190,23 @@ class GetIterationsResponseSerializer(GenericResponseSerializer):
 
 
 class CalibrationJobSlurmCallbackRequestSerializer(CalibrationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
 
 
 class ValidationJobSlurmCallbackRequestSerializer(ValidationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
 
 
 class ColdStartJobSlurmCallbackRequestSerializer(ColdStartRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
 
 
 class ForecastJobSlurmCallbackRequestSerializer(ForecastRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
 
 
 class VerificationJobSlurmCallbackRequestSerializer(VerificationRunSerializer):
-    job_status = serializers.CharField(required=True, validators=[SlurmCallbackStatusEnum])
+    job_status = serializers.CharField(required=True, validators=[enum_validator(SlurmCallbackStatusEnum)])
 
 
 class RunCalibrationJob(CalibrationRunSerializer):

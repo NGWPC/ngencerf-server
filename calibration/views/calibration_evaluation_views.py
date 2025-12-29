@@ -301,7 +301,8 @@ def get_log_names(request: Request) -> Response:
         forecast_run, error_return = get_forecast_run(
             forecast_run_id,
             request.user,
-            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
+                        StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -447,7 +448,8 @@ def get_log(request: Request) -> Response:
         forecast_run, error_return = get_forecast_run(
             forecast_run_id,
             request.user,
-            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
+                        StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return
@@ -616,7 +618,8 @@ def get_log_status(request: Request) -> Response:
         forecast_run, error_return = get_forecast_run(
             forecast_run_id,
             request.user,
-            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
+                        StatusEnum.SERVER_ERROR]
         )
         if error_return:
             return error_return

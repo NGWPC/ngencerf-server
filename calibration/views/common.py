@@ -47,12 +47,12 @@ User = get_user_model()
 
 
 def validate_run_instance(
-    run: BaseRun,
-    run_id: int,
-    run_status: list[StatusEnum] | None,
-    is_archived_field: str,
-    include_archived: bool,
-    model_name: str,
+        run: BaseRun,
+        run_id: int,
+        run_status: list[StatusEnum] | None,
+        is_archived_field: str,
+        include_archived: bool,
+        model_name: str,
 ) -> Response | None:
     run_status = run_status or [StatusEnum.READY, StatusEnum.SAVED]
     allowed_statuses = [s.db_instance for s in run_status]
@@ -73,11 +73,12 @@ def validate_run_instance(
 
     return None
 
+
 def get_calibration_runs_bulk(
-    calibration_run_ids: list[int],
-    user: User | None,
-    run_status: list[StatusEnum] | None = None,
-    include_archived: bool = False,
+        calibration_run_ids: list[int],
+        user: User | None,
+        run_status: list[StatusEnum] | None = None,
+        include_archived: bool = False,
 ) -> tuple[dict[int, CalibrationRun], dict[int, Response]]:
     """
     Bulk retrieval and validation of CalibrationRun instances.
@@ -215,7 +216,6 @@ def get_calibration_run(
     :return: Tuple of CalibrationRun or None, and Response if error or None.
     """
     return get_run_instance(CalibrationRun, calibration_run_id, user, run_status, 'owner', 'is_archived', include_archived)
-
 
 
 def get_validation_run(
