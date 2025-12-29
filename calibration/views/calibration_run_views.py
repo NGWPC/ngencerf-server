@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
+import requests
 from django.conf import settings
 from django.db import transaction
 from django.forms import model_to_dict
@@ -16,6 +17,7 @@ from rest_framework.response import Response
 from calibration.enums import StatusEnum, ValidationType
 from calibration.enums_vanilla import JobType, SecondaryDataEnum
 from calibration.models import Iteration, ValidationRun, ForecastRun, CalibrationRun, Status, ColdStartRun, VerificationRun
+from calibration.models.base_run import BaseRun
 from calibration.run_util.run_common import cancel_job_common, submit_job
 from calibration.run_util.run_ngen_cal_pw import SlurmCallbackStatusEnum, run_calibration_job_callback_pw, run_validation_job_callback_pw, \
     run_forecast_job_callback_pw, run_cold_start_job_callback_pw, run_verification_job_callback_pw
@@ -39,19 +41,44 @@ from calibration.views.end_of_job_processing import read_calibration_output
 logger = logging.getLogger(__name__)
 
 
-def parse_failure_messages(value):
+def normalize_failure_messages(value) -> list[dict]:
     """
-    Parse a failure_messages field:
-    - Return None if the value is None.
-    - If it's JSON, return the parsed object.
-    - Otherwise, return the raw string.
+    Normalize failure_messages into a canonical list[dict] form.
+
+    Accepts:
+      - None
+      - JSON string (dict or list)
+      - dict
+      - list
+      - legacy string
+
+    Returns:
+      - list[dict]
     """
     if value is None:
-        return None
-    try:
-        return json.loads(value)
-    except (TypeError, json.JSONDecodeError):
+        return []
+
+    # Parse JSON if needed
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return [{
+                "source": "legacy",
+                "message": value,
+            }]
+
+    if isinstance(value, dict):
+        return [value]
+
+    if isinstance(value, list):
         return value
+
+    # Defensive fallback
+    return [{
+        "source": "unknown",
+        "message": str(value),
+    }]
 
 
 @extend_schema(
@@ -73,12 +100,13 @@ def parse_failure_messages(value):
 @handle_exceptions
 def get_status(request: Request) -> Response:
     """
-    Retrieves the status of a calibration job, including associated validation and forecast jobs.
+    Retrieves the status of a calibration, validation, forecast, or verification job.
     Optionally includes performance metrics based on the request parameters.
     Runs in READ ONLY mode to avoid locking contention.
 
-    :param request: HTTP request containing calibration run details.
-    :return: JSON response with the status and associated job details.
+    Read-heavy operations are executed inside a readonly transaction to minimize
+    locking. If Slurm reconciliation is required, the necessary database update
+    is performed outside the readonly transaction.
     """
     data = request.data
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -103,9 +131,14 @@ def get_status(request: Request) -> Response:
     else:
         serializer_class = GetStatusForVerificationResponseSerializer
 
-    # -------------------------
-    # READ-ONLY PHASE (always)
-    # -------------------------
+    # Values captured during readonly phase
+    run = None
+    needs_reconcile = False
+    sacct_status = None
+
+    # ─────────────────────────────────────────────────────────────
+    # READ-ONLY PHASE
+    # ─────────────────────────────────────────────────────────────
     with readonly_transaction():
         if calibration_run_id:
             run, error_return = get_calibration_run(
@@ -113,6 +146,11 @@ def get_status(request: Request) -> Response:
             )
             if error_return:
                 return error_return
+
+            logger.info('Calling check_slurm_reconciliation')
+            needs_reconcile, sacct_status = check_slurm_reconciliation(run)
+            logger.info(f"Needs_reconcile={needs_reconcile} sacct_status={sacct_status}")
+
             response = get_status_for_calibration(run, include_performance_metrics)
 
         elif validation_run_id:
@@ -121,6 +159,8 @@ def get_status(request: Request) -> Response:
             )
             if error_return:
                 return error_return
+
+            needs_reconcile, sacct_status = check_slurm_reconciliation(run)
             response = get_status_for_validation(run, include_performance_metrics)
 
         elif forecast_run_id:
@@ -130,6 +170,8 @@ def get_status(request: Request) -> Response:
             )
             if error_return:
                 return error_return
+
+            needs_reconcile, sacct_status = check_slurm_reconciliation(run)
             response = get_status_for_forecast(run, include_performance_metrics)
 
         else:
@@ -138,8 +180,11 @@ def get_status(request: Request) -> Response:
             )
             if error_return:
                 return error_return
+
+            needs_reconcile, sacct_status = check_slurm_reconciliation(run)
             response = get_status_for_verification(run, include_performance_metrics)
 
+    # TODO Can we combine these?
     # ---------------------------------------------------
     # WRITE-CAPABLE PHASE (calibration only, conditional)
     # ---------------------------------------------------
@@ -152,6 +197,23 @@ def get_status(request: Request) -> Response:
                     response["warnings"] = error_object.warnings
                 if error_object.has_errors():
                     response["errors"] = error_object.errors
+    # ─────────────────────────────────────────────────────────────
+    # WRITE PHASE (ONLY IF NECESSARY)
+    # ─────────────────────────────────────────────────────────────
+    if needs_reconcile:
+        logger.info('reconciling')
+
+        with transaction.atomic():
+            # Re-fetch the row outside readonly_transaction before mutating
+            run = type(run).objects.select_for_update().get(id=run.id)
+            apply_slurm_reconciliation(run, sacct_status)
+            # Update some fields that were placed by get_status_for_xxx
+            response["status"] = StatusEnum.SERVER_ERROR.value
+            response["message"] = (
+                f"{get_job_description(run)} status updated to SERVER_ERROR "
+                f"due to Slurm inconsistency"
+            )
+            response["failure_messages"] = normalize_failure_messages(run.failure_messages)
 
     response_validator, error_response = validate_response(serializer_class, response)
     if error_response:
@@ -216,7 +278,7 @@ def get_status_for_calibration(calibration_run: CalibrationRun, include_performa
             'run_end': validation_run.run_end,
         }
 
-        validation_failure_message = parse_failure_messages(validation_run.failure_messages)
+        validation_failure_message = normalize_failure_messages(validation_run.failure_messages)
         if validation_failure_message:
             validation_data['failure_messages'] = validation_failure_message
 
@@ -234,7 +296,7 @@ def get_status_for_calibration(calibration_run: CalibrationRun, include_performa
         validation_response.append(validation_data)
 
     calibration_data = {
-        'message': f'Calibration Job {calibration_run.id}, status is {calibration_run.status.name}',
+        'message': f'{get_job_description(calibration_run)}, status is {calibration_run.status.name}',
         'calibration_run_id': calibration_run.id,
         'status': calibration_run.status.name,
         'submit_date': calibration_run.submit_date,
@@ -244,7 +306,7 @@ def get_status_for_calibration(calibration_run: CalibrationRun, include_performa
         'validations': validation_response,
     }
 
-    calibration_failure_message = parse_failure_messages(calibration_run.failure_messages)
+    calibration_failure_message = normalize_failure_messages(calibration_run.failure_messages)
     if calibration_failure_message:
         calibration_data['failure_messages'] = calibration_failure_message
 
@@ -283,7 +345,7 @@ def get_status_for_validation(validation_run: ValidationRun, include_performance
     )
 
     validation_data = {
-        'message': f'Validation Job {validation_run.id}, status is {validation_run.status.name}',
+        'message': f'{get_job_description(validation_run)}, status is {validation_run.status.name}',
         'calibration_run_id': validation_run.calibration_run.id,
         'validation_run_id': validation_run.id,
         'status': validation_run.status.name,
@@ -295,7 +357,7 @@ def get_status_for_validation(validation_run: ValidationRun, include_performance
         'run_end': validation_run.run_end
     }
 
-    validation_failure_message = parse_failure_messages(validation_run.failure_messages)
+    validation_failure_message = normalize_failure_messages(validation_run.failure_messages)
     if validation_failure_message:
         validation_data['failure_messages'] = validation_failure_message
 
@@ -328,7 +390,7 @@ def get_status_for_forecast(forecast_run: ForecastRun, include_performance_metri
     """
 
     forecast_data = {
-        'message': f'Forecast Job {forecast_run.id}, status is {forecast_run.status.name}',
+        'message': f'{get_job_description(forecast_run)}, status is {forecast_run.status.name}',
         'forecast_run_id': forecast_run.id,
         'status': forecast_run.status.name,
         'configuration': forecast_run.configuration.name,
@@ -339,7 +401,7 @@ def get_status_for_forecast(forecast_run: ForecastRun, include_performance_metri
         'run_end': forecast_run.run_end
     }
 
-    forecast_failure_message = parse_failure_messages(forecast_run.failure_messages)
+    forecast_failure_message = normalize_failure_messages(forecast_run.failure_messages)
     if forecast_failure_message:
         forecast_data['failure_messages'] = forecast_failure_message
 
@@ -366,7 +428,7 @@ def get_status_for_forecast(forecast_run: ForecastRun, include_performance_metri
             'run_end': cold_start_run.run_end,
         }
 
-        cold_start_failure_message = parse_failure_messages(cold_start_run.failure_messages)
+        cold_start_failure_message = normalize_failure_messages(cold_start_run.failure_messages)
         if cold_start_failure_message:
             cold_start_data['failure_messages'] = cold_start_failure_message
 
@@ -405,7 +467,7 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
     """
 
     verification_data = {
-        'message': f'Verification Job {verification_run.id}, status is {verification_run.status.name}',
+        'message': f'{get_job_description(verification_run)}, status is {verification_run.status.name}',
         'verification_run_id': verification_run.id,
         'status': verification_run.status.name,
         'submit_date': verification_run.submit_date,
@@ -414,7 +476,7 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
         'run_end': verification_run.run_end
     }
 
-    verification_failure_message = parse_failure_messages(verification_run.failure_messages)
+    verification_failure_message = normalize_failure_messages(verification_run.failure_messages)
     if verification_failure_message:
         verification_data['failure_messages'] = verification_failure_message
 
@@ -442,7 +504,7 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
         'run_end': forecast_run.run_end,
     }
 
-    forecast_failure_message = parse_failure_messages(forecast_run.failure_messages)
+    forecast_failure_message = normalize_failure_messages(forecast_run.failure_messages)
     if forecast_failure_message:
         forecast_data['failure_messages'] = forecast_failure_message
 
@@ -1373,3 +1435,142 @@ def get_slurm_token(request: Request) -> Response:
         return error_return
 
     return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
+
+
+ACTIVE_DB_STATUSES = {
+    StatusEnum.SUBMITTED.db_instance,
+    StatusEnum.RUNNING.db_instance,
+}
+
+
+def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
+    """
+    Check whether a run requires Slurm reconciliation.
+
+    Returns:
+        (needs_reconciliation, sacct_status)
+
+    - needs_reconciliation=True means the DB says RUNNING/SUBMITTED
+      but Slurm no longer reports the job as active.
+    - sacct_status is the terminal status reported by sacct (or None).
+
+    This function performs no database writes and is safe to call
+    inside a readonly transaction.
+    """
+    if not run.slurm_job_id:
+        return False, None
+
+    if run.status not in ACTIVE_DB_STATUSES:
+        return False, None
+
+    slurm_is_active, sacct_status = get_slurm_status(run.slurm_job_id)
+
+    logger.debug(
+        f"{get_job_description(run)}: "
+        f"Slurm active={slurm_is_active}, sacct_status={sacct_status}"
+    )
+
+    if not slurm_is_active:
+        return True, sacct_status
+
+    return False, None
+
+
+def apply_slurm_reconciliation(run: BaseRun, sacct_status: str) -> None:
+    """
+    Escalate a run to SERVER_ERROR due to Slurm inconsistency.
+
+    The provided sacct_status represents the terminal state reported
+    by Slurm accounting (sacct).
+    """
+    original_status = run.status.name
+
+    message = (
+        f"Slurm job {run.slurm_job_id} not active while DB status was "
+        f"{original_status}; sacct_status={sacct_status}"
+    )
+
+    logger.error(f"{get_job_description(run)}: {message}")
+
+    # failure_messages is a TEXT field → treat as JSON string
+    existing = normalize_failure_messages(run.failure_messages)
+
+    existing.append({
+        "source": "slurm",
+        "type": "reconciliation",
+        "sacct_status": sacct_status,
+        "message": message,
+    })
+
+    run.status = StatusEnum.SERVER_ERROR.db_instance
+    run.failure_messages = json.dumps(existing)
+
+    run.save(update_fields=["status", "failure_messages"])
+
+
+def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
+    """
+    Query Slurm for the current status of a job.
+
+    Returns:
+        (is_active, sacct_status)
+
+    - is_active=True  → job is currently active (squeue authoritative)
+    - is_active=False → job is no longer active
+    - sacct_status is the terminal status reported by sacct,
+      or "UNKNOWN" if indeterminate
+    """
+    # ----------------------------------
+    # TODO Get rid of this debug code
+    FORCE_SLURM_INACTIVE = False
+    if FORCE_SLURM_INACTIVE:
+        logger.warning(
+            f"FORCE_SLURM_INACTIVE enabled — treating Slurm job {slurm_id} as inactive"
+        )
+        return False, "FORCED_ERROR"
+    # ------------------------------------
+
+    base_url = f"{settings.SLURM_URL.rstrip('/')}/{settings.SLURM_JOB_STATUS_ENDPOINT.lstrip('/')}"
+
+    # Query Slurm for the live job status
+    url = f"{base_url}?slurm_job_id={slurm_id}"
+
+    try:
+        resp = requests.get(url, timeout=10)
+
+        # Non-200 HTTP responses (including 404) are treated as unknown
+        if resp.status_code != 200:
+            logger.error(
+                f"Non-200 response from Slurm for job {slurm_id}: "
+                f"{resp.status_code}\n{resp.text}"
+            )
+            return False, "UNKNOWN"
+
+        # Try to parse JSON response
+        try:
+            data = resp.json()
+        except ValueError:
+            # Log the entire response text when not JSON
+            logger.error(
+                f"Invalid JSON response from Slurm for job {slurm_id}:\n{resp.text}"
+            )
+            return False, "UNKNOWN"
+
+        squeue_status = data.get("squeue")
+        sacct_status = data.get("sacct")
+
+        if squeue_status:
+            # Job still active → squeue authoritative
+            return True, squeue_status
+
+        if sacct_status:
+            # Job finished → sacct authoritative
+            return False, sacct_status
+
+        # Defensive fallback: no usable status provided
+        return False, "UNKNOWN"
+
+    except Exception as ex:
+        logger.exception(f"Error querying Slurm status for job {slurm_id}: {ex}")
+        # Safest assumption: job is gone, status indeterminate
+        return False, "UNKNOWN"
