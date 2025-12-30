@@ -330,6 +330,16 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
 
     :param calibration_run: The CalibrationRun instance.
     """
+
+    # ------------------------------------------------------------
+    # This function operates at the *run* level.
+    #
+    # - Worker-level processing determines which iteration is best
+    # - This function enforces run-level invariants:
+    #     * Best-params dictionary loading
+    #     * Calling per-worker processing
+    #     * Verifying that exactly one best iteration exists
+    # ------------------------------------------------------------
     # Compute best_params_dict once, outside the loop
     best_params_dict: Dict[str, float] = {}
 
@@ -367,9 +377,10 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
             # Read the global best parameters into a dictionary
 
             df = pd.read_csv(global_best_params_file, names=['value', 'name', 'model'], skiprows=1)
-            best_params_dict = pd.Series(
-                df['value'].astype(float).values, index=df['name']
-            ).to_dict()
+            best_params_dict: dict[str, float] = {
+                str(name): float(value)
+                for name, value in zip(df['name'], df['value'])
+            }
 
             logger.debug(
                 f"[BESTPARAMS CHECK] Loaded {len(best_params_dict)} best params for run {calibration_run.id}: "
@@ -463,7 +474,8 @@ def process_iterations_for_all_workers(calibration_run: CalibrationRun) -> None:
 # Function to process iterations for a specific worker
 def process_iterations_for_a_worker(
         calibration_run: CalibrationRun,
-        worker_name: str, iterations: list[Iteration],
+        worker_name: str,
+        iterations: list[Iteration],
         best_params_dict: Dict[str, float],
         have_LSTM_flag: bool,
         params_lookup: dict[str, CalibrationParameter]
@@ -481,7 +493,26 @@ def process_iterations_for_a_worker(
     :param have_LSTM_flag: Flag to indicate whether this job has LSTM
     :param params_lookup: Mapping of lowercased parameter names to CalibrationParameter objects
     """
+
     logger.info(f"Processing iterations for {worker_name} for Calibration Job {calibration_run.id}")
+
+    # ------------------------------------------------------------
+    # Worker-level best-iteration determination happens here.
+    #
+    # Rules:
+    #
+    # DDS:
+    #   - Best iteration is read from objective_log_best_file
+    #
+    # GWO / PSO:
+    #   - Best iteration is determined by matching parameters
+    #     against global_best_params_file
+    #
+    # LSTM:
+    #   - Only one iteration exists and is always best
+    #
+    # This is the ONLY function that sets iteration.best_params.
+    # ------------------------------------------------------------
 
     job_description = f"Calibration Job {calibration_run.id}, user: {calibration_run.owner.username}"
 
@@ -533,8 +564,14 @@ def process_iterations_for_a_worker(
         update_objective_function_values(metrics_iteration_file, calibration_run, worker_name)
 
     for _, row in metrics_df.iterrows():
-        row_dict = row.to_dict()
-        iteration_num = row_dict['iteration']
+        iteration_num = int(row['iteration'])
+
+        row_dict: dict[str, float | None] = {
+            str(k): (float(v) if v is not None else None)
+            for k, v in row.items()
+            if k != 'iteration'
+        }
+
         iteration = iteration_dict.get(iteration_num)
         if not iteration:
             raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
@@ -557,14 +594,19 @@ def process_iterations_for_a_worker(
         # params_lookup = {p.name.lower(): p for p in job_parameters}
 
         for _, row in params_df.iterrows():
-            row_dict = row.to_dict()
-            iteration_num = row_dict['iteration']
+            iteration_num = int(row['iteration'])
+
             iteration = iteration_dict.get(iteration_num)
             if not iteration:
                 raise CerfException(f"Iteration {iteration_num} not found for worker {worker_name}")
 
             # Determine if best iteration
-            params_row = {k: v for k, v in row_dict.items() if k != 'iteration'}
+            params_row: dict[str, float | None] = {
+                str(k): (float(v) if v is not None else None)
+                for k, v in row.items()
+                if k != 'iteration'
+            }
+
             is_best_match = params_match_best(params_row, best_params_dict)
 
             iteration.best_params = (
@@ -575,17 +617,14 @@ def process_iterations_for_a_worker(
             if iteration.best_params:
                 best_iteration_found = True
 
-            # 🔥 buffer best_params update instead of saving
+            # Buffer update — saved once via bulk_update
             iterations_to_update_best_flag.append(iteration)
 
             # Create parameters
             process_params_row(
-                calibration_run,
                 iteration,
-                row_dict,
+                params_row,
                 params_to_create,
-                best_iteration_for_worker,
-                best_params_dict,
                 params_lookup,
                 job_description
             )
@@ -670,68 +709,28 @@ def process_metrics_row_for_calibration(
 
 # Function to process a single parameters row
 def process_params_row(
-        calibration_run: CalibrationRun,
         iteration: Iteration,
         params_row: dict[str, float | None],
         params_to_create: list[IterationParameter],
-        best_iteration_for_worker: int,
-        best_params_dict: Dict[str, float],
         params_lookup: dict[str, CalibrationParameter],
         job_description: str
 ) -> None:
     """
-    Process a single row from the parameters file and create IterationParameter objects.
-    Determine if the iteration represents the best set of parameters and set the `best_params` flag on the Iteration.
-    DDS: best is determined ONLY by objective_log_best_file.
-    GWO/PSO: best may also be determined by matching global best parameters.
+    Create IterationParameter objects for a single iteration.
 
-    :param calibration_run: The CalibrationRun instance.
+    This function:
+    - Converts one row from the parameters CSV into IterationParameter records
+    - Performs case-insensitive parameter lookup
+    - Buffers objects for bulk_create
+
+    Best-iteration selection is handled in process_iterations_for_a_worker().
+
     :param iteration: The Iteration object for the current iteration.
-    :param params_row: The row of parameter data from the file.
-    :param params_to_create: The list to accumulate created IterationParameter objects.
-    :param best_iteration_for_worker: The best iteration number for the worker, used to mark the best parameters.
-    :param best_params_dict: Precomputed dictionary of best parameters for comparison.
-    :param params_lookup: Mapping of lowercased parameter names to CalibrationParameter objects
+    :param params_row: The row of parameter data from the file (excluding 'iteration').
+    :param params_to_create: Accumulator list for IterationParameter objects.
+    :param params_lookup: Mapping of lowercased parameter names to CalibrationParameter objects.
     :param job_description: Job identifier string used for logging.
     """
-    # Filter out the 'iteration' column
-    params_row = {k: v for k, v in params_row.items() if k != 'iteration'}
-
-    # ----------------------------------------------------------------------
-    # DDS: it should never use parameter-match logic. Warn if data is present.
-    # ----------------------------------------------------------------------
-    if calibration_run.optimization == OptimizationEnum.DDS.db_instance:
-        if best_params_dict:
-            logger.error(
-                f"[DDS WARNING] best_params_dict is NON-EMPTY for CalibrationRun {calibration_run.id}. "
-                f"Seen {len(best_params_dict)} params: {list(best_params_dict.keys())[:10]}..."
-            )
-        else:
-            logger.debug(
-                f"[DDS OK] best_params_dict is empty for CalibrationRun {calibration_run.id} "
-                f"(expected for DDS)."
-            )
-        # DDS never uses param matching
-        is_best_match = False
-
-    else:
-        # ----------------------------------------------------------------------
-        # Non-DDS (GWO/PSO): normal parameter-match logic
-        # ----------------------------------------------------------------------
-        is_best_match = params_match_best(params_row, best_params_dict)
-
-        if is_best_match:
-            logger.debug(
-                f"{calibration_run.id}_{calibration_run.owner.username} "
-                f"Iteration {iteration.iteration_num} matches global best parameters."
-            )
-
-    # ----------------------------------------------------------------------
-    # IMPORTANT:
-    # We DO NOT write iteration.best_params here.
-    # We DO NOT save the iteration here.
-    # That logic is handled entirely in process_iterations_for_a_worker().
-    # ----------------------------------------------------------------------
 
     # ----------------------------------------------------------------------
     # Create IterationParameter objects
@@ -962,9 +961,8 @@ def params_match_best(params_row: dict[str, float | None], best_params_dict: dic
         1. Same number of parameters.
         2. Same parameter names.
         3. Values matching within floating-point tolerance.
-    - This check is used for:
-        - Diagnostics (logging in process_params_row)
-        - Actual best-iteration selection in process_iterations_for_a_worker
+    - This check is used for actual best-iteration selection in
+      process_iterations_for_a_worker().
     """
     # If we have no global best params (DDS or missing file), never match.
     if not best_params_dict:
