@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import time
 import traceback
+import uuid
 from contextlib import contextmanager
 from functools import lru_cache
 from io import BytesIO
@@ -92,9 +93,10 @@ def _localize_gpkg(gpkg_path: str):
             name_no_ext = original_name
 
         pid = os.getpid()
-        unique_suffix = next(tempfile._get_candidate_names())
+        unique_suffix = uuid.uuid4().hex
 
-        # Final per-process temp file, e.g. /tmp/01123000__pid1234_abcd.gpkg
+        # Final per-process temp file, e.g.
+        #   /tmp/01123000__pid1234_3f8c2a9e6b4f4d2a9c1e8f7a6b5c4d3e.gpkg
         tmp_local_path = os.path.join(
             tempfile.gettempdir(),
             f"{name_no_ext}__pid{pid}_{unique_suffix}{ext}"

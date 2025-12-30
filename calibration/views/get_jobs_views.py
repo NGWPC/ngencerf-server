@@ -1,8 +1,7 @@
 import json
 import logging
-from typing import Any, Type, Literal
+from typing import Any, Type, Literal, cast
 
-from django.contrib.auth import get_user_model
 from django.db.models import Q, Exists, OuterRef, Count, Subquery, When, CharField, Value, F, Case, Min, Max
 from django.db.models.functions import Lower
 from drf_spectacular.utils import extend_schema, OpenApiResponse
@@ -13,7 +12,7 @@ from rest_framework.response import Response
 from calibration.enums import GetValidationJobsScope, StatusEnum, ValidationType
 from calibration.enums_vanilla import CalibrationSortField, ForecastSortField, VerificationSortField
 from calibration.models import CalibrationFormulation, CalibrationRun, CalibrationStopCriteria, \
-    ValidationRun, IterationParameter, ForecastRun, VerificationRun
+    ValidationRun, IterationParameter, ForecastRun, VerificationRun, CustomUser
 from calibration.util.caching import get_cached_modules_by_id
 from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
@@ -25,8 +24,6 @@ from calibration.views.common import handle_exceptions, validate_request, valida
     get_user_email, get_elapsed_str, readonly_transaction
 
 logger = logging.getLogger(__name__)
-
-User = get_user_model()
 
 """
 Job Retrieval Endpoints for Calibration, Forecast, and Verification
@@ -206,7 +203,7 @@ def get_calibration_jobs_for_evaluation(request: Request) -> Response:
     get_gages = validator.get("get_gages")
 
     jobs, total_count, date_range, id_range, gage_list = get_jobs(
-        request.user,
+        auth_user(request),
         run_status=[StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR],
         include_validation_data=GetValidationJobsScope.STATUS,
         require_both_validations_done=True,
@@ -282,7 +279,7 @@ def get_calibration_jobs_for_forecast(request: Request) -> Response:
     get_gages = validator.get("get_gages")
 
     jobs, total_count, date_range, id_range, gage_list = get_jobs(
-        request.user,
+        auth_user(request),
         run_status=[StatusEnum.DONE],
         include_validation_data=None,
         require_both_validations_done=True,
@@ -367,7 +364,7 @@ def get_calibration_jobs(request):
     include_modules = validator.get("include_modules")
 
     jobs, total_count, date_range, id_range, gage_list = get_jobs(
-        request.user,
+        auth_user(request),
         run_status=list(StatusEnum),
         include_validation_data=GetValidationJobsScope.STATUS,
         include_modules=include_modules,
@@ -678,7 +675,7 @@ def resolve_sort(sort: dict | None, enum_class: Type[CalibrationSortField | Fore
 
 
 def get_jobs(
-        user: User,
+        user: CustomUser,
         run_status: list[StatusEnum] = None,
         include_validation_data: GetValidationJobsScope | None = None,
         require_both_validations_done: bool = False,
@@ -1216,7 +1213,7 @@ def get_validation_jobs(request: Request) -> Response:
 
 
 def get_forecast_jobs_internal(
-        user: User,
+        user: CustomUser,
         run_status: list[StatusEnum] | None = None,
         limit: int | None = None,
         offset: int = 0,
@@ -1353,7 +1350,7 @@ def get_forecast_jobs(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
     forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
-        request.user,
+        auth_user(request),
         run_status=None,
         limit=limit,
         offset=offset,
@@ -1421,7 +1418,8 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
     forecast_jobs, total_count, date_range, id_range = get_forecast_jobs_internal(
-        request.user, run_status=[StatusEnum.DONE],
+        auth_user(request),
+        run_status=[StatusEnum.DONE],
         limit=limit,
         offset=offset,
         filters=filters,
@@ -1451,7 +1449,7 @@ def get_forecast_jobs_for_verification(request: Request) -> Response:
 
 
 def get_verification_jobs_internal(
-        user: User,
+        user: CustomUser,
         run_status: list[StatusEnum] | None = None,
         limit: int | None = None,
         offset: int = 0,
@@ -1559,7 +1557,7 @@ def get_verification_jobs(request: Request) -> Response:
     filters, sort = _normalize_filters_and_sort(filters, sort)
 
     verification_jobs, total_count, date_range, id_range = get_verification_jobs_internal(
-        request.user,
+        auth_user(request),
         run_status=None,
         limit=limit,
         offset=offset,
@@ -1607,3 +1605,20 @@ def compute_range(model, query: Q) -> tuple[
         [agg['min_created_at'], agg['max_created_at']],
         [agg['min_job_id'], agg['max_job_id']],
     )
+
+
+def auth_user(request: Request) -> CustomUser:
+    """
+    Return the authenticated user as the concrete CustomUser type.
+
+    At runtime, all API views in this module are protected by DRF authentication
+    (e.g. IsAuthenticated / JWT), so request.user is guaranteed to be a CustomUser.
+    However, DRF types request.user as AbstractBaseUser | AnonymousUser for static
+    analysis, which causes false-positive type warnings.
+
+    This helper centralizes the explicit cast at the API boundary so that:
+      - View code stays clean and readable
+      - Internal helpers can assume a concrete CustomUser
+      - We do not rely on fragile IDE type inference heuristics
+    """
+    return cast(CustomUser, request.user)

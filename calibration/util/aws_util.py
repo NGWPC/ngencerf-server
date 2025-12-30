@@ -4,9 +4,6 @@ from functools import lru_cache
 from urllib.parse import urlparse
 
 import boto3
-from django.conf import settings
-
-from calibration.views.common import CerfException
 
 logger = logging.getLogger(__name__)
 logging.getLogger('boto').setLevel(logging.INFO)
