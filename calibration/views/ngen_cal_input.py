@@ -11,13 +11,13 @@ from django.db import transaction
 from django.db.models import F
 from toml import TomlEncoder
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum, DomainEnum
+from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
 from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, get_cached_modules_by_id
 from calibration.util.file_util import get_single_file
-from calibration.util.geopkg import get_geometry_from_gpkg, normalize_gpkg
+from calibration.util.geopkg import normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
     get_observational_file_for_job, get_geopackage_dir_for_job, \

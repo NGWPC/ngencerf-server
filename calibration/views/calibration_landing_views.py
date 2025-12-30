@@ -7,9 +7,7 @@ from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.db import transaction, router
-from django.db.models.deletion import Collector
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -38,8 +36,6 @@ from calibration.views.common import handle_exceptions, validate_response, get_c
     format_datetime, create_cold_start_run_internal, get_job_description, get_calibration_runs_bulk
 
 logger = logging.getLogger(__name__)
-
-User = get_user_model()
 
 
 @extend_schema(
