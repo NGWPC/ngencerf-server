@@ -169,6 +169,7 @@ def generate_secondary_ts_data(validation_run: ValidationRun, data_type: Seconda
     :return: None
     """
     if validation_run.validation_type == ValidationType.VALID_CONTROL.value:
+        logger.info(f"Skipping data generation for {ValidationType.VALID_CONTROL.value}")
         return
 
     # Generate timeseries images.
