@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, GeopackageSourceEnum, JobGenesis
 from calibration.models import CalibrationFormulation, CalibrationStopCriteria, Gage, CalibrationRun
-from calibration.util.caching import get_cached_module_by_name, get_cached_modules_by_id
+from calibration.util.caching import get_cached_module_by_name, get_cached_modules_by_id, get_gage_by_id
 from calibration.util.calibration_validators import CalibrationRunSerializer, ExportResponseSerializer, ErrorResponseSerializer, \
     LoadCalibrationJobSerializer, LoadCalibrationRunResponseSerializer
 from calibration.util.cloud_util import path_exists
@@ -164,12 +164,10 @@ def import_calibration_run_data(request: Request,
         if error_message:
             return None, None, ResponseError(error_message)
 
-        # If a gage_id was provided, ensure the gage exists (read-only check)
+        # If a gage_id was provided, ensure the gage exists
         if gage_id:
-            try:
-                # We don't persist here; existence check only. `save_gage` will persist later.
-                _ = Gage.objects.get(gage_id=gage_id, is_active=True)
-            except Gage.DoesNotExist:
+            gage_dict = get_gage_by_id(gage_id)
+            if not gage_dict:
                 return None, None, ResponseError(
                     f"Gage '{gage_id}' does not exist or is not active",
                     http_status=status.HTTP_404_NOT_FOUND

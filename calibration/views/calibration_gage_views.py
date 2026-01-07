@@ -312,10 +312,12 @@ def save_gage_tab(request: Request):
                 'num_catchments': run.num_catchments,
                 'forcing_source_requested': run.forcing_source_requested.name if run.forcing_source_requested else None,
                 'forcing_source_actual': run.forcing_source_actual.name if run.forcing_source_actual else None}
-    if run.forcing_source_requested != run.forcing_source_actual:
-        response['warnings'] = [
-            f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}'
-        ]
+    should_use_bmi = should_use_bmi_forcing(run)
+    if not should_use_bmi:
+        if run.forcing_source_requested != run.forcing_source_actual:
+            response['warnings'] = [
+                f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}'
+            ]
     if eds_errors:
         response['eds_errors'] = eds_errors
 
