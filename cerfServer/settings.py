@@ -39,7 +39,7 @@ NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY")
+SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY", "not-so-secret-key")
 
 # Application definition
 INSTALLED_APPS = [

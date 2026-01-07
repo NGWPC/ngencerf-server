@@ -83,7 +83,7 @@ class Command(BaseCommand):
                 row: dict[str, str]
                 for row in reader:
                     gage_count += 1
-                    gage_id = row.get('gage_id')
+                    gage_id = row.get('gage_id').strip()
                     # These are all new gages
                     gage = {
                         'gage_id': gage_id,
@@ -104,38 +104,67 @@ class Command(BaseCommand):
                 for _ in range(1):
                     next(file)
                 reader = csv.DictReader(file, delimiter='|')
-                new_count = 0
                 existing_count = 0
+                new_count = 0
                 gage_count = 0
                 row: dict[str, str]
                 for row in reader:
                     gage_count += 1
-                    gage_id = row.get('gage_id')
+
+                    gage_id = (row.get('gage_id') or '').strip()
+                    if not gage_id:
+                        raise CommandError(f"{file.name}: missing gage_id on row {gage_count}")
+
+                    # Only apply updates when CSV contains a non-empty value
+                    nws_id_new = (row.get('nws_id') or '').strip()
+                    station_name_new = (row.get('station_name') or '').strip()
+                    agency_new = (row.get('agency') or '').strip()
+                    rfc_new = (row.get('rfc') or '').strip()
+
+                    # "gage_id-only" means: caller expects the gage to already exist; we only flip the flag
+                    is_gage_id_only = not (nws_id_new or station_name_new or agency_new or rfc_new)
+
                     gage = gages.get(gage_id)
                     # These gages should already exist, so we'll check for that.
                     # We'll create it, just in case it doesn't
                     if not gage:
+                        if is_gage_id_only:
+                            raise CommandError(
+                                f"{file.name}: gage_id '{gage_id}' does not exist in loaded gages, "
+                                f"but row is gage_id-only (no additional fields)."
+                            )
+                        # Allow creating gages ONLY when the row provides more than just gage_id
                         new_count += 1
-                        gage = {'gage_id': gage_id, 'is_active': True, 'domain_id': conus_domain.id}
+
+                        gage = {
+                            'gage_id': gage_id,
+                            'is_active': True,
+                            'domain_id': conus_domain.id,
+                            # Keep default flags consistent with the rest of the script
+                            'nwm_v3_calibration': False,
+                            'headwater_calibration': False,
+                        }
                         gages[gage_id] = gage
                     else:
                         existing_count += 1
 
-                    # Use new value only if old value doesn't exist
-                    nws_id = row.get('nws_id').strip() or gage.get('nws_id')
-                    station_name = row.get('station_name') or gage.get('station_name')
-                    agency = row.get('agency') or gage.get('agency')
-                    rfc = row.get('rfc')
-                    rfc_id = rfc_dict[rfc.strip()] if rfc else None
+                    # Always turn this on
+                    gage['headwater_calibration'] = True
 
-                    gage.update({
-                        'nws_id': nws_id or None,
-                        'station_name': (station_name or '').strip(),
-                        'rfc_id': rfc_id,
-                        'headwater_calibration': True,
-                        'agency': (agency or '').strip()
-                    })
+                    if nws_id_new:
+                        gage['nws_id'] = nws_id_new
 
+                    if station_name_new:
+                        gage['station_name'] = station_name_new
+
+                    if agency_new:
+                        gage['agency'] = agency_new
+
+                    if rfc_new:
+                        gage['rfc_id'] = rfc_dict[rfc_new]
+
+                    # This file is explicitly CONUS
+                    gage['domain_id'] = conus_domain.id
                     gages[gage_id] = gage
             logger.info(f'Processed {gage_count} gages from {file.name}.  {new_count} were new.  {existing_count} existing.')
 
@@ -144,7 +173,8 @@ class Command(BaseCommand):
                 # Skip the first 4 lines
                 for _ in range(4):
                     next(file)
-                reader = csv.DictReader(file, delimiter='|', fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
+                reader = csv.DictReader(file, delimiter='|',
+                                        fieldnames=['nws_id', 'gage_id', 'goes_id', 'nws_hsa', 'latitude', 'longitude', 'station_name'])
                 gage_count = 0
                 skip_count = 0
                 row: dict[str, str]
@@ -263,7 +293,7 @@ def add_usgs_gages(usgs_file, domain):
         row: dict[str, str]
         for row in reader:
             gage_count += 1
-            gage_id = row.get('gage_id')
+            gage_id = row.get('gage_id').strip()
             # There shouldn't be any overlap in the USGS files, so we should always be creating a new entry.
             gage = gages.get(gage_id)
             if not gage:
@@ -300,7 +330,7 @@ def add_nwm_v3(nwm_v3_file, domain):
         row: dict[str, str]
         for row in reader:
             gage_count += 1
-            gage_id = row.get('ID')
+            gage_id = row.get('ID').strip()
             gage = gages.get(gage_id)
             if not gage:
                 new_count += 1
