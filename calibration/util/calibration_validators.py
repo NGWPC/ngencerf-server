@@ -957,6 +957,7 @@ class S3DirectoryValidator(BaseSerializer):
     uri = S3UriField(validate_directory=True)
 
 
+# TODO Might be able to get rid of this soon
 class S3FileValidator(BaseSerializer):
     # TODO We need to allow_null due to EDS error handling.  Need to get EDS to change their data when an error is returned
     uri = S3UriField(allow_null=True)

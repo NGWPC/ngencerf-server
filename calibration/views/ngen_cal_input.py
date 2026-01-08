@@ -40,6 +40,7 @@ CONFIG_TEMPLATE = {
 
     "General": {
         "basin": "",
+        "domain": "",
         "models": "",
         "formulation": "",
         "is_aet_rootzone": False,
@@ -49,6 +50,8 @@ CONFIG_TEMPLATE = {
         "output_swe": False,
         # Soil Moisture output - Only True for soil moisture modules
         "output_sm": False,
+        # Always true
+        "output_precip": True,
     },
 
     "Calibration": {
@@ -120,8 +123,9 @@ CONFIG_TEMPLATE = {
         "lasam_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lasam'),
         "lstm_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lstm'),
 
+        # TODO Get rid of this file
         # Parquet file - base on domain
-        "attributes_file": "",
+        # "attributes_file": "",
 
         "sloth_parameter_file": "",
 
@@ -218,6 +222,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
         # Validate and configure the gage ID and station name
         if not is_missing(run.gage, 'gage_id', error_object):
             general['basin'] = run.gage.gage_id
+            general['domain'] = run.gage.domain.name
             calibration['station_name'] = run.gage.station_name
 
             if not is_missing(run.geopackage_source, 'Geopackage source', error_object):
@@ -273,7 +278,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 error_object.add_warning(error_message)
 
             # Need to set parquet file based on domain
-            datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
+            # datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
             general['formulation'] = run.job_name
 

@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from urllib.parse import urljoin
 
@@ -6,13 +7,14 @@ import requests
 from django.conf import settings
 from django.db import transaction
 from django.db.models import QuerySet
+from mswm.utils.ginputfunc import call_icefabric_gpkg
 
 from calibration.enums import ForcingSourceEnum, DomainEnum
 from calibration.models import CalibrationParameter, CalibrationFormulation, CalibrationRun
 from calibration.util.caching import get_cached_module_by_name, get_cached_modules_by_id
 from calibration.util.calibration_validators import ModuleDataListSerializer, S3FileValidator
 from calibration.util.cloud_util import copy_tree, path_exists, join_url, is_dir
-from calibration.util.ngen_locations import get_bmi_config_dir_for_module
+from calibration.util.ngen_locations import get_bmi_config_dir_for_module, get_geopackage_dir_for_job
 from calibration.views.common import validate_response_data
 from data_services_test_data import data_services_test_data
 
@@ -123,24 +125,12 @@ def get_geopackage_from_data_services(run: CalibrationRun):
     :param run: A CalibrationRun object with associated gage information.
     """
     if run.gage:
-        if settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[0]:
-            logger.info('Getting geopackage from Data Services')
-            url = urljoin(settings.ENTERPRISE_DATA_URL, settings.ENTERPRISE_DATA_GEOPACKAGE_ENDPOINT[1].format(
-                gage_id=run.gage.gage_id,
-                source=run.gage.agency,
-                domain=run.gage.domain.name,
-                version=settings.ENTERPRISE_DATA_VERSION
-            ))
-            geopackage_json = fetch_from_data_services('GET', url, headers=default_headers)
-        else:
-            logger.info('Getting dummy geopackage data')
-            geopackage_json = data_services_test_data.geopackage_sample_data
+        logger.info('Retrieving geopackage from IceFabric')
+        original_geopackage_dir = get_geopackage_dir_for_job(run) + '_original'
+        os.makedirs(original_geopackage_dir, exist_ok=True)
+        geopackage_path = call_icefabric_gpkg(run.gage.gage_id, run.gage.domain.name, original_geopackage_dir, False)
 
-        eds_data = validate_response_data(S3FileValidator, geopackage_json, 'Geopackage data from Data Services is not in the expected format')
-
-        run.geopackage_eds_file_path = eds_data.get('uri')
-        if run.geopackage_eds_file_path and not path_exists(run.geopackage_eds_file_path):
-            raise DataServicesException(f"Geopackage from Data Services, {run.geopackage_eds_file_path} does not exist")
+        run.geopackage_eds_file_path = geopackage_path
         logger.info(f'Setting run.geopackage_eds_file_path to {run.geopackage_eds_file_path}')
 
 
