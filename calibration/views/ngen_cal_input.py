@@ -12,7 +12,7 @@ from django.db import transaction
 from django.db.models import F
 from toml import TomlEncoder
 
-from calibration.enums import StatusEnum, ForcingSourceEnum, ObservationalSourceEnum, DataTypeEnum, GeopackageSourceEnum
+from calibration.enums import StatusEnum, DataTypeEnum
 from calibration.enums_vanilla import NgenEnvironmentEnum
 from calibration.models import CalibrationOptimizationInput, CalibrationStopCriteria, CalibrationSlothParam, \
     CalibrationParameter, CalibrationFormulation, CalibrationRun
@@ -21,7 +21,7 @@ from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
     PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
-    get_observational_file_for_job, get_geopackage_dir_for_job, \
+    get_geopackage_dir_for_job, \
     PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
     PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES
 from calibration.views.calibration_formulation_views import validate_formulation
@@ -158,8 +158,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
     the path to the generated configuration file if applicable.
 
     - `errors`: Problems the user can fix. These prevent the job from being marked as ready.
-    - `fatal`: Critical issues such as structural problems in uploaded files. These may
-               require intervention beyond user correction (e.g., broken CSV format).
+    - `fatal`: Critical issues that may require intervention beyond user correction (e.g., broken CSV format).
 
     The job status is updated to:
     - `READY` if no issues are found,
@@ -223,31 +222,21 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             general['basin'] = run.gage.gage_id
             calibration['station_name'] = run.gage.station_name
 
-            # Determine the source of the geopackage data (user-uploaded or EDS)
             if not is_missing(run.geopackage_source, 'Geopackage source', error_object):
                 geopackage_dir = get_geopackage_dir_for_job(run)
-                is_geopackage_upload = run.geopackage_source == GeopackageSourceEnum.UPLOAD.db_instance
 
-                if is_geopackage_upload:
-                    geopackage_file = get_single_file(geopackage_dir)
-                    if geopackage_file:
-                        # For user uploads, use the job-specific location directly
-                        datafile['hydrofab_file'] = geopackage_file
-                    else:
-                        error_object.add_warning('Geopackage data must be uploaded')
-                else:
-                    if run.geopackage_eds_file_path and build:
-                        # For data from Data Services, normalize the CRS and copy to job-specific location
-                        try:
-                            normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
-                        except FileNotFoundError:
-                            run.geopackage_eds_file_path = None
+                if run.geopackage_eds_file_path and build:
+                    # For data from Data Services, normalize the CRS and copy to job-specific location
+                    try:
+                        normalize_gpkg(run.geopackage_eds_file_path, geopackage_dir, output_is_dir=True)
+                    except FileNotFoundError:
+                        run.geopackage_eds_file_path = None
 
-                    geopackage_file = get_single_file(geopackage_dir)
-                    if geopackage_file:
-                        datafile['hydrofab_file'] = geopackage_file
+                geopackage_file = get_single_file(geopackage_dir)
+                if geopackage_file:
+                    datafile['hydrofab_file'] = geopackage_file
 
-            # Determine the source of the forcing data (user-uploaded or EDS)
+            # Determine the source of the forcing data
             if not is_missing(run.forcing_source_requested, 'Forcing source', error_object):
                 if use_bmi:
                     logger.info("Using BMI forcing (USE_BMI_FORCING enabled, CONUS + AORC)")
@@ -260,36 +249,20 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     forcing_provider = 'csv'
                     forcing_configuration = ""
 
-                is_forcing_upload = run.forcing_source_requested == ForcingSourceEnum.UPLOAD.db_instance
-
                 if not use_bmi:
                     # CSV forcing path rules apply
-                    if is_forcing_upload and (not forcing_dir or not os.path.exists(forcing_dir)):
-                        error_object.add_warning('Forcing data must be uploaded')
-                    else:
-                        if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
-                            pass
+                    if not is_missing(run.forcing_eds_dir_path, "Forcing directory", error_object):
+                        pass
 
                 forcing['forcing_dir'] = forcing_dir
                 forcing['forcing_provider'] = forcing_provider
                 forcing['forcing_configuration'] = forcing_configuration
 
-            # Determine the source of observational data (user-uploaded or EDS)
             if not is_missing(run.observational_source, 'Observational source', error_object):
                 observational_dir = get_observational_dir_for_job(run)
-                observational_file = get_observational_file_for_job(run)
-                is_observational_upload = run.observational_source == ObservationalSourceEnum.UPLOAD.db_instance
 
-                if is_observational_upload:
-                    user_uploaded_observational_file = get_single_file(observational_dir)
-                    if not user_uploaded_observational_file:
-                        error_object.add_warning('Observational data must be uploaded')
-                    elif build and user_uploaded_observational_file != observational_file:
-                        logger.info(f"Renaming observational file from {user_uploaded_observational_file} to {observational_file}")
-                        os.rename(user_uploaded_observational_file, observational_file)
-                else:
-                    if not is_missing(run.observational_eds_file_path, "Observational file", error_object):
-                        pass
+                if not is_missing(run.observational_eds_file_path, "Observational file", error_object):
+                    pass
 
                 datafile['obs_dir'] = observational_dir
 

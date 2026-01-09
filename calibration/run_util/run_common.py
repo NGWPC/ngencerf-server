@@ -16,7 +16,7 @@ from django.db import transaction
 from mswm.manager import build_fcst, build_calib
 from rest_framework.response import Response
 
-from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum, ForcingSourceEnum, ObservationalSourceEnum
+from calibration.enums import StatusEnum, ValidationType, SlurmCallbackStatusEnum
 from calibration.enums_vanilla import JobType
 from calibration.models import CalibrationRun, ValidationRun, Iteration, ForecastRun, ColdStartRun, VerificationRun
 from calibration.models.base_run import BaseRun
@@ -807,9 +807,8 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
     # ─────────────────────────────────────────────────────────────
     # Forcing data
     # ─────────────────────────────────────────────────────────────
-    # BMI forcing: nothing to subset here
-    # CSV forcing: subset unless user-uploaded
-    if not use_bmi and run.forcing_source_requested != ForcingSourceEnum.UPLOAD.db_instance:
+    # Subset only CSV data, not BMI
+    if not use_bmi:
         subset_directory_by_time_range(
             run,
             run.forcing_eds_dir_path,
@@ -820,13 +819,12 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
     # ─────────────────────────────────────────────────────────────
     # Observational data
     # ─────────────────────────────────────────────────────────────
-    if run.observational_source != ObservationalSourceEnum.UPLOAD.db_instance:
-        subset_by_time_range(
-            run,
-            run.observational_eds_file_path,
-            get_observational_file_for_job(run),
-            date_range
-        )
+    subset_by_time_range(
+        run,
+        run.observational_eds_file_path,
+        get_observational_file_for_job(run),
+        date_range
+    )
 
     return errors
 

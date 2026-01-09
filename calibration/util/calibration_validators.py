@@ -696,52 +696,6 @@ class GetValidationJobsRequestSerializer(BaseSerializer):
     include_validations = serializers.BooleanField(required=False, default=False)
 
 
-class UploadForcingSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    forcing_files = serializers.FileField(required=True)
-
-    def validate_forcing_files(self, value):
-        request = self.context.get('request')
-        files = request.FILES.getlist('forcing_files')
-
-        if len(files) == 0:
-            raise serializers.ValidationError("Forcing files must be uploaded")
-
-        return value
-
-
-class UploadObservationalSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    observational_file = serializers.FileField(required=True)
-
-    def validate_observational_file(self, value):
-        request = self.context.get('request')
-        files = request.FILES.getlist('observational_file')
-        if len(files) != 1:
-            raise serializers.ValidationError("Only one observational file should be uploaded.")
-
-        return value
-
-
-class UploadGeopackageSerializer(BaseSerializer):
-    calibration_run_id = serializers.IntegerField(required=True)
-    geopackage_file = serializers.FileField(required=True)
-    return_geopackage_url = serializers.BooleanField(default=True)
-
-    def validate_geopackage_file(self, value):
-        request = self.context.get('request')
-        files = request.FILES.getlist('geopackage_file')
-        if len(files) != 1:
-            raise serializers.ValidationError("Only one geopackage file should be uploaded.")
-
-        return value
-
-
-class UploadGeopackageResponseSerializer(GenericResponseSerializer):
-    geopackage_image_url = serializers.CharField(required=False)
-    num_catchments = serializers.IntegerField(required=True, allow_null=True)
-
-
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
@@ -1398,11 +1352,11 @@ class ExportResponseSerializer(BaseSerializer):
     run_after_import = serializers.BooleanField(default=False)
     gage_id = serializers.CharField(required=True, allow_null=True)
     forcing_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
-    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    # forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     observational_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    # observational_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     geopackage_source = serializers.CharField(required=True, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
+    # geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=True), default=[])
     is_aet_rootzone = serializers.BooleanField(required=False)
     formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
@@ -1429,12 +1383,12 @@ class ImportDataSerializer(BaseSerializer):
     gage_id = serializers.CharField(required=False, allow_null=True)
     forcing_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     forcing_user_dir = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # forcing_user_uploaded_dir_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
-    observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
-    observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # observational_user_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # observational_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
-    geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
+    # geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     modules = serializers.ListField(child=serializers.CharField(required=True), required=False, allow_empty=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
