@@ -29,17 +29,10 @@ class StatusEnum(AbstractEnum):
 
 class ForcingSourceEnum(AbstractEnum):
     """
-    Enum for Forcing Sources, with alias support for 'Upload' or 'User Upload' entries.
+    Enum for Forcing Sources
     """
-    UPLOAD = 'User Upload'
     AORC = 'AORC'
     NWM_RETROSPECTIVE = 'NWM Retrospective'
-
-    @classmethod
-    def get_aliases(cls):
-        return {
-            cls.UPLOAD: ['Upload', 'User Upload']
-        }
 
     @classmethod
     def get_model(cls) -> Type[ForcingSource]:
@@ -53,15 +46,10 @@ class ForcingSourceEnum(AbstractEnum):
 
 class ObservationalSourceEnum(AbstractEnum):
     """
-    Enum for Observational Sources, with alias support for 'Upload' or 'User Upload' entries.
+    Enum for Observational Sources
     """
-    UPLOAD = 'User Upload'
 
-    @classmethod
-    def get_aliases(cls):
-        return {
-            cls.UPLOAD: ['Upload', 'User Upload']
-        }
+    HISTORICAL = 'Historical'
 
     @classmethod
     def get_model(cls) -> Type[ObservationalSource]:
@@ -75,15 +63,10 @@ class ObservationalSourceEnum(AbstractEnum):
 
 class GeopackageSourceEnum(AbstractEnum):
     """
-    Enum for Geopackage Sources, with alias support for 'Upload' or 'User Upload' entries.
+    Enum for Geopackage Sources
     """
-    UPLOAD = 'User Upload'
 
-    @classmethod
-    def get_aliases(cls):
-        return {
-            cls.UPLOAD: ['Upload', 'User Upload']
-        }
+    HYDROFABRIC = 'Hydrofabric'
 
     @classmethod
     def get_model(cls) -> Type[GeopackageSource]:
