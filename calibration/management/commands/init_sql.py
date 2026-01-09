@@ -333,7 +333,6 @@ class Command(BaseCommand):
 
         values = [{"name": "AORC", "description": "Analysis of Record For Calibration", "is_active": True},
                   {"name": "NWM Retrospective", "description": "NWM Retrospective", "is_active": True},
-                  {"name": "User Upload", "description": "Uploaded by the user from a local file"},
                   ]
 
         for v in values:
@@ -354,7 +353,6 @@ class Command(BaseCommand):
                   {"name": "RFC", "description": "River Forecast Center", "is_active": False},
                   {"name": "SNOTEL", "description": "Snow Telemetry", "is_active": False},
                   {"name": "Historical", "description": "NGWPC Enterprise Data Services", "is_active": True},
-                  {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:
@@ -368,7 +366,6 @@ class Command(BaseCommand):
             GeopackageSource.objects.all().delete()
 
         values = [{"name": "Hydrofabric", "description": "NGWPC Enterprise Data Services", "is_active": True},
-                  {"name": "User Upload", "description": "Upload by the user from a local file", "is_active": True},
                   ]
 
         for v in values:
