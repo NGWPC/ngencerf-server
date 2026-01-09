@@ -1112,6 +1112,8 @@ class GetStatusForForecastResponseSerializer(CommonStatusFieldsMixin, ForecastRu
 
 
 class GetStatusForCalibrationResponseSerializer(GenericResponseSerializer, CommonStatusFieldsMixin):
+    warnings = serializers.ListField(required=False, child=serializers.CharField(required=True))
+    errors = serializers.ListField(required=False, child=serializers.CharField(required=True))
     validations = GetStatusForValidationResponseSerializer(many=True)
 
 

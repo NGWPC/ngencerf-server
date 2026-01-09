@@ -103,6 +103,9 @@ def get_status(request: Request) -> Response:
     else:
         serializer_class = GetStatusForVerificationResponseSerializer
 
+    # -------------------------
+    # READ-ONLY PHASE (always)
+    # -------------------------
     with readonly_transaction():
         if calibration_run_id:
             run, error_return = get_calibration_run(
@@ -136,6 +139,19 @@ def get_status(request: Request) -> Response:
             if error_return:
                 return error_return
             response = get_status_for_verification(run, include_performance_metrics)
+
+    # ---------------------------------------------------
+    # WRITE-CAPABLE PHASE (calibration only, conditional)
+    # ---------------------------------------------------
+    if calibration_run_id:
+        if run.status in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
+            error_object, _ = ngen_cal_input.ready_to_run(run)
+            if error_object:
+                # mutate response dict only, not DB objects here
+                if error_object.has_warnings():
+                    response["warnings"] = error_object.warnings
+                if error_object.has_errors():
+                    response["errors"] = error_object.errors
 
     response_validator, error_response = validate_response(serializer_class, response)
     if error_response:
@@ -238,15 +254,6 @@ def get_status_for_calibration(calibration_run: CalibrationRun, include_performa
     # Conditionally add calibration run performance metrics to calibration_data if requested and status is DONE or FAIL
     if calibration_metrics:
         calibration_data['performance_metrics'] = calibration_metrics
-
-    # Add error/warning messages if applicable
-    if calibration_run.status in [StatusEnum.SAVED.db_instance, StatusEnum.READY.db_instance]:
-        error_object, _ = ngen_cal_input.ready_to_run(calibration_run)
-        if error_object:
-            if error_object.has_warnings():
-                calibration_data['warnings'] = error_object.warnings
-            if error_object.has_errors():
-                calibration_data['errors'] = error_object.errors
 
     return calibration_data
 
