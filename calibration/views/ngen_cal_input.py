@@ -507,7 +507,7 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                     p['model'] = modules_by_id[p['calibration_formulation__module_id']].name
                 write_parameter_files(params, calibration['calib_parameter_file'])
 
-        if NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
+        if build and NGEN_ENVIRONMENT == NgenEnvironmentEnum.PARALLEL_WORKS:
             config['Parallel'] = parallel
             run.mpi_nprocs = get_mpi_nodes(run.num_catchments)
             parallel['nprocs'] = run.mpi_nprocs
