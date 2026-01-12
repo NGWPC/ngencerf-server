@@ -26,6 +26,10 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
 
+dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+print(f'Loading values from {dotenv_path}')
+load_dotenv(dotenv_path)
+
 version_path = os.path.join(BASE_DIR, 'version.env')
 print(f'Loading values from {version_path}')
 load_dotenv(version_path)
