@@ -220,6 +220,8 @@ def save_gage_tab(request: Request):
         except Gage.DoesNotExist:
             return ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
 
+        logger.info(f"DIAG - after save_gage: {run}")
+
         # Get Geopackage
         if geopackage_source_name:
             if geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
@@ -267,7 +269,7 @@ def save_gage_tab(request: Request):
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         # Get Forcing data
-        if run.forcing_source_requested and run.forcing_source_requested.name != forcing_source_requested_name:
+        if forcing_source_requested_name and (not run.forcing_source_requested or run.forcing_source_requested.name != forcing_source_requested_name):
             try:
                 get_forcing_data_from_s3(run, forcing_source_requested_name)
             except DataServicesException as e:
@@ -277,8 +279,9 @@ def save_gage_tab(request: Request):
                     'message': str(e),
                     'status_code': e.status_code if e.status_code else None
                 })
-        else:
+        elif not forcing_source_requested_name:
             run.forcing_eds_dir_path = None
+            run.forcing_source_actual = None
 
         run.forcing_source_requested = ForcingSourceEnum.get_instance(forcing_source_requested_name) if forcing_source_requested_name else None
 
