@@ -441,6 +441,24 @@ class Command(BaseCommand):
                 "is_active": True
             },
             {
+                "name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "order": 7,
+                "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
+                "time_range": "3 hr",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
+                "availability_lag": 6,
+                "is_active": True
+            },
+            {
+                "name": "Extended AnA", "internal_name": "extended_ana", "order": 8,
+                "data_sources": "RAP, HRRR, Stage IV",
+                "time_range": "tbd",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
+                "availability_lag": 6,
+                "is_active": True
+            },
+            {
                 "name": "Short Range Alaska", "internal_name": "short_range_alaska", "order": 1,
                 "data_sources": "tbd",
                 "time_range": "Latest forecast cycle - 15 hours (for even-numbered cycles)",
@@ -477,22 +495,13 @@ class Command(BaseCommand):
                 "is_active": True
             },
             {
-                "name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana",
-                "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
-                "time_range": "3 hr",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
+                "name": "Analysis and Assimilation (AnA) Puerto Rico", "internal_name": "standard_ana_puertorico", "order": 2,
+                "data_sources": "NAM-NEST, MRMS-MS, MRMS-RO",
+                "time_range": "3 hr (backward-looking)",
+                "domain": puerto_rico_domain,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 3, "fcst_timestep": 1,
                 "availability_lag": 6,
-                "is_active": False
-            },
-            {
-                "name": "Extended AnA", "internal_name": "extended_ana",
-                "data_sources": "RAP, HRRR, Stage IV",
-                "time_range": "tbd",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
-                "availability_lag": 6,
-                "is_active": False
+                "is_active": True
             },
             {
                 "name": "Medium Range MEM1", "internal_name": "medium_range_mem1",
