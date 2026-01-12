@@ -12,13 +12,15 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import codecs
 import os
 import re
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 
 from datetimerange import DateTimeRange
 from dotenv import load_dotenv
 
 from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
+
+DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 

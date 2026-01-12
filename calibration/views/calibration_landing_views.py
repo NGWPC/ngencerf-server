@@ -395,7 +395,13 @@ def get_git_info(request: Request) -> Response:
     if error_return:
         return error_return
 
-    response = {"git_info": get_git_info_internal()}
+    start_time = settings.DJANGO_START_TIME
+    uptime = datetime.now(tz=timezone.utc) - start_time  # timedelta
+    response = {
+        "server_start": start_time,
+        "server_uptime": uptime,
+        "git_info": get_git_info_internal()
+    }
 
     response_validator, error_response = validate_response(GetGitInfoResponseSerializer, response)
     if error_response:
