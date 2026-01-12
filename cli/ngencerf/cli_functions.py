@@ -208,12 +208,11 @@ def about(output_path: str | None = None) -> int:
         "/calibration/get_git_info/",
         headers={"Content-Type": "application/json"}
     )
-    if not success:
+    if not success or not response_json:
         return 1
 
-    if response_json and (git_info := response_json.get("git_info")):
-        with open(final_path, "w", encoding="utf-8") as f:
-            json.dump(git_info, f, indent=2)
+    with open(final_path, "w", encoding="utf-8") as f:
+        json.dump(response_json, f, indent=2)
 
     print(f"ngenCerf 'about' info saved to {final_path}")
     return 0

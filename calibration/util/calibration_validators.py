@@ -550,6 +550,8 @@ class GitInfoSerializer(BaseSerializer):
 
 
 class GetGitInfoResponseSerializer(BaseSerializer):
+    server_start = serializers.DateTimeField(required=False)
+    server_uptime = serializers.DurationField(required=False)
     git_info = serializers.DictField(child=GitInfoSerializer())
 
 
