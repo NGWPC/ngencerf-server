@@ -49,8 +49,6 @@ CONFIG_TEMPLATE = {
         "output_swe": False,
         # Soil Moisture output - Only True for soil moisture modules
         "output_sm": False,
-        "sm_profile_depth": 1,
-        "sm_frac_depth": 0.4
     },
 
     "Calibration": {
