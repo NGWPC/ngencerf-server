@@ -387,61 +387,7 @@ class Command(BaseCommand):
         # Inactive ones don't have an order for now
         values = [
             {
-                "name": "Short Range Forecast", "internal_name": "short_range", "order": 1,
-                "data_sources": "HRRR, RAP",
-                "time_range": "Latest forecast cycle - 18 hours",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 18, "fcst_timestep": 1,
-                "availability_lag": 6,
-                "is_active": True
-            },
-            {
-                "name": "Medium Range Blend", "internal_name": "medium_range_blend", "order": 2,
-                "data_sources": "tbd",
-                "time_range": "Latest forecast cycle - 240 hours",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
-                "availability_lag": 6,
-                "is_active": True
-            },
-            {
-                "name": "Long Range MEM1", "internal_name": "long_range_mem1", "order": 3,
-                "data_sources": "tbd",
-                "time_range": "Latest forecast cycle - 720 hours",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
-                "availability_lag": 12,
-                "is_active": True
-            },
-            {
-                "name": "Long Range MEM2", "internal_name": "long_range_mem2", "order": 4,
-                "data_sources": "tbd",
-                "time_range": "Latest forecast cycle - 720 hours",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
-                "availability_lag": 12,
-                "is_active": True
-            },
-            {
-                "name": "Long Range MEM3", "internal_name": "long_range_mem3", "order": 5,
-                "data_sources": "tbd",
-                "time_range": "Latest forecast cycle - 720 hours",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
-                "availability_lag": 12,
-                "is_active": True
-            },
-            {
-                "name": "Long Range MEM4", "internal_name": "long_range_mem4", "order": 6,
-                "data_sources": "tbd",
-                "time_range": "Latest forecast cycle - 720 hours",
-                "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
-                "availability_lag": 12,
-                "is_active": True
-            },
-            {
-                "name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "order": 7,
+                "name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "order": 1,
                 "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
                 "time_range": "3 hr",
                 "domain": conus_domain,
@@ -450,12 +396,66 @@ class Command(BaseCommand):
                 "is_active": True
             },
             {
-                "name": "Extended AnA", "internal_name": "extended_ana", "order": 8,
+                "name": "Extended AnA", "internal_name": "extended_ana", "order": 2,
                 "data_sources": "RAP, HRRR, Stage IV",
                 "time_range": "tbd",
                 "domain": conus_domain,
                 "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
+                "is_active": True
+            },
+            {
+                "name": "Short Range Forecast", "internal_name": "short_range", "order": 3,
+                "data_sources": "HRRR, RAP",
+                "time_range": "Latest forecast cycle - 18 hours",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 18, "fcst_timestep": 1,
+                "availability_lag": 6,
+                "is_active": True
+            },
+            {
+                "name": "Medium Range Blend", "internal_name": "medium_range_blend", "order": 4,
+                "data_sources": "tbd",
+                "time_range": "Latest forecast cycle - 240 hours",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
+                "availability_lag": 6,
+                "is_active": True
+            },
+            {
+                "name": "Long Range MEM1", "internal_name": "long_range_mem1", "order": 5,
+                "data_sources": "tbd",
+                "time_range": "Latest forecast cycle - 720 hours",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "availability_lag": 12,
+                "is_active": True
+            },
+            {
+                "name": "Long Range MEM2", "internal_name": "long_range_mem2", "order": 6,
+                "data_sources": "tbd",
+                "time_range": "Latest forecast cycle - 720 hours",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "availability_lag": 12,
+                "is_active": True
+            },
+            {
+                "name": "Long Range MEM3", "internal_name": "long_range_mem3", "order": 7,
+                "data_sources": "tbd",
+                "time_range": "Latest forecast cycle - 720 hours",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "availability_lag": 12,
+                "is_active": True
+            },
+            {
+                "name": "Long Range MEM4", "internal_name": "long_range_mem4", "order": 8,
+                "data_sources": "tbd",
+                "time_range": "Latest forecast cycle - 720 hours",
+                "domain": conus_domain,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
+                "availability_lag": 12,
                 "is_active": True
             },
             {
@@ -486,20 +486,20 @@ class Command(BaseCommand):
                 "is_active": False
             },
             {
-                "name": "Short Range Puerto Rico", "internal_name": "short_range_puertorico", "order": 1,
-                "data_sources": "tbd",
-                "time_range": "Latest forecast cycle - 48 hours",
-                "domain": puerto_rico_domain,
-                "cycle_start": 6, "cycle_end": 18, "cycle_freq": 12, "fcst_win": 48, "fcst_timestep": 1,
-                "availability_lag": 6,
-                "is_active": True
-            },
-            {
-                "name": "Analysis and Assimilation (AnA) Puerto Rico", "internal_name": "standard_ana_puertorico", "order": 2,
+                "name": "Analysis and Assimilation (AnA) Puerto Rico", "internal_name": "standard_ana_puertorico", "order": 1,
                 "data_sources": "NAM-NEST, MRMS-MS, MRMS-RO",
                 "time_range": "3 hr (backward-looking)",
                 "domain": puerto_rico_domain,
                 "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 3, "fcst_timestep": 1,
+                "availability_lag": 6,
+                "is_active": True
+            },
+            {
+                "name": "Short Range Puerto Rico", "internal_name": "short_range_puertorico", "order": 2,
+                "data_sources": "tbd",
+                "time_range": "Latest forecast cycle - 48 hours",
+                "domain": puerto_rico_domain,
+                "cycle_start": 6, "cycle_end": 18, "cycle_freq": 12, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
