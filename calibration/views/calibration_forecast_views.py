@@ -71,8 +71,8 @@ def load_forecast_tab(request: Request) -> Response:
 
     with readonly_transaction():
         configuration_values = ForecastConfigEnum.get_choices_with_fields(
-            fields=['name', 'data_sources', 'time_range',
-                    'cycle_start', 'cycle_end', 'cycle_freq', 'fcst_win', 'fcst_timestep', 'availability_lag',
+            fields=['name', 'data_sources',
+                    'cycle_start', 'cycle_end', 'cycle_freq', 'fcst_win', 'availability_lag',
                     'order'  # included ONLY so we can sort
                     ],
             extra_filter={'domain': calibration_run.gage.domain}
