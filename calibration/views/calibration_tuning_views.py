@@ -694,7 +694,7 @@ def validate_time_range_against_data(
     return None
 
 
-def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime], validation_times: dict[str, datetime]) -> list[str]:
+def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, datetime], validation_times: dict[str, datetime]) -> str | None:
     """
     Validates calibration and validation time ranges, ensuring they fall within the allowable data range.
     If valid, updates the `CalibrationRun` instance with the provided times.
@@ -752,9 +752,9 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
         validation_simulation_range = None
         validation_evaluation_range = None
 
-    # If any of the ranges are invalid, return messages immediately
+    # If any of the ranges are invalid, return JSON list immediately
     if messages:
-        return messages
+        return json.dumps(messages)
 
     # Define full evaluation range from minimum and maximum evaluation start/end times
     full_evaluation_start_date: datetime | None = None
@@ -762,8 +762,10 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
 
     # Define the expanded evaluation range from the minimum and maximum evaluation start/end times
     if validation_evaluation_range and calibration_evaluation_range:
-        full_evaluation_start_date, full_evaluation_end_date = get_full_evaluation_date_range_from_ranges(calibration_evaluation_range,
-                                                                                                          validation_evaluation_range)
+        full_evaluation_start_date, full_evaluation_end_date = get_full_evaluation_date_range_from_ranges(
+            calibration_evaluation_range,
+            validation_evaluation_range
+        )
 
     # Ensure calibration simulation range contains the calibration evaluation range
     if calibration_evaluation_range and calibration_simulation_range:
@@ -817,7 +819,7 @@ def validate_and_save_times(run: CalibrationRun, calibration_times: dict[str, da
             run.validation_eval_start_period = validation_times.get('validation_start_time')
             run.validation_eval_end_period = validation_times.get('validation_end_time')
 
-    return messages
+    return None
 
 
 def get_full_evaluation_date_range_from_ranges(
