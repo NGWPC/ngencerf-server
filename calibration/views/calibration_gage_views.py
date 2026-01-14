@@ -220,8 +220,6 @@ def save_gage_tab(request: Request):
         except Gage.DoesNotExist:
             return ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
 
-        logger.info(f"DIAG - after save_gage: {run}")
-
         # Get Geopackage
         if geopackage_source_name:
             if geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
