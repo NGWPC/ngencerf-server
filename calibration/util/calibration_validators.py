@@ -1240,14 +1240,12 @@ class MPINodesRulesResponseSerializer(GenericMessageResponseSerializer):
 class ForecastConfigSerializer(BaseSerializer):
     name = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     data_sources = serializers.CharField(required=False, allow_null=True)
-    time_range = serializers.CharField(required=False, allow_null=True)
     domain = serializers.CharField(required=False, validators=[enum_validator(DomainEnum)])
     availability_lag = serializers.IntegerField(required=True)
     cycle_start = serializers.IntegerField(required=True)
     cycle_end = serializers.IntegerField(required=True)
     cycle_freq = serializers.IntegerField(required=True)
     fcst_win = serializers.IntegerField(required=True)
-    fcst_timestep = serializers.FloatField(required=True)
 
 
 class LoadForecastTabResponseSerializer(BaseSerializer):
