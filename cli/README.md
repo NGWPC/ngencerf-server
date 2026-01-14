@@ -7,6 +7,7 @@ The `ngenCerf` CLI provides a command-line interface to interact with the ngenCe
 - [Building](#building)
 - [Login](#login)
 - [Subcommands](#subcommands)
+  - [about](#about)
   - [archive](#archive)
   - [cancel](#cancel)
   - [delete](#delete)
@@ -14,6 +15,7 @@ The `ngenCerf` CLI provides a command-line interface to interact with the ngenCe
   - [export](#export)
   - [import](#import)
   - [jobs](#jobs)
+  - [lock](#lock)
   - [register](#register)
   - [run](#run)
   - [show](#show)
@@ -58,6 +60,20 @@ The first tie you use the CLI, you will be prompted for your user and password.
 This information will be saved in `~/.ngencerf_env`.  Once saved, the CLI automatically reads them.
 
 ## Subcommands
+
+### about
+
+Displays the 'about' info, which shows the release numbers of all components.
+
+**Usage:**
+
+```bash
+ngencerf about [--output OUTPUT]
+```
+
+**Arguments:**
+
+- --output, -o: (Optional) The path to save the export file.
 
 ### archive
 
@@ -229,6 +245,30 @@ ngencerf jobs [--output OUTPUT]
 ```bash
 ngencerf jobs --output ./all_jobs.md
 ```
+
+---
+
+### lock 
+
+Locks one or more calibration jobs, which prevents them from being deleted or archived
+
+**Usage:**
+```bash
+ngencerf lock run_ids
+```
+
+**Arguments:**
+
+- run_ids: A space-separated list of one or more calibration run IDs.
+- file_path: A file name which is the output of the jobs command, that has the jobs you want to delete
+
+**Example:**
+
+```bash
+ngencerf lock 1 2 3
+
+ngencerf lock calibration_jobs_2025-11-04_1455.md
+````
 
 ---
 
@@ -442,16 +482,6 @@ You can also use the metadata section for your own information, such as comments
 | run_after_import          | Flag indicating whether to submit the job immediately provided all required information is available and there are no errors. Can be overridden by the `--run` option. |
 | gage_id                   | The gage_id associated with the calibration job.                                                                                                                       |
 | forcing_source            | The source of the forcing data.  (e.g., AORC or NWM Retrospective)                                                                                          |
-
----
-
-The paths specified for forcing, observational, and geopackage data do not refer to the user's local machine, but rather are paths on the **server machine**.  
-They are obtained from the job which was exported and normally should not be changed, except to clear them out.
-
----
-
-| Field                                | Description                                                                                                            |
-|--------------------------------------|------------------------------------------------------------------------------------------------------------------------| |
 | observational_source                 | The source of the observational data (e.g., Historical)                                              | |
 | geopackage_source                    | The source of the geopackage data (e.g., Hydrofabric).                                                  | |
 | modules                              | The list of modules used for this calibration.                                                                         |
@@ -472,5 +502,4 @@ They are obtained from the job which was exported and normally should not be cha
 | stop_criteria                        | Number of worker iterations to run.                                                                                    |
 
 
-Note from Peter: Need to finish editing this, based on what we have in the current confluence page
 ---
