@@ -319,61 +319,60 @@ def get_module_metadata_from_data_services(run: CalibrationRun,
     to_update: list[CalibrationParameter] = []
 
     # Save module parameters to the database
-    with transaction.atomic():
-        for module in module_metadata.get('modules'):
-            module_name = module['module_name']
-            # See if we have optional field
-            error = module.get('error')
-            if error:
-                eds_errors.append({
-                    'name': 'parameters',
-                    'message': error,
-                    'status_code': None
-                })
-                continue
+    for module in module_metadata.get('modules'):
+        module_name = module['module_name']
+        # See if we have optional field
+        error = module.get('error')
+        if error:
+            eds_errors.append({
+                'name': 'parameters',
+                'message': error,
+                'status_code': None
+            })
+            continue
 
-            if module_name in extra_names:
-                # Ignore any extra names that Data Services sent us
-                logger.warning(f'Ignoring extra module from Data Services - {module_name}')
-                continue
+        if module_name in extra_names:
+            # Ignore any extra names that Data Services sent us
+            logger.warning(f'Ignoring extra module from Data Services - {module_name}')
+            continue
 
-            # Resolve module via cache
-            module_instance = get_cached_module_by_name(module_name)
-            calibration_formulation = formulation_map.get(module_instance.id if module_instance else None)
-            if not calibration_formulation:
-                raise DataServicesException(f"No formulation found for module {module_name}")
+        # Resolve module via cache
+        module_instance = get_cached_module_by_name(module_name)
+        calibration_formulation = formulation_map.get(module_instance.id if module_instance else None)
+        if not calibration_formulation:
+            raise DataServicesException(f"No formulation found for module {module_name}")
 
-            # New (cloud-agnostic, no FUSE mount needed):
-            src_prefix = module['parameter_file']['uri']  # e.g. "s3://bucket/path/to/dir/"
-            dst_dir = get_bmi_config_dir_for_module(run, module_name)  # local directory path
+        # New (cloud-agnostic, no FUSE mount needed):
+        src_prefix = module['parameter_file']['uri']  # e.g. "s3://bucket/path/to/dir/"
+        dst_dir = get_bmi_config_dir_for_module(run, module_name)  # local directory path
 
-            # copy the BMI parameters
-            _ = copy_tree(src_prefix, dst_dir)
+        # copy the BMI parameters
+        _ = copy_tree(src_prefix, dst_dir)
 
-            # Save or update parameters for the module
-            parameters = module.get('calibrate_parameters', [])
-            if not parameters:
-                logger.warning(f"Module '{module_name}' has no calibratable parameters.")
-            else:
-                for param in parameters:
-                    # Data Services gives us initial_value, min and max as Strings because sometimes crap appears.
+        # Save or update parameters for the module
+        parameters = module.get('calibrate_parameters', [])
+        if not parameters:
+            logger.warning(f"Module '{module_name}' has no calibratable parameters.")
+        else:
+            for param in parameters:
+                # Data Services gives us initial_value, min and max as Strings because sometimes crap appears.
 
-                    # Convert values to floats safely
-                    initial_value = safe_float(param.get('initial_value'), "Initial value", param.get('name'), module_name)
-                    min_value = safe_float(param.get('min'), "Minimum value", param.get('name'), module_name)
-                    max_value = safe_float(param.get('max'), "Maximum value", param.get('name'), module_name)
+                # Convert values to floats safely
+                initial_value = safe_float(param.get('initial_value'), "Initial value", param.get('name'), module_name)
+                min_value = safe_float(param.get('min'), "Minimum value", param.get('name'), module_name)
+                max_value = safe_float(param.get('max'), "Maximum value", param.get('name'), module_name)
 
-                    new_param = CalibrationParameter(
-                        name=param['name'],
-                        calibration_formulation=calibration_formulation,
-                        data_type=param['data_type'],
-                        description=param['description'],
-                        initial_value=initial_value,
-                        minimum=min_value,
-                        maximum=max_value,
-                        units=param['units']
-                    )
-                    new_params.append(new_param)
+                new_param = CalibrationParameter(
+                    name=param['name'],
+                    calibration_formulation=calibration_formulation,
+                    data_type=param['data_type'],
+                    description=param['description'],
+                    initial_value=initial_value,
+                    minimum=min_value,
+                    maximum=max_value,
+                    units=param['units']
+                )
+                new_params.append(new_param)
 
         # Bulk insert (ignore_conflicts ensures no crash if they already exist)
         if new_params:
