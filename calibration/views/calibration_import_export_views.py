@@ -23,7 +23,7 @@ from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_fr
 from calibration.util.ngen_locations import get_geopackage_dir_for_job, \
     get_ngen_logging_file
 from calibration.views import ngen_cal_input
-from calibration.views.calibration_formulation_views import get_sloth_parameters, validate_modules, SLOTH, add_sloth_parameters, validate_formulation
+from calibration.views.calibration_formulation_views import get_sloth_parameters,  SLOTH, add_sloth_parameters, validate_formulation
 from calibration.views.calibration_gage_views import save_gage, get_data_files_status
 from calibration.views.calibration_optimization_views import get_user_optimization, validate_optimizations, validate_objective_function, \
     write_optimization_inputs
@@ -111,9 +111,9 @@ def import_calibration_run_data(request: Request,
     with readonly_transaction():
         # Validate modules list
         if module_names:
-            error_message = validate_modules(module_names)
-            if error_message:
-                return None, None, ResponseError(error_message)
+            # error_message = validate_modules(module_names)
+            # if error_message:
+            #     return None, None, ResponseError(error_message)
 
             # Formulation-level checks (read-only)
             f_errors, f_warnings, f_info = validate_formulation(module_names, return_group_info=is_cli)

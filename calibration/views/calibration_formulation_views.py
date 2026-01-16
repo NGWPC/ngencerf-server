@@ -210,11 +210,6 @@ def save_formulation_tab(request) -> Response:
     if not run.gage:
         return ResponseError('Gage must be specified before selecting formulation')
 
-    # Validate modules and formulation constraints
-    error_message = validate_modules(new_module_names)
-    if error_message:
-        return ResponseError(error_message)
-
     # TODO Eventually, we will have more user properties that are specific to certain modules
     # so we'll need a separate table to control those.
     # For now, we are forced to hard-code module names and specific flags
@@ -274,7 +269,6 @@ def save_formulation_tab(request) -> Response:
 
         # Refresh formulations after delete/add
         existing_formulations_qs = CalibrationFormulation.objects.filter(calibration_run=run)
-        existing_formulations_list = list(existing_formulations_qs.select_related('module'))
 
         # Identify formulations without any calibration parameters, in case there was an error retrieving them
         param_formulation_ids = set(
@@ -373,21 +367,6 @@ def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun)
 
     # Finally, delete the formulations
     formulations_to_delete_qs.delete()
-
-
-def validate_modules(module_names: set[str]) -> str | None:
-    """
-    Validate that all the provided module names exist in the cached modules.
-
-    :param module_names: A set of module names to validate.
-    :return: An error message if any module name is invalid; otherwise, None.
-    """
-    modules_by_id = get_cached_modules_by_id()
-    modules_by_name = {m.name: m for m in modules_by_id.values()}
-    invalid = module_names - set(modules_by_name.keys())
-    if invalid:
-        return f"Invalid modules - {invalid}"
-    return None
 
 
 formulation_validations = {
