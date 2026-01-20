@@ -373,6 +373,7 @@ def generate_forecast_config_yaml() -> str:
             "cycle_end",
             "cycle_freq",
             "fcst_win",
+            "fcst_timestep",
         ]
     )
 
@@ -382,6 +383,7 @@ def generate_forecast_config_yaml() -> str:
             cfg["cycle_end"],
             cfg["cycle_freq"],
             cfg["fcst_win"],
+            cfg["fcst_timestep"],
         ]
         for cfg in sorted(configs, key=lambda x: x["internal_name"])
         if cfg.get("is_active")
@@ -393,6 +395,7 @@ def generate_forecast_config_yaml() -> str:
         "# - cycle_end: end time of forecast cycles in Zulu time or UTC (e.g., 23Z)\n"
         "# - cycle_freq: frequency of forecast cycles in hours (e.g., 1)\n"
         "# - fcst_win: forecast window in hours (e.g., 18)\n"
+        "# - fcst_timestep: forecast timestep in hours (e.g., 1)\n"
     )
 
     with open(output_file, "w", encoding="utf-8") as f:

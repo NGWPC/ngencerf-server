@@ -390,7 +390,7 @@ class Command(BaseCommand):
                 "name": "Analysis and Assimilation (AnA)", "internal_name": "standard_ana", "order": 1,
                 "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": -3,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": -3, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -398,7 +398,7 @@ class Command(BaseCommand):
                 "name": "Extended AnA", "internal_name": "extended_ana", "order": 2,
                 "data_sources": "RAP, HRRR, Stage IV",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": -28,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": -28, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -406,7 +406,7 @@ class Command(BaseCommand):
                 "name": "Short Range Forecast", "internal_name": "short_range", "order": 3,
                 "data_sources": "HRRR, RAP",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 18,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 18, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -414,7 +414,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Blend", "internal_name": "medium_range_blend", "order": 4,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -422,7 +422,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM1", "internal_name": "long_range_mem1", "order": 5,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
                 "is_active": True
             },
@@ -430,7 +430,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM2", "internal_name": "long_range_mem2", "order": 6,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
                 "is_active": True
             },
@@ -438,7 +438,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM3", "internal_name": "long_range_mem3", "order": 7,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
                 "is_active": True
             },
@@ -446,7 +446,7 @@ class Command(BaseCommand):
                 "name": "Long Range MEM4", "internal_name": "long_range_mem4", "order": 8,
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 720, "fcst_timestep": 6,
                 "availability_lag": 12,
                 "is_active": True
             },
@@ -454,7 +454,7 @@ class Command(BaseCommand):
                 "name": "Short Range Alaska", "internal_name": "short_range_alaska", "order": 1,
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 15,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 15, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -462,7 +462,7 @@ class Command(BaseCommand):
                 "name": "Short Range Extended Alaska", "internal_name": "short_range_extended_alaska", "order": 2,
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 3, "cycle_end": 21, "cycle_freq": 6, "fcst_win": 45,
+                "cycle_start": 3, "cycle_end": 21, "cycle_freq": 6, "fcst_win": 45, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -470,7 +470,7 @@ class Command(BaseCommand):
                 "name": "Short Range Hawaii", "internal_name": "short_range_hawaii", "order": 1,
                 "data_sources": "tbd",
                 "domain": hawaii_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 0.25,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -478,7 +478,7 @@ class Command(BaseCommand):
                 "name": "Analysis and Assimilation (AnA) Puerto Rico", "internal_name": "standard_ana_puertorico", "order": 1,
                 "data_sources": "NAM-NEST, MRMS-MS, MRMS-RO",
                 "domain": puerto_rico_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": -3,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": -3, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -486,7 +486,7 @@ class Command(BaseCommand):
                 "name": "Short Range Puerto Rico", "internal_name": "short_range_puertorico", "order": 2,
                 "data_sources": "tbd",
                 "domain": puerto_rico_domain,
-                "cycle_start": 6, "cycle_end": 18, "cycle_freq": 12, "fcst_win": 48,
+                "cycle_start": 6, "cycle_end": 18, "cycle_freq": 12, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -494,7 +494,7 @@ class Command(BaseCommand):
                 "name": "Medium Range MEM1", "internal_name": "medium_range_mem1",
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -502,7 +502,7 @@ class Command(BaseCommand):
                 "name": "Medium Range MEM2", "internal_name": "medium_range_mem2",
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -510,7 +510,7 @@ class Command(BaseCommand):
                 "name": "Medium Range MEM3", "internal_name": "medium_range_mem3",
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -518,7 +518,7 @@ class Command(BaseCommand):
                 "name": "Medium Range MEM4", "internal_name": "medium_range_mem4",
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -526,7 +526,7 @@ class Command(BaseCommand):
                 "name": "Medium Range MEM5", "internal_name": "medium_range_mem5",
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -534,7 +534,7 @@ class Command(BaseCommand):
                 "name": "Medium Range MEM6", "internal_name": "medium_range_mem6",
                 "data_sources": "tbd",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -542,7 +542,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Blend Alaska", "internal_name": "medium_range_blend_alaska", "order": 3,
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": True
             },
@@ -550,7 +550,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Alaska MEM1", "internal_name": "medium_range_alaska_mem1",
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -558,7 +558,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Alaska MEM2", "internal_name": "medium_range_alaska_mem2",
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -566,7 +566,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Alaska MEM3", "internal_name": "medium_range_alaska_mem3",
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -574,7 +574,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Alaska MEM4", "internal_name": "medium_range_alaska_mem4",
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -582,7 +582,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Alaska MEM5", "internal_name": "medium_range_alaska_mem5",
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -590,7 +590,7 @@ class Command(BaseCommand):
                 "name": "Medium Range Alaska MEM6", "internal_name": "medium_range_alaska_mem6",
                 "data_sources": "tbd",
                 "domain": alaska_domain,
-                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240,
+                "cycle_start": 0, "cycle_end": 18, "cycle_freq": 6, "fcst_win": 240, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -598,7 +598,7 @@ class Command(BaseCommand):
                 "name": "Long Range AnA", "internal_name": "long_range_ana",
                 "data_sources": "HRRR, RAP, MRMS-MS, MRMS-RO, USGS gages",
                 "domain": conus_domain,
-                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48,
+                "cycle_start": 0, "cycle_end": 23, "cycle_freq": 1, "fcst_win": 48, "fcst_timestep": 1,
                 "availability_lag": 6,
                 "is_active": False
             },
@@ -616,6 +616,7 @@ class Command(BaseCommand):
                                                                      "cycle_end": v['cycle_end'],
                                                                      "cycle_freq": v['cycle_freq'],
                                                                      "fcst_win": v['fcst_win'],
+                                                                     "fcst_timestep": v['fcst_timestep'],
                                                                      "created_by": self.user})
 
     def define_optimization(self):
