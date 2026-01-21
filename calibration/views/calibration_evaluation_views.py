@@ -1,17 +1,17 @@
 import io
 import json
 import logging
+import math
 import os
 import threading
-import time
 import zipfile
+from collections import defaultdict
 from datetime import datetime
 
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import F, QuerySet
-from django.http import HttpResponse, StreamingHttpResponse, FileResponse, JsonResponse
-from django.views.decorators.http import require_GET
+from django.http import HttpResponse, FileResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -19,18 +19,48 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from calibration.enums import StatusEnum, ValidationMetricPeriod, ValidationType, LogCategory, LogName
-from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun
-from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationRunSerializer, \
+from calibration.models import Iteration, NWMRetrospectiveMetrics, CalibrationRun, ValidationRun, IterationParameter, IterationMetric
+from calibration.util.calibration_validators import CalibrationRunSerializer, CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, \
     ErrorResponseSerializer, GetCalibrationDataByIterationResponseSerializer, GetLogsResponseSerializer, \
     GetLogNamesResponseSerializer, GetLogRequestSerializer, GetLogStatusRequestSerializer, \
-    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer
+    GetLogStatusResponseSerializer, GenericMessageWithIdResponseSerializer, GetZipStatusSerializer
 from calibration.util.ngen_locations import get_calibration_stdout_file, get_validation_best_stdout_file, get_validation_control_stdout_file, \
     get_validation_iteration_stdout_file, get_ngen_stdout_log_filename, get_ngen_log_path
+from calibration.views.calibration_forecast_views import get_forecast_log, get_cold_start_log
+from calibration.views.calibration_verification_views import get_verification_log
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, handle_exceptions, validate_response, validate_request, truncate_large_fields, \
-    get_validation_run, CerfException, replace_nan_and_inf_with_none, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str
+    get_validation_run, CerfException, process_worker_dirs, get_user_email, ResponseError, get_elapsed_str, \
+    get_forecast_run, get_verification_run
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_float(value):
+    """
+    Normalize numeric values for JSON serialization.
+
+    - JSON does NOT support NaN or +/-Infinity.
+    - Django/DRF will happily pass these through until serialization,
+      where they can cause hard failures or invalid JSON.
+    - This helper converts any non-finite float (NaN, +inf, -inf) to None.
+    - Non-float values (ints, strings, dicts, lists, etc.) are returned unchanged.
+
+    This is intentionally lightweight and meant to be applied ONLY at the
+    points where floating-point values originate (metrics, objective values),
+    instead of recursively walking the entire response payload.
+    """
+
+    # Preserve None as-is
+    if value is None:
+        return None
+
+    # Only floats can be NaN or Infinity; ints are always safe
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+
+    # All other values pass through unchanged
+    return value
 
 
 @extend_schema(
@@ -79,7 +109,6 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         NWMRetrospectiveMetrics.objects
         .filter(period=ValidationMetricPeriod.valid.value, calibration_run=run)
         .select_related('metric')
-        .only('metric__name', 'metric_value')
         .annotate(
             metric_name=F('metric__name'),
             metric_display_name=F('metric__display_name'),
@@ -89,19 +118,58 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
 
     retrospective_data = [{'name': 'NWM 3.0', 'data': nwm_retrospective_data}]
 
-    iterations = get_iterations_for_calibration_job(run)
+    iterations = list(get_iterations_for_calibration_job(run))
+    iteration_ids = [it.id for it in iterations]
 
     # Prefetch validation runs for all iterations
-    validation_runs = ValidationRun.objects.filter(
-        iteration__in=iterations,
-        status__in=[
-            StatusEnum.DONE.db_instance,
-            StatusEnum.RUNNING.db_instance,
-            StatusEnum.SUBMITTED.db_instance,
-        ],
-    ).select_related('calibration_run')
+    validation_runs = (
+        ValidationRun.objects
+        .filter(
+            iteration_id__in=iteration_ids,
+            status__in=[
+                StatusEnum.DONE.db_instance,
+                StatusEnum.RUNNING.db_instance,
+                StatusEnum.SUBMITTED.db_instance,
+            ],
+        )
+        .only('id', 'iteration_id')
+    )
 
     validation_runs_by_iteration = {vr.iteration_id: vr for vr in validation_runs}
+
+    params_by_iter = defaultdict(list)
+    for p in (
+            IterationParameter.objects
+                    .filter(iteration_id__in=iteration_ids)
+                    .select_related('calibration_parameter')
+                    .values(
+                'iteration_id',
+                'calibration_parameter__name',
+                'tuned_value',
+            )
+    ):
+        params_by_iter[p['iteration_id']].append({
+            'parameter_name': p['calibration_parameter__name'],
+            'parameter_value': p['tuned_value'],
+        })
+
+    metrics_by_iter = defaultdict(list)
+    for m in (
+            IterationMetric.objects
+                    .select_related('metric')
+                    .filter(iteration_id__in=iteration_ids)
+                    .values(
+                'iteration_id',
+                'metric__name',
+                'metric__display_name',
+                'metric_value',
+            )
+    ):
+        metrics_by_iter[m['iteration_id']].append({
+            'metric_name': m['metric__name'],
+            'metric_display_name': m['metric__display_name'],
+            'metric_value': normalize_float(m['metric_value']),
+        })
 
     # Construct iteration data with parameters, metrics, and validation reference
     iteration_data = []
@@ -113,22 +181,14 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
             'iteration_id': iteration.id,
             'worker_name': iteration.worker_name,
             'best_params': iteration.best_params,
-            'objective_function_value': iteration.objective_function_value,
-            'parameters': [
-                {'parameter_name': param.calibration_parameter.name, 'parameter_value': param.tuned_value}
-                for param in iteration.iterationparameter_set.all()
-            ],
-            'metrics': [
-                {
-                    'metric_name': metric.metric.name,
-                    'metric_display_name': metric.metric.display_name,
-                    'metric_value': metric.metric_value
-                }
-                for metric in iteration.iterationmetric_set.all()
-            ]
+            'objective_function_value': normalize_float(iteration.objective_function_value),
+            'parameters': params_by_iter.get(iteration.id, []),
+            'metrics': metrics_by_iter.get(iteration.id, []),
         }
+
         if validation_run:
             iteration_element['validation_run_id'] = validation_run.id
+
         iteration_data.append(iteration_element)
 
     response = {
@@ -138,9 +198,6 @@ def get_calibration_data_by_iteration(request: Request) -> Response:
         'iteration_data': iteration_data,
         'retrospective_data': retrospective_data
     }
-
-    # Replace NaN values with None for JSON compatibility
-    response = replace_nan_and_inf_with_none(response)
 
     response_validator, error_response = validate_response(
         GetCalibrationDataByIterationResponseSerializer,
@@ -185,7 +242,7 @@ def get_iterations_for_calibration_job(calibration_run: CalibrationRun, worker_n
 
 
 @extend_schema(
-    request=CalibrationOrValidationRunSerializer,
+    request=CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer,
     responses={
         200: GetLogNamesResponseSerializer,
         400: OpenApiResponse(
@@ -206,7 +263,7 @@ def get_log_names(request: Request) -> Response:
     Retrieves a list of available log names for a specific calibration or validation run.
 
     - Handles request validation and user permissions.
-    - Returns logs categorized by their association (calibration, validation, global, or forecast).
+    - Returns logs categorized by their association (calibration, validation, forecast, cold start, verification, global).
 
     :param request: The HTTP request object containing validation run ID.
     :return: JSON response with log names or error details.
@@ -214,12 +271,14 @@ def get_log_names(request: Request) -> Response:
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
 
-    validator, error_return = validate_request(CalibrationOrValidationRunSerializer, data)
+    validator, error_return = validate_request(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer, data)
     if error_return:
         return error_return
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+    verification_run_id = validator.get('verification_run_id')
 
     if validation_run_id:
         validation_run, error_return = get_validation_run(
@@ -229,14 +288,42 @@ def get_log_names(request: Request) -> Response:
         )
         if error_return:
             return error_return
-        # TODO calibration_run variable not used right now, but we might need later for forecast
-        # calibration_run = validation_run.calibration_run
 
         # Define available log categories and names
         log_names = [
             {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
             {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
             {LogCategory.GLOBAL.value: ['ngen']},
+        ]
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            request.user,
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
+                        StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        cold_start_run = forecast_run.cold_start_run
+
+        # Define available log categories and names
+        log_names = [
+            {LogCategory.FORECAST.value: ['forecast stdout', 'ngen stdout', 'mswm', 'ngen']}
+        ]
+        if cold_start_run:
+            log_names.append({LogCategory.COLD_START.value: ['cold start stdout', 'ngen stdout', 'mswm', 'ngen']})
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+
+        # Define available log categories and names
+        log_names = [
+            {LogCategory.VERIFICATION.value: ['verification', 'verification stdout']}
         ]
     else:
         calibration_run, error_return = get_calibration_run(
@@ -253,11 +340,6 @@ def get_log_names(request: Request) -> Response:
             {LogCategory.GLOBAL.value: ['ngen']},
         ]
 
-    # Include forecast logs if applicable
-    # Commenting out for now since we have nowhere for the UI to display these
-    # if ForecastRun.objects.filter(calibration_run=calibration_run).exists():
-    #     log_names.append({LogCategory.FORECAST.value: ['ngen stdout', 'forecast stdout']})
-
     response = {'log_names': log_names}
 
     response_validator, error_response = validate_response(GetLogNamesResponseSerializer, response)
@@ -272,7 +354,9 @@ def get_log_names(request: Request) -> Response:
 VALID_LOG_NAMES = {
     LogCategory.CALIBRATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
     LogCategory.VALIDATION: [LogName.NGEN_CAL_STDOUT, LogName.NGEN_STDOUT],
-    LogCategory.FORECAST: [LogName.FORECAST_STDOUT, LogName.NGEN_STDOUT],
+    LogCategory.FORECAST: [LogName.FORECAST_STDOUT, LogName.NGEN_STDOUT, LogName.MSWM, LogName.NGEN],
+    LogCategory.COLD_START: [LogName.COLD_START_STDOUT, LogName.NGEN_STDOUT, LogName.MSWM, LogName.NGEN],
+    LogCategory.VERIFICATION: [LogName.VERIFICATION, LogName.VERIFICATION_STDOUT],
     LogCategory.GLOBAL: [LogName.NGEN]
 }
 
@@ -314,12 +398,12 @@ def validate_log_name(log_category: LogCategory, log_name: LogName):
 @handle_exceptions
 def get_log(request: Request) -> Response:
     """
-    Retrieves a specific log file for a calibration run (or validation run and its associated calibration run).
+    Retrieves a specific log file for a calibration, validation, forecast, cold start, or verification run.
 
     - Supports pagination for large log files.
     - Validates log category and log name.
 
-    :param request: The HTTP request object containing calibration/validation run and log information.
+    :param request: The HTTP request object containing run and log information.
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -331,6 +415,8 @@ def get_log(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+    verification_run_id = validator.get('verification_run_id')
     log_category = LogCategory(validator.get('log_category'))
     log_name = LogName(validator.get('log_name'))
     start = validator.get('start')
@@ -342,6 +428,11 @@ def get_log(request: Request) -> Response:
     except ValueError as e:
         raise CerfException(str(e))
 
+    validation_run = None
+    forecast_run = None
+    cold_start_run = None
+    verification_run = None
+
     if validation_run_id:
         validation_run, error_return = get_validation_run(
             validation_run_id,
@@ -351,6 +442,26 @@ def get_log(request: Request) -> Response:
         if error_return:
             return error_return
         calibration_run = validation_run.calibration_run
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            request.user,
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
+                        StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = forecast_run.calibration_run
+        cold_start_run = forecast_run.cold_start_run
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = verification_run.forecast_run.calibration_run
     else:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
@@ -369,14 +480,27 @@ def get_log(request: Request) -> Response:
             if validation_run:
                 log_path = get_validation_log(validation_run, log_name)
             else:
-                raise CerfException(f"Log category '{log_category.value}' not applicable for calibration run")
+                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
+        case LogCategory.FORECAST:
+            if forecast_run:
+                log_path = get_forecast_log(forecast_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
+        case LogCategory.COLD_START:
+            if forecast_run and cold_start_run:
+                log_path = get_cold_start_log(cold_start_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
+        case LogCategory.VERIFICATION:
+            if verification_run:
+                log_path = get_verification_log(verification_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
         case LogCategory.GLOBAL:
             if validation_run:
                 log_path = get_global_log(validation_run, log_name)
             else:
                 log_path = get_global_log(calibration_run, log_name)
-        case _:
-            raise CerfException(f"Unknown log category '{log_category.value}'")
 
     # Check if the log file exists
     if log_path and not os.path.exists(log_path):
@@ -410,9 +534,19 @@ def get_log(request: Request) -> Response:
         'log_data': paginated_lines,
         'log_path': log_path,
         'byte_offset': file_size,
-        'pagination_metadata': pagination_metadata,
-        'status': validation_run.status.name if validation_run else calibration_run.status.name
+        'pagination_metadata': pagination_metadata
     }
+    match log_category:
+        case LogCategory.VALIDATION:
+            response['status'] = validation_run.status.name
+        case LogCategory.FORECAST:
+            response['status'] = forecast_run.status.name
+        case LogCategory.COLD_START:
+            response['status'] = forecast_run.cold_start_run.status.name
+        case LogCategory.VERIFICATION:
+            response['status'] = verification_run.status.name
+        case _:
+            response['status'] = calibration_run.status.name
 
     response_validator, error_response = validate_response(GetLogsResponseSerializer, response, fields_to_truncate=['log_data'], max_length=10)
     if error_response:
@@ -448,7 +582,7 @@ def get_log_status(request: Request) -> Response:
 
     - Uses byte_offset to compare the size of the last data set retrieved to what is currently in the file/cache.
 
-    :param request: The HTTP request object containing calibration/validation run and log information.
+    :param request: The HTTP request object containing run and log information.
     :return: JSON response with log file content or error details.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
@@ -460,8 +594,14 @@ def get_log_status(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     validation_run_id = validator.get('validation_run_id')
+    forecast_run_id = validator.get('forecast_run_id')
+    verification_run_id = validator.get('verification_run_id')
     log_path = validator.get('log_path')
     byte_offset = validator.get('byte_offset')
+
+    validation_run = None
+    forecast_run = None
+    verification_run = None
 
     if validation_run_id:
         validation_run, error_return = get_validation_run(
@@ -472,6 +612,25 @@ def get_log_status(request: Request) -> Response:
         if error_return:
             return error_return
         calibration_run = validation_run.calibration_run
+    elif forecast_run_id:
+        forecast_run, error_return = get_forecast_run(
+            forecast_run_id,
+            request.user,
+            run_status=[StatusEnum.SAVED, StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED,
+                        StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = forecast_run.calibration_run
+    elif verification_run_id:
+        verification_run, error_return = get_verification_run(
+            verification_run_id,
+            request.user,
+            run_status=[StatusEnum.RUNNING, StatusEnum.SUBMITTED, StatusEnum.DONE, StatusEnum.FAILED, StatusEnum.CANCELLED, StatusEnum.SERVER_ERROR]
+        )
+        if error_return:
+            return error_return
+        calibration_run = verification_run.forecast_run.calibration_run
     else:
         calibration_run, error_return = get_calibration_run(
             calibration_run_id,
@@ -480,7 +639,6 @@ def get_log_status(request: Request) -> Response:
         )
         if error_return:
             return error_return
-        validation_run = None
 
     # Check if the log file exists
     # TO DO: Get this from the cache if it's already been cached
@@ -492,9 +650,16 @@ def get_log_status(request: Request) -> Response:
 
     response = {
         'message': f"log file {log_path} has " + ("changed" if file_size != byte_offset else "not changed"),
-        'file_updated': True if file_size != byte_offset else False,
-        'status': validation_run.status.name if validation_run else calibration_run.status.name
+        'file_updated': True if file_size != byte_offset else False
     }
+    if validation_run_id:
+        response['status'] = validation_run.status.name
+    elif forecast_run_id:
+        response['status'] = forecast_run.status.name
+    elif verification_run_id:
+        response['status'] = verification_run.status.name
+    else:
+        response['status'] = calibration_run.status.name
 
     response_validator, error_response = validate_response(GetLogStatusResponseSerializer, response)
     if error_response:
@@ -620,7 +785,7 @@ downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, St
 @handle_exceptions
 def get_calibration_job_zip(request: Request) -> HttpResponse:
     """
-    Zips up all files in the user's working directory for the given calibration_job_id and returns the 
+    Zips up all files in the user's working directory for the given calibration_job_id and returns the
     resulting file as a response to the browser.
 
     :param request: The HTTP request object containing calibration run data.
@@ -735,8 +900,8 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             cache.set(cache_key, {
                 'status': 'done',
                 'path': zip_path,
-                'started_at': cache.get(cache_key).get('started_at')
-            }, timeout=None)
+                'started_at': cache.get(cache_key).get('started_at'),
+            }, timeout=3600)  # Once it's done, don't leave it around forever
 
             duration = datetime.now() - start_time
             zip_size = os.path.getsize(zip_path)
@@ -750,7 +915,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
                 'status': 'error',
                 'path': None,
                 'started_at': cache.get(cache_key).get('started_at')
-            }, timeout=None)
+            }, timeout=3600)  # Once it's done, don't leave it around forever
             duration = datetime.now() - start_time
             logger.exception(f"Failed to zip Calibration Job {run.id} after {duration.total_seconds():.2f} seconds: {e}")
 
@@ -770,7 +935,7 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 @extend_schema(
     request=CalibrationRunSerializer,
     responses={
-        200: OpenApiResponse(description="Server-Sent Events stream with zip job status updates"),
+        200: GetZipStatusSerializer,
         400: OpenApiResponse(
             response=ErrorResponseSerializer,
             description="Validation error or parsing error"
@@ -780,93 +945,52 @@ def start_zip_for_calibration_job(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Streams zip status updates in real time via Server-Sent Events (SSE)"
+    description="Polling endpoint that returns the current status of a calibration zip job"
 )
-# NOTE: We use require_GET instead of @api_view because:
-# - @api_view is part of Django REST Framework (DRF), which handles content negotiation.
-# - For Server-Sent Events (SSE), DRF expects the client to accept "application/json", which causes issues.
-# - If the client sends "text/event-stream", DRF may reject it with a 406 Not Acceptable error.
-# - require_GET is a plain Django view decorator that avoids DRF’s content negotiation and lets us stream raw SSE.
-# - Because this bypasses DRF, we return a JsonResponse directly for errors instead of DRF’s Response.
-@require_GET
+@api_view(['GET', 'POST'])
 @handle_exceptions
-def get_zip_status(request: Request, calibration_run_id: int) -> StreamingHttpResponse | JsonResponse:
+def get_zip_status(request: Request) -> Response:
     """
-    SSE (Server-Sent Events) endpoint that streams the status of a background zip job.
+    Polling endpoint that returns the current status of a background zip job.
 
-    - Streams status updates (e.g., "pending", "done", "error") to the client.
-    - Closes the connection once the job is complete or encounters an error.
-    - Returns a JSON error response if no zip job has been started.
-    - Uses require_GET instead of @api_view to support SSE without 406 errors due to DRF content negotiation.
-
-    :param request: HTTP request object.
-    :param calibration_run_id: The ID of the calibration job being zipped.
-    :return: StreamingHttpResponse with real-time status updates, or JsonResponse if the job is not found.
+    - Returns zip job status: pending | done | error
+    - Reads from shared cache set by start_zip_for_calibration_job
+    - Safe for frequent polling (every 2–5 seconds)
     """
+    data = request.data if request.method == 'POST' else request.query_params.dict()
+    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
+
+    validator, error_response = validate_request(CalibrationRunSerializer, data)
+    if error_response:
+        return error_response
+
+    calibration_run_id = validator.get("calibration_run_id")
     cache_key = get_zip_cache_key(calibration_run_id)
+
     zip_status = cache.get(cache_key)
     if not zip_status:
-        logger.info(f"get_zip_status called for Calibration Job {calibration_run_id} but no zip job found")
-        return JsonResponse(
-            {
-                "response_type": "error",
-                "message": f"No zip job found for Calibration Job {calibration_run_id}"
-            },
-            status=404
-        )
+        return ResponseError(f"No zip job found for Calibration Job {calibration_run_id}")
 
-    def event_stream():
-        try:
-            start_time = datetime.now()
-            last_keepalive = time.time()
-            logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} for Calibration Run id {calibration_run_id}')
+    response = {
+        "calibration_run_id": calibration_run_id,
+        "zip_status": zip_status.get("status"),
+        "path": zip_status.get("path"),
+        "started_at": zip_status.get("started_at"),
+    }
 
-            # Stream loop: keep checking the job status until it is "done" or "error"
-            while True:
-                # Retrieve the current zip status from in-memory cache
-                current_zip_status = cache.get(cache_key, {"status": "not_found"})
+    response_validator, error_response = validate_response(
+        GetZipStatusSerializer,
+        response
+    )
+    if error_response:
+        return error_response
 
-                # Format the status as an SSE-compatible message
-                yield f"data: {json.dumps(current_zip_status)}\n\n"
+    logger.debug(
+        f'Returning to {get_user_email(request)} from {get_caller_name()}'
+        f'{get_elapsed_str(request)} - {json.dumps(response_validator.data)}'
+    )
 
-                # If job has finished or failed, stop the stream (connection closes)
-                if current_zip_status["status"] in ["done", "error"]:
-                    duration = datetime.now() - start_time
-                    logger.debug(
-                        f'{get_caller_name()}() streaming complete for {get_user_email(request)} - '
-                        f'calibration_run_id={calibration_run_id} - status={current_zip_status["status"]} - '
-                        f'duration={duration.total_seconds():.2f}s'
-                    )
-                    break
-
-                # ─────────────────────────────────────────────────────────────
-                # Send a lightweight heartbeat every 30 seconds
-                # (comment line ':' is valid SSE syntax and keeps proxies alive)
-                # ─────────────────────────────────────────────────────────────
-                now = time.time()
-                if now - last_keepalive >= 30:  # every 30 seconds
-                    yield ": keep-alive\n\n"
-                    last_keepalive = now
-                # ─────────────────────────────────────────────────────────────
-
-                # Sleep before checking again (keeps CPU usage low and reduces frequency)
-                time.sleep(1)
-
-        except GeneratorExit:
-            # Happens if the client closes the connection
-            logger.info(f"Client disconnected during SSE stream for run {calibration_run_id}")
-        except Exception as e:
-            logger.exception(f"Unhandled exception in event_stream for {calibration_run_id}: {e}")
-
-    # Return a streaming HTTP response using the generator function above
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-
-    # Add CORS header if Origin is allowed
-    origin = request.headers.get("Origin")
-    if origin in settings.CORS_ALLOWED_ORIGINS:
-        response["Access-Control-Allow-Origin"] = origin
-
-    return response
+    return Response(response_validator.data)
 
 
 @extend_schema(
@@ -924,8 +1048,14 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB"
     )
 
+    zip_file = None
     try:
-        response = FileResponse(open(zip_path, 'rb'), content_type='application/zip')
+        zip_file = open(zip_path, 'rb')
+        response = FileResponse(zip_file, content_type='application/zip')
+        origin = request.headers.get("Origin")
+        if origin in settings.CORS_ALLOWED_ORIGINS:
+            response["Access-Control-Allow-Origin"] = origin
+
         filename = os.path.basename(zip_path)
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Content-Length'] = str(zip_size)
@@ -937,6 +1067,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         # Tell Nginx NOT to buffer the file before sending it downstream.
         # This avoids Nginx holding a 1.5 GB file in memory/disk buffers, which can trigger timeouts or stall the transfer.
         response['X-Accel-Buffering'] = 'no'
+        response['Content-Encoding'] = 'identity'  # Prevent response from being gzipped (especially ZIP files) by middleware
 
         def cleanup():
             try:
@@ -954,6 +1085,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         original_close = response.close
 
         def wrapped_close():
+            logger.debug(f"Calling wrapped_close() for {zip_path}")
             cleanup()
             return original_close()
 
@@ -965,5 +1097,7 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
         return response
 
     except IOError as e:
+        if zip_file:
+            zip_file.close()
         logger.exception(f"Failed to read zip file for Calibration Job {calibration_run_id}: {e}")
         return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")

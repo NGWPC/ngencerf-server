@@ -10,12 +10,57 @@ if [[ "$1" == "activate" ]] && [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 fi
 
 #=======================================================================
-# Resolve script directory and load environment
+# Resolve script directory
 #=======================================================================
 SCRIPT_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
 
-# Source environment variables
+#=======================================================================
+# Load environment variables
+#   - cerfserver.env is ALWAYS loaded
+#   - .env and .env-override are loaded ONLY when NOT in Docker
+#=======================================================================
+set -a  # auto-export
+
+# Always load cerfserver.env
 source "$SCRIPT_DIR/cerfserver.env"
+
+#-----------------------------------------------------------------------
+# Detect Docker (AFTER cerfserver.env is loaded)
+#-----------------------------------------------------------------------
+IN_DOCKER=false
+if [ "${CERF_VENV}" = "Docker" ]; then
+    IN_DOCKER=true
+fi
+readonly IN_DOCKER
+
+echo "IN_DOCKER=$IN_DOCKER"
+
+#-----------------------------------------------------------------------
+# Load optional local-only env files
+#-----------------------------------------------------------------------
+if [ "$IN_DOCKER" = false ]; then
+    echo "Non-Docker environment: checking for local env files"
+
+    ENV_FILE="$SCRIPT_DIR/cerfServer/.env"
+    ENV_OVERRIDE_FILE="$SCRIPT_DIR/cerfServer/.env-override"
+
+    if [ -f "$ENV_FILE" ]; then
+        echo "Loaded env file: $ENV_FILE"
+        source "$ENV_FILE"
+    else
+        echo "WARNING: env file not found: $ENV_FILE"
+    fi
+
+    # When running locally, the override file usually will not exist, so we won't issue an error
+    if [ -f "$ENV_OVERRIDE_FILE" ]; then
+        echo "Loaded env override file: $ENV_OVERRIDE_FILE"
+        source "$ENV_OVERRIDE_FILE"
+    fi
+else
+    echo "Docker environment detected: skipping local env files (.env, .env-override)"
+fi
+
+set +a
 
 #=======================================================================
 # Validate RUN_CERF_FLAG_DIRECTORY
@@ -27,7 +72,6 @@ fi
 
 # Normalize: remove any trailing slash so we don't end up with // in paths
 RUN_CERF_FLAG_DIRECTORY="${RUN_CERF_FLAG_DIRECTORY%/}"
-
 
 # Use the same directory variable for cerfServer
 cerfServer="$SCRIPT_DIR"
@@ -51,7 +95,7 @@ exec > >(tee -a "$LOGFILE_DEV") 2>&1
 #   - Activate that venv so “python3” and “pip” later refer to the venv
 #=======================================================================
 ensure_virtualenv() {
-    if [ -n "${CERF_VENV}" ] && [ "${CERF_VENV}" != "Docker" ]; then
+    if [ -n "${CERF_VENV}" ] && [ "$IN_DOCKER" = false ]; then
         VENV_PATH="$cerfServer/${CERF_VENV}"
 
         if [ ! -d "$VENV_PATH" ]; then
@@ -116,7 +160,6 @@ for arg in "$@"; do
   case $arg in
     --load-gages)
       LOAD_GAGE_DATA=true
-      shift
       ;;
   esac
 done
@@ -131,6 +174,7 @@ generate_git_info() {
     key=${repo_url##*/}
     key=${key%.git}
     GIT_INFO_PATH=$SCRIPT_DIR/${key}_git_info.json
+
     echo "Generating ${GIT_INFO_PATH}..."
     jq -n \
         --arg commit_hash "$(git rev-parse HEAD)" \
@@ -152,7 +196,8 @@ generate_git_info() {
 #=======================================================================
 CERF_GAGES_FPRINT="${RUN_CERF_FLAG_DIRECTORY}/.gages_fingerprint"
 echo "Gages fingerprint $CERF_GAGES_FPRINT"
-ls -al "$CERF_GAGES_FPRINT"
+[ -e "$CERF_GAGES_FPRINT" ] && ls -al "$CERF_GAGES_FPRINT"
+
 
 # Compute a stable combined SHA256 of init_gages.py + all files in gage_data
 compute_gages_fingerprint() {
@@ -293,7 +338,6 @@ ensure_superuser() {
         echo "createsuperuser failed with exit code $status"
         return $status
     fi
-
 }
 
 #=======================================================================
@@ -318,11 +362,10 @@ run_migrate_with_showmigrations() {
     fi
 }
 
-
 #=======================================================================
 # Non-Docker environment setup (packages, deps, git info)
 #=======================================================================
-if [ "${CERF_VENV}" != "Docker" ]; then
+if [ "$IN_DOCKER" = false ]; then
     # Docker takes care of installing dependencies in the Dockerfile
     if [ -n "${CERF_VENV}" ]; then
         ensure_virtualenv  # Activates and creates virtualenv if needed
@@ -416,7 +459,6 @@ echo
 
 echo
 echo --------------------------------------------------------
-set +x
 run_manage_command init_sql
 status=$?
 
@@ -491,36 +533,29 @@ else
     fi
 fi
 
- echo
- echo --------------------------------------------------------
+echo
+echo --------------------------------------------------------
 #=======================================================================
-# Ensure forecast_forcing_templates in ngen-static-files
+# Ensure bmi_forcing_templates in ngen-static-files
 #   - Docker: copy from image-staged /ngencerf/prebuilt into bind-mounted dir
 #   - Non-Docker: clone from Git into /ngencerf/data/ngen-static-files
 #=======================================================================
-
-# Detect Docker (either /.dockerenv or explicit CERF_VENV flag)
-IN_DOCKER=false
-if [ -f "/.dockerenv" ] || [ "${CERF_VENV}" = "Docker" ]; then
-    IN_DOCKER=true
-fi
-
 STATIC_DIR="/ngencerf/data/ngen-static-files"
-TARGET_DIR="${STATIC_DIR}/forecast_forcing_templates"
+TARGET_DIR="${STATIC_DIR}/bmi_forcing_templates"
 
 # Create static base and ensure a clean target location (shared logic)
 mkdir -p "$STATIC_DIR"
 rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 
-if [ "${CERF_VENV}" = "Docker" ]; then
-    echo "Running in Docker: replacing forecast_forcing_templates from prebuilt data"
+if [ "$IN_DOCKER" = true ]; then
+    echo "Running in Docker: replacing bmi_forcing_templates from prebuilt data"
 
-    PREBUILT_DIR="/ngencerf/prebuilt/forecast_forcing_templates"
+    PREBUILT_DIR="/ngencerf/prebuilt/bmi_forcing_templates"
 
     # Verify Dockerfile populated this directory
     if [ ! -d "$PREBUILT_DIR" ]; then
-        echo "ERROR: Prebuilt forecast_forcing_templates not found at $PREBUILT_DIR"
+        echo "ERROR: Prebuilt bmi_forcing_templates not found at $PREBUILT_DIR"
         echo "Dockerfile must populate this directory during build."
         exit 1
     fi
@@ -532,7 +567,7 @@ if [ "${CERF_VENV}" = "Docker" ]; then
 else
     NGEN_FORCING_URL="https://github.com/NGWPC/ngen-forcing.git"
 
-    echo "Not running in Docker: cloning forecast_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
+    echo "Not running in Docker: cloning bmi_forcing_templates from ${NGEN_FORCING_URL}, branch: ${NGEN_FORCING_TAG}"
 
     cd "$STATIC_DIR"
 
@@ -550,14 +585,14 @@ else
     cd "$STATIC_DIR"
     rm -rf tmp-ngen-forcing
 
-    echo "forecast_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
+    echo "bmi_forcing_templates updated successfully in $TARGET_DIR (non-Docker)."
     echo
 fi
 
 #=======================================================================
 # Flush Redis cache in dev mode
 #=======================================================================
-if [ "${CERF_VENV}" != "Docker" ]; then
+if [ "$IN_DOCKER" = false ]; then
     echo "Flushing Redis cache (dev)..."
     if command -v redis-cli >/dev/null 2>&1; then
         redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"

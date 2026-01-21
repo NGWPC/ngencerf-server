@@ -12,18 +12,21 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 import codecs
 import os
 import re
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from enum import StrEnum, auto
 
+from datetimerange import DateTimeRange
 from dotenv import load_dotenv
 
 from calibration.enums_vanilla import NgenEnvironmentEnum, ScriptEnum, JobType
+
+DJANGO_START_TIME = datetime.now(tz=timezone.utc)
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() in ("1", "true", "yes")
+DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 print(f'Loading values from {dotenv_path}')
@@ -42,7 +45,7 @@ NGENCERF_COPYRIGHT = f"© 2024-{datetime.now().year}, RTX"
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY")
+SECRET_KEY = os.getenv("CERF_SERVER_SECRET_KEY", "not-so-secret-key")
 
 # Application definition
 INSTALLED_APPS = [
@@ -212,8 +215,15 @@ FORCING_DATA_DIRS_RETRO = {
     "NWM Retrospective": 's3://ngwpc-forcing/retrospective_2.2'
 }
 
+# Default time range for BMI forcing data
+FORCING_BMI_DATE_RANGE = DateTimeRange("1980-01-01T00:00:00+0000", "2024-12-31T23:59:59+0000")
+USE_BMI_FORCING = str(os.getenv('USE_BMI_FORCING', 'true')).lower() == 'true'
+
 # Translate urls from the format s3://bucket-name to S3_MOUNT_POINT/bucket
-S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
+# S3_MOUNT_POINT = os.getenv('S3_MOUNT_POINT', os.path.join(os.path.expanduser("~"), 's3'))
+
+# Location of archive files
+NGENCERF_ARCHIVE_S3_PATH = os.getenv('NGENCERF_ARCHIVE_S3_PATH')
 
 # -----------------------------
 # ngen/nwm-cal-mgr Locations
@@ -250,10 +260,8 @@ os.makedirs(NGEN_LOGGING_DIR, exist_ok=True)
 NGEN_STATIC_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-static-files')
 NGEN_CAL_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'ngen-cal-work')
 NGEN_VERIFICATION_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'verification_work')
-NGEN_FORECAST_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'forecast_work')
-os.makedirs(NGEN_FORECAST_WORK_DIR, exist_ok=True)
-# On PW, the server runs as root, but the Slurm jobs do not, so we need to adjust the permissions
-os.chmod(NGEN_FORECAST_WORK_DIR, 0o777)
+# The NGEN_BMI_FORCING_WORK_DIR directory is owned by ngen-forcing.  It will be responsible for creating it
+NGEN_BMI_FORCING_WORK_DIR = os.path.join(NGEN_CAL_MOUNT_POINT, 'bmi_forcing_work')
 
 # -----------------------------
 # Forcing environments

@@ -35,9 +35,6 @@ urlpatterns = [
     ##################################
     path('calibration/get_gage/', calibration_gage_views.get_gage, name="getGage"),
     path('calibration/load_gage_tab/', calibration_gage_views.load_gage_tab, name="loadGageTab"),
-    path('calibration/upload_observational_data/', calibration_gage_views.upload_observational_data, name="uploadObservationalData"),
-    path('calibration/upload_forcing_data/', calibration_gage_views.upload_forcing_data, name="uploadForcingData"),
-    path('calibration/upload_geopackage_data/', calibration_gage_views.upload_geopackage_data, name="uploadGeopackageData"),
     path('calibration/save_gage_tab/', calibration_gage_views.save_gage_tab, name="saveGageTab"),
     path('calibration/update_and_get_gage_status/', calibration_gage_views.update_and_get_gage_status, name="updateAndGetGageStatus"),
 
@@ -95,7 +92,7 @@ urlpatterns = [
     path('calibration/get_log_status/', calibration_evaluation_views.get_log_status, name="getLogStatus"),
     path('calibration/get_calibration_job_zip/', calibration_evaluation_views.get_calibration_job_zip, name="getCalibrationJobZip"),
     path('calibration/start_zip_for_calibration_job/', calibration_evaluation_views.start_zip_for_calibration_job, name="startZipForCalibrationJob"),
-    path('calibration/get_zip_status/<int:calibration_run_id>/', calibration_evaluation_views.get_zip_status, name="getZipStatus"),
+    path('calibration/get_zip_status/', calibration_evaluation_views.get_zip_status, name="getZipStatus"),
     path('calibration/download_calibration_zip/', calibration_evaluation_views.download_calibration_zip, name="downloadCalibrationZip"),
 
 
@@ -113,11 +110,8 @@ urlpatterns = [
     ##################################
     # Verification
     ##################################
-    path('calibration/load_verification_job/', calibration_verification_views.load_verification_job, name="loadVerificationJob"),
     path('calibration/get_verification_jobs/', calibration.views.get_jobs_views.get_verification_jobs, name="getVerificationJobs"),
-    path('calibration/create_verification_job/', calibration_verification_views.create_verification_job, name="createVerificationJob"),
-    path('calibration/get_verification_status/', calibration_verification_views.get_verification_status, name="getVerificationStatus"),
-    path('calibration/run_verification/', calibration_verification_views.run_verification, name="runVerification"),
+    path('calibration/create_and_run_verification_job/', calibration_verification_views.create_and_run_verification_job, name="createVerificationJob"),
     path('calibration/get_verification_plot_names/', calibration_verification_views.get_verification_plot_names, name="getVerificationPlotNames"),
     path('calibration/get_verification_plot/', calibration_verification_views.get_verification_plot, name="getVerificationPlot"),
     path('calibration/delete_verification_job/', calibration_verification_views.delete_verification_job, name="deleteVerificationJob"),
