@@ -590,16 +590,21 @@ else
 fi
 
 #=======================================================================
-# Flush Redis cache in dev mode
+# Flush Redis cache at startup (all environments)
+#   - Redis is cache-only; safe to clear on every server start
+#   - In Docker, Redis is reached via the service name "redis"
 #=======================================================================
-if [ "$IN_DOCKER" = false ]; then
-    echo "Flushing Redis cache (dev)..."
-    if command -v redis-cli >/dev/null 2>&1; then
-        redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
+echo "Flushing Redis cache..."
+if command -v redis-cli >/dev/null 2>&1; then
+    if [ "$IN_DOCKER" = true ]; then
+        redis-cli -h redis -p 6379 FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
     else
-        echo "WARNING: redis-cli not found; skipping Redis flush"
+        redis-cli FLUSHALL || echo "WARNING: Redis FLUSHALL failed"
     fi
+else
+    echo "WARNING: redis-cli not found; skipping Redis flush"
 fi
+
 
 
 #=======================================================================
