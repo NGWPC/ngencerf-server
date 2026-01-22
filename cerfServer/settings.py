@@ -107,6 +107,11 @@ CORS_ALLOWED_ORIGINS = [
 # Needed for zip file download
 CORS_EXPOSE_HEADERS = ['Content-Disposition']
 
+ZIP_DIR = os.path.join('/tmp', 'ngencerf-zips')
+os.makedirs(ZIP_DIR, exist_ok=True)
+ZIP_TTL_SECONDS = 7200  # 2 hours
+
+
 ROOT_URLCONF = 'cerfServer.urls'
 
 TEMPLATES = [

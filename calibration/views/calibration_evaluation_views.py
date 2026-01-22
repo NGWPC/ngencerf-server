@@ -1,9 +1,9 @@
-import io
 import json
 import logging
 import math
 import os
 import threading
+import time
 import zipfile
 from collections import defaultdict
 from datetime import datetime
@@ -11,7 +11,7 @@ from datetime import datetime
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import F, QuerySet
-from django.http import HttpResponse, FileResponse
+from django.http import FileResponse
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 from rest_framework import status
 from rest_framework.decorators import api_view
@@ -371,7 +371,7 @@ def validate_log_name(log_category: LogCategory, log_name: LogName):
     :param log_name: The log name to validate.
     :raises ValueError: If the log name is not valid for the given category.
     """
-    valid_logs = VALID_LOG_NAMES.get(log_category)
+    valid_logs = VALID_LOG_NAMES.get(log_category, [])
 
     valid_log_values = [log.value for log in valid_logs]
 
@@ -772,26 +772,36 @@ def find_ngen_stdout_log(run: CalibrationRun | ValidationRun) -> str | None:
 
 def get_zip_cache_key(calibration_run_id: int) -> str:
     """
-    Returns the standardized cache key used to track zip job status.
-    This ensures consistent key usage across all endpoints.
+    Returns the standardized cache key used to track zip job status for a given calibration run.
+
+    - All zip-related endpoints use this key to read/write shared status in the Django cache.
+    - The cache value is a dict with fields such as: status, path, started_at, download_name.
+
+    :param calibration_run_id: CalibrationRun ID.
+    :return: Cache key string used for this run's zip status.
     """
     return f'zip_status_{calibration_run_id}'
 
 
-downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED}]
+downloadable_statuses = [s for s in StatusEnum if s not in {StatusEnum.READY, StatusEnum.SAVED, StatusEnum.SUBMITTED, StatusEnum.RUNNING}]
 
 
 @api_view(['GET', 'POST'])
 @handle_exceptions
-def get_calibration_job_zip(request: Request) -> HttpResponse:
+def get_calibration_job_zip(request: Request) -> FileResponse | Response:
     """
-    Zips up all files in the user's working directory for the given calibration_job_id and returns the
-    resulting file as a response to the browser.
+    Synchronous ZIP download endpoint (primarily for the CLI).
 
-    :param request: The HTTP request object containing calibration run data.
-    :return: ZIP response containing all files in the user's working directory for the given calibration_job_id
+    - Builds a ZIP of the calibration run's job_data_dir on disk (not in memory).
+    - Writes to a temporary file first and then atomically renames it into place.
+    - Streams the completed ZIP back as a FileResponse attachment.
 
-    This is a synchronous endpoint that is not currently used by the UI, but is used by the CLI
+    Notes:
+    - This endpoint does not use the background cache-based zip workflow.
+    - The created ZIP artifact is left on disk and later removed by cleanup_expired_zips().
+
+    :param request: HTTP request containing calibration_run_id (POST body or query params).
+    :return: FileResponse streaming the ZIP, or a formatted error Response.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -805,25 +815,63 @@ def get_calibration_job_zip(request: Request) -> HttpResponse:
     if error_return:
         return error_return
 
-    bytes_io = io.BytesIO()
+    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
+
     job_data_dir = calibration_run.job_data_dir
 
-    with zipfile.ZipFile(bytes_io, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for root, _, files in os.walk(job_data_dir):
-            for file in files:
-                file_path = os.path.join(root, file)
-                arc_name = os.path.relpath(file_path, job_data_dir)
-                try:
-                    zip_file.write(file_path, arc_name)
-                except FileNotFoundError:
-                    logger.error(f"Unable to read file: {arc_name} while building zip file")
+    # Canonical download name (no timestamp)
+    zip_base_name = f"{os.path.basename(job_data_dir)}_{calibration_run.user_formulation_name}"
+    download_name = f"{zip_base_name}.zip"
 
-    response = HttpResponse(bytes_io.getvalue(), content_type='application/zip')
-    zip_name = f"{os.path.basename(job_data_dir)}_{calibration_run.user_formulation_name}"
-    response['Content-Disposition'] = f'attachment; filename="{zip_name}.zip"'
+    # Unique on-disk name (avoid collisions)
+    zip_filename = f"{zip_base_name}_{int(time.time())}.zip"
+    zip_path = os.path.join(settings.ZIP_DIR, zip_filename)
 
-    logger.debug(f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
-    return response
+    # Write to a temp file first, then atomically rename into place.
+    tmp_path = f"{zip_path}.tmp"
+
+    # Build zip to temp path first, then atomically place the final file
+    try:
+        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for root, _, files in os.walk(job_data_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arc_name = os.path.relpath(file_path, job_data_dir)
+                    try:
+                        zip_file.write(file_path, arc_name)
+                    except FileNotFoundError:
+                        logger.warning(f"File not found during zipping: {arc_name}")
+
+        os.replace(tmp_path, zip_path)
+        tmp_path = None
+
+    finally:
+        # Best-effort cleanup of temp zip if something failed mid-build
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except FileNotFoundError:
+                pass
+            except Exception:
+                logger.exception(f"Failed deleting temp zip: {tmp_path}")
+
+    # Stream the finished zip back
+    zip_file = None
+    try:
+        zip_file = open(zip_path, "rb")
+        response = FileResponse(zip_file, content_type="application/zip")
+        apply_zip_download_headers(response, download_name)
+
+        return response
+
+    except Exception as e:
+        if zip_file is not None:
+            try:
+                zip_file.close()
+            except Exception:
+                logger.debug("Failed to close file handle", exc_info=True)
+        logger.exception(f"Failed to serve zip file for Calibration Job {calibration_run_id}: {e}")
+        return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
 
 
 @extend_schema(
@@ -845,8 +893,20 @@ def get_calibration_job_zip(request: Request) -> HttpResponse:
 @handle_exceptions
 def start_zip_for_calibration_job(request: Request) -> Response:
     """
-    Starts the process to zip calibration job files in a background thread.
-    Returns immediately with a job ID (calibration_run_id).
+    Starts a background job to create a ZIP for the calibration run's job_data_dir.
+
+    - Sets a shared cache entry (status=pending) keyed by get_zip_cache_key(calibration_run_id).
+    - Runs the zip build in a daemon thread and updates cache to status=done (or status=error).
+    - The produced ZIP file is written to settings.ZIP_DIR and is later removed by cleanup_expired_zips().
+
+    Cache fields written:
+    - status: "pending" | "done" | "error"
+    - path: absolute path to the built ZIP (done only)
+    - started_at: ISO timestamp when the job began
+    - download_name: canonical filename presented to the client (done only)
+
+    :param request: HTTP request containing calibration_run_id (POST body or query params).
+    :return: JSON message with calibration_run_id, or a formatted error Response.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -857,6 +917,8 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 
     calibration_run_id = validator.get('calibration_run_id')
     cache_key = get_zip_cache_key(calibration_run_id)
+
+    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
 
     run, error_return = get_calibration_run(calibration_run_id, request.user, run_status=downloadable_statuses)
     if error_return:
@@ -872,21 +934,34 @@ def start_zip_for_calibration_job(request: Request) -> Response:
         })
 
     # Mark status as pending (shared across workers)
+    started_at = datetime.now().isoformat()
     cache.set(cache_key, {
         "status": "pending",
         "path": None,
-        "started_at": datetime.now().isoformat()
-    }, timeout=None)
+        "started_at": started_at,
+        "download_name": None,  # canonical download name (filled in when done)
+    }, timeout=None)  # no timeout while building; "done" status gets a TTL
 
     # Launch zip process in background
     def zip_job():
         start_time = datetime.now()
+        tmp_path = None
+
         try:
             job_data_dir = run.job_data_dir
-            zip_name = f"{os.path.basename(job_data_dir)}_{run.user_formulation_name}"
-            zip_path = os.path.join('/tmp', f'{zip_name}.zip')
 
-            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Canonical download name (NO timestamp)
+            zip_base_name = f"{os.path.basename(job_data_dir)}_{run.user_formulation_name}"
+            download_name = f"{zip_base_name}.zip"
+
+            # Unique on-disk filename includes timestamp to avoid collisions
+            zip_filename = f"{zip_base_name}_{int(time.time())}.zip"
+            zip_path = os.path.join(settings.ZIP_DIR, zip_filename)
+
+            # Write to a temp file first, then atomically rename into place.
+            tmp_path = f"{zip_path}.tmp"
+
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 for root, _, files in os.walk(job_data_dir):
                     for file in files:
                         file_path = os.path.join(root, file)
@@ -896,12 +971,17 @@ def start_zip_for_calibration_job(request: Request) -> Response:
                         except FileNotFoundError:
                             logger.warning(f"File not found during zipping: {arc_name}")
 
+            # Atomic replace: downloader will never see a partially-written zip.
+            os.replace(tmp_path, zip_path)
+            tmp_path = None  # prevent cleanup from deleting the final zip if names ever change
+
             # Mark the zip job as complete
             cache.set(cache_key, {
-                'status': 'done',
-                'path': zip_path,
-                'started_at': cache.get(cache_key).get('started_at'),
-            }, timeout=3600)  # Once it's done, don't leave it around forever
+                "status": "done",
+                "path": zip_path,
+                "started_at": started_at,
+                "download_name": download_name,
+            }, timeout=3600)  # cache entry TTL; file TTL is controlled separately by ZIP_TTL_SECONDS
 
             duration = datetime.now() - start_time
             zip_size = os.path.getsize(zip_path)
@@ -912,23 +992,36 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 
         except Exception as e:
             cache.set(cache_key, {
-                'status': 'error',
-                'path': None,
-                'started_at': cache.get(cache_key).get('started_at')
+                "status": "error",
+                "path": None,
+                "started_at": started_at,
+                "download_name": None,
             }, timeout=3600)  # Once it's done, don't leave it around forever
             duration = datetime.now() - start_time
             logger.exception(f"Failed to zip Calibration Job {run.id} after {duration.total_seconds():.2f} seconds: {e}")
 
+        finally:
+            # Best-effort cleanup of any temp file left behind
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except FileNotFoundError:
+                    pass
+                except Exception:
+                    logger.exception(f"Failed deleting temp zip: {tmp_path}")
+
     threading.Thread(target=zip_job, daemon=True).start()
 
-    response = ({"message": "Zip job started", "calibration_run_id": calibration_run_id})
+    response = {"message": "Zip job started", "calibration_run_id": calibration_run_id}
 
     response_validator, error_response = validate_response(GenericMessageWithIdResponseSerializer, response)
     if error_response:
         return error_response
 
     logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
+        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - '
+        f'{json.dumps(response_validator.data)}'
+    )
     return Response(response_validator.data)
 
 
@@ -951,11 +1044,20 @@ def start_zip_for_calibration_job(request: Request) -> Response:
 @handle_exceptions
 def get_zip_status(request: Request) -> Response:
     """
-    Polling endpoint that returns the current status of a background zip job.
+    Returns the current status of a background zip job started by start_zip_for_calibration_job().
 
-    - Returns zip job status: pending | done | error
-    - Reads from shared cache set by start_zip_for_calibration_job
-    - Safe for frequent polling (every 2–5 seconds)
+    - Reads the shared cache entry keyed by get_zip_cache_key(calibration_run_id).
+    - Does not start work; it only reports what is currently in cache.
+    - Intended for polling until zip_status becomes "done" (or "error").
+
+    Response fields:
+    - calibration_run_id
+    - zip_status: "pending" | "done" | "error"
+    - path: ZIP path when done (used by download_calibration_zip)
+    - started_at: ISO timestamp when the job began
+
+    :param request: HTTP request containing calibration_run_id (POST body or query params).
+    :return: JSON response with zip status information, or a formatted error Response.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -966,6 +1068,8 @@ def get_zip_status(request: Request) -> Response:
 
     calibration_run_id = validator.get("calibration_run_id")
     cache_key = get_zip_cache_key(calibration_run_id)
+
+    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
 
     zip_status = cache.get(cache_key)
     if not zip_status:
@@ -1006,21 +1110,21 @@ def get_zip_status(request: Request) -> Response:
             description="Internal server error"
         )
     },
-    description="Returns the zipped calibration job if ready. Automatically deletes the file after sending."
+    description="Returns the zipped calibration job if ready."
 )
 @api_view(['GET', 'POST'])
 @handle_exceptions
 def download_calibration_zip(request: Request) -> FileResponse | Response:
     """
-    Serves the zipped calibration job data for download after it has been prepared.
+    Downloads the ZIP produced by start_zip_for_calibration_job() once it is ready.
 
-    - Extracts calibration_run_id from POST or GET parameters.
-    - Validates that the zip process has completed.
-    - Returns the ZIP file as an attachment if available.
-    - Returns an error response if the file is not ready or missing.
+    - Validates that the cached zip status is "done".
+    - Streams the ZIP file at the cached path as a FileResponse attachment.
+    - Does not delete the ZIP immediately after returning (cleanup is handled separately by cleanup_expired_zips()).
+    - Touches the ZIP mtime via os.utime() to extend its on-disk TTL window.
 
-    :param request: The HTTP request object.
-    :return: HTTP response with the ZIP file or a formatted error response.
+    :param request: HTTP request containing calibration_run_id (POST body or query params).
+    :return: FileResponse streaming the ZIP, or a formatted error Response.
     """
     data = request.data if request.method == 'POST' else request.query_params.dict()
     logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
@@ -1031,73 +1135,174 @@ def download_calibration_zip(request: Request) -> FileResponse | Response:
 
     calibration_run_id = validator.get("calibration_run_id")
     cache_key = get_zip_cache_key(calibration_run_id)
+
+    cleanup_expired_zips()  # opportunistically delete old ZIPs (lazy TTL cleanup)
+
     zip_status = cache.get(cache_key)
 
     if not zip_status:
         return ResponseError(f"Zip job not found for Calibration Job {calibration_run_id}", http_status=status.HTTP_404_NOT_FOUND)
 
-    if zip_status["status"] != "done":
+    if zip_status.get("status") != "done":
         return ResponseError(f"Zip file for Calibration Job {calibration_run_id} is not ready yet")
 
     zip_path = zip_status.get("path")
     if not zip_path or not os.path.exists(zip_path):
         return ResponseError(f"Zip file is missing for Calibration Job {calibration_run_id}")
 
+    # Mark as "in use" by bumping mtime. Cleanup uses mtime, so this postpones TTL deletion.
+    try:
+        os.utime(zip_path, None)
+    except Exception:
+        # Not fatal; cleanup is best-effort.
+        logger.debug(f"Failed to utime(zip_path): {zip_path}", exc_info=True)
+
     zip_size = os.path.getsize(zip_path)
-    logger.info(
-        f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB"
-    )
+    logger.info(f"Serving zip file for Calibration Job {calibration_run_id} — size: {zip_size / 1024 / 1024:.2f} MB")
 
     zip_file = None
     try:
         zip_file = open(zip_path, 'rb')
         response = FileResponse(zip_file, content_type='application/zip')
+
         origin = request.headers.get("Origin")
-        if origin in settings.CORS_ALLOWED_ORIGINS:
-            response["Access-Control-Allow-Origin"] = origin
 
-        filename = os.path.basename(zip_path)
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        response['Content-Length'] = str(zip_size)
-
-        # Prevent browsers/intermediaries from caching the response.
-        # Ensures the client always performs a fresh request so Nginx does not reuse a stale/broken cached stream.
-        response['Cache-Control'] = 'no-cache'
-
-        # Tell Nginx NOT to buffer the file before sending it downstream.
-        # This avoids Nginx holding a 1.5 GB file in memory/disk buffers, which can trigger timeouts or stall the transfer.
-        response['X-Accel-Buffering'] = 'no'
-        response['Content-Encoding'] = 'identity'  # Prevent response from being gzipped (especially ZIP files) by middleware
-
-        def cleanup():
-            try:
-                os.remove(zip_path)
-                logger.info(f"Deleted zip file after download: {zip_path}")
-            except Exception as ex:
-                logger.warning(f"Failed to delete zip file {zip_path}: {ex}")
-            cache.delete(cache_key)
-
-        # ------------------------------------------------------------------
-        # Wrap the original response.close() method so cleanup() runs first.
-        # This ensures the file and cache entry are removed immediately
-        # after the response is finished sending to the client.
-        # ------------------------------------------------------------------
-        original_close = response.close
-
-        def wrapped_close():
-            logger.debug(f"Calling wrapped_close() for {zip_path}")
-            cleanup()
-            return original_close()
-
-        response.close = wrapped_close
-        # ------------------------------------------------------------------
-
+        # Friendly filename for the browser (canonical), not the unique on-disk name
+        download_name = zip_status.get("download_name") or f"calibration_{calibration_run_id}.zip"
+        apply_zip_download_headers(response, download_name, origin=origin)
         logger.debug(
-            f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)}')
+            f'Returning zip for Calibration Job {calibration_run_id} to {get_user_email(request)} '
+            f'from {get_caller_name()}(){get_elapsed_str(request)}'
+        )
         return response
 
-    except IOError as e:
-        if zip_file:
-            zip_file.close()
-        logger.exception(f"Failed to read zip file for Calibration Job {calibration_run_id}: {e}")
+    except Exception as e:
+        # If we opened the file but didn't hand it off successfully, close it here.
+        if zip_file is not None:
+            try:
+                zip_file.close()
+            except Exception:
+                logger.debug("Failed to close file handle", exc_info=True)
+        logger.exception(f"Failed to serve zip file for Calibration Job {calibration_run_id}: {e}")
         return ResponseError(f"Failed to read zip file for Calibration Job {calibration_run_id}")
+
+
+_CLEANUP_LAST_RUN_KEY = "zip_cleanup_last_run"
+_CLEANUP_LOCK_KEY = "zip_cleanup_lock"
+
+
+def cleanup_expired_zips() -> None:
+    """
+    Opportunistically deletes expired ZIP artifacts created by zip endpoints.
+
+    Why this exists:
+    - ZIP files are not deleted immediately after returning FileResponse, because the server can finish
+      "sending" while the client is still receiving bytes (and reverse proxies may buffer).
+      Deleting too early can break large downloads.
+    - Instead, ZIPs live on disk for settings.ZIP_TTL_SECONDS and are deleted lazily when any zip-related
+      endpoint runs.
+
+    Behavior:
+    - Scans settings.ZIP_DIR for:
+      - "*.zip" files older than (now - settings.ZIP_TTL_SECONDS)
+      - "*.tmp" files older than (now - settings.ZIP_TTL_SECONDS) from interrupted builds
+    - Throttled to run at most once every 5 minutes across all workers (shared cache timestamp).
+    - Uses a shared cache lock so only one worker performs deletions at a time.
+
+    :return: None
+    """
+    logger.debug(f"ZIP cleanup sweep: dir={settings.ZIP_DIR}, ttl={settings.ZIP_TTL_SECONDS}s")
+
+    now = time.time()
+
+    # Run at most every 5 minutes across all workers.
+    last = cache.get(_CLEANUP_LAST_RUN_KEY)
+    if last and (now - float(last)) < 300:
+        return
+
+    # Acquire a short-lived lock across workers to avoid multiple processes deleting simultaneously.
+    if not cache.add(_CLEANUP_LOCK_KEY, "1", timeout=60):
+        return
+
+    try:
+        # Record that cleanup ran (even if nothing is deleted) to prevent repeated scans.
+        cache.set(_CLEANUP_LAST_RUN_KEY, now, timeout=24 * 3600)
+
+        cutoff = now - settings.ZIP_TTL_SECONDS
+
+        # If ZIP_DIR doesn't exist (misconfig or first-run), just no-op.
+        if not os.path.isdir(settings.ZIP_DIR):
+            return
+
+        deleted_zip = 0
+        deleted_tmp = 0
+
+        for name in os.listdir(settings.ZIP_DIR):
+            # Only manage artifacts created by this feature.
+            is_zip = name.endswith(".zip")
+            is_tmp = name.endswith(".tmp")
+            if not (is_zip or is_tmp):
+                continue
+
+            path = os.path.join(settings.ZIP_DIR, name)
+
+            # File might disappear between listdir() and stat() if another worker deletes it.
+            try:
+                st = os.stat(path)
+            except FileNotFoundError:
+                continue
+
+            # Delete files older than the TTL.
+            if st.st_mtime < cutoff:
+                try:
+                    os.remove(path)
+                    if is_zip:
+                        deleted_zip += 1
+                    else:
+                        deleted_tmp += 1
+                except FileNotFoundError:
+                    # Another worker/process deleted it after our stat().
+                    pass
+                except Exception:
+                    logger.exception(f"Failed deleting expired artifact: {path}")
+
+        if deleted_zip or deleted_tmp:
+            logger.info(
+                f"Lazy cleanup deleted {deleted_zip} expired zip(s) and {deleted_tmp} expired tmp file(s) from {settings.ZIP_DIR}"
+            )
+
+    finally:
+        # Always release the lock.
+        cache.delete(_CLEANUP_LOCK_KEY)
+
+
+def apply_zip_download_headers(response: FileResponse, download_name: str, origin: str | None = None) -> FileResponse:
+    """
+    Apply consistent headers for streaming a ZIP download.
+
+    - Forces attachment download name.
+    - Prevents any caching or storage by browsers and proxies.
+    - Disables Nginx buffering to allow direct streaming of large files.
+    - Prevents middleware/proxies from applying gzip or other content encodings.
+    - Optionally sets CORS Access-Control-Allow-Origin for allowed origins.
+
+    :param response: FileResponse already initialized with the ZIP file handle.
+    :param download_name: Filename presented to the client.
+    :param origin: Request Origin header value (optional).
+    :return: The same response object (mutated).
+    """
+    if origin and origin in settings.CORS_ALLOWED_ORIGINS:
+        response["Access-Control-Allow-Origin"] = origin
+
+    response["Content-Disposition"] = f'attachment; filename="{download_name}"'
+
+    # Do not allow browsers or proxies to store this response.
+    response["Cache-Control"] = "no-store"
+    response["Pragma"] = "no-cache"  # for older proxies
+
+    # Tell Nginx NOT to buffer the file before sending it downstream.
+    # This avoids Nginx holding a 1.5 GB file in memory/disk buffers, which can trigger timeouts or stall the transfer.
+    response["X-Accel-Buffering"] = "no"
+    response["Content-Encoding"] = "identity"  # Prevent response from being gzipped (especially ZIP files) by middleware
+
+    return response
