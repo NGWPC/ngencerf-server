@@ -269,14 +269,14 @@ def save_gage_tab(request: Request):
         # Get Forcing data
 
         # Determine requested forcing source
-        requested = (
+        fource_source_requested = (
             ForcingSourceEnum.get_instance(forcing_source_requested_name)
             if forcing_source_requested_name
             else None
         )
 
         # Decide whether we need to fetch BEFORE mutating the run
-        needs_fetch = (
+        needs_forcing_fetch = (
                 forcing_source_requested_name
                 and (
                         not run.forcing_source_requested
@@ -285,9 +285,9 @@ def save_gage_tab(request: Request):
         )
 
         # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
-        run.forcing_source_requested = requested
+        run.forcing_source_requested = fource_source_requested
 
-        if needs_fetch:
+        if needs_forcing_fetch:
             try:
                 get_forcing_data_from_s3(run, forcing_source_requested_name)
             except DataServicesException as e:
@@ -298,7 +298,7 @@ def save_gage_tab(request: Request):
                     'status_code': e.status_code if e.status_code else None
                 })
         elif not forcing_source_requested_name:
-            # No forcing requested → clear any existing forcing state
+            # No forcing fource_source_requested → clear any existing forcing state
             run.forcing_eds_dir_path = None
             run.forcing_source_actual = None
 
