@@ -1105,7 +1105,7 @@ class GetStatusColdStartSerializer(BaseSerializer):
     performance_metrics = PerformanceMetricsSerializer(required=False)
 
 
-class GetStatusForForecastResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer):
+class GetStatusForForecastResponseSerializer(CommonStatusFieldsMixin, ForecastRunSerializer, CalibrationRunSerializer):
     message = serializers.CharField(required=False)
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
@@ -1123,7 +1123,7 @@ class VerificationJobSerializer(BaseSerializer):
     verification_run_id = serializers.IntegerField(required=True)
 
 
-class GetStatusForVerificationResponseSerializer(CommonStatusFieldsMixin):
+class GetStatusForVerificationResponseSerializer(CommonStatusFieldsMixin, CalibrationRunSerializer):
     message = serializers.CharField(required=True)
     verification_run_id = serializers.IntegerField(required=True)
     forecast_run = GetStatusForForecastResponseSerializer(required=False, allow_null=True)
