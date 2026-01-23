@@ -392,6 +392,7 @@ def get_status_for_forecast(forecast_run: ForecastRun, include_performance_metri
     forecast_data = {
         'message': f'{get_job_description(forecast_run)}, status is {forecast_run.status.name}',
         'forecast_run_id': forecast_run.id,
+        'calibration_run_id': forecast_run.calibration_run_id,
         'status': forecast_run.status.name,
         'configuration': forecast_run.configuration.name,
         'cycle_date': forecast_run.cycle_date,
@@ -469,6 +470,7 @@ def get_status_for_verification(verification_run: VerificationRun, include_perfo
     verification_data = {
         'message': f'{get_job_description(verification_run)}, status is {verification_run.status.name}',
         'verification_run_id': verification_run.id,
+        'calibration_run_id': verification_run.forecast_run.calibration_run_id,
         'status': verification_run.status.name,
         'submit_date': verification_run.submit_date,
         'sent_date': verification_run.sent_date,
@@ -1445,17 +1447,35 @@ ACTIVE_DB_STATUSES = {
 
 def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     """
-    Check whether a run requires Slurm reconciliation.
+    Determine whether a run requires Slurm reconciliation.
 
-    Returns:
-        (needs_reconciliation, sacct_status)
+    A run is eligible for reconciliation only if:
+    - it has a slurm_job_id, and
+    - its DB status is active (RUNNING or SUBMITTED).
 
-    - needs_reconciliation=True means the DB says RUNNING/SUBMITTED
-      but Slurm no longer reports the job as active.
-    - sacct_status is the terminal status reported by sacct (or None).
+    Reconciliation is needed when the DB says the job is active but Slurm no longer
+    reports it as active (squeue empty / job not present).
 
-    This function performs no database writes and is safe to call
-    inside a readonly transaction.
+    Race-condition exception:
+    - If Slurm reports the job as not active but sacct_status is "COMPLETED",
+      reconciliation is skipped. This indicates the job finished and the Slurm
+      callback is expected imminently, so the server status should be left unchanged.
+
+    Fallback behavior note:
+    - This relies on the Slurm callback to eventually arrive and update the run.
+      If callbacks are not reliably delivered in some environments, this logic
+      will need to be extended with a retry or timeout-based reconciliation path
+      (e.g., reconcile if the job remains COMPLETED in Slurm for longer than a
+      configured grace period).
+
+    This function performs no database writes and is safe to call inside a readonly transaction.
+
+    :param run: The run object (CalibrationRun / ValidationRun / ForecastRun / VerificationRun),
+        which must inherit from BaseRun.
+    :return: Tuple (needs_reconciliation, sacct_status)
+        - needs_reconciliation: True if the DB indicates an active job but Slurm indicates the job is not active
+          (excluding the COMPLETED race-condition exception).
+        - sacct_status: The terminal status reported by Slurm accounting (sacct), or None/UNKNOWN if indeterminate.
     """
     if not run.slurm_job_id:
         return False, None
@@ -1470,6 +1490,14 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
         f"Slurm active={slurm_is_active}, sacct_status={sacct_status}"
     )
 
+    # Race-condition exception:
+    if not slurm_is_active and sacct_status == "COMPLETED":
+        logger.info(
+            f"{get_job_description(run)}: slurm inactive but sacct_status=COMPLETED; "
+            f"skipping reconciliation (awaiting callback)"
+        )
+        return False, sacct_status
+
     if not slurm_is_active:
         return True, sacct_status
 
@@ -1478,10 +1506,16 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
 
 def apply_slurm_reconciliation(run: BaseRun, sacct_status: str) -> None:
     """
-    Escalate a run to SERVER_ERROR due to Slurm inconsistency.
+    Escalate a run to SERVER_ERROR due to a Slurm/DB inconsistency.
 
-    The provided sacct_status represents the terminal state reported
-    by Slurm accounting (sacct).
+    This is used when the database indicates the run is active (RUNNING/SUBMITTED),
+    but Slurm indicates the job is no longer active. The run is moved to SERVER_ERROR
+    and a structured reconciliation entry is appended to failure_messages.
+
+    :param run: The run object to mutate (must inherit from BaseRun). This object is expected
+        to be re-fetched under a write-capable transaction (e.g., select_for_update()) by the caller.
+    :param sacct_status: The terminal status reported by Slurm accounting (sacct) for the job.
+    :return: None
     """
     original_status = run.status.name
 
@@ -1510,15 +1544,19 @@ def apply_slurm_reconciliation(run: BaseRun, sacct_status: str) -> None:
 
 def get_slurm_status(slurm_id: int) -> tuple[bool, str | None]:
     """
-    Query Slurm for the current status of a job.
+    Query the Slurm status service for the current status of a job.
 
-    Returns:
-        (is_active, sacct_status)
+    Semantics:
+    - If squeue indicates the job is present/active, that is authoritative and the job is treated as active.
+    - If squeue is empty but sacct provides a terminal status, the job is treated as not active and the
+      terminal status is returned.
+    - If the response is non-200, not JSON, or missing usable fields, the job is treated as not active
+      with status "UNKNOWN" (conservative for reconciliation logic).
 
-    - is_active=True  → job is currently active (squeue authoritative)
-    - is_active=False → job is no longer active
-    - sacct_status is the terminal status reported by sacct,
-      or "UNKNOWN" if indeterminate
+    :param slurm_id: Slurm job ID to query.
+    :return: Tuple (is_active, sacct_status)
+        - is_active: True if the job is currently active (squeue authoritative), False otherwise.
+        - sacct_status: The terminal status from sacct when available, or "UNKNOWN"/None if indeterminate.
     """
     # ----------------------------------
     # TODO Get rid of this debug code
