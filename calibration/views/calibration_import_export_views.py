@@ -93,11 +93,8 @@ def import_calibration_run_data(request: Request,
     logging_config = calibration_run_data.get('logging_config')
 
     geopackage_source_name = calibration_run_data.get('geopackage_source')
-    # geopackage_user_uploaded_file_path = calibration_run_data.get('geopackage_user_uploaded_file_path')
-    forcing_source_name = calibration_run_data.get('forcing_source')
-    # forcing_user_uploaded_dir_path = calibration_run_data.get('forcing_user_uploaded_dir_path')
+    forcing_source_reuqested_name = calibration_run_data.get('forcing_source')
     observational_source_name = calibration_run_data.get('observational_source')
-    # observational_user_uploaded_file_path = calibration_run_data.get('observational_user_uploaded_file_path')
 
     # Prepared (read-only) outputs
     prepared_inputs = None  # from validate_optimizations
@@ -242,22 +239,44 @@ def import_calibration_run_data(request: Request,
         # -----------------------------
         # Forcing data
         # -----------------------------
-        run.forcing_source_requested = run.forcing_source_actual = ForcingSourceEnum.get_instance(forcing_source_name) if forcing_source_name else None
+        # TODO his code is duplicaed form calibration_gage_views.  Need to re-factor once we are fully on BMI
+        # Determine forcing forcing source
+        forcing_source_requested = (
+            ForcingSourceEnum.get_instance(forcing_source_reuqested_name)
+            if forcing_source_reuqested_name
+            else None
+        )
 
-        try:
-            if gage_id and run.forcing_source_requested:
+        # Decide whether we need to fetch BEFORE mutating the run
+        needs_forcing_fetch = (
+                forcing_source_reuqested_name
+                and (
+                        not run.forcing_source_requested
+                        or run.forcing_source_requested.name != forcing_source_reuqested_name
+                )
+        )
+
+        # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
+        run.forcing_source_requested = forcing_source_requested
+
+
+        if gage_id and needs_forcing_fetch:
+            try:
                 get_forcing_data_from_s3(run, run.forcing_source_requested.name)
-                if run.forcing_source_requested != run.forcing_source_actual:
-                    warnings.append(
-                        f'{run.forcing_source_requested.name} forcing data not found.  Using {run.forcing_source_actual.name if run.forcing_source_actual else None}'
-                    )
-        except DataServicesException as e:
-            errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
-            eds_errors.append({
-                'name': 'forcing',
-                'message': str(e),
-                'status_code': e.status_code if e.status_code else None
-            })
+            except DataServicesException as e:
+                errors.append(f"Error retrieving forcing data from Data Services - status code: {e.status_code} - {str(e)}")
+                eds_errors.append({
+                    'name': 'forcing',
+                    'message': str(e),
+                    'status_code': e.status_code if e.status_code else None
+                })
+
+        elif not forcing_source_reuqested_name:
+            # No forcing requested → clear any existing forcing state
+            run.forcing_eds_dir_path = None
+            run.forcing_source_actual = None
+
+        run.forcing_source_requested = ForcingSourceEnum.get_instance(forcing_source_reuqested_name) if forcing_source_reuqested_name else None
 
         # -----------------------------
         # Observational data
