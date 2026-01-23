@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 import toml
+from datetimerange import DateTimeRange
 from django.db import transaction
 from django.db.models import F
 from toml import TomlEncoder
@@ -19,17 +20,15 @@ from calibration.util.caching import get_cached_optimization_inputs, have_LSTM, 
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import normalize_gpkg
 from calibration.util.ngen_locations import CFE_LIB, TOPMD_LIB, SFT_LIB, SLOTH_LIB, SMP_LIB, LASAM_LIB, NOAH_LIB, NGEN_EXE, \
-    PARQUET_DIR, get_forcing_dir_for_job, get_observational_dir_for_job, \
-    get_geopackage_dir_for_job, \
-    PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, get_bmi_config_dir_for_module, get_bmi_config_key, UEB_LIB, NGEN_MODULE_PARAMETERS, \
-    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES
+    get_observational_dir_for_job, \
+    get_observational_file_for_job, get_geopackage_dir_for_job, PET_LIB, SNOW17_LIB, SAC_LIB, NWM_RETROSPECTIVE_DIR, UEB_LIB, NGEN_MODULE_PARAMETERS, \
+    PARALLEL_NGEN_EXE, PARTITION_GENERATOR_EXE, BMI_FORCING_TEMPLATES, get_forcing_dir_for_job
 from calibration.views.calibration_formulation_views import validate_formulation
 from calibration.views.calibration_secondary_data_views import should_generate_swe, should_generate_soil_moisture
 from calibration.views.calibration_tuning_views import get_full_evaluation_date_range, validate_time_range_against_data
 from calibration.views.called_from import called_from
 from calibration.views.common import TOKEN_NGEN_SCOPE, generate_custom_token, SLOTH, format_datetime, join_with_or, ErrorReport, readonly_transaction
-from calibration.views.data_services import should_use_bmi_forcing
-from calibration.views.mpi_rules import get_mpi_nodes
+from calibration.views.data_services import should_use_bmi_forcing, get_observational_data_from_data_services
 from cerfServer.settings import NGEN_ENVIRONMENT, NGEN_BMI_FORCING_WORK_DIR
 
 logger = logging.getLogger(__name__)
@@ -122,6 +121,8 @@ CONFIG_TEMPLATE = {
         "ueb_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'ueb'),
         "lasam_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lasam'),
         "lstm_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'lstm'),
+        "sac-sma_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'sac-sma'),
+        "snow-17_parameter_dir": os.path.join(NGEN_MODULE_PARAMETERS, 'snow-17'),
 
         # TODO Get rid of this file
         # Parquet file - base on domain
@@ -262,12 +263,22 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
                 forcing['forcing_configuration'] = forcing_configuration
 
             if not is_missing(run.observational_source, 'Observational source', error_object):
-                observational_dir = get_observational_dir_for_job(run)
+                if build:
+                    # Get the observational data
+                    # TODO Need to subset
+                    date_time_range = DateTimeRange(
+                        min(run.calibration_start_period, run.validation_start_period),
+                        max(run.calibration_end_period, run.validation_end_period),
+                    )
+                    obs_csv = get_observational_data_from_data_services(run, date_time_range)
+                    obs_path = get_observational_file_for_job(run)
+                    obs_dir = os.path.dirname(obs_path)
+                    os.makedirs(obs_dir, exist_ok=True)
 
-                if not is_missing(run.observational_eds_file_path, "Observational file", error_object):
-                    pass
+                    with open(obs_path, "w", encoding="utf-8", newline="") as f:
+                        f.write(obs_csv)
 
-                datafile['obs_dir'] = observational_dir
+                    datafile['obs_dir'] = obs_dir
 
             nwm_retro = os.path.join(NWM_RETROSPECTIVE_DIR, f'{run.gage.gage_id}.csv')
             if os.path.exists(nwm_retro):
@@ -306,9 +317,9 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             if run.use_sloth:
                 general['models'] += f', {SLOTH}'
 
-            # Dynamically add BMI config paths based on only the modules actually used
-            for name in module_names_for_job:
-                datafile[get_bmi_config_key(name)] = get_bmi_config_dir_for_module(run, name)
+            # # Dynamically add BMI config paths based on only the modules actually used
+            # for name in module_names_for_job:
+            #     datafile[get_bmi_config_key(name)] = get_bmi_config_dir_for_module(run, name)
 
             general['is_aet_rootzone'] = run.is_aet_rootzone
 

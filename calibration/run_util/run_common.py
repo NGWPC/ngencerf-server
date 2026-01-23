@@ -816,15 +816,16 @@ def final_preprocessing_for_calibration(run: CalibrationRun) -> list[str]:
             date_range
         )
 
-    # ─────────────────────────────────────────────────────────────
-    # Observational data
-    # ─────────────────────────────────────────────────────────────
-    subset_by_time_range(
-        run,
-        run.observational_eds_file_path,
-        get_observational_file_for_job(run),
-        date_range
-    )
+    # TODO Don't need to subset anymore.   EDFS will return subsetted data
+    # # ─────────────────────────────────────────────────────────────
+    # # Observational data
+    # # ─────────────────────────────────────────────────────────────
+    # subset_by_time_range(
+    #     run,
+    #     run.observational_eds_file_path,
+    #     get_observational_file_for_job(run),
+    #     date_range
+    # )
 
     return errors
 

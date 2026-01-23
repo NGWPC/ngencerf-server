@@ -16,8 +16,8 @@ from calibration.views import ngen_cal_input
 from calibration.views.calibration_optimization_views import write_optimization_inputs
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, SLOTH, \
-    get_user_email, join_with_or, get_elapsed_str
-from calibration.views.data_services import get_module_metadata_from_data_services, DataServicesException
+    get_user_email, join_with_or, get_elapsed_str, readonly_transaction
+from calibration.views.data_services import get_module_metadata_from_data_services, update_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -181,9 +181,18 @@ def save_formulation_tab(request) -> Response:
     """
     Save or update calibration formulations for a calibration run.
 
-    Uses cached modules to avoid repeated SELECT queries on the Module table.
-    The formulations are runtime data, but module lookups are resolved via
-    the cache, eliminating ORM joins.
+   High-level flow:
+    - Determine which modules are new, removed, or missing parameters.
+    - Fetch module metadata from Data Services outside of any write transaction.
+    - In a single atomic block:
+        * Delete unused CalibrationFormulation rows and their parameters.
+        * Bulk-create missing CalibrationFormulation rows.
+        * Persist CalibrationParameter rows via update_parameters().
+        * Refresh Sloth and optimization-related state as required.
+
+    Error handling:
+    - Data Services errors are accumulated in eds_errors as a list of error objects.
+    - Database writes are only performed after metadata has been successfully fetched.
 
     :param request: The HTTP request containing POST data with formulation details.
     :return: A JSON response confirming the update along with any warnings or errors.
@@ -241,88 +250,85 @@ def save_formulation_tab(request) -> Response:
         if mid in modules_by_id
     }
 
+    # Debug: confirm reverse accessor name for CalibrationParameter
+    accessors = [r.get_accessor_name() for r in CalibrationFormulation._meta.related_objects]
+    logger.debug("CalibrationFormulation reverse accessors: %s", accessors)
+
     # Determine which modules to delete and add
-    to_be_added = new_module_names - existing_module_names
-    to_be_unused = existing_module_names - new_module_names
+    to_be_added: set[str] = new_module_names - existing_module_names
 
-    with transaction.atomic():
-        # Delete unused formulations
-        if to_be_unused:
-            logger.info(f"Deleting unused modules: {to_be_unused}")
-            delete_unused_formulations(to_be_unused, run)
-
-        # Refresh the list after inserts/deletes
-        existing_module_ids = set(
+    # We also want to fetch for those Formulations that have no parameters, in case there was an error previously
+    with readonly_transaction():
+        formulations_without_params = (
             CalibrationFormulation.objects
             .filter(calibration_run=run)
-            .values_list("module_id", flat=True)
+            .filter(calibrationparameter__isnull=True)
+            .values_list("module__name", flat=True)
+            .distinct()
         )
+        # Add modules that already exist but have no parameters, limited to the current selection to avoid refetching for soon-to-be-deleted modules
+        to_be_added.update(set(formulations_without_params) & new_module_names)
 
-        to_create = []
-        for module_name in to_be_added:
-            m = get_cached_module_by_name(module_name)
-            if m and m.id not in existing_module_ids:
-                to_create.append(CalibrationFormulation(calibration_run=run, module=m))
+    to_be_unused = existing_module_names - new_module_names
 
-        if to_create:
-            CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
+    # TODO for dev only
+    #####################
+    # to_be_added = new_module_names
+    #####################
+    module_metadata, errors = get_module_metadata_from_data_services(run, to_be_added)
+    if errors:
+        eds_errors.extend(errors)
+    else:
+        with transaction.atomic():
+            # Delete unused formulations
+            if to_be_unused:
+                logger.info(f"Deleting unused modules: {to_be_unused}")
+                delete_unused_formulations(to_be_unused, run)
 
-        # Refresh formulations after delete/add
-        existing_formulations_qs = CalibrationFormulation.objects.filter(calibration_run=run)
+            # Refresh the list after inserts/deletes
+            existing_module_ids = set(
+                CalibrationFormulation.objects
+                .filter(calibration_run=run)
+                .values_list("module_id", flat=True)
+            )
 
-        # Identify formulations without any calibration parameters, in case there was an error retrieving them
-        param_formulation_ids = set(
-            CalibrationParameter.objects
-            .filter(calibration_formulation__calibration_run=run)
-            .values_list('calibration_formulation_id', flat=True)
-        )
+            to_create = []
+            for module_name in to_be_added:
+                m = get_cached_module_by_name(module_name)
+                if m and m.id not in existing_module_ids:
+                    to_create.append(CalibrationFormulation(calibration_run=run, module=m))
 
-        formulations_without_params_qs = existing_formulations_qs.exclude(id__in=param_formulation_ids)
+            if to_create:
+                CalibrationFormulation.objects.bulk_create(to_create, ignore_conflicts=True)
 
-        required_formulations_qs = existing_formulations_qs.filter(
-            module__name__in=to_be_added
-        ) | formulations_without_params_qs  # type: ignore
+            # Create the parameters
+            update_parameters(run, module_metadata)
 
-        # Retrieve metadata for required formulations
-        if required_formulations_qs.exists() and run.gage:
-            logger.info(f"Fetching metadata for modules: {list(to_be_added)}")
-            try:
-                # TODO Need to move ths outside of the atomic transaction
-                # Append new errors to the existing list
-                eds_errors.extend(get_module_metadata_from_data_services(run, required_formulations_qs))
-            except DataServicesException as e:
-                logger.exception("Error retrieving module parameter data from Data Services")
-                eds_errors.append({
-                    'name': 'parameters',
-                    'message': str(e),
-                    'status_code': e.status_code if e.status_code else None
-                })
+            # Delete existing Sloth params for this run and re-add them
+            CalibrationSlothParam.objects.filter(calibration_run=run).delete()
 
-        # Delete existing Sloth params for this run and re-add them
-        CalibrationSlothParam.objects.filter(calibration_run=run).delete()
+            error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
+            if error_message:
+                logger.error(f"Error adding Sloth parameters: {error_message}")
+                return ResponseError(error_message)
 
-        error_message = add_sloth_parameters(run, sloth_parameters, new_module_names)
-        if error_message:
-            logger.error(f"Error adding Sloth parameters: {error_message}")
-            return ResponseError(error_message)
+            # If formulation uses LSTM, we need to clear all irrelevant fields
+            if have_lstm:
+                # clear core CalibrationRun fields
+                run.optimization = None
+                run.objective_function = None
+                run.streamflow_threshold = None
+                run.peak_flow_threshold = None
+                run.save_plot_iteration_frequency = None
+                run.save_output_iteration = False
 
-        # If formulation uses LSTM, we need to clear all irrelevant fields
-        if have_lstm:
-            # clear core CalibrationRun fields
-            run.optimization = None
-            run.objective_function = None
-            run.streamflow_threshold = None
-            run.peak_flow_threshold = None
-            run.save_plot_iteration_frequency = None
-            run.save_output_iteration = False
+                # remove stop criteria
+                CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
 
-            # remove stop criteria
-            CalibrationStopCriteria.objects.filter(calibration_run=run).delete()
+                # No optimization inputs
+                write_optimization_inputs(run, [])
 
-            # No optimization inputs
-            write_optimization_inputs(run, [])
-
-        run.save()
+            run.save()
 
     ngen_cal_input.ready_to_run(run)
 
@@ -349,10 +355,13 @@ def save_formulation_tab(request) -> Response:
 
 def delete_unused_formulations(to_delete_modules: set[str], run: CalibrationRun) -> None:
     """
-    Delete unused formulations and related parameters for a given calibration run.
+    Delete unused CalibrationFormulation rows (and their dependent parameters) for modules
+    that are no longer part of the current formulation selection.
 
-    :param to_delete_modules: A set of module names for formulations to delete.
-    :param run: The calibration run instance.
+    This function performs database writes and must be called inside a write transaction.
+
+    :param to_delete_modules: Set of module names to delete for the given run.
+    :param run: CalibrationRun instance whose formulations will be pruned.
     :return: None.
     """
     formulations_to_delete_qs = CalibrationFormulation.objects.filter(
@@ -607,6 +616,8 @@ def check_completeness(module_names: set[str], fatal_errors: list[str], nonfatal
 def add_sloth_parameters(run: CalibrationRun, sloth_parameters: list[dict], module_names: set[str]) -> str | None:
     """
     Add Sloth parameters to a calibration run, validating module associations.
+
+    This function performs database writes and must be called inside a write transaction.
 
     :param run: The calibration run instance.
     :param sloth_parameters: A list of dictionaries containing Sloth parameter data.

@@ -30,7 +30,7 @@ from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, CerfException, validate_request, \
     get_valid_path, format_datetime, get_user_email, get_elapsed_str, readonly_transaction
-from calibration.views.data_services import should_use_bmi_forcing
+from calibration.views.data_services import should_use_bmi_forcing, get_observational_date_range_from_data_services
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +246,6 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
         logger.info("Time range is already set")
         return {'start_time': run.time_range_start, 'end_time': run.time_range_end}
 
-    observation_path = get_valid_path(
-        run.observational_eds_file_path,
-        lambda: get_observational_file_for_job(run)
-    )
     forcing_path = get_valid_path(
         run.forcing_eds_dir_path,
         lambda: get_forcing_dir_for_job(run)
@@ -259,14 +255,10 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
 
     # Explicitly log the resolved paths
     logger.info(
-        f"get_time_range: observation_path={observation_path}, "
+        f"get_time_range: "
         f"forcing_path={forcing_path},"
         f"use_bmi_forcing={use_bmi}"
     )
-
-    # Observation data is always required
-    if not observation_path:
-        return {}
 
     # TODO More cleanup when we are exclusively using bmi forcing
     # For CSV forcing, forcing_path is also required
@@ -277,7 +269,7 @@ def compute_time_range(run: CalibrationRun) -> dict[str, datetime]:
     daterange_intersection_start = time.perf_counter()
 
     daterange = get_date_range_intersection(
-        observation_path,
+        run,
         None if use_bmi else forcing_path
     )
 
@@ -1155,28 +1147,16 @@ def get_forcing_date_range(forcing_dir_path: str) -> DateTimeRange | None:
     return timerange
 
 
-def get_observation_date_range(observational_filepath: str) -> DateTimeRange:
-    """
-    Calculates the date range for a single observational data file.
-    Supports both local paths and cloud URLs.
-
-    :param observational_filepath: File path or cloud URL to the observational data.
-    :return: DateTimeRange based on the file's min and max timestamps.
-    """
-    return get_csv_daterange(observational_filepath)
-
-
-def get_date_range_intersection(observational_file_path: str, forcing_dir_path: str = None) -> DateTimeRange | None:
+def get_date_range_intersection(run: CalibrationRun, forcing_dir_path: str = None) -> DateTimeRange | None:
     """
     Calculates the intersection of date ranges between observational and forcing data.
     Supports both local paths and cloud URLs.
 
-    :param observational_file_path: File path or cloud URL to the observational data.
     :param forcing_dir_path: Directory path or cloud URL containing forcing data.
     :return: DateTimeRange representing the overlapping period, or None if no overlap.
     """
     # Calculate the date range for the observational data
-    obs_range = get_observation_date_range(observational_file_path)
+    obs_range = get_observational_date_range_from_data_services(run)
     logger.debug(f"obs_range: {obs_range}")
 
     # Calculate the date range for the forcing data

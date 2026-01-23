@@ -31,7 +31,7 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
     forcing_source_actual = models.ForeignKey('ForcingSource', null=True, on_delete=models.RESTRICT, related_name='+', related_query_name='+')
     forcing_eds_dir_path = models.TextField(null=True)
     observational_source = models.ForeignKey('ObservationalSource', null=True, on_delete=models.RESTRICT)
-    observational_eds_file_path = models.TextField(null=True)
+    # observational_eds_file_path = models.TextField(null=True)
     user_parameter_filename = models.TextField(null=True)
     realization_file_path = models.TextField(null=True)
     status = models.ForeignKey('Status', null=False, on_delete=models.RESTRICT, db_index=True)
@@ -65,7 +65,6 @@ class CalibrationRun(BaseRun):  # Inherit from BaseRun
             f"job_data_directory: {self.job_data_dir},"
             f"geopackage_eds_file_path: {self.geopackage_eds_file_path}, "
             f"forcing_eds_dir_path: {self.forcing_eds_dir_path}, "
-            f"observational_eds_file_path: {self.observational_eds_file_path}, "
             f"objective_function.name: {self.objective_function.name if self.objective_function else 'None'}, "
             f"optimization.name: {self.optimization.name if self.optimization else 'None'}, "
             f"status.name: {self.status.name}, "

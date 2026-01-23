@@ -838,7 +838,7 @@ def validate_response(serializer_class, data, fields_to_truncate=None, max_lengt
         validator.is_valid(raise_exception=True)
 
         # Redact large fields before logging
-        logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate, max_length)}')
+        # logger.debug(f'Validated response data: {truncate_large_fields(data, fields_to_truncate, max_length)}')
 
         return validator, None
     except ValidationError as e:

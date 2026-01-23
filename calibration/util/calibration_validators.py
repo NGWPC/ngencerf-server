@@ -431,16 +431,15 @@ class EdsErrorsSerializer(BaseSerializer):
     status_code = serializers.IntegerField(required=True, allow_null=True)
 
 
-# This class extends the original serializers.Serializer, since we want to ignore extra fields
-# Parameters from Data Services
-# initial_value, min and max are strings, since Data Services sometimes has some extra crap in there, like units
+# initial_value is a strings, since Data Services sometimes has some extra crap in there, like units
 # We save them in the db as floats, so we'll have to sanitize them
-class ModuleParametersSerializer(serializers.Serializer):
+class ModuleParametersSerializer(BaseSerializer):
     name = serializers.CharField(required=True, allow_blank=False)
     data_type = serializers.CharField(required=True, validators=[enum_validator(DataTypeEnum)])
     description = serializers.CharField(required=True, allow_blank=False)
-    min = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    max = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    # TODO min and max really should not be null
+    min = serializers.FloatField(required=True, allow_null=True)
+    max = serializers.FloatField(required=True, allow_null=True)
     initial_value = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     units = serializers.CharField(required=False, allow_null=True, allow_blank=True)
 
@@ -1033,11 +1032,8 @@ class UserParameterFileUploadResponse(BaseSerializer):
 # Module object from Data Services containing module parameters and output variables
 class ModuleMetadataSerializer(BaseSerializer):
     module_name = serializers.CharField(required=True, allow_blank=False)
-    calibrate_parameters = ModuleParametersSerializer(many=True)
-    # TODO We are ignoring this so EDS can get rid of it
-    output_variables = serializers.JSONField(required=False)
-    parameter_file = S3FileValidator(required=True)
-    error = serializers.CharField(required=False)
+    calibratable_parameters = ModuleParametersSerializer(many=True)
+    # error = serializers.CharField(required=False)
 
 
 # List of module objects from Data Services containing module parameters and output variables

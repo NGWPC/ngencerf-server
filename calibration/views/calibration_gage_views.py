@@ -1,6 +1,8 @@
 import json
 import logging
+import os
 
+from django.db import transaction
 from drf_spectacular.utils import OpenApiParameter, extend_schema, OpenApiResponse
 from pyogrio.errors import DataLayerError
 from rest_framework import status
@@ -17,14 +19,14 @@ from calibration.util.calibration_validators import SaveGageRequestSerializer, G
 from calibration.util.cloud_util import path_exists
 from calibration.util.file_util import get_single_file
 from calibration.util.geopkg import gpkg_to_png_selected_layers, get_geometry_from_gpkg
-from calibration.util.ngen_locations import get_forcing_dir_for_job, get_observational_file_for_job, \
-    get_geopackage_dir_for_job
+from calibration.util.ngen_locations import get_forcing_dir_for_job, get_geopackage_dir_for_job
 from calibration.views import ngen_cal_input
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import get_calibration_run, ResponseError, handle_exceptions, validate_response, validate_request, \
     png_str_to_base64_url, truncate_large_fields, get_valid_path, get_user_email, get_elapsed_str, CerfException
-from calibration.views.data_services import get_geopackage_from_data_services, get_observational_data_from_data_services, \
-    get_forcing_data_from_s3, DataServicesException, get_module_metadata_from_data_services, clear_times, should_use_bmi_forcing
+from calibration.views.data_services import get_geopackage_from_data_services, \
+    get_forcing_data_from_s3, DataServicesException, get_module_metadata_from_data_services, clear_times, should_use_bmi_forcing, \
+    update_parameters
 
 logger = logging.getLogger(__name__)
 
@@ -227,13 +229,14 @@ def save_gage_tab(request: Request):
         try:
             eds_errors_entry = save_gage(run, gage)
             if eds_errors_entry:
-                eds_errors.append(eds_errors_entry)
+                eds_errors.extend(eds_errors_entry)
         except Gage.DoesNotExist:
             return ResponseError(f"Gage '{gage_id}' does not exist or is not active", http_status=status.HTTP_404_NOT_FOUND)
 
         # Get Geopackage
-        if geopackage_source_name:
-            if geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
+        if not geopackage_source_name:
+            run.geopackage_eds_file_path = None
+        elif geopackage_source_name == GeopackageSourceEnum.HYDROFABRIC.value:
                 try:
                     get_geopackage_from_data_services(run)
                 except DataServicesException as e:
@@ -243,10 +246,8 @@ def save_gage_tab(request: Request):
                         'message': str(e),
                         'status_code': e.status_code if e.status_code else None
                     })
-            else:
-                raise CerfException("Invalid geopackage source")
         else:
-            run.geopackage_eds_file_path = None
+            raise CerfException("Invalid geopackage source")
 
         run.geopackage_source = GeopackageSourceEnum.get_instance(geopackage_source_name) if geopackage_source_name else None
 
@@ -258,24 +259,24 @@ def save_gage_tab(request: Request):
 
         geopackage_image_url = get_geopackage_image_url(geopackage_path)
 
+        # Note that we do not get Observational data here anymore.
         # Get Observational data
-        if observational_source_name:
-            if observational_source_name == ObservationalSourceEnum.HISTORICAL.value:
-                try:
-                    get_observational_data_from_data_services(run)
-                except DataServicesException as e:
-                    logger.exception("Error retrieving observational data from Data Services")
-                    eds_errors.append({
-                        'name': 'observational',
-                        'message': str(e),
-                        'status_code': e.status_code if e.status_code else None
-                    })
-            else:
-                raise CerfException("Invalid observational source")
-        else:
-            run.observational_eds_file_path = None
-            clear_times(run)
-
+        # if observational_source_name:
+        #     if observational_source_name == ObservationalSourceEnum.HISTORICAL.value:
+        #         try:
+        #             get_observational_data_from_data_services(run)
+        #         except DataServicesException as e:
+        #             logger.exception("Error retrieving observational data from Data Services")
+        #             eds_errors.append({
+        #                 'name': 'observational',
+        #                 'message': str(e),
+        #                 'status_code': e.status_code if e.status_code else None
+        #             })
+        #     else:
+        #         raise CerfException("Invalid observational source")
+        # else:
+        #     run.observational_eds_dir_path = None
+        #
         run.observational_source = ObservationalSourceEnum.get_instance(observational_source_name) if observational_source_name else None
 
         # Get Forcing data
@@ -513,12 +514,13 @@ def get_data_files_status(run: CalibrationRun) -> dict:
     :param run: The calibration run instance to check.
     :return: A dictionary with boolean values indicating the presence of observational, forcing, and geopackage files.
     """
-    observation_path = get_valid_path(run.observational_eds_file_path, lambda: get_observational_file_for_job(run))
+    # observation_path = get_valid_path(run.observational_eds_file_path, lambda: get_observational_file_for_job(run))
 
     forcing_path = True if should_use_bmi_forcing(run) else get_valid_path(run.forcing_eds_dir_path, lambda: get_forcing_dir_for_job(run))
 
     geopackage_path = get_valid_path(run.geopackage_eds_file_path, lambda: get_single_file(get_geopackage_dir_for_job(run)))
 
-    return {'observational': bool(observation_path),
+    # TODO Talk to Richard about this.  Do we really need Obs status?
+    return {'observational': True,
             'forcing': bool(forcing_path),
             'geopackage': bool(geopackage_path)}

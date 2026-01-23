@@ -72,16 +72,16 @@ def get_forcing_filename_pattern() -> str:
     return r"^cat-\d+\.csv$"
 
 
-def get_bmi_config_dir_for_job(run: CalibrationRun) -> str:
-    return os.path.join(run.job_data_dir, 'bmi_config')
+# def get_bmi_config_dir_for_job(run: CalibrationRun) -> str:
+#     return os.path.join(run.job_data_dir, 'bmi_config')
+#
+#
+# def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
+#     return os.path.join(get_bmi_config_dir_for_job(run), module_name.lower())
 
 
-def get_bmi_config_dir_for_module(run: CalibrationRun, module_name: str) -> str:
-    return os.path.join(get_bmi_config_dir_for_job(run), module_name.lower())
-
-
-def get_bmi_config_key(module_name: str) -> str:
-    return f"{module_name.lower().replace('-', '_')}_bmi_dir"
+# def get_bmi_config_key(module_name: str) -> str:
+#     return f"{module_name.lower().replace('-', '_')}_bmi_dir"
 
 
 # Job-specific forcing directory

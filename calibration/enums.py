@@ -189,6 +189,7 @@ class PlotDefinitionsEnum(AbstractEnum):
 
 class DataTypeEnum(AbstractEnum):
     DOUBLE = 'double'
+    FLOAT = 'float'
     INTEGER = 'integer'
     BOOLEAN = 'boolean'
     STRING = 'string'
