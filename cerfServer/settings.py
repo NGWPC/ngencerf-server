@@ -24,6 +24,7 @@ EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = str(os.getenv('DJANGO_DEBUG', 'true')).lower() == 'true'
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
