@@ -5,74 +5,93 @@ import signal
 import threading
 import time
 
-# =====================================================================
-# IMPORTANT — READ THIS FIRST
-# =====================================================================
-#
-# This Gunicorn config EXPECTS that Gunicorn is started with:
-#
-#       --preload
-#
-# Without --preload:
-#   • Django is NOT loaded in the master process
-#   • settings are unavailable
-#   • when_ready() cannot safely access Django APIs
-#
-# With --preload:
-#   • Django loads ONCE in the MASTER
-#   • Workers fork from an initialized Django state
-#
-# runCerf.sh script already uses --preload.
-#
-# =====================================================================
+"""
+Gunicorn configuration for ngenCERF.
 
-# ============================================================
-# Gunicorn native logging settings (Option A — disable noise)
-# ============================================================
+This config EXPECTS Gunicorn is started with --preload.
 
-# Disable access logs entirely
-accesslog = None
+Why --preload matters:
+- Without --preload:
+  - Django is NOT loaded in the master process
+  - Django settings/logging are unavailable in the master
+  - when_ready() cannot safely use Django APIs or Django-installed logging handlers
+- With --preload:
+  - Django loads ONCE in the master process
+  - Workers fork from an initialized Django state
 
-# Disable Gunicorn's own stderr logging format
-# (Django logging already handles everything cleanly)
-errorlog = None
+runCerf.sh already uses --preload.
+"""
 
-# Gunicorn logging controls
-# Set to "debug" (or pass --log-level debug) to get more Gunicorn arbiter/worker lifecycle logs.
-loglevel = os.getenv("GUNICORN_LOGLEVEL", "info")
-capture_output = False
 
-# IMPORTANT:
-# Leave this False to avoid globally disabling pre-existing loggers created during --preload.
-# (Django's LOGGING already controls noise.)
-disable_existing_loggers = False
-
+# ---------------------------------------------------------------------
+# Environment / flags
+# ---------------------------------------------------------------------
 
 def _env_bool(name: str, default: bool = False) -> bool:
+    """
+    Read a boolean value from the environment.
+
+    Accepts: 1, true, yes, on (case-insensitive).
+    """
     val = os.getenv(name)
     if val is None:
         return default
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
+# ---------------------------------------------------------------------
+# Gunicorn native logging settings
+# ---------------------------------------------------------------------
+
+"""
+Gunicorn's native logging controls.
+
+Django's LOGGING is the single source of truth for formatting and handlers.
+These settings minimize Gunicorn's own logging outputs, and _configure_logging()
+attaches Django's handlers to gunicorn.* and uvicorn.* loggers instead.
+"""
+
+# Note: accesslog=None disables Gunicorn's access log output, so wiring handlers for
+# gunicorn.access does not enable access logs by itself.
+accesslog = None
+
+# Do not write Gunicorn error logs to a separate destination/file.
+# Gunicorn may still emit certain lifecycle lines to stderr/stdout.
+errorlog = None
+
+# Threshold for Gunicorn's own loggers and for gunicorn/uvicorn loggers
+# when handlers are attached in _configure_logging()
+loglevel = os.getenv("GUNICORN_LOGLEVEL", "info")
+
+# Do not redirect worker stdout/stderr into Gunicorn's logging system
+capture_output = False
+
+# Do not globally disable loggers created during --preload.
+# Django's LOGGING controls logger behavior and propagation.
+disable_existing_loggers = False
+
 # Enable extra diagnostics only when explicitly requested
 _DIAG = _env_bool("GUNICORN_DIAGNOSTICS", False)
 _DIAG_POLL_SECONDS = int(os.getenv("GUNICORN_DIAGNOSTICS_POLL_SECONDS", "10"))
 
 
-# =====================================================================
-# 1. Hook: Configure Gunicorn loggers to use Django handlers
-# =====================================================================
+# ---------------------------------------------------------------------
+# Logging helpers
+# ---------------------------------------------------------------------
 
 def _configure_logging(worker=None):
     """
-    Route Gunicorn (and Uvicorn) logs through Django's handlers so they land in ngencerf.log,
-    without globally disabling loggers.
+    Route Gunicorn and Uvicorn logs through Django's logging system.
 
-    Notes:
-    - Attach Django root handlers to gunicorn.* and uvicorn.* loggers.
-    - Set propagate=False so records don't bubble up and get handled twice.
-    - De-dupe by handler object id to avoid re-attaching on reload/respawn.
+    Behavior:
+    - Reads handlers from Django's root logger (already installed due to --preload)
+    - Attaches those handlers to gunicorn.* and uvicorn.* loggers
+    - Sets propagate=False to prevent duplicate handling
+    - De-duplicates handlers on repeated calls by object identity
+
+
+    This allows all Gunicorn/Uvicorn output to land in ngencerf.log using
+    Django's formatting and file/console configuration.
     """
     try:
         # Django logging handlers should already be installed because --preload loads
@@ -84,12 +103,12 @@ def _configure_logging(worker=None):
         level = getattr(logging, level_name, logging.INFO)
 
         for name in (
-            "gunicorn.error",
-            "gunicorn.access",
-            "uvicorn",
-            "uvicorn.error",
-            "uvicorn.access",
-            "uvicorn.asgi",
+                "gunicorn.error",
+                "gunicorn.access",
+                "uvicorn",
+                "uvicorn.error",
+                "uvicorn.access",
+                "uvicorn.asgi",
         ):
             glog = logging.getLogger(name)
             glog.setLevel(level)
@@ -101,12 +120,17 @@ def _configure_logging(worker=None):
                     glog.addHandler(h)
 
     except Exception as e:
-        # Early import failures are expected before Django initializes.
+        # Safe to ignore during very early startup before Django initializes
         print(f"[gunicorn_conf] Logging hook failed (safe to ignore early): {e}")
 
 
 def _log_signal_handlers(logger: logging.Logger, where: str) -> None:
-    """Log current signal handlers (master only)."""
+    """
+    Log the current signal handlers in the master process.
+
+    Used to confirm that Gunicorn's arbiter owns SIGCHLD, SIGTERM,
+    and other lifecycle signals, and to detect unexpected overrides.
+    """
 
     def _h(sig_name: str) -> str:
         sig = getattr(signal, sig_name, None)
@@ -132,8 +156,11 @@ def _log_signal_handlers(logger: logging.Logger, where: str) -> None:
 
 def _start_sigchld_monitor(logger: logging.Logger) -> None:
     """
-    Very low-risk diagnostic: periodically check SIGCHLD handler in the master
-    and log ONLY if it changes.
+    Start a background thread in the master process that periodically checks
+    whether the SIGCHLD handler has changed.
+
+    This is a diagnostic tool to detect external code or libraries that override
+    Gunicorn's child-process signal handling, which can prevent worker respawning.
     """
     try:
         last = signal.getsignal(signal.SIGCHLD)
@@ -157,22 +184,34 @@ def _start_sigchld_monitor(logger: logging.Logger) -> None:
     t.start()
 
 
-# =====================================================================
-# 2. Hook: Master is starting (Django not yet loaded here)
-# =====================================================================
+# ---------------------------------------------------------------------
+# Gunicorn lifecycle hooks
+# ---------------------------------------------------------------------
 
 def on_starting(_server):
+    """
+    Runs once in the master process when Gunicorn is starting.
+
+    This executes before workers are forked. With --preload, Django will be
+    loaded during Gunicorn startup before when_ready() is called.
+    """
     logging.getLogger("gunicorn.error").info("[gunicorn_conf] Master starting up (PID=%s)", os.getpid())
 
 
-# =====================================================================
-# 3. Hook: Master is ready AFTER preload (Django loaded HERE)
-# =====================================================================
-
 def when_ready(_server):
     """
-    Runs once in the master AFTER Django is loaded.
-    Just configure logging + optional diagnostics.
+    Runs once in the master process after Gunicorn has finished --preload.
+
+    At this point:
+    - Django is loaded in the master process
+    - Django logging handlers are installed and can be attached to gunicorn/uvicorn
+    - Signal handlers reflect Gunicorn's arbiter state
+
+    This hook:
+    - Configures logging for gunicorn/uvicorn loggers
+    - Emits version and platform diagnostics
+    - Snapshots SIGCHLD and other signal handlers
+    - Optionally starts a background monitor to detect SIGCHLD handler changes
     """
     _configure_logging()
 
@@ -184,6 +223,7 @@ def when_ready(_server):
         logger.info("[gunicorn_conf] gunicorn=%s", getattr(gunicorn, "__version__", "<unknown>"))
     except Exception:
         pass
+
     try:
         import uvicorn  # type: ignore
         logger.info("[gunicorn_conf] uvicorn=%s", getattr(uvicorn, "__version__", "<unknown>"))
@@ -206,8 +246,10 @@ def when_ready(_server):
 
 def pre_fork(_server, worker):
     """
-    Runs in the master just before forking a worker.
-    Useful to confirm the master is attempting respawns.
+    Runs in the master process immediately before forking a worker.
+
+    Used for diagnostics to confirm the master is attempting to respawn
+    workers when they exit or exceed max_requests.
     """
     if _DIAG:
         logging.getLogger("gunicorn.error").info(
@@ -216,17 +258,15 @@ def pre_fork(_server, worker):
         )
 
 
-# =====================================================================
-# 4. Hook: Worker initialization (per worker)
-# =====================================================================
-
 def post_fork(_server, worker):
     """
-    Runs once for each worker (initial and respawned).
-    Configure logging and enforce umask per worker.
-    """
+    Runs once in each worker process after it has been forked.
 
-    # Ensure the worker does not reuse any DB connections inherited from the master.
+    Responsibilities:
+    - Close any database connections inherited from the master
+    - Attach Django logging handlers to gunicorn/uvicorn loggers
+    - Enforce per-worker umask
+    """
     try:
         from django.db import connections
         connections.close_all()
@@ -242,21 +282,24 @@ def post_fork(_server, worker):
     worker.log.info("[gunicorn_conf] post_fork: Worker started PID=%s with umask=022", worker.pid)
 
 
-# =====================================================================
-# 5. Hook: Worker exiting
-# =====================================================================
-
 def worker_exit(_server, worker):
+    """
+    Runs in the master when a worker process exits.
+
+    Useful for correlating exits with SIGCHLD handling and respawn behavior.
+    """
     logging.getLogger("gunicorn.error").warning("[gunicorn_conf] worker_exit: Worker PID=%s exiting", worker.pid)
 
 
-# =====================================================================
-# 6. Optional debugging hooks
-# =====================================================================
-
 def worker_int(worker):
+    """
+    Runs in the worker when it receives SIGINT.
+    """
     worker.log.warning("[gunicorn_conf] worker_int: Worker %s got SIGINT", worker.pid)
 
 
 def worker_abort(worker):
+    """
+    Runs in the worker when it is forcefully aborted by Gunicorn.
+    """
     worker.log.error("[gunicorn_conf] worker_abort: Worker %s aborted", worker.pid)
