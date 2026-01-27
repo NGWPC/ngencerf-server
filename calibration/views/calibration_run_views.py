@@ -819,37 +819,6 @@ def process_swe_timeseries(request: Request) -> Response:
     return Response(response_validator.data)
 
 
-@api_view(['GET', 'POST'])
-@handle_exceptions
-def update_mpi_rules(request: Request) -> Response:
-    """
-    Undocumented endpoint for updating the MPI rules
-    """
-    data = request.data if request.method == 'POST' else request.query_params.dict()
-
-    logger.debug(f'{get_caller_name()}() request from {get_user_email(request)} - {data}')
-    validator, error_return = validate_request(MPINodesRulesSerializer, data)
-    if error_return:
-        return error_return
-
-    mpi_rules = validator.get('mpi_rules')
-    if mpi_rules:
-        ngen_cal_input.MPI_NODE_RULES = mpi_rules
-
-    message = "Updated MPI Rules" if mpi_rules else "Current MPI Rules"
-    response = {
-        'message': message,
-        'mpi_rules': ngen_cal_input.MPI_NODE_RULES
-    }
-
-    response_validator, error_response = validate_response(MPINodesRulesResponseSerializer, response)
-    if error_response:
-        return error_response
-    logger.debug(
-        f'Returning to {get_user_email(request)} from {get_caller_name()}(){get_elapsed_str(request)} - {json.dumps(response_validator.data)}')
-
-    return Response(response_validator.data)
-
 
 @extend_schema(
     request=ReportIterationSerializer,
