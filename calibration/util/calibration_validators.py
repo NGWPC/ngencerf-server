@@ -1095,6 +1095,7 @@ class GetStatusForValidationResponseSerializer(CommonStatusFieldsMixin, Validati
 
 class GetStatusColdStartSerializer(BaseSerializer):
     cold_start_run_id = serializers.IntegerField(required=True)
+    cold_start_date = serializers.DateTimeField(required=True)
     status = serializers.CharField(required=True)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
     sent_date = serializers.DateTimeField(required=False, allow_null=True)
@@ -1109,7 +1110,6 @@ class GetStatusForForecastResponseSerializer(CommonStatusFieldsMixin, ForecastRu
     message = serializers.CharField(required=False)
     configuration = serializers.CharField(required=True, validators=[enum_validator(ForecastConfigEnum)])
     cycle_date = serializers.DateTimeField(required=True, allow_null=False)
-    cold_start_date = serializers.DateTimeField(required=False, allow_null=True)
     cold_start_run = GetStatusColdStartSerializer(required=False, allow_null=True)
 
 
