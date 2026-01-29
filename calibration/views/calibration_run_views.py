@@ -1408,12 +1408,6 @@ def get_slurm_token(request: Request) -> Response:
     return Response({'access': generate_custom_token(request.user, TOKEN_SLURM_SCOPE)})
 
 
-ACTIVE_DB_STATUSES = {
-    StatusEnum.SUBMITTED.db_instance,
-    StatusEnum.RUNNING.db_instance,
-}
-
-
 def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     """
     Determine whether a run requires Slurm reconciliation.
@@ -1449,7 +1443,10 @@ def check_slurm_reconciliation(run: BaseRun) -> tuple[bool, str | None]:
     if not run.slurm_job_id:
         return False, None
 
-    if run.status not in ACTIVE_DB_STATUSES:
+    if run.status not in {
+        StatusEnum.SUBMITTED.db_instance,
+        StatusEnum.RUNNING.db_instance,
+    }:
         return False, None
 
     slurm_is_active, sacct_status = get_slurm_status(run.slurm_job_id)
