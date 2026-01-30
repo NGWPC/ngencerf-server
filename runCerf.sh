@@ -203,13 +203,20 @@ echo --------------------------------------------------------
 
 
 #=======================================================================
-# Parse “--load-gages” flag (if present), then shift it away
+# Parse flags
+#   --load-gages
+#   auto_reload   (enables Django auto-reloader; disables --noreload)
 #=======================================================================
 LOAD_GAGE_DATA=false
+AUTO_RELOAD=false
+
 for arg in "$@"; do
   case $arg in
     --load-gages)
       LOAD_GAGE_DATA=true
+      ;;
+    auto_reload)
+      AUTO_RELOAD=true
       ;;
   esac
 done
@@ -712,7 +719,14 @@ if [ "$ASGI_FLAG" = "1" ] || [ "$PROD_FLAG" = "1" ]; then
             --config "$(dirname "$0")/gunicorn_conf.py"
 else
     echo "Launching Django development server (runserver)"
-    python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+
+    if [ "$AUTO_RELOAD" = true ]; then
+        echo "Auto-reload ENABLED"
+        python "$cerfServer"/manage.py runserver 0.0.0.0:8000
+    else
+        echo "Auto-reload DISABLED (--noreload)"
+        python "$cerfServer"/manage.py runserver 0.0.0.0:8000 --noreload
+    fi
 fi
 
 if [ -n "${CERF_VENV}" ]; then
