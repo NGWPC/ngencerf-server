@@ -1510,7 +1510,8 @@ class GetLogRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVeri
 
 
 class GetLogStatusRequestSerializer(CalibrationOrValidationOrColdStartOrForecastOrVerificationRunSerializer):
-    log_path = serializers.CharField(required=True)
+    log_category = serializers.CharField(required=True, validators=[enum_validator(LogCategory)])
+    log_name = serializers.CharField(required=True, validators=[enum_validator(LogName)])
     byte_offset = serializers.IntegerField(required=True, min_value=0)
 
 

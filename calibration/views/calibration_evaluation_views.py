@@ -287,9 +287,9 @@ def get_log_names(request: Request) -> Response:
 
         # Define available log categories and names
         log_names = [
+            {LogCategory.GLOBAL.value: ['ngen']},
             {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
             {LogCategory.VALIDATION.value: ['ngen-cal stdout']},
-            {LogCategory.GLOBAL.value: ['ngen']},
         ]
     elif forecast_run_id:
         forecast_run, error_return = get_forecast_run(
@@ -303,11 +303,11 @@ def get_log_names(request: Request) -> Response:
         cold_start_run = forecast_run.cold_start_run
 
         # Define available log categories and names
-        log_names = [
-            {LogCategory.FORECAST.value: ['forecast stdout', 'ngen stdout', 'mswm', 'ngen']}
-        ]
+        log_names = []
+        if not cold_start_run or cold_start_run.status == StatusEnum.DONE.db_instance:
+            log_names.append({LogCategory.FORECAST.value: ['ngen', 'ngen stdout', 'mswm', 'forecast stdout']})
         if cold_start_run:
-            log_names.append({LogCategory.COLD_START.value: ['cold start stdout', 'ngen stdout', 'mswm', 'ngen']})
+            log_names.append({LogCategory.COLD_START.value: ['ngen', 'ngen stdout', 'mswm', 'cold start stdout']})
     elif verification_run_id:
         verification_run, error_return = get_verification_run(
             verification_run_id,
@@ -319,7 +319,7 @@ def get_log_names(request: Request) -> Response:
 
         # Define available log categories and names
         log_names = [
-            {LogCategory.VERIFICATION.value: ['verification', 'verification stdout']}
+            {LogCategory.VERIFICATION.value: ['verification stdout', 'verification']}
         ]
     else:
         calibration_run, error_return = get_calibration_run(
@@ -332,8 +332,8 @@ def get_log_names(request: Request) -> Response:
 
         # Define available log categories and names
         log_names = [
-            {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
             {LogCategory.GLOBAL.value: ['ngen']},
+            {LogCategory.CALIBRATION.value: ['ngen stdout', 'ngen-cal stdout']},
         ]
 
     response = {'log_names': log_names}
@@ -592,8 +592,15 @@ def get_log_status(request: Request) -> Response:
     validation_run_id = validator.get('validation_run_id')
     forecast_run_id = validator.get('forecast_run_id')
     verification_run_id = validator.get('verification_run_id')
-    log_path = validator.get('log_path')
+    log_category = LogCategory(validator.get('log_category'))
+    log_name = LogName(validator.get('log_name'))
     byte_offset = validator.get('byte_offset')
+
+    # Validate log category and log name
+    try:
+        validate_log_name(log_category, log_name)
+    except ValueError as e:
+        raise CerfException(str(e))
 
     validation_run = None
     forecast_run = None
@@ -618,6 +625,7 @@ def get_log_status(request: Request) -> Response:
         if error_return:
             return error_return
         calibration_run = forecast_run.calibration_run
+        cold_start_run = forecast_run.cold_start_run
     elif verification_run_id:
         verification_run, error_return = get_verification_run(
             verification_run_id,
@@ -638,11 +646,38 @@ def get_log_status(request: Request) -> Response:
 
     # Check if the log file exists
     # TO DO: Get this from the cache if it's already been cached
-    if not os.path.exists(log_path):
-        raise CerfException(f"Log file not found: {log_path}")
+    log_path = None
+    match log_category:
+        case LogCategory.CALIBRATION:
+            log_path = get_calibration_log(calibration_run, log_name)
+        case LogCategory.VALIDATION:
+            if validation_run:
+                log_path = get_validation_log(validation_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for validation run")
+        case LogCategory.FORECAST:
+            if forecast_run:
+                log_path = get_forecast_log(forecast_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for forecast run")
+        case LogCategory.COLD_START:
+            if forecast_run and cold_start_run:
+                log_path = get_cold_start_log(cold_start_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for cold start run")
+        case LogCategory.VERIFICATION:
+            if verification_run:
+                log_path = get_verification_log(verification_run, log_name)
+            else:
+                raise CerfException(f"Log category '{log_category.value}' not applicable for verification run")
+        case LogCategory.GLOBAL:
+            if validation_run:
+                log_path = get_global_log(validation_run, log_name)
+            else:
+                log_path = get_global_log(calibration_run, log_name)
 
     # Get the file size in bytes
-    file_size = os.path.getsize(log_path)
+    file_size = os.path.getsize(log_path) if os.path.exists(log_path) else 0
 
     response = {
         'message': f"log file {log_path} has " + ("changed" if file_size != byte_offset else "not changed"),
