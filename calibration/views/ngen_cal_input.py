@@ -275,10 +275,11 @@ def ready_to_run(run: CalibrationRun, build: bool = False) -> tuple[ErrorReport 
             # Need to set parquet file based on domain
             datafile['attributes_file'] = os.path.join(PARQUET_DIR, f'{run.gage.domain.name.lower()}_model_attributes.parquet')
 
+            general['formulation'] = run.job_name
+
         formulations = CalibrationFormulation.objects.filter(calibration_run=run).only("module_id")
 
-        if not is_missing(formulations, 'Modules', error_object) and not is_missing(run.user_formulation_name, 'Formulation name', error_object):
-            general['formulation'] = run.user_formulation_name
+        if not is_missing(formulations, 'Modules', error_object) and not is_missing(run.job_name, 'Formulation name', error_object):
 
             # Extract only the modules actually used in THIS calibration job
             module_names_for_job = {modules_by_id[f.module_id].name for f in formulations}

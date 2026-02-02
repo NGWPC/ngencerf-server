@@ -432,7 +432,7 @@ def get_plots_for_comparison(request: Request) -> Response:
                             if row['run'] == ValidationType.VALID_BEST.value and row['period'] in ['calib', 'valid', 'full']:
                                 plot_data_row = {
                                     "calibration_run_id": calibration_run_id,
-                                    "formulation_name": run.user_formulation_name,
+                                    "job_name": run.job_name,
                                     "run_date": run.submit_date.strftime("%Y-%m-%d %H:%M")
                                 }
                                 plot_data_row.update(row)

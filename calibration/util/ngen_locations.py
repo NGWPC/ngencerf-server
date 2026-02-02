@@ -59,7 +59,7 @@ def get_gage_dir(run: CalibrationRun) -> str:
     return os.path.join(
         run.job_data_dir,
         f"{objective_function_name.lower()}_{optimization_name.lower()}",
-        run.user_formulation_name,
+        run.job_name,
         run.gage.gage_id
     )
 

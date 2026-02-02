@@ -259,7 +259,6 @@ def import_calibration_run_data(request: Request,
         # Must be set before get_forcing_data_from_s3() because should_use_bmi_forcing() reads it
         run.forcing_source_requested = forcing_source_requested
 
-
         if gage_id and needs_forcing_fetch:
             try:
                 get_forcing_data_from_s3(run, run.forcing_source_requested.name)
@@ -347,7 +346,7 @@ def import_calibration_run_data(request: Request,
 
         # Final persistence of run fields updated above
         run.use_sloth = use_sloth
-        run.user_formulation_name = calibration_run_data.get('formulation_name')
+        run.job_name = calibration_run_data.get('job_name')
         run.is_aet_rootzone = calibration_run_data.get('is_aet_rootzone', False)
         run.save()
 
@@ -570,7 +569,7 @@ def load_calibration_run_data(run: CalibrationRun, export: bool = False, include
     logger.info("Processing formulation data")
     formulation_start = time.perf_counter()
 
-    calibration_run_data['formulation_name'] = run.user_formulation_name
+    calibration_run_data['job_name'] = run.job_name
 
     # Get module IDs for this run
     module_ids = list(formulations.values_list('module_id', flat=True))

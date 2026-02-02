@@ -419,7 +419,7 @@ class CalibrationJobsResponseSerializer(BaseSerializer):
     status = serializers.CharField(required=True, validators=[enum_validator(StatusEnum)])
     calibration_start_period = serializers.DateTimeField(required=False, allow_null=True)
     calibration_end_period = serializers.DateTimeField(required=False, allow_null=True)
-    formulation_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
+    job_name = serializers.CharField(required=False, allow_null=True, validators=[no_space_validator])
     submit_date = serializers.DateTimeField(required=True, allow_null=True)
     objective_function = serializers.CharField(required=False, allow_null=True)
     optimization_algorithm = serializers.CharField(required=False, allow_null=True)
@@ -495,7 +495,7 @@ class LoadCalibrationRunResponseSerializer(BaseSerializer):
     external_data_status = serializers.JSONField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=True))
     is_aet_rootzone = serializers.BooleanField(required=False)
-    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     formulation_errors = serializers.JSONField(required=False)
     formulation_warnings = serializers.JSONField(required=False)
     parameters_selected = serializers.BooleanField(required=True)
@@ -701,6 +701,7 @@ class GetValidationJobsRequestSerializer(BaseSerializer):
 class SaveGageRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
     gage_id = serializers.CharField(required=False, allow_blank=False)
+    job_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
     forcing_source_requested = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ForcingSourceEnum)])
     observational_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(ObservationalSourceEnum)])
     geopackage_source = serializers.CharField(required=False, allow_null=True, validators=[enum_validator(GeopackageSourceEnum)])
@@ -914,7 +915,6 @@ class ValidateFormulationRequestSerializer(BaseSerializer):
 
 class SaveFormulationRequestSerializer(BaseSerializer):
     calibration_run_id = serializers.IntegerField(required=True)
-    formulation_name = serializers.CharField(required=False, allow_blank=False, validators=[no_space_validator])
     is_aet_rootzone = serializers.BooleanField(required=False)
     modules = serializers.ListField(child=serializers.CharField(required=True), required=False)
     use_sloth = serializers.BooleanField(required=True)
@@ -1076,7 +1076,7 @@ class PerformanceMetricsSerializer(BaseSerializer):
 
 class CommonStatusFieldsMixin(serializers.Serializer):
     calibration_run_id = serializers.IntegerField(required=False)
-    formulation_name = serializers.CharField(required=False)
+    job_name = serializers.CharField(required=False)
     status = serializers.CharField(validators=[enum_validator(StatusEnum)], required=True)
     failure_messages = serializers.ListField(child=serializers.DictField(), required=False)
     submit_date = serializers.DateTimeField(required=False, allow_null=True)
@@ -1352,7 +1352,7 @@ class ExportResponseSerializer(BaseSerializer):
     # geopackage_user_uploaded_file_path = serializers.CharField(required=False, allow_blank=False, allow_null=True)
     modules = serializers.ListField(child=serializers.CharField(required=True), default=[])
     is_aet_rootzone = serializers.BooleanField(required=False)
-    formulation_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    job_name = serializers.CharField(required=True, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(default=False)
     sloth_parameters = SlothParameters(many=True, default={})
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
@@ -1385,7 +1385,7 @@ class ImportDataSerializer(BaseSerializer):
     modules = serializers.ListField(child=serializers.CharField(required=True), required=False, allow_empty=True)
     is_aet_rootzone = serializers.BooleanField(required=False)
     sloth_parameters = SlothParameters(required=False, many=True, allow_empty=True)
-    formulation_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
+    job_name = serializers.CharField(required=False, allow_null=True, allow_blank=False, validators=[no_space_validator])
     use_sloth = serializers.BooleanField(required=False, default=False)
     automatic_validation = serializers.BooleanField(default=True, validators=[validate_automatic_validation])
     calibration_times = CalibrationTimeControls(required=False, allow_empty=True)

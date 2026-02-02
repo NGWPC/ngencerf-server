@@ -1312,14 +1312,14 @@ def create_verification_input(run: VerificationRun) -> None:
     general['location_list'] = [run.forecast_run.calibration_run.gage.gage_id]
     general['location_type'] = 'usgs_gage'
     general['nwm_configuration'] = run.forecast_run.configuration.internal_name
-    general['dataset_name'] = [run.forecast_run.calibration_run.user_formulation_name]
+    general['dataset_name'] = [run.forecast_run.calibration_run.job_name]
     general['nwm_version'] = ['ngen']
     general['forecast_start_date'] = [format_datetime(run.forecast_run.cycle_date)]
     general['forecast_end_date'] = [format_datetime(run.forecast_run.cycle_date)]
     config['nwm_forecast']['data_source'] = 'ngenCERF'
     file_paths['crosswalk_file'] = {'ngen': VERF_CROSSWALK_NGEN_FILE}
     file_paths['fcst_data_file'] = {}
-    file_paths['fcst_data_file'][run.forecast_run.calibration_run.user_formulation_name] = get_forecast_output_file(run.forecast_run)
+    file_paths['fcst_data_file'][run.forecast_run.calibration_run.job_name] = get_forecast_output_file(run.forecast_run)
 
     # -----------------------------
     # FILE WRITE PHASE
