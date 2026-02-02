@@ -18,7 +18,7 @@ from calibration.util.calibration_validators import ErrorResponseSerializer, \
     GetCalibrationJobsResponseSerializer, CalibrationRunSerializer, GetValidationJobsResponseSerializer, \
     GetForecastJobsResponseSerializer, GetVerificationJobsResponseSerializer, CalibrationPaginationSerializer, \
     ForecastPaginationSerializer, VerificationPaginationSerializer, GetCalibrationJobIDsResponseSerializer
-from calibration.views.calibration_evaluation_views import downloadable_statuses
+from calibration.views.calibration_download_views import downloadable_statuses
 from calibration.views.called_from import get_caller_name
 from calibration.views.common import handle_exceptions, validate_request, validate_response, truncate_large_fields, get_calibration_run, \
     get_user_email, get_elapsed_str, readonly_transaction
