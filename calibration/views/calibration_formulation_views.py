@@ -207,7 +207,8 @@ def save_formulation_tab(request) -> Response:
     if error_return:
         return error_return
 
-    run.user_formulation_name = validator.get('formulation_name')
+    if not run.gage:
+        return ResponseError('Gage must be specified before selecting formulation')
 
     # Validate modules and formulation constraints
     error_message = validate_modules(new_module_names)
